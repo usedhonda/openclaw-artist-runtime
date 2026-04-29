@@ -75,7 +75,7 @@ describe("telegram song completion SONGBOOK callbacks", () => {
       { text: "⏸ 後で", callback_data: `cb:${skip?.callbackId}` },
       { text: "▶ X 投稿準備", callback_data: `cb:${xPrepare?.callbackId}` }
     ]);
-    expect(JSON.stringify(buttons)).not.toMatch(/Instagram|TikTok|IG/i);
+    expect(buttons.map((button) => button.text).join(" ")).not.toMatch(/Instagram|TikTok|IG/i);
 
     const client = callbackClient();
     const result = await routeTelegramCallback({

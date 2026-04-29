@@ -129,9 +129,12 @@ function selectObservation(observation: string): DailyVoiceObservation | undefin
   return entries.find((entry) => entry.url) ?? entries[0];
 }
 
-function parseField(raw: string, field: string): string | undefined {
+const dailyVoiceFields = ["selected_url", "selected_author", "opinion", "rationale"] as const;
+
+function parseField(raw: string, field: (typeof dailyVoiceFields)[number]): string | undefined {
   const escaped = field.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-  const match = raw.match(new RegExp(`^${escaped}:\\s*([\\s\\S]*?)(?=\\n[a-z_]+:\\s*|$)`, "im"));
+  const boundary = dailyVoiceFields.filter((name) => name !== field).join("|");
+  const match = raw.match(new RegExp(`(?:^|\\s)${escaped}:\\s*([\\s\\S]*?)(?=\\s*(?:${boundary}):\\s*|$)`, "im"));
   return match?.[1]?.trim() || undefined;
 }
 
