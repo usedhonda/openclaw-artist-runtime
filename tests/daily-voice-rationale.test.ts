@@ -2,16 +2,18 @@ import { mkdtempSync } from "node:fs";
 import { mkdir, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import type { DailyVoiceDraft } from "../src/types";
 import { formatRuntimeEvent } from "../src/services/telegramNotifier";
+
+let aiRationale = "ARTIST.md の obsession「都市の違和感」と SOUL.md の tone「観察して刺す」に基づき、observation「再開発で小さい店がまた消えた」を街の記憶への違和感として artist の声に変換した。";
 
 vi.mock("../src/services/aiProviderClient", () => ({
   callAiProvider: vi.fn(async () => [
     "selected_url: https://x.com/city_note/status/2222222222",
     "selected_author: city_note",
     "opinion: 小さい店が消える話は、街の記憶を誰が保管するのかって問いに見える。",
-    "rationale: ARTIST.md の obsession「都市の違和感」と SOUL.md の tone「観察して刺す」に重なる発言を選んだ。"
+    `rationale: ${aiRationale}`
   ].join("\n"))
 }));
 
@@ -31,6 +33,10 @@ async function workspace(): Promise<string> {
 }
 
 describe("daily voice rationale", () => {
+  afterEach(() => {
+    aiRationale = "ARTIST.md の obsession「都市の違和感」と SOUL.md の tone「観察して刺す」に基づき、observation「再開発で小さい店がまた消えた」を街の記憶への違和感として artist の声に変換した。";
+  });
+
   it("parses AI rationale and source fields into the draft", async () => {
     const { composeDailyVoice } = await import("../src/services/artistDailyVoiceComposer");
     const draft = await composeDailyVoice(await workspace(), { aiReviewProvider: "openai-codex" });
@@ -39,6 +45,8 @@ describe("daily voice rationale", () => {
     expect(draft.draftText).toContain("https://x.com/city_note/status/2222222222");
     expect(draft.selectedSource).toEqual({ author: "city_note", url: "https://x.com/city_note/status/2222222222" });
     expect(draft.rationale).toContain("都市の違和感");
+    expect(draft.rationale).toContain("SOUL.md");
+    expect(draft.rationale).toContain("observation");
   });
 
   it("generates fallback rationale in mock mode", async () => {
@@ -47,6 +55,17 @@ describe("daily voice rationale", () => {
 
     expect(draft.rationale).toContain("ARTIST.md");
     expect(draft.rationale).toContain("SOUL.md");
+  });
+
+  it("replaces English provider rationale with a Japanese structured fallback", async () => {
+    aiRationale = "Picked the government WhatsApp groups observation.";
+    const { composeDailyVoice } = await import("../src/services/artistDailyVoiceComposer");
+    const draft = await composeDailyVoice(await workspace(), { aiReviewProvider: "openai-codex" });
+
+    expect(draft.rationale).toContain("ARTIST.md");
+    expect(draft.rationale).toContain("SOUL.md");
+    expect(draft.rationale).toContain("observation");
+    expect(draft.rationale).not.toContain("Picked");
   });
 
   it("shows rationale in Telegram preview and omits it when absent", async () => {
@@ -62,9 +81,10 @@ describe("daily voice rationale", () => {
 
     const withRationale = await formatRuntimeEvent({ type: "artist_pulse_drafted", ...base, rationale: "persona と observation が重なった。", timestamp: 1 });
     expect(withRationale).toContain("💭 観察元: @city_note (URL あり)");
-    expect(withRationale).toContain("💭 なぜ: persona と observation が重なった。");
+    expect(withRationale).toContain("🎯 なぜ: persona と observation が重なった。");
+    expect(withRationale).not.toContain("💭 なぜ:");
 
     const withoutRationale = await formatRuntimeEvent({ type: "artist_pulse_drafted", ...base, timestamp: 1 });
-    expect(withoutRationale).not.toContain("💭 なぜ:");
+    expect(withoutRationale).not.toContain("🎯 なぜ:");
   });
 });

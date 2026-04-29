@@ -389,7 +389,7 @@ export async function formatRuntimeEvent(
         "----------",
         `chars:${event.charCount} hash:${event.draftHash.slice(-8)}`,
         event.selectedSource ? `💭 観察元: ${event.selectedSource.author ? `@${event.selectedSource.author.replace(/^@/, "")}` : "anonymous"} (${event.selectedSource.url ? "URL あり" : "URL なし"})` : undefined,
-        event.rationale ? `💭 なぜ: ${event.rationale}` : undefined
+        event.rationale ? `🎯 なぜ: ${event.rationale}` : undefined
       ].filter(Boolean).join("\n");
     case "song_spawn_proposed":
       return [

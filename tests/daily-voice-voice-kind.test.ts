@@ -41,6 +41,8 @@ describe("daily voice kind labels", () => {
 
     expect(draft.voiceKind).toBe("musing");
     expect(text.startsWith("💭 つぶやき draft:")).toBe(true);
+    expect(text).toContain("🎯 なぜ:");
+    expect(text).not.toContain("💭 なぜ:");
   });
 
   it("formats future studio whisper events with a distinct label", async () => {

@@ -137,8 +137,8 @@ function parseField(raw: string, field: string): string | undefined {
 
 function summarizePersonaBasis(artistMd: string, soulMd: string): { obsession: string; tone: string } {
   return {
-    obsession: artistMd.match(/obsessions?:\s*(.+)/i)?.[1]?.trim() ?? "artist persona",
-    tone: soulMd.match(/tone:\s*(.+)/i)?.[1]?.trim() ?? "SOUL.md tone"
+    obsession: artistMd.match(/obsessions?:\s*(.+)/i)?.[1]?.trim() ?? "ARTIST.md の基礎人格",
+    tone: soulMd.match(/tone:\s*(.+)/i)?.[1]?.trim() ?? "SOUL.md の基礎トーン"
   };
 }
 
@@ -146,7 +146,19 @@ function fitRationale(value: string): string {
   return fitDraft(value).replace(/\n{3,}/g, "\n\n");
 }
 
-function parsePost(raw: string, selected?: DailyVoiceObservation): { opinion: string; url?: string; author?: string; rationale?: string } {
+function observationCore(selected?: DailyVoiceObservation): string {
+  return selected?.text ? selected.text.slice(0, 52) : "今日の観察全体";
+}
+
+function structuredRationale(basis: { obsession: string; tone: string }, selected?: DailyVoiceObservation): string {
+  return fitRationale(`ARTIST.md の「${basis.obsession}」と SOUL.md の「${basis.tone}」に基づき、observation「${observationCore(selected)}」を社会の違和感として artist の声に変換した。`);
+}
+
+function isJapaneseText(value: string): boolean {
+  return /[ぁ-んァ-ヶ一-龠]/.test(value);
+}
+
+function parsePost(raw: string, selected: DailyVoiceObservation | undefined, basis: { obsession: string; tone: string }): { opinion: string; url?: string; author?: string; rationale?: string } {
   const normalized = normalizeText(raw);
   const selectedUrl = parseField(normalized, "selected_url");
   const selectedAuthor = parseField(normalized, "selected_author");
@@ -160,7 +172,7 @@ function parsePost(raw: string, selected?: DailyVoiceObservation): { opinion: st
     opinion: fitDraft(opinionSource),
     url,
     author: selectedAuthor && selectedAuthor !== "none" ? selectedAuthor.replace(/^@/, "") : selected?.author,
-    rationale: fieldRationale ? fitRationale(fieldRationale) : undefined
+    rationale: fieldRationale && isJapaneseText(fieldRationale) ? fitRationale(fieldRationale) : structuredRationale(basis, selected)
   };
 }
 
@@ -206,7 +218,7 @@ function mockDraft(context: { artistMd: string; soulMd: string; observation: str
   const tone = basis.tone;
   const anchor = context.selected?.text ?? obsession;
   const opinion = fitDraft(`${tone}。「${anchor.slice(0, 48)}」には、便利さの影だけ出てる。言い切らず、でも目は逸らさない。`);
-  const rationale = fitRationale(`ARTIST.md の obsession「${basis.obsession}」と SOUL.md の tone「${basis.tone}」に重なる observation を選択。`);
+  const rationale = structuredRationale(basis, context.selected);
   return [
     `selected_url: ${context.selected?.url ?? "none"}`,
     `selected_author: ${context.selected?.author ?? "none"}`,
@@ -217,16 +229,17 @@ function mockDraft(context: { artistMd: string; soulMd: string; observation: str
 
 function buildPrompt(context: { artistMd: string; soulMd: string; observation: string; heartbeat: string; fragment: string; selected?: DailyVoiceObservation }): string {
   return [
-    "Pick exactly one observation that genuinely catches the artist's attention.",
-    "Write a single X post as used::honda: a personal opinion or reaction, not a summary of many observations.",
-    "Output exactly these fields:",
+    "あなたは used::honda として、観察 1 件だけに反応する X 投稿 draft を作る。",
+    "世論の要約は禁止。選んだ observation への個別意見として書く。",
+    "rationale は必ず日本語。英語は禁止。",
+    "rationale には、どの observation を選んだか、ARTIST.md の obsession/persona と SOUL.md の tone/mood のどこに基づいてその角度にしたかを必ず書く。",
+    "出力は必ず次の 4 field だけ:",
     "selected_url: <url-or-none>",
     "selected_author: <handle-or-none>",
     "opinion: <text within 257 chars>",
-    "rationale: <one or two short lines explaining which observation was picked, and what part of ARTIST.md/SOUL.md drove the angle>",
-    "Do not repeat any sentence. Do not summarize many observations.",
-    "Tone: observational, intelligent, lightly satirical if earned, never bot-like, no boilerplate, no hashtags by default.",
-    `Opinion length: ${maxBodyChars} characters max. Do not include secrets.`,
+    "rationale: <日本語 1-2 行。例: ARTIST.md の「社会観察」と SOUL.md の「短く刺す」に基づき、observation「...」を責任の所在への違和感として artist の声に変換した。>",
+    "同じ文を繰り返さない。bot 的な定型句や hashtag は不要。",
+    `opinion は ${maxBodyChars} 文字以内。秘密情報は含めない。`,
     "",
     "Selected observation:",
     JSON.stringify(context.selected ?? null),
@@ -264,7 +277,8 @@ export async function composeDailyVoice(root: string, options: ComposeDailyVoice
     ? mockDraft({ artistMd, soulMd, observation, fragment, selected })
     : await callAiProvider(buildPrompt({ artistMd, soulMd, observation, heartbeat, fragment, selected }), { provider });
   assertSafe("daily_voice_ai_response", raw);
-  const post = parsePost(raw, selected);
+  const basis = summarizePersonaBasis(artistMd, soulMd);
+  const post = parsePost(raw, selected, basis);
   const draftText = buildDraftText(post.opinion, post.url);
   const rationale = post.rationale;
   assertSafe("daily_voice_final_text", [draftText, rationale].filter(Boolean).join("\n"));
