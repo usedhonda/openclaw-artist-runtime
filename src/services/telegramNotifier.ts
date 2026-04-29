@@ -337,6 +337,19 @@ function dailyVoiceTitle(kind: Extract<RuntimeEvent, { type: "artist_pulse_draft
   return "🔁 引用ポスト draft:";
 }
 
+function formatSongTakeCompleted(event: Extract<RuntimeEvent, { type: "song_take_completed" }>): string {
+  const take = event.selectedTakeId ? ` (selected: ${event.selectedTakeId})` : "";
+  const urls = event.urls.length
+    ? event.urls.map((url, index) => `${index + 1}. ${url}`).join("\n")
+    : "(URL なし)";
+  return [
+    `🎼 ${event.songId}: take 完成${take}`,
+    urls,
+    "----------",
+    "非公開、御大のみ"
+  ].join("\n");
+}
+
 export async function formatRuntimeEvent(
   event: RuntimeEvent,
   options: Pick<TelegramNotifierOptions, "workspaceRoot" | "aiReviewProvider"> = {}
@@ -349,11 +362,7 @@ export async function formatRuntimeEvent(
     case "autopilot_state_changed":
       return `Autopilot state: enabled=${event.enabled} paused=${event.paused}${event.reason ? ` reason=${event.reason}` : ""}`;
     case "song_take_completed":
-      return artistReport(
-        event,
-        `Song take completed: ${event.songId}${event.selectedTakeId ? ` (${event.selectedTakeId})` : ""}${event.urls.length ? ` ${event.urls.join(" ")}` : ""}`,
-        options
-      );
+      return formatSongTakeCompleted(event);
     case "theme_generated":
       return artistReport(event, `Theme generated: ${event.theme}. Reason: ${event.reason}`, options);
     case "suno_budget_low":

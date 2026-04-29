@@ -21,6 +21,46 @@ describe("TelegramNotifier", () => {
     })).resolves.toBe("Autopilot stage: planning -> prompt_pack (song-001)");
   });
 
+  it("formats completed Suno take URLs for private Telegram notification", async () => {
+    await expect(formatRuntimeEvent({
+      type: "song_take_completed",
+      songId: "song-004",
+      selectedTakeId: "take-2",
+      urls: ["https://suno.com/song/a", "https://suno.com/song/b"],
+      timestamp: 1
+    })).resolves.toBe([
+      "🎼 song-004: take 完成 (selected: take-2)",
+      "1. https://suno.com/song/a",
+      "2. https://suno.com/song/b",
+      "----------",
+      "非公開、御大のみ"
+    ].join("\n"));
+  });
+
+  it("formats a completed take without selectedTakeId", async () => {
+    await expect(formatRuntimeEvent({
+      type: "song_take_completed",
+      songId: "song-004",
+      urls: ["https://suno.com/song/a"],
+      timestamp: 1
+    })).resolves.toBe([
+      "🎼 song-004: take 完成",
+      "1. https://suno.com/song/a",
+      "----------",
+      "非公開、御大のみ"
+    ].join("\n"));
+  });
+
+  it("formats completed take notification when no URL is available", async () => {
+    await expect(formatRuntimeEvent({
+      type: "song_take_completed",
+      songId: "song-004",
+      selectedTakeId: "take-2",
+      urls: [],
+      timestamp: 1
+    })).resolves.toContain("(URL なし)");
+  });
+
   it("sends runtime events through TelegramClient with a mock fetch", async () => {
     const fetchImpl = vi.fn().mockResolvedValue(jsonResponse({
       ok: true,
