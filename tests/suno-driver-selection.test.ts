@@ -1,7 +1,8 @@
-import { mkdtempSync } from "node:fs";
+import { mkdtempSync, readFileSync, writeFileSync } from "node:fs";
+import { mkdir } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { defaultArtistRuntimeConfig } from "../src/config/defaultConfig";
 import { SunoBrowserWorker, type SunoBrowserDriver } from "../src/services/sunoBrowserWorker";
 
@@ -29,6 +30,9 @@ vi.mock("playwright-extra", () => ({
 vi.mock("puppeteer-extra-plugin-stealth", () => ({
   default: stealthPluginMock
 }));
+
+const envKeys = ["OPENCLAW_SUNO_LIVE", "OPENCLAW_SUNO_CHROME_PROFILE_SOURCE", "OPENCLAW_SUNO_CHROME_PROFILE_DEST"] as const;
+const originalEnv = Object.fromEntries(envKeys.map((key) => [key, process.env[key]]));
 
 function createProbeContext({
   url = "https://suno.com/sign-in",
@@ -74,6 +78,17 @@ describe("Suno driver selection", () => {
     stealthPluginMock.mockReset();
     stealthPluginMock.mockReturnValue(stealthResult);
     vi.stubGlobal("fetch", vi.fn());
+  });
+
+  afterEach(() => {
+    for (const key of envKeys) {
+      const value = originalEnv[key];
+      if (value === undefined) {
+        delete process.env[key];
+      } else {
+        process.env[key] = value;
+      }
+    }
   });
 
   it("keeps the default mock path when no driver mode is configured", async () => {
@@ -147,5 +162,29 @@ describe("Suno driver selection", () => {
     expect(launchPersistentContextMock).not.toHaveBeenCalled();
     expect(spawnMock).not.toHaveBeenCalled();
     expect(globalThis.fetch).not.toHaveBeenCalled();
+  });
+
+  it("selects live Playwright driver from env and copies the operator Chrome profile", async () => {
+    const root = mkdtempSync(join(tmpdir(), "artist-runtime-suno-driver-env-live-"));
+    const source = join(root, "Chrome", "Default");
+    const dest = join(root, "dedicated-suno-profile");
+    await mkdir(source, { recursive: true });
+    writeFileSync(join(source, "Cookies"), "operator-cookie-state", "utf8");
+    process.env.OPENCLAW_SUNO_LIVE = "on";
+    process.env.OPENCLAW_SUNO_CHROME_PROFILE_SOURCE = source;
+    process.env.OPENCLAW_SUNO_CHROME_PROFILE_DEST = dest;
+    const { context } = createProbeContext();
+    launchPersistentContextMock.mockResolvedValue(context);
+
+    const worker = new SunoBrowserWorker(root);
+    await worker.start();
+
+    expect(launchPersistentContextMock).toHaveBeenCalledWith(dest, {
+      headless: false,
+      channel: "chrome",
+      args: ["--disable-blink-features=AutomationControlled"],
+      ignoreDefaultArgs: ["--enable-automation"]
+    });
+    expect(readFileSync(join(dest, "Default", "Cookies"), "utf8")).toBe("operator-cookie-state");
   });
 });

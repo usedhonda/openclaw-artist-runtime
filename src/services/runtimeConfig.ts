@@ -70,7 +70,7 @@ function normalizeResolvedOverrideConfig(overrides: ConfigOverridesRecord): Part
 }
 
 export async function readResolvedConfig(root: string): Promise<ArtistRuntimeConfig> {
-  return enforceFrozenPlatformBoundaries(applyConfigDefaults(normalizeResolvedOverrideConfig(await readConfigOverrides(root) as ConfigOverridesRecord)));
+  return applyRuntimeEnvOverrides(enforceFrozenPlatformBoundaries(applyConfigDefaults(normalizeResolvedOverrideConfig(await readConfigOverrides(root) as ConfigOverridesRecord))));
 }
 
 export function resolveDefaultWorkspaceRoot(): string {
@@ -100,6 +100,59 @@ export function isXInlineButtonEnabled(env: NodeJS.ProcessEnv = process.env): bo
 
 export function isTelegramNotifierEnabled(env: NodeJS.ProcessEnv = process.env): boolean {
   return env.OPENCLAW_TELEGRAM_NOTIFIER?.trim().toLowerCase() !== "off";
+}
+
+export function isSunoLiveEnabled(env: NodeJS.ProcessEnv = process.env): boolean {
+  const live = env.OPENCLAW_SUNO_LIVE?.trim().toLowerCase();
+  const driver = env.OPENCLAW_SUNO_DRIVER?.trim().toLowerCase();
+  return live === "on" || live === "1" || live === "true" || driver === "live" || driver === "playwright";
+}
+
+export function isSunoLiveDisabled(env: NodeJS.ProcessEnv = process.env): boolean {
+  return env.OPENCLAW_SUNO_LIVE?.trim().toLowerCase() === "off" || env.OPENCLAW_SUNO_DRIVER?.trim().toLowerCase() === "mock";
+}
+
+export function sunoChromeProfileSource(env: NodeJS.ProcessEnv = process.env): string {
+  return env.OPENCLAW_SUNO_CHROME_PROFILE_SOURCE?.trim() || "/Users/usedhonda/Library/Application Support/Google/Chrome/Default";
+}
+
+export function sunoChromeProfileDest(env: NodeJS.ProcessEnv = process.env): string {
+  return env.OPENCLAW_SUNO_CHROME_PROFILE_DEST?.trim() || ".openclaw-browser-profiles/suno";
+}
+
+export function applyRuntimeEnvOverrides(config: ArtistRuntimeConfig, env: NodeJS.ProcessEnv = process.env): ArtistRuntimeConfig {
+  const next: ArtistRuntimeConfig = {
+    ...config,
+    autopilot: { ...config.autopilot },
+    music: {
+      ...config.music,
+      suno: { ...config.music.suno }
+    },
+    distribution: {
+      ...config.distribution,
+      platforms: {
+        x: { ...config.distribution.platforms.x },
+        instagram: { ...config.distribution.platforms.instagram },
+        tiktok: { ...config.distribution.platforms.tiktok }
+      }
+    }
+  };
+  if (isSunoLiveDisabled(env)) {
+    next.music.suno.driver = "mock";
+    next.music.suno.submitMode = "skip";
+  } else if (isSunoLiveEnabled(env)) {
+    next.music.suno.connectionMode = "background_browser_worker";
+    next.music.suno.driver = "playwright";
+    next.music.suno.submitMode = "live";
+  }
+  const submitMode = env.OPENCLAW_SUNO_SUBMIT_MODE?.trim().toLowerCase();
+  if (!isSunoLiveDisabled(env) && (submitMode === "live" || submitMode === "skip")) {
+    next.music.suno.submitMode = submitMode;
+  }
+  if (env.OPENCLAW_AUTOPILOT_DRYRUN_OVERRIDE?.trim().toLowerCase() === "off") {
+    next.autopilot.dryRun = false;
+  }
+  return next;
 }
 
 export function isArtistPulseEnabled(env: NodeJS.ProcessEnv = process.env): boolean {
@@ -237,7 +290,7 @@ export async function resolveRuntimeConfig(
   const normalizedPersisted = isRelativeWorkspaceRoot(persisted.artist.workspaceRoot)
     ? { ...persisted, artist: { ...persisted.artist, workspaceRoot } }
     : persisted;
-  return payloadConfig ? mergeResolvedConfig(normalizedPersisted, payloadConfig) : normalizedPersisted;
+  return applyRuntimeEnvOverrides(payloadConfig ? mergeResolvedConfig(normalizedPersisted, payloadConfig) : normalizedPersisted);
 }
 
 export function mergeResolvedConfig(current: ArtistRuntimeConfig, patch: Partial<ArtistRuntimeConfig>): ArtistRuntimeConfig {

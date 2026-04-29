@@ -13,6 +13,7 @@ import type {
 import { listSongStates, updateSongState } from "./artistState.js";
 import { appendPromptLedger, createPromptLedgerEntry, getSongPromptLedgerPath, inspectJsonlFile } from "./promptLedger.js";
 import { decideMusicAuthority } from "./musicAuthority.js";
+import { applyRuntimeEnvOverrides } from "./runtimeConfig.js";
 import {
   DEFAULT_SUNO_LIVE_CREATE_CREDIT_COST,
   SUNO_BUDGET_EXHAUSTED_REASON,
@@ -160,7 +161,7 @@ export async function buildSunoArtifactIndex(root: string): Promise<SunoArtifact
 }
 
 export async function generateSunoRun(input: GenerateSunoRunInput): Promise<SunoRunRecord> {
-  const config = applyConfigDefaults(input.config);
+  const config = applyRuntimeEnvOverrides(applyConfigDefaults(input.config));
   const connector = new BrowserWorkerSunoConnector(input.workspaceRoot, { config });
   const workerStatus = input.workerState ? { state: input.workerState } : await connector.status();
   const { payload, payloadHash, payloadPath } = await loadPayload(input.workspaceRoot, input.songId);
@@ -257,7 +258,7 @@ export async function generateSunoRun(input: GenerateSunoRunInput): Promise<Suno
 }
 
 export async function importSunoResults(input: ImportSunoResultsInput): Promise<SunoRunRecord> {
-  const config = applyConfigDefaults(input.config);
+  const config = applyRuntimeEnvOverrides(applyConfigDefaults(input.config));
   const importedAt = new Date().toISOString();
   const payload = {
     runId: input.runId,

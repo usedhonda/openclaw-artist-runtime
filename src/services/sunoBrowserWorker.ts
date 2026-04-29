@@ -16,6 +16,8 @@ import type {
 } from "../types.js";
 import { DEFAULT_SUNO_PROFILE_PATH, PlaywrightSunoDriver } from "./sunoPlaywrightDriver.js";
 import { DEFAULT_SUNO_PROFILE_STALE_DAYS, detectStaleProfile } from "./sunoProfileLifecycle.js";
+import { ensureSunoChromeProfileCopy } from "./sunoChromeProfileCopy.js";
+import { isSunoLiveDisabled, isSunoLiveEnabled, sunoChromeProfileDest, sunoChromeProfileSource } from "./runtimeConfig.js";
 
 type SunoWorkerProbeState = Extract<
   SunoWorkerState,
@@ -159,7 +161,7 @@ export class SunoBrowserWorker {
   }
 
   private profilePath(): string {
-    return this.options.profilePath ?? DEFAULT_SUNO_PROFILE_PATH;
+    return this.options.profilePath ?? sunoChromeProfileDest() ?? DEFAULT_SUNO_PROFILE_PATH;
   }
 
   private shouldCheckProfileLifecycle(): boolean {
@@ -240,16 +242,39 @@ export class SunoBrowserWorker {
       return explicitDriver;
     }
 
-    const driverMode = this.options.driverMode ?? this.options.config?.music?.suno?.driver ?? "mock";
+    const driverMode = isSunoLiveDisabled()
+      ? "mock"
+      : isSunoLiveEnabled()
+        ? "playwright"
+        : this.options.driverMode ?? this.options.config?.music?.suno?.driver ?? "mock";
     if (driverMode === "playwright") {
       return new PlaywrightSunoDriver(
         this.profilePath(),
-        this.options.submitMode ?? this.options.config?.music?.suno?.submitMode ?? "skip",
+        this.options.submitMode ?? (isSunoLiveEnabled() ? "live" : this.options.config?.music?.suno?.submitMode ?? "skip"),
         this.workspaceRoot
       );
     }
 
     return undefined;
+  }
+
+  private shouldPrepareCopiedProfile(): boolean {
+    if (this.options.profilePath) {
+      return false;
+    }
+    return !isSunoLiveDisabled() && (isSunoLiveEnabled() || this.options.driverMode === "playwright" || this.options.config?.music?.suno?.driver === "playwright");
+  }
+
+  private async prepareCopiedProfile(): Promise<void> {
+    if (!this.shouldPrepareCopiedProfile()) {
+      return;
+    }
+    const result = await ensureSunoChromeProfileCopy(sunoChromeProfileSource(), this.profilePath());
+    if (result.status === "source_missing") {
+      console.warn("[artist-runtime] Suno Chrome profile source missing; continuing with dedicated profile");
+    } else if (result.failed.length > 0) {
+      console.warn(`[artist-runtime] Suno Chrome profile copy skipped ${result.failed.length} item(s)`);
+    }
   }
 
   async start(options: StartOptions = {}): Promise<SunoWorkerStatus> {
@@ -260,6 +285,7 @@ export class SunoBrowserWorker {
       hardStopReason: undefined
     });
 
+    await this.prepareCopiedProfile();
     const driver = this.resolveDriver(options.driver);
     const probe = driver
       ? await driver.probe()
@@ -346,6 +372,7 @@ export class SunoBrowserWorker {
     if (current.state === "stopped") {
       return current;
     }
+    await this.prepareCopiedProfile();
     const resolvedDriver = this.resolveDriver(driver);
     await resolvedDriver?.stop?.().catch(() => undefined);
     return this.writeState({
@@ -365,6 +392,7 @@ export class SunoBrowserWorker {
     const current = await this.readState();
     const dryRun = options.dryRun ?? request.dryRun;
     const runId = request.runId ?? `worker_${Date.now().toString(36)}`;
+    await this.prepareCopiedProfile();
     const driver = this.resolveDriver(options.driver);
 
     if (!dryRun && current.state !== "connected") {
@@ -461,6 +489,7 @@ export class SunoBrowserWorker {
   async importRun(runId: string, urls: string[] = [], options: WorkerAutomationOptions = {}): Promise<SunoImportResult> {
     const current = await this.readState();
     const dryRun = options.dryRun ?? false;
+    await this.prepareCopiedProfile();
     const driver = this.resolveDriver(options.driver);
 
     if (!dryRun && current.state !== "connected" && current.state !== "generating") {

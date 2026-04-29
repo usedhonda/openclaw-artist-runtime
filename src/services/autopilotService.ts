@@ -27,7 +27,7 @@ import { collectObservations, type XObservationContext } from "./xObservationCol
 import { proposeTheme } from "./themeProposer.js";
 import { pollSongDistribution } from "./songDistributionPoller.js";
 import { cleanupExpiredCallbacks } from "./callbackLedgerMaintenance.js";
-import { getArtistPulseIntervalHours, getSongSpawnIntervalHours, isArtistPulseConfigured, isSongbookAutoSyncEnabled, isSongSpawnConfigured } from "./runtimeConfig.js";
+import { applyRuntimeEnvOverrides, getArtistPulseIntervalHours, getSongSpawnIntervalHours, isArtistPulseConfigured, isSongbookAutoSyncEnabled, isSongSpawnConfigured } from "./runtimeConfig.js";
 import { proposeSpawn } from "./songSpawnProposer.js";
 import { shouldSpawn } from "./songSpawnRateLimiter.js";
 import { validatePlanningFiles } from "./planningSkeletonValidator.js";
@@ -368,7 +368,7 @@ export class ArtistAutopilotService {
       const reason = error instanceof Error ? error.message : String(error);
       console.warn(`[artist-runtime] callback ledger cleanup failed: ${reason}`);
     });
-    const resolvedConfig = applyConfigDefaults(input.config);
+    const resolvedConfig = applyRuntimeEnvOverrides(applyConfigDefaults(input.config));
     const config = input.manualSeed
       ? { ...resolvedConfig, autopilot: { ...resolvedConfig.autopilot, enabled: true } }
       : resolvedConfig;
