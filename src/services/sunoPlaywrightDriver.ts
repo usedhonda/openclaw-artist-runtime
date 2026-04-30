@@ -11,6 +11,7 @@ import type {
 import type { SunoBrowserDriver, SunoBrowserDriverProbe } from "./sunoBrowserWorker.js";
 import type { BrowserContext, Page } from "playwright";
 import { captureSunoFailure, resolveSunoFailureLogsDir } from "./sunoFailureSnapshot.js";
+import { isSunoCdpEnabled, sunoCdpEndpoint } from "./runtimeConfig.js";
 
 export const DEFAULT_SUNO_PROFILE_PATH = ".openclaw-browser-profiles/suno";
 export const SUNO_CREATE_URL = "https://suno.com/create";
@@ -33,6 +34,11 @@ export const PLAYWRIGHT_CREATE_DOM_MISSING_REASON = "playwright_create_dom_missi
 export const PLAYWRIGHT_CREATE_LOGIN_EXPIRED_REASON = "playwright_create_login_expired";
 export const PLAYWRIGHT_CREATE_RATE_LIMITED_REASON = "playwright_create_rate_limited";
 
+interface OpenedSunoContext {
+  context: BrowserContext;
+  close: () => Promise<void>;
+}
+
 /**
  * Round 38 adds probe automation.
  * Round 39 adds create/import automation, and Round 40 adds audio download
@@ -51,21 +57,12 @@ export class PlaywrightSunoDriver implements SunoBrowserDriver {
   ) {}
 
   async probe(): Promise<SunoBrowserDriverProbe> {
-    let context: BrowserContext | undefined;
+    let opened: OpenedSunoContext | undefined;
 
     try {
-      const { chromium } = await import("playwright-extra");
-      const stealth = (await import("puppeteer-extra-plugin-stealth")).default;
-      chromium.use(stealth());
-      await mkdir(this.profilePath, { recursive: true });
-      context = await chromium.launchPersistentContext(this.profilePath, {
-        headless: false,
-        channel: "chrome",
-        args: ["--disable-blink-features=AutomationControlled"],
-        ignoreDefaultArgs: ["--enable-automation"]
-      });
+      opened = await this.openContext();
 
-      const page = context.pages()[0] ?? await context.newPage();
+      const page = opened.context.pages()[0] ?? await opened.context.newPage();
       await page.goto(SUNO_CREATE_URL, {
         waitUntil: "domcontentloaded",
         timeout: 20_000
@@ -104,28 +101,19 @@ export class PlaywrightSunoDriver implements SunoBrowserDriver {
         detail: `playwright probe failed: ${this.errorMessage(error)}`
       };
     } finally {
-      await context?.close().catch(() => undefined);
+      await opened?.close().catch(() => undefined);
     }
   }
 
   async create(request: SunoCreateRequest): Promise<SunoCreateResult> {
-    let context: BrowserContext | undefined;
+    let opened: OpenedSunoContext | undefined;
     let page: Page | undefined;
     const runId = request.runId ?? `playwright_${Date.now().toString(36)}`;
 
     try {
-      const { chromium } = await import("playwright-extra");
-      const stealth = (await import("puppeteer-extra-plugin-stealth")).default;
-      chromium.use(stealth());
-      await mkdir(this.profilePath, { recursive: true });
-      context = await chromium.launchPersistentContext(this.profilePath, {
-        headless: false,
-        channel: "chrome",
-        args: ["--disable-blink-features=AutomationControlled"],
-        ignoreDefaultArgs: ["--enable-automation"]
-      });
+      opened = await this.openContext();
 
-      page = context.pages()[0] ?? await context.newPage();
+      page = opened.context.pages()[0] ?? await opened.context.newPage();
       const baselineUrls = new Set(await this.readSongUrls(page));
       await page.goto(SUNO_CREATE_URL, {
         waitUntil: "domcontentloaded",
@@ -193,7 +181,7 @@ export class PlaywrightSunoDriver implements SunoBrowserDriver {
         dryRun: request.dryRun
       };
     } finally {
-      await context?.close().catch(() => undefined);
+      await opened?.close().catch(() => undefined);
     }
   }
 
@@ -209,21 +197,12 @@ export class PlaywrightSunoDriver implements SunoBrowserDriver {
       };
     }
 
-    let context: BrowserContext | undefined;
+    let opened: OpenedSunoContext | undefined;
 
     try {
-      const { chromium } = await import("playwright-extra");
-      const stealth = (await import("puppeteer-extra-plugin-stealth")).default;
-      chromium.use(stealth());
-      await mkdir(this.profilePath, { recursive: true });
-      context = await chromium.launchPersistentContext(this.profilePath, {
-        headless: false,
-        channel: "chrome",
-        args: ["--disable-blink-features=AutomationControlled"],
-        ignoreDefaultArgs: ["--enable-automation"]
-      });
+      opened = await this.openContext();
 
-      const page = context.pages()[0] ?? await context.newPage();
+      const page = opened.context.pages()[0] ?? await opened.context.newPage();
       const outputDir = join(this.workspaceRoot, "runtime", "suno", request.runId);
       await mkdir(outputDir, { recursive: true });
 
@@ -299,8 +278,35 @@ export class PlaywrightSunoDriver implements SunoBrowserDriver {
         dryRun: false
       };
     } finally {
-      await context?.close().catch(() => undefined);
+      await opened?.close().catch(() => undefined);
     }
+  }
+
+  private async openContext(): Promise<OpenedSunoContext> {
+    if (isSunoCdpEnabled()) {
+      const { chromium } = await import("playwright");
+      const browser = await chromium.connectOverCDP(sunoCdpEndpoint());
+      const context = browser.contexts()[0] ?? await browser.newContext();
+      return {
+        context,
+        close: async () => undefined
+      };
+    }
+
+    const { chromium } = await import("playwright-extra");
+    const stealth = (await import("puppeteer-extra-plugin-stealth")).default;
+    chromium.use(stealth());
+    await mkdir(this.profilePath, { recursive: true });
+    const context = await chromium.launchPersistentContext(this.profilePath, {
+      headless: false,
+      channel: "chrome",
+      args: ["--disable-blink-features=AutomationControlled"],
+      ignoreDefaultArgs: ["--enable-automation"]
+    });
+    return {
+      context,
+      close: () => context.close()
+    };
   }
 
   private async isLoginRequired(page: Page, currentUrl: string): Promise<boolean> {

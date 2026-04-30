@@ -17,7 +17,7 @@ import type {
 import { DEFAULT_SUNO_PROFILE_PATH, PlaywrightSunoDriver } from "./sunoPlaywrightDriver.js";
 import { DEFAULT_SUNO_PROFILE_STALE_DAYS, detectStaleProfile } from "./sunoProfileLifecycle.js";
 import { ensureSunoChromeProfileCopy } from "./sunoChromeProfileCopy.js";
-import { isSunoLiveDisabled, isSunoLiveEnabled, sunoChromeProfileDest, sunoChromeProfileSource } from "./runtimeConfig.js";
+import { isSunoCdpEnabled, isSunoLiveDisabled, isSunoLiveEnabled, sunoChromeProfileDest, sunoChromeProfileSource } from "./runtimeConfig.js";
 
 type SunoWorkerProbeState = Extract<
   SunoWorkerState,
@@ -259,6 +259,9 @@ export class SunoBrowserWorker {
   }
 
   private shouldPrepareCopiedProfile(): boolean {
+    if (isSunoCdpEnabled()) {
+      return false;
+    }
     if (this.options.profilePath) {
       return false;
     }

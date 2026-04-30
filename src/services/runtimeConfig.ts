@@ -112,6 +112,15 @@ export function isSunoLiveDisabled(env: NodeJS.ProcessEnv = process.env): boolea
   return env.OPENCLAW_SUNO_LIVE?.trim().toLowerCase() === "off" || env.OPENCLAW_SUNO_DRIVER?.trim().toLowerCase() === "mock";
 }
 
+export function isSunoCdpEnabled(env: NodeJS.ProcessEnv = process.env): boolean {
+  const value = env.OPENCLAW_SUNO_USE_CDP?.trim().toLowerCase();
+  return value === "on" || value === "1" || value === "true";
+}
+
+export function sunoCdpEndpoint(env: NodeJS.ProcessEnv = process.env): string {
+  return env.OPENCLAW_SUNO_CDP_ENDPOINT?.trim() || "http://127.0.0.1:9222";
+}
+
 export function sunoChromeProfileSource(env: NodeJS.ProcessEnv = process.env): string {
   return env.OPENCLAW_SUNO_CHROME_PROFILE_SOURCE?.trim() || "/Users/usedhonda/Library/Application Support/Google/Chrome/Default";
 }
