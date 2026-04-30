@@ -59,9 +59,13 @@ function createPage() {
     goto: vi.fn(async () => undefined),
     waitForLoadState: vi.fn(async () => undefined),
     waitForTimeout: vi.fn(async () => undefined),
+    screenshot: vi.fn(async () => undefined),
+    content: vi.fn(async () => "<html></html>"),
+    url: vi.fn(() => SUNO_CREATE_URL),
     evaluate: vi.fn(async () => songUrlSnapshots.shift() ?? []),
     locator: vi.fn((selector: string) => ({
       first: () => ({
+        isVisible: vi.fn(async () => selector === "textarea[data-testid=\"lyrics-textarea\"]"),
         fill: vi.fn(async (value: string) => fills.push({ selector, value }))
       }),
       fill: vi.fn(async (value: string) => fills.push({ selector, value })),

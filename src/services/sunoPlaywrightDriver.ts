@@ -386,7 +386,7 @@ export class PlaywrightSunoDriver implements SunoBrowserDriver {
 
   private async ensureLyricsMode(page: Page): Promise<void> {
     const textarea = page.locator("textarea[data-testid=\"lyrics-textarea\"]");
-    if (await textarea.count().catch(() => 0)) {
+    if (await textarea.first().isVisible().catch(() => false)) {
       return;
     }
     await page.locator("button[aria-label=\"Add your own lyrics\"]").click();

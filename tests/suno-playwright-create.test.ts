@@ -51,6 +51,9 @@ function createPage() {
   const counts: Record<string, number> = {
     "textarea[data-testid=\"lyrics-textarea\"]": 1
   };
+  const visible: Record<string, boolean> = {
+    "textarea[data-testid=\"lyrics-textarea\"]": true
+  };
   const clickErrors: Record<string, Error> = {};
   const createCardSnapshots: string[][] = [];
   const songUrlSnapshots: string[][] = [
@@ -60,6 +63,7 @@ function createPage() {
     clicks,
     fills,
     counts,
+    visible,
     clickErrors,
     createCardSnapshots,
     songUrlSnapshots,
@@ -72,6 +76,7 @@ function createPage() {
     evaluate: vi.fn(async () => songUrlSnapshots.shift() ?? []),
     locator: vi.fn((selector: string) => ({
       first: () => ({
+        isVisible: vi.fn(async () => visible[selector] ?? false),
         fill: vi.fn(async (value: string) => {
           fills.push({ selector, value });
         })
@@ -172,6 +177,42 @@ describe("PlaywrightSunoDriver create", () => {
     expect(result.reason).toBe(PLAYWRIGHT_CREATE_SKIPPED_REASON);
     expect(page.clicks).toContain("button[aria-label=\"Check this to generate an instrumental only song\"]");
     expect(page.clicks).not.toContain("button[aria-label=\"Create song\"]");
+  });
+
+  it("does not click the lyrics mode toggle when the lyrics textarea is already visible", async () => {
+    const { page, context } = createContext();
+    page.visible["textarea[data-testid=\"lyrics-textarea\"]"] = true;
+    launchPersistentContextMock.mockResolvedValue(context);
+    const driver = new PlaywrightSunoDriver(".openclaw-browser-profiles/suno", "skip");
+
+    await driver.create({
+      dryRun: false,
+      authority: "auto_create_and_select_take",
+      runId: "run-visible-lyrics",
+      payload: { lyrics: "line one" }
+    });
+
+    expect(page.clicks).not.toContain("button[aria-label=\"Add your own lyrics\"]");
+    expect(page.fills).toContainEqual({
+      selector: "textarea[data-testid=\"lyrics-textarea\"]",
+      value: "line one"
+    });
+  });
+
+  it("clicks the lyrics mode toggle when the lyrics textarea is not visible", async () => {
+    const { page, context } = createContext();
+    page.visible["textarea[data-testid=\"lyrics-textarea\"]"] = false;
+    launchPersistentContextMock.mockResolvedValue(context);
+    const driver = new PlaywrightSunoDriver(".openclaw-browser-profiles/suno", "skip");
+
+    await driver.create({
+      dryRun: false,
+      authority: "auto_create_and_select_take",
+      runId: "run-hidden-lyrics",
+      payload: { lyrics: "line one" }
+    });
+
+    expect(page.clicks).toContain("button[aria-label=\"Add your own lyrics\"]");
   });
 
   it("clicks Create and returns accepted with new song URLs in live mode", async () => {
@@ -384,7 +425,7 @@ describe("PlaywrightSunoDriver create", () => {
   it("captures a failure snapshot when a create-page DOM action fails", async () => {
     const root = mkdtempSync(join(tmpdir(), "artist-runtime-suno-create-dom-snapshot-"));
     const { page, context } = createContext();
-    page.counts["textarea[data-testid=\"lyrics-textarea\"]"] = 0;
+    page.visible["textarea[data-testid=\"lyrics-textarea\"]"] = false;
     page.clickErrors["button[aria-label=\"Add your own lyrics\"]"] = new Error("locator selector not found");
     launchPersistentContextMock.mockResolvedValue(context);
     const driver = new PlaywrightSunoDriver(".openclaw-browser-profiles/suno", "skip", root);
@@ -407,7 +448,7 @@ describe("PlaywrightSunoDriver create", () => {
 
   it("does not mask the original create failure when snapshot capture fails", async () => {
     const { page, context } = createContext();
-    page.counts["textarea[data-testid=\"lyrics-textarea\"]"] = 0;
+    page.visible["textarea[data-testid=\"lyrics-textarea\"]"] = false;
     page.clickErrors["button[aria-label=\"Add your own lyrics\"]"] = new Error("locator selector not found");
     page.screenshot.mockRejectedValue(new Error("disk full"));
     const warn = vi.spyOn(console, "warn").mockImplementation(() => undefined);
