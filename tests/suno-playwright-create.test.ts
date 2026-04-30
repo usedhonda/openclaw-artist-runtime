@@ -355,7 +355,7 @@ describe("PlaywrightSunoDriver create", () => {
     });
   });
 
-  it("keeps create-card polling scoped away from generic library song links", async () => {
+  it("keeps create-card polling scoped to completed clip rows", async () => {
     const { page, context } = createContext();
     page.createCardSnapshots.push([], []);
     page.songUrlSnapshots.push(
@@ -379,10 +379,10 @@ describe("PlaywrightSunoDriver create", () => {
       }
     });
 
-    const createCardSelector = page.selectors.find((selector) => selector.includes("generation-card"));
-    expect(createCardSelector).toBeDefined();
-    expect(createCardSelector).not.toContain("[role='listitem']");
-    expect(createCardSelector).not.toContain("li a[href*='/song/']");
+    const createCardSelector = page.selectors.find((selector) => selector.includes("clip-row"));
+    expect(createCardSelector).toBe("[data-testid=\"clip-row\"][data-clip-status=\"complete\"] a[href*='/song/']");
+    expect(createCardSelector).not.toContain("generation-card");
+    expect(createCardSelector).not.toContain("data-clip-status=\"generating\"");
     expect(createCardSelector?.split(", ").some((selector) => selector === "a[href*='/song/']")).toBe(false);
     expect(result.reason).toBe(PLAYWRIGHT_LIBRARY_DIFF_REASON);
     expect(result.urls).toEqual(["https://suno.com/song/new-lib-scoped-selector"]);

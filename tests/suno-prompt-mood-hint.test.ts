@@ -17,14 +17,27 @@ describe("Suno prompt mood hint", () => {
     expect(pack.style).toContain("cold synth texture, civic dread pulse, restrained drums");
   });
 
-  it("keeps style under 120 chars and drops moodHint before cutting fixed tokens", () => {
+  it("drops artistReason before moodHint when style exceeds 200 chars", () => {
     const pack = createSunoPromptPack({
       ...base,
-      artistReason: "a very long observation reason that would push the style over the strict character limit",
-      moodHint: "this entire mood hint should disappear first"
+      artistReason: "a very long observation reason ".repeat(8),
+      moodHint: "civic dread pulse"
     });
-    expect(pack.style.length).toBeLessThanOrEqual(120);
-    expect(pack.style).not.toContain("this entire mood hint");
+    expect(pack.style.length).toBeLessThanOrEqual(200);
+    expect(pack.style).toContain("civic dread pulse");
+    expect(pack.style).not.toContain("song intent:");
+    expect(pack.style).toContain("restrained drums");
+  });
+
+  it("drops moodHint only after artistReason when style still exceeds 200 chars", () => {
+    const pack = createSunoPromptPack({
+      ...base,
+      artistReason: "long reason ".repeat(24),
+      moodHint: "oversized mood hint ".repeat(12)
+    });
+    expect(pack.style.length).toBeLessThanOrEqual(200);
+    expect(pack.style).not.toContain("song intent:");
+    expect(pack.style).not.toContain("oversized mood hint");
     expect(pack.style).toContain("restrained drums");
   });
 });

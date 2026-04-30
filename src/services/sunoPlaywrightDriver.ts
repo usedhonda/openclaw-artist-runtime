@@ -445,7 +445,7 @@ export class PlaywrightSunoDriver implements SunoBrowserDriver {
 
   private async readCreateCardSongUrls(page: Page): Promise<string[]> {
     return page.locator(
-      "[data-testid*=\"generation-card\"] a[href*='/song/'], [data-testid*=\"generation-card-link\"][href*='/song/'], [data-testid*=\"song-card\"] a[href*='/song/'], [data-testid*=\"track-card\"] a[href*='/song/']"
+      "[data-testid=\"clip-row\"][data-clip-status=\"complete\"] a[href*='/song/']"
     ).evaluateAll((elements) => elements
       .map((element) => (element as HTMLAnchorElement).href)
       .filter((href) => href.startsWith("https://suno.com/song/")));

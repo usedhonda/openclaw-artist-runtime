@@ -7,19 +7,25 @@ function hashText(value: string): string {
 }
 
 function buildStyle(input: CreateSunoPromptPackInput): string {
+  const moodHint = input.moodHint?.trim();
+  const intent = input.artistReason ? `song intent: ${input.artistReason}` : undefined;
   const tokens = [
     "alternative pop",
     "close fragile vocal",
     "cold synth texture",
-    input.moodHint?.trim(),
+    moodHint,
     "restrained drums",
-    `song intent: ${input.artistReason}`
+    intent
   ].filter(Boolean) as string[];
   const style = tokens.join(", ");
-  if (style.length <= 120 || !input.moodHint?.trim()) {
-    return style.slice(0, 120);
+  if (style.length <= 200) {
+    return style;
   }
-  return tokens.filter((token) => token !== input.moodHint?.trim()).join(", ").slice(0, 120);
+  const withoutIntent = intent ? tokens.filter((token) => token !== intent).join(", ") : style;
+  if (withoutIntent.length <= 200 || !moodHint) {
+    return withoutIntent.slice(0, 200);
+  }
+  return tokens.filter((token) => token !== intent && token !== moodHint).join(", ").slice(0, 200);
 }
 
 function buildExclude(): string {
