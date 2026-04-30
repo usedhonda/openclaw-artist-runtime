@@ -386,10 +386,16 @@ export class PlaywrightSunoDriver implements SunoBrowserDriver {
 
   private async ensureLyricsMode(page: Page): Promise<void> {
     const textarea = page.locator("textarea[data-testid=\"lyrics-textarea\"]");
-    if (await textarea.first().isVisible().catch(() => false)) {
+    try {
+      await textarea.first().waitFor({ state: "visible", timeout: 5_000 });
       return;
+    } catch {
+      // Suno's React mount can lag after domcontentloaded; fall through only if the toggle is usable.
     }
-    await page.locator("button[aria-label=\"Add your own lyrics\"]").click();
+    const button = page.locator("button[aria-label=\"Add your own lyrics\"]");
+    if (await button.first().isVisible().catch(() => false)) {
+      await button.first().click();
+    }
   }
 
   private styleLocator(page: Page) {
