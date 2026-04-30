@@ -10,6 +10,7 @@ import type {
 } from "../types.js";
 import type { SunoBrowserDriver, SunoBrowserDriverProbe } from "./sunoBrowserWorker.js";
 import type { BrowserContext, Page } from "playwright";
+import { captureSunoFailure, resolveSunoFailureLogsDir } from "./sunoFailureSnapshot.js";
 
 export const DEFAULT_SUNO_PROFILE_PATH = ".openclaw-browser-profiles/suno";
 export const SUNO_CREATE_URL = "https://suno.com/create";
@@ -109,6 +110,7 @@ export class PlaywrightSunoDriver implements SunoBrowserDriver {
 
   async create(request: SunoCreateRequest): Promise<SunoCreateResult> {
     let context: BrowserContext | undefined;
+    let page: Page | undefined;
     const runId = request.runId ?? `playwright_${Date.now().toString(36)}`;
 
     try {
@@ -123,7 +125,7 @@ export class PlaywrightSunoDriver implements SunoBrowserDriver {
         ignoreDefaultArgs: ["--enable-automation"]
       });
 
-      const page = context.pages()[0] ?? await context.newPage();
+      page = context.pages()[0] ?? await context.newPage();
       const baselineUrls = new Set(await this.readSongUrls(page));
       await page.goto(SUNO_CREATE_URL, {
         waitUntil: "domcontentloaded",
@@ -162,6 +164,7 @@ export class PlaywrightSunoDriver implements SunoBrowserDriver {
         };
       }
 
+      await this.captureCreateFailure(page, PLAYWRIGHT_LIVE_TIMEOUT_REASON, request, runId);
       return {
         accepted: false,
         runId,
@@ -181,6 +184,7 @@ export class PlaywrightSunoDriver implements SunoBrowserDriver {
       }
 
       const classifiedReason = this.classifyCreateFailure(error);
+      await this.captureCreateFailure(page, classifiedReason, request, runId);
       return {
         accepted: false,
         runId,
@@ -561,5 +565,22 @@ export class PlaywrightSunoDriver implements SunoBrowserDriver {
 
   private errorMessage(error: unknown): string {
     return error instanceof Error ? error.message : String(error);
+  }
+
+  private async captureCreateFailure(
+    page: Page | undefined,
+    reason: string,
+    request: SunoCreateRequest,
+    runId: string
+  ): Promise<void> {
+    if (!page) {
+      return;
+    }
+    await captureSunoFailure(page, {
+      logsDir: resolveSunoFailureLogsDir(this.workspaceRoot),
+      reason,
+      songId: request.songId,
+      runId
+    });
   }
 }

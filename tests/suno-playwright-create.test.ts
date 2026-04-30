@@ -1,3 +1,6 @@
+import { mkdtempSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
   PLAYWRIGHT_CREATE_CARD_REASON,
@@ -48,6 +51,7 @@ function createPage() {
   const counts: Record<string, number> = {
     "textarea[data-testid=\"lyrics-textarea\"]": 1
   };
+  const clickErrors: Record<string, Error> = {};
   const createCardSnapshots: string[][] = [];
   const songUrlSnapshots: string[][] = [
     ["https://suno.com/song/existing-1"]
@@ -55,11 +59,16 @@ function createPage() {
   return {
     clicks,
     fills,
+    counts,
+    clickErrors,
     createCardSnapshots,
     songUrlSnapshots,
     goto: vi.fn(async () => undefined),
     waitForLoadState: vi.fn(async () => undefined),
     waitForTimeout: vi.fn(async () => undefined),
+    screenshot: vi.fn(async () => undefined),
+    content: vi.fn(async () => "<html><body>suno create</body></html>"),
+    url: vi.fn(() => SUNO_CREATE_URL),
     evaluate: vi.fn(async () => songUrlSnapshots.shift() ?? []),
     locator: vi.fn((selector: string) => ({
       first: () => ({
@@ -71,6 +80,9 @@ function createPage() {
         fills.push({ selector, value });
       }),
       click: vi.fn(async () => {
+        if (clickErrors[selector]) {
+          throw clickErrors[selector];
+        }
         clicks.push(selector);
       }),
       count: vi.fn(async () => counts[selector] ?? 0),
@@ -172,7 +184,7 @@ describe("PlaywrightSunoDriver create", () => {
     const driver = new PlaywrightSunoDriver(
       ".openclaw-browser-profiles/suno",
       "live",
-      ".",
+      mkdtempSync(join(tmpdir(), "artist-runtime-suno-create-timeout-")),
       { intervalMs: 1, timeoutMs: 3, createCardTimeoutMs: 1 }
     );
 
@@ -202,7 +214,7 @@ describe("PlaywrightSunoDriver create", () => {
     const driver = new PlaywrightSunoDriver(
       ".openclaw-browser-profiles/suno",
       "live",
-      ".",
+      mkdtempSync(join(tmpdir(), "artist-runtime-suno-create-timeout-")),
       { intervalMs: 1, timeoutMs: 4, createCardTimeoutMs: 2 }
     );
 
@@ -367,6 +379,53 @@ describe("PlaywrightSunoDriver create", () => {
 
     expect(result.accepted).toBe(false);
     expect(result.reason).toContain(PLAYWRIGHT_CREATE_DOM_MISSING_REASON);
+  });
+
+  it("captures a failure snapshot when a create-page DOM action fails", async () => {
+    const root = mkdtempSync(join(tmpdir(), "artist-runtime-suno-create-dom-snapshot-"));
+    const { page, context } = createContext();
+    page.counts["textarea[data-testid=\"lyrics-textarea\"]"] = 0;
+    page.clickErrors["button[aria-label=\"Add your own lyrics\"]"] = new Error("locator selector not found");
+    launchPersistentContextMock.mockResolvedValue(context);
+    const driver = new PlaywrightSunoDriver(".openclaw-browser-profiles/suno", "skip", root);
+
+    const result = await driver.create({
+      dryRun: false,
+      authority: "auto_create_and_select_take",
+      runId: "run-dom-snapshot",
+      songId: "song-004",
+      payload: { lyrics: "line one" }
+    });
+
+    expect(result.accepted).toBe(false);
+    expect(result.reason).toContain(PLAYWRIGHT_CREATE_DOM_MISSING_REASON);
+    expect(page.screenshot).toHaveBeenCalledWith(expect.objectContaining({
+      path: expect.stringContaining(PLAYWRIGHT_CREATE_DOM_MISSING_REASON)
+    }));
+    expect(page.content).toHaveBeenCalled();
+  });
+
+  it("does not mask the original create failure when snapshot capture fails", async () => {
+    const { page, context } = createContext();
+    page.counts["textarea[data-testid=\"lyrics-textarea\"]"] = 0;
+    page.clickErrors["button[aria-label=\"Add your own lyrics\"]"] = new Error("locator selector not found");
+    page.screenshot.mockRejectedValue(new Error("disk full"));
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => undefined);
+    launchPersistentContextMock.mockResolvedValue(context);
+    const driver = new PlaywrightSunoDriver(".openclaw-browser-profiles/suno", "skip", mkdtempSync(join(tmpdir(), "artist-runtime-suno-create-snapshot-fail-")));
+
+    const result = await driver.create({
+      dryRun: false,
+      authority: "auto_create_and_select_take",
+      runId: "run-dom-snapshot-fail",
+      payload: { lyrics: "line one" }
+    });
+
+    expect(result.accepted).toBe(false);
+    expect(result.reason).toContain(PLAYWRIGHT_CREATE_DOM_MISSING_REASON);
+    expect(result.reason).toContain("locator selector not found");
+    expect(warn).toHaveBeenCalledWith(expect.stringContaining("Suno failure snapshot skipped"));
+    warn.mockRestore();
   });
 
   it("classifies expired login failures before returning create errors", async () => {
