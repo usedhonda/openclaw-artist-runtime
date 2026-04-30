@@ -425,7 +425,7 @@ export class PlaywrightSunoDriver implements SunoBrowserDriver {
       Math.max(1, Math.ceil((this.polling.createCardTimeoutMs ?? PLAYWRIGHT_CREATE_CARD_TIMEOUT_MS) / this.polling.intervalMs))
     );
 
-    const createCardUrls = await this.pollCreateCards(page, createCardAttempts);
+    const createCardUrls = await this.pollCreateCards(page, baselineUrls, createCardAttempts);
     if (createCardUrls.length > 0) {
       return { urls: createCardUrls, reason: PLAYWRIGHT_CREATE_CARD_REASON };
     }
@@ -445,17 +445,18 @@ export class PlaywrightSunoDriver implements SunoBrowserDriver {
 
   private async readCreateCardSongUrls(page: Page): Promise<string[]> {
     return page.locator(
-      "[data-testid*=\"generation-card\"] a[href*='/song/'], [data-testid*=\"generation-card-link\"][href*='/song/'], [data-testid*=\"song-card\"] a[href*='/song/'], [data-testid*=\"track-card\"] a[href*='/song/'], [role='listitem'] a[href*='/song/'], li a[href*='/song/'], a[href*='/song/']"
+      "[data-testid*=\"generation-card\"] a[href*='/song/'], [data-testid*=\"generation-card-link\"][href*='/song/'], [data-testid*=\"song-card\"] a[href*='/song/'], [data-testid*=\"track-card\"] a[href*='/song/']"
     ).evaluateAll((elements) => elements
       .map((element) => (element as HTMLAnchorElement).href)
       .filter((href) => href.startsWith("https://suno.com/song/")));
   }
 
-  private async pollCreateCards(page: Page, maxAttempts: number): Promise<string[]> {
+  private async pollCreateCards(page: Page, baselineUrls: Set<string>, maxAttempts: number): Promise<string[]> {
     for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
       const createCardUrls = await this.readCreateCardSongUrls(page);
-      if (createCardUrls.length > 0) {
-        return createCardUrls;
+      const newUrls = createCardUrls.filter((url) => !baselineUrls.has(url));
+      if (newUrls.length > 0) {
+        return newUrls;
       }
       if (attempt < maxAttempts - 1) {
         await page.waitForTimeout(this.polling.intervalMs);

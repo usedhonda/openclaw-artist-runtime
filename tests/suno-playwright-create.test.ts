@@ -45,6 +45,7 @@ vi.mock("puppeteer-extra-plugin-stealth", () => ({
 function createPage() {
   const clicks: string[] = [];
   const fills: Array<{ selector: string; value: string }> = [];
+  const selectors: string[] = [];
   const attributes: Record<string, string | null> = {
     "button[aria-label=\"Check this to generate an instrumental only song\"]": "false"
   };
@@ -63,6 +64,7 @@ function createPage() {
   return {
     clicks,
     fills,
+    selectors,
     counts,
     visible,
     clickErrors,
@@ -75,7 +77,9 @@ function createPage() {
     content: vi.fn(async () => "<html><body>suno create</body></html>"),
     url: vi.fn(() => SUNO_CREATE_URL),
     evaluate: vi.fn(async () => songUrlSnapshots.shift() ?? []),
-    locator: vi.fn((selector: string) => ({
+    locator: vi.fn((selector: string) => {
+      selectors.push(selector);
+      return {
       first: () => ({
         isVisible: vi.fn(async () => visible[selector] ?? false),
         waitFor: vi.fn(async () => {
@@ -106,7 +110,8 @@ function createPage() {
       count: vi.fn(async () => counts[selector] ?? 0),
       getAttribute: vi.fn(async (name: string) => (name === "aria-pressed" ? attributes[selector] ?? null : null)),
       evaluateAll: vi.fn(async () => createCardSnapshots.shift() ?? [])
-    }))
+    };
+    })
   };
 }
 
@@ -285,7 +290,7 @@ describe("PlaywrightSunoDriver create", () => {
 
   it("returns accepted from create-card polling before library fallback", async () => {
     const { page, context } = createContext();
-    page.createCardSnapshots.push([], ["https://suno.com/song/new-card-1"]);
+    page.createCardSnapshots.push([], ["https://suno.com/song/existing-1", "https://suno.com/song/new-card-1"]);
     launchPersistentContextMock.mockResolvedValue(context);
     const driver = new PlaywrightSunoDriver(
       ".openclaw-browser-profiles/suno",
@@ -312,6 +317,75 @@ describe("PlaywrightSunoDriver create", () => {
     });
     expect(page.clicks).toContain("button[aria-label=\"Create song\"]");
     expect(page.goto.mock.calls.filter(([url]) => url === SUNO_LIBRARY_URL)).toHaveLength(1);
+  });
+
+  it("ignores create-card URLs already present in the baseline and falls back to library diff", async () => {
+    const { page, context } = createContext();
+    page.createCardSnapshots.push(
+      ["https://suno.com/song/existing-1"],
+      ["https://suno.com/song/existing-1"]
+    );
+    page.songUrlSnapshots.push(
+      ["https://suno.com/song/existing-1"],
+      ["https://suno.com/song/existing-1", "https://suno.com/song/new-lib-after-card-baseline"]
+    );
+    launchPersistentContextMock.mockResolvedValue(context);
+    const driver = new PlaywrightSunoDriver(
+      ".openclaw-browser-profiles/suno",
+      "live",
+      ".",
+      { intervalMs: 1, timeoutMs: 4, createCardTimeoutMs: 2 }
+    );
+
+    const result = await driver.create({
+      dryRun: false,
+      authority: "auto_create_and_select_take",
+      runId: "run-003bb",
+      payload: {
+        lyrics: "line one"
+      }
+    });
+
+    expect(result).toEqual({
+      accepted: true,
+      runId: "run-003bb",
+      reason: PLAYWRIGHT_LIBRARY_DIFF_REASON,
+      urls: ["https://suno.com/song/new-lib-after-card-baseline"],
+      dryRun: false
+    });
+  });
+
+  it("keeps create-card polling scoped away from generic library song links", async () => {
+    const { page, context } = createContext();
+    page.createCardSnapshots.push([], []);
+    page.songUrlSnapshots.push(
+      ["https://suno.com/song/existing-1"],
+      ["https://suno.com/song/existing-1", "https://suno.com/song/new-lib-scoped-selector"]
+    );
+    launchPersistentContextMock.mockResolvedValue(context);
+    const driver = new PlaywrightSunoDriver(
+      ".openclaw-browser-profiles/suno",
+      "live",
+      ".",
+      { intervalMs: 1, timeoutMs: 4, createCardTimeoutMs: 2 }
+    );
+
+    const result = await driver.create({
+      dryRun: false,
+      authority: "auto_create_and_select_take",
+      runId: "run-003bd",
+      payload: {
+        lyrics: "line one"
+      }
+    });
+
+    const createCardSelector = page.selectors.find((selector) => selector.includes("generation-card"));
+    expect(createCardSelector).toBeDefined();
+    expect(createCardSelector).not.toContain("[role='listitem']");
+    expect(createCardSelector).not.toContain("li a[href*='/song/']");
+    expect(createCardSelector?.split(", ").some((selector) => selector === "a[href*='/song/']")).toBe(false);
+    expect(result.reason).toBe(PLAYWRIGHT_LIBRARY_DIFF_REASON);
+    expect(result.urls).toEqual(["https://suno.com/song/new-lib-scoped-selector"]);
   });
 
   it("falls back to library diff when create-card polling finds nothing", async () => {
