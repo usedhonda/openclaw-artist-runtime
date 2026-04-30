@@ -57,7 +57,8 @@ function buildPayload(input: CreateSunoPromptPackInput, style: string, exclude: 
     artistReason: input.artistReason,
     styleAndFeel: style,
     excludeStyles: exclude,
-    lyrics: yamlLyrics,
+    lyricsText: input.lyricsText,
+    lyricsYaml: yamlLyrics,
     sliders
   };
 }

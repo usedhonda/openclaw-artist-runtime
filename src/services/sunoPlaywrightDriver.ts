@@ -36,6 +36,7 @@ export const PLAYWRIGHT_CREATE_RATE_LIMITED_REASON = "playwright_create_rate_lim
 
 interface OpenedSunoContext {
   context: BrowserContext;
+  preferredPage: Page;
   close: () => Promise<void>;
 }
 
@@ -62,7 +63,7 @@ export class PlaywrightSunoDriver implements SunoBrowserDriver {
     try {
       opened = await this.openContext();
 
-      const page = opened.context.pages()[0] ?? await opened.context.newPage();
+      const page = opened.preferredPage;
       await page.goto(SUNO_CREATE_URL, {
         waitUntil: "domcontentloaded",
         timeout: 20_000
@@ -113,7 +114,7 @@ export class PlaywrightSunoDriver implements SunoBrowserDriver {
     try {
       opened = await this.openContext();
 
-      page = opened.context.pages()[0] ?? await opened.context.newPage();
+      page = opened.preferredPage;
       const baselineUrls = new Set(await this.readSongUrls(page));
       await page.goto(SUNO_CREATE_URL, {
         waitUntil: "domcontentloaded",
@@ -122,12 +123,13 @@ export class PlaywrightSunoDriver implements SunoBrowserDriver {
       await page.waitForLoadState("domcontentloaded").catch(() => undefined);
 
       const payload = request.payload ?? {};
-      const lyrics = this.readPayloadText(payload.lyrics);
+      const lyrics = this.readPayloadText(payload.lyricsText ?? payload.lyrics);
       const style = this.readPayloadText(payload.styleAndFeel);
       const exclude = this.readPayloadText(payload.excludeStyles);
       const instrumental = Boolean(payload.instrumental);
+      const title = this.readPayloadText(payload.songName);
 
-      await this.fillCreateForm(page, { lyrics, style, exclude, instrumental });
+      await this.fillCreateForm(page, { lyrics, style, exclude, instrumental, title });
 
       if (this.submitMode === "skip") {
         return {
@@ -141,7 +143,7 @@ export class PlaywrightSunoDriver implements SunoBrowserDriver {
 
       await page.locator("button[aria-label=\"Create song\"]").click();
       await page.waitForLoadState("domcontentloaded").catch(() => undefined);
-      const generated = await this.pollForGeneratedSongs(page, baselineUrls);
+      const generated = await this.pollForGeneratedSongs(page, baselineUrls, title);
       if (generated.urls.length > 0) {
         return {
           accepted: true,
@@ -202,7 +204,7 @@ export class PlaywrightSunoDriver implements SunoBrowserDriver {
     try {
       opened = await this.openContext();
 
-      const page = opened.context.pages()[0] ?? await opened.context.newPage();
+      const page = opened.preferredPage;
       const outputDir = join(this.workspaceRoot, "runtime", "suno", request.runId);
       await mkdir(outputDir, { recursive: true });
 
@@ -287,8 +289,10 @@ export class PlaywrightSunoDriver implements SunoBrowserDriver {
       const { chromium } = await import("playwright");
       const browser = await chromium.connectOverCDP(sunoCdpEndpoint());
       const context = browser.contexts()[0] ?? await browser.newContext();
+      const preferredPage = await this.resolvePreferredSunoPage(context);
       return {
         context,
+        preferredPage,
         close: async () => undefined
       };
     }
@@ -303,10 +307,24 @@ export class PlaywrightSunoDriver implements SunoBrowserDriver {
       args: ["--disable-blink-features=AutomationControlled"],
       ignoreDefaultArgs: ["--enable-automation"]
     });
+    const preferredPage = await this.resolvePreferredSunoPage(context);
     return {
       context,
+      preferredPage,
       close: () => context.close()
     };
+  }
+
+  private async resolvePreferredSunoPage(context: BrowserContext): Promise<Page> {
+    const pages = context.pages();
+    const sunoPage = pages.find((page) => {
+      try {
+        return page.url().includes("suno.com");
+      } catch {
+        return false;
+      }
+    });
+    return sunoPage ?? pages[0] ?? await context.newPage();
   }
 
   private async isLoginRequired(page: Page, currentUrl: string): Promise<boolean> {
@@ -360,6 +378,7 @@ export class PlaywrightSunoDriver implements SunoBrowserDriver {
       style?: string;
       exclude?: string;
       instrumental: boolean;
+      title?: string;
     }
   ): Promise<void> {
     if (input.lyrics) {
@@ -369,6 +388,10 @@ export class PlaywrightSunoDriver implements SunoBrowserDriver {
 
     if (input.style) {
       await this.styleLocator(page).fill(input.style);
+    }
+
+    if (input.title) {
+      await page.locator("input[placeholder=\"Song Title (Optional)\"]").first().fill(input.title);
     }
 
     if (input.exclude) {
@@ -417,7 +440,8 @@ export class PlaywrightSunoDriver implements SunoBrowserDriver {
 
   private async pollForGeneratedSongs(
     page: Page,
-    baselineUrls: Set<string>
+    baselineUrls: Set<string>,
+    expectedTitle?: string
   ): Promise<{ urls: string[]; reason?: string }> {
     const totalAttempts = Math.max(1, Math.ceil(this.polling.timeoutMs / this.polling.intervalMs));
     const createCardAttempts = Math.min(
@@ -425,7 +449,7 @@ export class PlaywrightSunoDriver implements SunoBrowserDriver {
       Math.max(1, Math.ceil((this.polling.createCardTimeoutMs ?? PLAYWRIGHT_CREATE_CARD_TIMEOUT_MS) / this.polling.intervalMs))
     );
 
-    const createCardUrls = await this.pollCreateCards(page, baselineUrls, createCardAttempts);
+    const createCardUrls = await this.pollCreateCards(page, baselineUrls, createCardAttempts, expectedTitle);
     if (createCardUrls.length > 0) {
       return { urls: createCardUrls, reason: PLAYWRIGHT_CREATE_CARD_REASON };
     }
@@ -443,17 +467,22 @@ export class PlaywrightSunoDriver implements SunoBrowserDriver {
     return { urls: [] };
   }
 
-  private async readCreateCardSongUrls(page: Page): Promise<string[]> {
+  private async readCreateCardSongUrls(page: Page, expectedTitle?: string): Promise<string[]> {
+    const titleFilter = expectedTitle ? `[aria-label="${this.escapeAttributeValue(expectedTitle)}"]` : "";
     return page.locator(
-      "[data-testid=\"clip-row\"][data-clip-status=\"complete\"] a[href*='/song/']"
+      `[data-testid="clip-row"][data-clip-status="complete"]${titleFilter} a[href*='/song/']`
     ).evaluateAll((elements) => elements
       .map((element) => (element as HTMLAnchorElement).href)
       .filter((href) => href.startsWith("https://suno.com/song/")));
   }
 
-  private async pollCreateCards(page: Page, baselineUrls: Set<string>, maxAttempts: number): Promise<string[]> {
+  private escapeAttributeValue(value: string): string {
+    return value.replace(/\\/g, "\\\\").replace(/"/g, "\\\"");
+  }
+
+  private async pollCreateCards(page: Page, baselineUrls: Set<string>, maxAttempts: number, expectedTitle?: string): Promise<string[]> {
     for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
-      const createCardUrls = await this.readCreateCardSongUrls(page);
+      const createCardUrls = await this.readCreateCardSongUrls(page, expectedTitle);
       const newUrls = createCardUrls.filter((url) => !baselineUrls.has(url));
       if (newUrls.length > 0) {
         return newUrls;
