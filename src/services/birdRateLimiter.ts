@@ -102,7 +102,7 @@ async function writeLedger(root: string, ledger: BirdCallLedger): Promise<BirdCa
 }
 
 export function isBirdBanIndication(value: string): boolean {
-  return /(429|403|suspended|shadowban|rate limit|rate-limit|制限|凍結|BAN)/i.test(value);
+  return /(?:\b(?:429|403|suspended|shadowban|rate[\s-]?limit|banned|banning|bantype)\b|制限|凍結)/i.test(value);
 }
 
 export async function isInCooldown(root: string, now = new Date()): Promise<boolean> {

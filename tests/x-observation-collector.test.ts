@@ -1,5 +1,5 @@
 import { mkdtempSync } from "node:fs";
-import { mkdir, writeFile } from "node:fs/promises";
+import { mkdir, utimes, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it, vi } from "vitest";
@@ -32,6 +32,27 @@ describe("x observation collector", () => {
     expect(second.status).toBe("cached");
     expect(runner).toHaveBeenCalledTimes(1);
     expect(await readTodayObservations(root, new Date("2026-04-29T03:00:00.000Z"))).toContain("society satire");
+  });
+
+  it("refreshes the daily cache after six hours", async () => {
+    const root = workspace();
+    const runner = vi.fn()
+      .mockResolvedValueOnce({ stdout: "first city observation" })
+      .mockResolvedValueOnce({ stdout: "second city observation" });
+    const first = await collectObservations(root, {
+      now: new Date("2026-04-29T01:00:00.000Z"),
+      runner
+    });
+    await utimes(first.path, new Date("2026-04-29T01:00:00.000Z"), new Date("2026-04-29T01:00:00.000Z"));
+
+    const second = await collectObservations(root, {
+      now: new Date("2026-04-29T08:00:00.000Z"),
+      runner
+    });
+
+    expect(second.status).toBe("collected");
+    expect(runner).toHaveBeenCalledTimes(2);
+    expect(await readTodayObservations(root, new Date("2026-04-29T08:00:00.000Z"))).toContain("second city observation");
   });
 
   it("blocks secret-like observation output", async () => {

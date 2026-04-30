@@ -42,6 +42,11 @@ describe("bird rate limiter", () => {
     expect(await isInCooldown(root, new Date("2026-04-30T03:01:00.000Z"))).toBe(false);
   });
 
+  it("does not treat ordinary tweet text containing ban substrings as a ban", () => {
+    expect(isBirdBanIndication("urban night bands under a banner")).toBe(false);
+    expect(isBirdBanIndication("the account was banned after rate limit errors")).toBe(true);
+  });
+
   it("reads runtime override limits", async () => {
     const root = workspace();
     await mkdir(join(root, "runtime"), { recursive: true });

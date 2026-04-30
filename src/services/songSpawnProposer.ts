@@ -4,6 +4,7 @@ import { join } from "node:path";
 import type { AiReviewProvider, CommissionBrief, SongState, SpawnProposal } from "../types.js";
 import { callAiProvider } from "./aiProviderClient.js";
 import { listSongStates } from "./artistState.js";
+import { readCallbackActionEntries } from "./callbackActionRegistry.js";
 import { secretLikePattern } from "./personaMigrator.js";
 import { readBudgetState } from "./sunoBudgetLedger.js";
 
@@ -41,6 +42,37 @@ function recentCompletedTooClose(songs: SongState[], now: Date): boolean {
   return now.getTime() - new Date(latest.updatedAt).getTime() < 6 * 60 * 60 * 1000;
 }
 
+function normalizeTheme(value: string): string {
+  return value.toLowerCase().replace(/[^a-z0-9一-龠ぁ-んァ-ヶー]+/gi, "");
+}
+
+function isSimilarTheme(title: string, recentThemes: string[]): boolean {
+  const normalized = normalizeTheme(title);
+  if (normalized.length < 3) {
+    return false;
+  }
+  return recentThemes.some((theme) => {
+    const recent = normalizeTheme(theme);
+    if (recent.length < 3) {
+      return false;
+    }
+    return normalized.includes(recent) || recent.includes(normalized);
+  });
+}
+
+async function recentSpawnThemes(root: string, now: Date): Promise<string[]> {
+  const cutoff = now.getTime() - 24 * 60 * 60 * 1000;
+  const entries = await readCallbackActionEntries(root).catch(() => []);
+  const seen = new Set<string>();
+  for (const entry of entries) {
+    if (entry.createdAt < cutoff || !entry.commissionBrief?.title || !entry.action.startsWith("song_spawn_")) {
+      continue;
+    }
+    seen.add(entry.commissionBrief.title);
+  }
+  return [...seen].slice(-12);
+}
+
 function titleFromSeed(seed: string): string {
   const first = seed.split(/\r?\n/).map((line) => line.trim()).find(Boolean) ?? "静かな夜の勘定書";
   return first.replace(/^#+\s*/, "").slice(0, 32) || "静かな夜の勘定書";
@@ -71,15 +103,18 @@ function buildPrompt(context: {
   heartbeat: string;
   recentSongs: SongState[];
   budgetRemaining: number;
+  recentThemes: string[];
 }): string {
   return [
     "Decide whether the artist used::honda should start a new song now.",
     "Return compact field directives. If not enough signal, set spawn: no.",
+    "Avoid any subject or title already listed in recently proposed themes.",
     "Fields: spawn, title, brief, lyricsTheme, mood, tempo, duration, style, reason.",
     "Never include secrets. Keep the brief lean enough for autopilot planning.",
     "",
     `Budget remaining: ${context.budgetRemaining}`,
     `Recent songs: ${context.recentSongs.slice(0, 5).map((song) => `${song.songId}:${song.status}:${song.title}`).join(" | ")}`,
+    `Recently proposed themes to avoid: ${context.recentThemes.length > 0 ? context.recentThemes.join(" | ") : "none"}`,
     "",
     "ARTIST.md:",
     context.artistMd.slice(0, 1600),
@@ -124,13 +159,14 @@ function briefFromAi(raw: string, fallback: CommissionBrief, now: Date): { brief
 
 export async function proposeSpawn(root: string, options: ProposeSpawnOptions = {}): Promise<SpawnProposal | null> {
   const now = options.now ?? new Date();
-  const [artistMd, soulMd, heartbeat, observation, songs, budget] = await Promise.all([
+  const [artistMd, soulMd, heartbeat, observation, songs, budget, recentThemes] = await Promise.all([
     readFile(join(root, "ARTIST.md"), "utf8").catch(() => ""),
     readFile(join(root, "SOUL.md"), "utf8").catch(() => ""),
     readFile(join(root, "runtime", "heartbeat-state.json"), "utf8").catch(() => ""),
     latestObservation(root),
     listSongStates(root).catch(() => []),
-    readBudgetState(root, now)
+    readBudgetState(root, now),
+    recentSpawnThemes(root, now)
   ]);
   const budgetRemaining = budget.limit - budget.used;
   if (budgetRemaining <= 1 || hasRestMood(heartbeat, soulMd) || recentCompletedTooClose(songs, now) || observation.trim().length < 12) {
@@ -153,9 +189,12 @@ export async function proposeSpawn(root: string, options: ProposeSpawnOptions = 
       `style: ${fallback.styleNotes}`,
       `reason: observations have enough signal and Suno budget remains ${budgetRemaining}/${budget.limit}.`
     ].join("\n")
-    : await callAiProvider(buildPrompt({ artistMd, soulMd, observation, heartbeat, recentSongs: songs, budgetRemaining }), { provider });
+    : await callAiProvider(buildPrompt({ artistMd, soulMd, observation, heartbeat, recentSongs: songs, budgetRemaining, recentThemes }), { provider });
   assertSafe("ai_response", raw);
   const parsed = briefFromAi(raw, fallback, now);
+  if (isSimilarTheme(parsed.brief.title, recentThemes)) {
+    return null;
+  }
   const finalText = JSON.stringify(parsed.brief) + parsed.reason;
   assertSafe("final", finalText);
   return parsed.spawn ? {

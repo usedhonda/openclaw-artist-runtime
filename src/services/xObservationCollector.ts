@@ -1,4 +1,4 @@
-import { mkdir, readFile, writeFile } from "node:fs/promises";
+import { mkdir, readFile, stat, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { isBirdBanIndication, recordBirdCall, triggerCooldown, tryAcquireBirdCall } from "./birdRateLimiter.js";
 import { emitRuntimeEvent } from "./runtimeEventBus.js";
@@ -31,6 +31,7 @@ export interface XObservationEntry {
 const tweetUrlPattern = /https:\/\/(?:t\.co\/[A-Za-z0-9]+|(?:twitter|x)\.com\/[^/\s]+\/status\/\d+)/i;
 const authorPattern = /(?:^|\s)@([A-Za-z0-9_]{1,20})\b/;
 const isoDatePattern = /\b\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{3})?Z\b/;
+const observationCacheTtlMs = 6 * 60 * 60 * 1000;
 
 function jstDate(now = new Date()): string {
   return new Date(now.getTime() + 9 * 60 * 60 * 1000).toISOString().slice(0, 10);
@@ -121,7 +122,10 @@ export async function collectObservations(root: string, context: XObservationCon
   const path = observationPath(root, now);
   const cached = await readFile(path, "utf8").catch(() => "");
   if (cached) {
-    return { status: "cached", path, observations: cached };
+    const cachedStat = await stat(path).catch(() => undefined);
+    if (cachedStat && now.getTime() - cachedStat.mtime.getTime() < observationCacheTtlMs) {
+      return { status: "cached", path, observations: cached };
+    }
   }
   const strategy = await planQueryStrategy({
     personaText: context.personaText,

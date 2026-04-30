@@ -3,6 +3,7 @@ import { mkdir, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
+import { registerCallbackAction } from "../src/services/callbackActionRegistry";
 import { proposeSpawn } from "../src/services/songSpawnProposer";
 
 const originalBudget = process.env.OPENCLAW_SUNO_DAILY_BUDGET;
@@ -53,5 +54,30 @@ describe("song spawn proposer", () => {
     await writeFile(join(root, "observations", "2026-04-30.md"), `do not expose ${["TELEGRAM", "BOT", "TOKEN"].join("_")}=unsafe123\n`, "utf8");
 
     await expect(proposeSpawn(root, { now: new Date("2026-04-30T00:00:00.000Z") })).rejects.toThrow("song_spawn_secret_like_input");
+  });
+
+  it("skips a spawn when the proposed title repeats a recent spawn theme", async () => {
+    const root = await workspace();
+    await registerCallbackAction(root, {
+      action: "song_spawn_inject",
+      commissionBrief: {
+        songId: "spawn_recent",
+        title: "再開発で古いライブハウスが消え、跡地に同じ色の",
+        brief: "recent duplicate",
+        lyricsTheme: "recent duplicate",
+        mood: "observational",
+        tempo: "artist decides",
+        duration: "artist decides",
+        styleNotes: "restrained",
+        sourceText: "test",
+        createdAt: "2026-04-29T00:00:00.000Z"
+      },
+      chatId: 1,
+      messageId: 2,
+      userId: 3,
+      now: new Date("2026-04-29T00:30:00.000Z").getTime()
+    });
+
+    await expect(proposeSpawn(root, { aiReviewProvider: "mock", now: new Date("2026-04-29T01:00:00.000Z") })).resolves.toBeNull();
   });
 });
