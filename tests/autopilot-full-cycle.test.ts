@@ -161,7 +161,7 @@ describe("ArtistAutopilotService full dry-run cycle", () => {
     expect(firstSongId).toBe("song-001");
     expect(secondSongId).toBe("song-002");
     expect(firstBrief).toContain("Why this song exists");
-    expect(firstLyrics).toContain("dead neon");
+    expect(firstLyrics).toContain("A public-facing song");
     expect(firstPromptPackMetadata).toContain("\"version\": 1");
     expect(firstRunsLedger).toContain("\"status\":\"blocked_dry_run\"");
     expect(firstRunsLedger).toContain("\"status\":\"imported\"");
@@ -173,7 +173,7 @@ describe("ArtistAutopilotService full dry-run cycle", () => {
     expect(firstSongState.lastReason).toContain("dry-run publish simulated");
 
     expect(secondBrief).toContain("Why this song exists");
-    expect(secondLyrics).toContain("dead neon");
+    expect(secondLyrics).toContain("A public-facing song");
     expect(secondPromptPackMetadata).toContain("\"version\": 1");
     expect(secondRunsLedger).toContain("\"status\":\"blocked_dry_run\"");
     expect(secondRunsLedger).toContain("\"status\":\"imported\"");

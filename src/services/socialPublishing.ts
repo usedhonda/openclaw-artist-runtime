@@ -6,7 +6,7 @@ import type { SocialConnector } from "../connectors/social/SocialConnector.js";
 import { TikTokConnector } from "../connectors/social/tiktokConnector.js";
 import { XBirdConnector } from "../connectors/social/xBirdConnector.js";
 import type { ArtistRuntimeConfig, SocialCapability, SocialPlatform, SocialPublishLedgerEntry, SocialPublishResult, SocialRiskLevel } from "../types.js";
-import { updateSongState } from "./artistState.js";
+import { readSongState, updateSongState } from "./artistState.js";
 import { appendAuditLog, createAuditEvent } from "./auditLog.js";
 import { decideSocialAuthority } from "./socialAuthority.js";
 import { appendSocialPublishLedgerEntry, appendSocialReplyLedgerEntry, readLatestSocialPublishLedgerEntry } from "./socialPublishLedger.js";
@@ -89,6 +89,14 @@ export async function publishSocialAction(input: SocialActionInput): Promise<{ r
     requestedAction: action,
     capabilityAvailable
   });
+  if (action === "publish") {
+    const songState = await readSongState(input.workspaceRoot, input.songId);
+    if (songState.degradedLyrics) {
+      authorityDecision.allowed = false;
+      authorityDecision.reason = "degraded lyrics require producer review";
+      authorityDecision.policyDecision = "deny_policy";
+    }
+  }
   const collectDryRunReplyAudit = action === "reply" && input.platform === "x" && effectiveDryRun;
 
   let result: SocialPublishResult = authorityDecision.allowed || collectDryRunReplyAudit

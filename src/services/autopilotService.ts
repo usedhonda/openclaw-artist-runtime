@@ -1,5 +1,5 @@
 import { readFile } from "node:fs/promises";
-import { join } from "node:path";
+import { isAbsolute, join } from "node:path";
 import { applyConfigDefaults } from "../config/schema.js";
 import type { AutopilotRunState, AutopilotStage, AutopilotStatus, ArtistRuntimeConfig, SocialPublishLedgerEntry, SocialPublishResult, SongState } from "../types.js";
 import { composeDailyVoice } from "./artistDailyVoiceComposer.js";
@@ -170,10 +170,12 @@ async function createPromptPackForSong(root: string, song: SongState, config?: P
   const readySong = await ensureLyrics(root, song);
   const lyricsVersion = readySong.lyricsVersion ?? 1;
   const lyricsPath = join(root, "songs", readySong.songId, "lyrics", `lyrics.v${lyricsVersion}.md`);
-  const [lyricsText, briefText] = await Promise.all([
+  const [lyricsText, briefText, moodHint] = await Promise.all([
     readFile(lyricsPath, "utf8").catch(() => ""),
-    readFile(join(root, "songs", readySong.songId, "brief.md"), "utf8").catch(() => "")
+    readFile(join(root, "songs", readySong.songId, "brief.md"), "utf8").catch(() => ""),
+    readFile(join(root, "songs", readySong.songId, "mood-hint.txt"), "utf8").catch(() => "")
   ]);
+  const observationPath = briefText.match(/^- Path:\s*(.+)$/m)?.[1]?.trim();
   await createAndPersistSunoPromptPack({
     workspaceRoot: root,
     songId: readySong.songId,
@@ -181,7 +183,9 @@ async function createPromptPackForSong(root: string, song: SongState, config?: P
     artistReason: readySong.lastReason ?? "autopilot prompt pack",
     lyricsText: lyricsText || briefText || readySong.title,
     knowledgePackVersion: "local-dev",
-    configSnapshot: config
+    configSnapshot: config,
+    moodHint: moodHint.trim() || undefined,
+    observationPath: observationPath && observationPath !== "(runtime observation)" ? isAbsolute(observationPath) ? observationPath : join(root, observationPath) : undefined
   });
   return readSongState(root, readySong.songId);
 }
@@ -541,7 +545,9 @@ export class ArtistAutopilotService {
           workspaceRoot: input.workspaceRoot,
           config,
           theme: theme.theme,
-          artistReason: input.manualSeed?.hint ? `${theme.reason}; producer hint: ${input.manualSeed.hint}` : theme.reason
+          artistReason: input.manualSeed?.hint ? `${theme.reason}; producer hint: ${input.manualSeed.hint}` : theme.reason,
+          observationText: cycleObservation.observations,
+          observationPath: cycleObservation.path
         });
         return writeStageState(input.workspaceRoot, existing, {
           ...baseState,
@@ -556,7 +562,24 @@ export class ArtistAutopilotService {
 
       switch (stage) {
         case "prompt_pack": {
-          await createPromptPackForSong(input.workspaceRoot, song, config);
+          try {
+            await createPromptPackForSong(input.workspaceRoot, song, config);
+          } catch (error) {
+            const reason = error instanceof Error ? error.message : String(error);
+            if (reason.includes("lyrics_generation_degraded")) {
+              return writeStageState(input.workspaceRoot, existing, {
+                ...baseState,
+                currentSongId: song.songId,
+                stage: "paused",
+                paused: true,
+                pausedReason: reason,
+                blockedReason: reason,
+                lastError: reason,
+                cycleCount: existing.cycleCount + 1
+              });
+            }
+            throw error;
+          }
           return writeStageState(input.workspaceRoot, existing, {
             ...baseState,
             currentSongId: song.songId,

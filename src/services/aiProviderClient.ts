@@ -48,6 +48,16 @@ function truncate(value: string, maxLength: number): string {
   return value.length <= maxLength ? value : value.slice(0, maxLength);
 }
 
+export const AI_PROVIDER_MOCK_FALLBACK_PREFIXES = [
+  "Mock provider fallback",
+  "Mock provider:",
+  "AI provider '"
+] as const;
+
+export function isAiProviderMockFallbackResponse(value: string): boolean {
+  return AI_PROVIDER_MOCK_FALLBACK_PREFIXES.some((prefix) => value.startsWith(prefix));
+}
+
 function mockResponse(prompt: string, prefix = "Mock provider"): string {
   return `${prefix}: ${truncate(prompt, 200)}`;
 }

@@ -31,6 +31,7 @@ export interface SongStatePatch {
   appendPublicLinks?: string[];
   runCountDelta?: number;
   lastImportOutcome?: SongStateImportOutcome;
+  degradedLyrics?: boolean;
 }
 
 function nowIso(): string {
@@ -143,7 +144,8 @@ function parseSongState(contents: string, songId: string): SongState {
     publicLinks: parsePublicLinks(lines),
     runCount: Number.isFinite(runCount) ? runCount : 0,
     lastReason: parseBulletedValue(lines, "Last Reason") || undefined,
-    lastImportOutcome: parseImportOutcome(lines)
+    lastImportOutcome: parseImportOutcome(lines),
+    degradedLyrics: parseBulletedValue(lines, "Degraded Lyrics") === "true"
   };
 }
 
@@ -163,6 +165,7 @@ function renderSongStateBlock(state: SongState): string {
     ...linkLines,
     `- Last Reason: ${state.lastReason ?? ""}`,
     `- Last Import Outcome: ${state.lastImportOutcome ? JSON.stringify(state.lastImportOutcome) : ""}`,
+    `- Degraded Lyrics: ${state.degradedLyrics ? "true" : "false"}`,
     stateBlockEnd
   ].join("\n");
 }
@@ -294,7 +297,8 @@ export async function updateSongState(root: string, songId: string, patch: SongS
     publicLinks: Array.from(publicLinks),
     runCount: Math.max(0, current.runCount + (patch.runCountDelta ?? 0)),
     lastReason: patch.reason ?? current.lastReason,
-    lastImportOutcome: patch.lastImportOutcome ?? current.lastImportOutcome
+    lastImportOutcome: patch.lastImportOutcome ?? current.lastImportOutcome,
+    degradedLyrics: patch.degradedLyrics ?? current.degradedLyrics
   };
   return writeSongState(root, next);
 }

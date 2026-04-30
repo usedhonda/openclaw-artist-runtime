@@ -9,6 +9,7 @@ export type RuntimeEvent =
   | { type: "song_take_completed"; songId: string; selectedTakeId?: string; urls: string[]; timestamp: number }
   | { type: "theme_generated"; theme: string; reason: string; timestamp: number }
   | { type: "suno_budget_low"; songId?: string; reason: string; limit: number; used: number; timestamp: number }
+  | { type: "lyrics_generation_degraded"; songId: string; reason: string; timestamp: number }
   | { type: "suno_generate_retry"; songId: string; reason: string; retryCount: number; nextRetryAt?: string; timestamp: number }
   | { type: "suno_generate_failed"; songId: string; reason: string; retryCount: number; timestamp: number }
   | { type: "take_select_pending"; songId: string; reason: string; timestamp: number }

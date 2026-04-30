@@ -451,6 +451,7 @@ export interface SongState {
   runCount: number;
   lastReason?: string;
   lastImportOutcome?: SongStateImportOutcome;
+  degradedLyrics?: boolean;
 }
 
 export interface SongIdeaResult {
@@ -855,6 +856,7 @@ export interface CreateSunoPromptPackInput {
   artistSnapshot: string;
   currentStateSnapshot: string;
   knowledgePackVersion?: string;
+  moodHint?: string;
 }
 
 export interface PersistSunoPromptPackInput extends Omit<CreateSunoPromptPackInput, "artistSnapshot" | "currentStateSnapshot"> {
@@ -862,6 +864,7 @@ export interface PersistSunoPromptPackInput extends Omit<CreateSunoPromptPackInp
   artistSnapshot?: string;
   currentStateSnapshot?: string;
   configSnapshot?: unknown;
+  observationPath?: string;
 }
 
 export interface PersistedPromptPackResult {

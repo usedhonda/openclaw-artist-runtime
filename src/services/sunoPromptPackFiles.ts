@@ -1,5 +1,5 @@
 import { mkdir, readdir, writeFile } from "node:fs/promises";
-import { dirname, join } from "node:path";
+import { dirname, join, relative } from "node:path";
 import { createSongSkeleton } from "../repositories/songRepository.js";
 import type { PersistSunoPromptPackInput, PersistedPromptPackResult, PromptLedgerEntry } from "../types.js";
 import { ensureArtistWorkspace, readArtistSnapshots } from "./artistWorkspace.js";
@@ -58,6 +58,14 @@ async function appendEntries(ledgerPath: string, entries: PromptLedgerEntry[]): 
     ids.push(appended.id);
   }
   return ids;
+}
+
+function observationRefs(root: string, observationPath?: string): string[] {
+  if (!observationPath) {
+    return [];
+  }
+  const rel = relative(root, observationPath);
+  return [rel && !rel.startsWith("..") ? rel : observationPath];
 }
 
 export async function createAndPersistSunoPromptPack(input: PersistSunoPromptPackInput): Promise<PersistedPromptPackResult> {
@@ -119,15 +127,17 @@ export async function createAndPersistSunoPromptPack(input: PersistSunoPromptPac
     join(snapshotDir, "yaml-suno.md"),
     join(snapshotDir, "style.md"),
     join(snapshotDir, "exclude.md"),
-    join(snapshotDir, "suno-payload.json")
+    join(snapshotDir, "suno-payload.json"),
+    ...observationRefs(input.workspaceRoot, input.observationPath)
   ];
+  const sourceRefs = observationRefs(input.workspaceRoot, input.observationPath);
 
   const ledgerEntryIds = await appendEntries(ledgerPath, [
     createPromptLedgerEntry({
       stage: "artist_state_snapshot",
       songId: input.songId,
       actor: "system",
-      inputRefs: ["ARTIST.md", "artist/CURRENT_STATE.md"],
+      inputRefs: ["ARTIST.md", "artist/CURRENT_STATE.md", ...sourceRefs],
       outputRefs: [join(snapshotDir, "metadata.json")],
       configSnapshot: input.configSnapshot,
       artistSnapshotHash: pack.artistSnapshotHash,
@@ -139,7 +149,7 @@ export async function createAndPersistSunoPromptPack(input: PersistSunoPromptPac
       songId: input.songId,
       actor: "artist",
       artistReason: input.artistReason,
-      inputRefs: ["ARTIST.md", "artist/CURRENT_STATE.md"],
+      inputRefs: ["ARTIST.md", "artist/CURRENT_STATE.md", ...sourceRefs],
       outputRefs: [lyricsVersioned, join(snapshotDir, "lyrics.md")],
       promptText: input.lyricsText,
       promptHash: pack.promptHash,
@@ -153,7 +163,7 @@ export async function createAndPersistSunoPromptPack(input: PersistSunoPromptPac
       songId: input.songId,
       actor: "artist",
       artistReason: input.artistReason,
-      inputRefs: [lyricsVersioned],
+      inputRefs: [lyricsVersioned, ...sourceRefs],
       outputRefs: [styleLatest, join(snapshotDir, "style.md")],
       outputSummary: pack.style,
       promptHash: pack.promptHash,
@@ -166,7 +176,7 @@ export async function createAndPersistSunoPromptPack(input: PersistSunoPromptPac
       stage: "suno_exclude_generation",
       songId: input.songId,
       actor: "artist",
-      inputRefs: [lyricsVersioned],
+      inputRefs: [lyricsVersioned, ...sourceRefs],
       outputRefs: [excludeLatest, join(snapshotDir, "exclude.md")],
       outputSummary: pack.exclude,
       promptHash: pack.promptHash,
@@ -179,7 +189,7 @@ export async function createAndPersistSunoPromptPack(input: PersistSunoPromptPac
       stage: "suno_yaml_generation",
       songId: input.songId,
       actor: "artist",
-      inputRefs: [lyricsVersioned],
+      inputRefs: [lyricsVersioned, ...sourceRefs],
       outputRefs: [yamlLatest, join(snapshotDir, "yaml-suno.md")],
       outputSummary: pack.yamlLyrics,
       promptHash: pack.promptHash,

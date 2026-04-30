@@ -367,6 +367,8 @@ export async function formatRuntimeEvent(
       return artistReport(event, `Theme generated: ${event.theme}. Reason: ${event.reason}`, options);
     case "suno_budget_low":
       return artistReport(event, `Suno budget low: ${event.reason} (${event.used}/${event.limit})`, options);
+    case "lyrics_generation_degraded":
+      return artistReport(event, `Lyrics generation degraded: ${event.songId} ${event.reason}`, options);
     case "suno_generate_retry":
       return artistReport(event, `Suno generate retry: ${event.songId} retry=${event.retryCount} ${event.reason}${event.nextRetryAt ? ` next=${event.nextRetryAt}` : ""}`, options);
     case "suno_generate_failed":

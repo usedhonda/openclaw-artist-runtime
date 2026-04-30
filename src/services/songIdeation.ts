@@ -1,5 +1,5 @@
 import { readdir } from "node:fs/promises";
-import { join } from "node:path";
+import { join, relative } from "node:path";
 import type { ArtistRuntimeConfig, SongIdeaResult } from "../types.js";
 import { ensureSongState, readArtistMind, updateSongState, writeSongBrief } from "./artistState.js";
 import { ensureArtistWorkspace } from "./artistWorkspace.js";
@@ -55,8 +55,20 @@ function buildTitle(theme: string, index: number): string {
   return themed || `Song ${String(index).padStart(3, "0")}`;
 }
 
-function buildBrief(title: string, theme: string, artistReason: string): string {
-  return [
+function excerpt(value?: string): string {
+  return (value ?? "").split(/\r?\n/).map((line) => line.trim()).filter(Boolean).slice(0, 6).join("\n").slice(0, 900);
+}
+
+function observationRef(root: string, observationPath?: string): string | undefined {
+  if (!observationPath) {
+    return undefined;
+  }
+  const rel = relative(root, observationPath);
+  return rel && !rel.startsWith("..") ? rel : observationPath;
+}
+
+function buildBrief(title: string, theme: string, artistReason: string, observationText?: string, observationPath?: string): string {
+  const lines = [
     `# Brief for ${title}`,
     "",
     "## Why this song exists",
@@ -69,7 +81,19 @@ function buildBrief(title: string, theme: string, artistReason: string): string 
     `- Artist reason: ${artistReason}`,
     "- Mood: cold, observant, quietly obsessive",
     "- Keep the images concrete and the chorus short"
-  ].join("\n");
+  ];
+  const observation = excerpt(observationText);
+  if (observation) {
+    lines.push(
+      "",
+      "## Observation source",
+      "",
+      `- Path: ${observationPath ?? "(runtime observation)"}`,
+      "- Extract:",
+      observation
+    );
+  }
+  return lines.join("\n");
 }
 
 export interface CreateSongIdeaInput {
@@ -78,6 +102,8 @@ export interface CreateSongIdeaInput {
   title?: string;
   artistReason?: string;
   theme?: string;
+  observationText?: string;
+  observationPath?: string;
 }
 
 export async function createSongIdea(input: CreateSongIdeaInput): Promise<SongIdeaResult> {
@@ -88,7 +114,9 @@ export async function createSongIdea(input: CreateSongIdeaInput): Promise<SongId
   const title = input.title?.trim() || buildTitle(theme, sequence);
   const songId = `song-${String(sequence).padStart(3, "0")}`;
   const artistReason = input.artistReason ?? `caught on ${theme}`;
-  const briefText = buildBrief(title, theme, artistReason);
+  const briefText = buildBrief(title, theme, artistReason, input.observationText, input.observationPath);
+  const observationInputRef = input.observationText?.trim() ? observationRef(input.workspaceRoot, input.observationPath) : undefined;
+  const inputRefs = ["ARTIST.md", "artist/CURRENT_STATE.md", observationInputRef].filter(Boolean) as string[];
 
   await ensureSongState(input.workspaceRoot, songId, title);
   const state = await writeSongBrief(input.workspaceRoot, songId, briefText);
@@ -106,7 +134,7 @@ export async function createSongIdea(input: CreateSongIdeaInput): Promise<SongId
       songId,
       actor: "artist",
       artistReason,
-      inputRefs: ["ARTIST.md", "artist/CURRENT_STATE.md"],
+      inputRefs,
       outputRefs: [join(input.workspaceRoot, "songs", songId, "song.md")],
       outputSummary: title
     })
@@ -118,7 +146,7 @@ export async function createSongIdea(input: CreateSongIdeaInput): Promise<SongId
       songId,
       actor: "artist",
       artistReason,
-      inputRefs: ["ARTIST.md", "artist/CURRENT_STATE.md"],
+      inputRefs,
       outputRefs: [join(input.workspaceRoot, "songs", songId, "brief.md")],
       outputSummary: briefText
     })
