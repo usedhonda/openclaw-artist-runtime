@@ -515,7 +515,13 @@ export class ArtistAutopilotService {
       return writeCompletedStage(input.workspaceRoot, existing, baseState, song.songId, existing.blockedReason);
     }
 
-    if (existing.runId === runId && existing.lastSuccessfulStage === stage && stage !== "planning") {
+    const hasUnresolvedBlock = Boolean(existing.blockedReason || existing.lastError);
+    if (
+      existing.runId === runId
+      && existing.lastSuccessfulStage === stage
+      && stage !== "planning"
+      && !hasUnresolvedBlock
+    ) {
       return writeStageState(input.workspaceRoot, existing, baseState);
     }
 
