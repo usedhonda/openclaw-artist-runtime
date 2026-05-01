@@ -438,6 +438,13 @@ export interface SongStateImportOutcome {
   dryRun?: boolean;
 }
 
+export interface ObservationSummary {
+  author?: string;
+  url?: string;
+  quote?: string;
+  motivation?: string;
+}
+
 export interface SongState {
   songId: string;
   title: string;
@@ -452,6 +459,7 @@ export interface SongState {
   lastReason?: string;
   lastImportOutcome?: SongStateImportOutcome;
   degradedLyrics?: boolean;
+  observationSummary?: ObservationSummary;
 }
 
 export interface SongIdeaResult {
@@ -886,6 +894,7 @@ export interface PersistSunoPromptPackInput extends Omit<CreateSunoPromptPackInp
   currentStateSnapshot?: string;
   configSnapshot?: unknown;
   observationPath?: string;
+  observationSummary?: ObservationSummary;
 }
 
 export interface PersistedPromptPackResult {

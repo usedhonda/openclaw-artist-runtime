@@ -33,6 +33,11 @@ describe("observation cascade", () => {
       observationPath
     });
     expect(readFileSync(idea.briefPath, "utf8")).toContain("old live houses disappear");
+    expect((await readSongState(root, idea.songId)).observationSummary).toMatchObject({
+      author: "citywatch",
+      url: "https://x.com/citywatch/status/1",
+      quote: "old live houses disappear under identical signs"
+    });
 
     const lyrics = await draftLyrics({ workspaceRoot: root, songId: idea.songId, aiReviewProvider: "mock" });
     expect(lyrics.lyricsText).toContain("old live houses");
@@ -50,6 +55,7 @@ describe("observation cascade", () => {
     });
 
     expect(pack.pack.style).toContain("observed urban unease");
+    expect((await readSongState(root, idea.songId)).observationSummary?.motivation).toContain("observation pressure");
     expect(readFileSync(pack.artifactPaths.promptLedger, "utf8")).toContain("observations/2026-04-30.md");
   });
 });

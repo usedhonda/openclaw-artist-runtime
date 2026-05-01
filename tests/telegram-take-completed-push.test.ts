@@ -11,8 +11,8 @@ describe("telegram take completed push", () => {
       timestamp: 1
     });
 
-    expect(message).toContain("🎼 song-001: take 完成 (selected: take-1)");
-    expect(message).toContain("song-001");
+    expect(message).toContain("🌐 観察元: (記録なし)");
+    expect(message).toContain("🎵 タイトル: song-001 (selected: take-1)");
     expect(message).toContain("1. https://suno.example/take-1");
     expect(message).toContain("非公開、御大のみ");
   });

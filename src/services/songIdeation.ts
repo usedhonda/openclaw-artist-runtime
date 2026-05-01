@@ -1,6 +1,6 @@
 import { readdir } from "node:fs/promises";
 import { join, relative } from "node:path";
-import type { ArtistRuntimeConfig, SongIdeaResult } from "../types.js";
+import type { ArtistRuntimeConfig, ObservationSummary, SongIdeaResult } from "../types.js";
 import { ensureSongState, readArtistMind, updateSongState, writeSongBrief } from "./artistState.js";
 import { ensureArtistWorkspace } from "./artistWorkspace.js";
 import { appendPromptLedger, createPromptLedgerEntry, getSongPromptLedgerPath } from "./promptLedger.js";
@@ -67,6 +67,36 @@ function observationRef(root: string, observationPath?: string): string | undefi
   return rel && !rel.startsWith("..") ? rel : observationPath;
 }
 
+function parseObservationField(value: string): string | undefined {
+  const trimmed = value.trim();
+  if (!trimmed || trimmed === "null" || trimmed === "none") {
+    return undefined;
+  }
+  try {
+    const parsed = JSON.parse(trimmed) as unknown;
+    return typeof parsed === "string" ? parsed : undefined;
+  } catch {
+    return trimmed.replace(/^["']|["']$/g, "");
+  }
+}
+
+export function extractObservationSummary(observationText?: string, motivation?: string): ObservationSummary | undefined {
+  const source = observationText?.trim();
+  if (!source) {
+    return undefined;
+  }
+  const text = source.match(/^-\s+text:\s*(.+)$/m)?.[1];
+  const author = source.match(/^\s+author:\s*(.+)$/m)?.[1];
+  const url = source.match(/^\s+url:\s*(.+)$/m)?.[1];
+  const quote = parseObservationField(text ?? "") ?? excerpt(source).replace(/\s+/g, " ");
+  return {
+    author: parseObservationField(author ?? ""),
+    url: parseObservationField(url ?? ""),
+    quote,
+    motivation: motivation?.trim() || "observation matched the artist direction"
+  };
+}
+
 function buildBrief(title: string, theme: string, artistReason: string, observationText?: string, observationPath?: string): string {
   const lines = [
     `# Brief for ${title}`,
@@ -84,11 +114,16 @@ function buildBrief(title: string, theme: string, artistReason: string, observat
   ];
   const observation = excerpt(observationText);
   if (observation) {
+    const summary = extractObservationSummary(observationText, artistReason);
     lines.push(
       "",
       "## Observation source",
       "",
       `- Path: ${observationPath ?? "(runtime observation)"}`,
+      `- Author: ${summary?.author ?? "unknown"}`,
+      `- URL: ${summary?.url ?? ""}`,
+      `- Quote: ${summary?.quote ?? observation.replace(/\s+/g, " ")}`,
+      `- Motivation: ${summary?.motivation ?? artistReason}`,
       "- Extract:",
       observation
     );
@@ -115,6 +150,7 @@ export async function createSongIdea(input: CreateSongIdeaInput): Promise<SongId
   const songId = `song-${String(sequence).padStart(3, "0")}`;
   const artistReason = input.artistReason ?? `caught on ${theme}`;
   const briefText = buildBrief(title, theme, artistReason, input.observationText, input.observationPath);
+  const observationSummary = extractObservationSummary(input.observationText, artistReason);
   const observationInputRef = input.observationText?.trim() ? observationRef(input.workspaceRoot, input.observationPath) : undefined;
   const inputRefs = ["ARTIST.md", "artist/CURRENT_STATE.md", observationInputRef].filter(Boolean) as string[];
 
@@ -123,7 +159,8 @@ export async function createSongIdea(input: CreateSongIdeaInput): Promise<SongId
   await updateSongState(input.workspaceRoot, songId, {
     title,
     status: "brief",
-    reason: artistReason
+    reason: artistReason,
+    observationSummary
   });
 
   const ledgerPath = getSongPromptLedgerPath(input.workspaceRoot, songId);

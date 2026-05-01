@@ -6,6 +6,9 @@ import { registerCallbackAction } from "./callbackActionRegistry.js";
 import { appendConversationTurn } from "./conversationalSession.js";
 import { proposalForDetection } from "./songDistributionPoller.js";
 import { isInlineButtonsEnabled, isXInlineButtonEnabled } from "./runtimeConfig.js";
+import { readSongState } from "./artistState.js";
+import { secretLikePattern } from "./personaMigrator.js";
+import type { ObservationSummary } from "../types.js";
 
 export interface TelegramNotifierOptions {
   token: string;
@@ -337,13 +340,83 @@ function dailyVoiceTitle(kind: Extract<RuntimeEvent, { type: "artist_pulse_draft
   return "🔁 引用ポスト draft:";
 }
 
-function formatSongTakeCompleted(event: Extract<RuntimeEvent, { type: "song_take_completed" }>): string {
+function isAllowedObservationUrl(value?: string): boolean {
+  if (!value) {
+    return false;
+  }
+  try {
+    const parsed = new URL(value);
+    return parsed.protocol === "https:" && (parsed.hostname === "x.com" || parsed.hostname === "twitter.com");
+  } catch {
+    return false;
+  }
+}
+
+function stripHandles(value: string): string {
+  return value.replace(/@[A-Za-z0-9_]{1,20}/g, "[handle]");
+}
+
+function capQuote(value: string, max = 140): string {
+  const clean = stripHandles(value).replace(/\s+/g, " ").trim();
+  if (secretLikePattern.test(clean)) {
+    return "[非表示]";
+  }
+  const chars = Array.from(clean);
+  return chars.length > max ? `${chars.slice(0, max - 1).join("").trim()}…` : clean;
+}
+
+function safeMotivation(value?: string): string {
+  const clean = stripHandles(value ?? "").replace(/\s+/g, " ").trim();
+  if (!clean || secretLikePattern.test(clean)) {
+    return "観察と artist persona の接続から生成";
+  }
+  return Array.from(clean).slice(0, 160).join("");
+}
+
+function safeAuthor(value?: string): string {
+  const clean = (value ?? "").replace(/^@/, "").replace(/[^\w]/g, "").slice(0, 20);
+  return clean || "unknown";
+}
+
+function formatObservationSource(summary?: ObservationSummary): string[] {
+  if (!summary) {
+    return [
+      "🌐 観察元: (記録なし)",
+      "💬 抜粋: (記録なし)",
+      "🎯 動機: 観察 summary なし"
+    ];
+  }
+  const author = safeAuthor(summary.author);
+  const quote = capQuote(summary.quote ?? "");
+  const url = isAllowedObservationUrl(summary.url) ? ` (${summary.url})` : "";
+  return [
+    `🌐 観察元: @${author}${url}`,
+    `💬 抜粋: 「${quote || "(抜粋なし)"}」`,
+    `🎯 動機: ${safeMotivation(summary.motivation)}`
+  ];
+}
+
+async function readSongCompletionContext(event: Extract<RuntimeEvent, { type: "song_take_completed" }>, workspaceRoot?: string): Promise<{ title: string; observationSummary?: ObservationSummary }> {
+  if (!workspaceRoot) {
+    return { title: event.songId, observationSummary: event.observationSummary };
+  }
+  const state = await readSongState(workspaceRoot, event.songId).catch(() => undefined);
+  return {
+    title: state?.title ?? event.songId,
+    observationSummary: event.observationSummary ?? state?.observationSummary
+  };
+}
+
+async function formatSongTakeCompleted(event: Extract<RuntimeEvent, { type: "song_take_completed" }>, workspaceRoot?: string): Promise<string> {
   const take = event.selectedTakeId ? ` (selected: ${event.selectedTakeId})` : "";
   const urls = event.urls.length
     ? event.urls.map((url, index) => `${index + 1}. ${url}`).join("\n")
     : "(URL なし)";
+  const context = await readSongCompletionContext(event, workspaceRoot);
   return [
-    `🎼 ${event.songId}: take 完成${take}`,
+    ...formatObservationSource(context.observationSummary),
+    `🎵 タイトル: ${context.title}${take}`,
+    "🔗 試聴:",
     urls,
     "----------",
     "非公開、御大のみ"
@@ -362,7 +435,7 @@ export async function formatRuntimeEvent(
     case "autopilot_state_changed":
       return `Autopilot state: enabled=${event.enabled} paused=${event.paused}${event.reason ? ` reason=${event.reason}` : ""}`;
     case "song_take_completed":
-      return formatSongTakeCompleted(event);
+      return formatSongTakeCompleted(event, options.workspaceRoot);
     case "theme_generated":
       return artistReport(event, `Theme generated: ${event.theme}. Reason: ${event.reason}`, options);
     case "suno_budget_low":

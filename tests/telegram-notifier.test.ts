@@ -29,7 +29,11 @@ describe("TelegramNotifier", () => {
       urls: ["https://suno.com/song/a", "https://suno.com/song/b"],
       timestamp: 1
     })).resolves.toBe([
-      "🎼 song-004: take 完成 (selected: take-2)",
+      "🌐 観察元: (記録なし)",
+      "💬 抜粋: (記録なし)",
+      "🎯 動機: 観察 summary なし",
+      "🎵 タイトル: song-004 (selected: take-2)",
+      "🔗 試聴:",
       "1. https://suno.com/song/a",
       "2. https://suno.com/song/b",
       "----------",
@@ -44,7 +48,11 @@ describe("TelegramNotifier", () => {
       urls: ["https://suno.com/song/a"],
       timestamp: 1
     })).resolves.toBe([
-      "🎼 song-004: take 完成",
+      "🌐 観察元: (記録なし)",
+      "💬 抜粋: (記録なし)",
+      "🎯 動機: 観察 summary なし",
+      "🎵 タイトル: song-004",
+      "🔗 試聴:",
       "1. https://suno.com/song/a",
       "----------",
       "非公開、御大のみ"

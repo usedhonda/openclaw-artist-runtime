@@ -1,11 +1,12 @@
-import { mkdir, readdir, writeFile } from "node:fs/promises";
+import { mkdir, readFile, readdir, writeFile } from "node:fs/promises";
 import { dirname, join, relative } from "node:path";
 import { createSongSkeleton } from "../repositories/songRepository.js";
 import type { PersistSunoPromptPackInput, PersistedPromptPackResult, PromptLedgerEntry } from "../types.js";
 import { ensureArtistWorkspace, readArtistSnapshots } from "./artistWorkspace.js";
-import { updateSongState } from "./artistState.js";
+import { readSongState, updateSongState } from "./artistState.js";
 import { appendPromptLedger, createPromptLedgerEntry, getSongPromptLedgerPath } from "./promptLedger.js";
 import { createSunoPromptPack } from "../suno-production/generatePromptPack.js";
+import { extractObservationSummary } from "./songIdeation.js";
 
 async function nextPromptPackVersion(promptsDir: string): Promise<number> {
   try {
@@ -135,6 +136,12 @@ export async function createAndPersistSunoPromptPack(input: PersistSunoPromptPac
     ...observationRefs(input.workspaceRoot, input.observationPath)
   ];
   const sourceRefs = observationRefs(input.workspaceRoot, input.observationPath);
+  const currentObservationSummary = (await readSongState(input.workspaceRoot, input.songId).catch(() => undefined))?.observationSummary;
+  const observationSummary = input.observationSummary ?? currentObservationSummary ?? (
+    input.observationPath
+      ? extractObservationSummary(await readFile(input.observationPath, "utf8").catch(() => ""), input.artistReason)
+      : undefined
+  );
 
   const ledgerEntryIds = await appendEntries(ledgerPath, [
     createPromptLedgerEntry({
@@ -227,7 +234,8 @@ export async function createAndPersistSunoPromptPack(input: PersistSunoPromptPac
     status: "suno_prompt_pack",
     title: input.songTitle,
     reason: "Suno prompt pack persisted",
-    lyricsVersion: version
+    lyricsVersion: version,
+    observationSummary
   });
 
   return {

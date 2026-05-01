@@ -1,7 +1,7 @@
 import { mkdir, readdir, readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { createSongSkeleton } from "../repositories/songRepository.js";
-import type { SongState, SongStateImportOutcome, SongStatus } from "../types.js";
+import type { ObservationSummary, SongState, SongStateImportOutcome, SongStatus } from "../types.js";
 
 const stateBlockStart = "<!-- artist-runtime:song-state:start -->";
 const stateBlockEnd = "<!-- artist-runtime:song-state:end -->";
@@ -32,6 +32,7 @@ export interface SongStatePatch {
   runCountDelta?: number;
   lastImportOutcome?: SongStateImportOutcome;
   degradedLyrics?: boolean;
+  observationSummary?: ObservationSummary;
 }
 
 function nowIso(): string {
@@ -112,6 +113,19 @@ function parseImportOutcome(lines: string[]): SongStateImportOutcome | undefined
   }
 }
 
+function parseObservationSummary(lines: string[]): ObservationSummary | undefined {
+  const raw = parseBulletedValue(lines, "Observation Summary");
+  if (!raw) {
+    return undefined;
+  }
+  try {
+    const parsed = JSON.parse(raw) as ObservationSummary;
+    return parsed && typeof parsed === "object" ? parsed : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
 function parseSongState(contents: string, songId: string): SongState {
   const titleMatch = contents.match(/^#\s+(.+)$/m);
   const title = titleMatch?.[1]?.trim() || songId;
@@ -145,7 +159,8 @@ function parseSongState(contents: string, songId: string): SongState {
     runCount: Number.isFinite(runCount) ? runCount : 0,
     lastReason: parseBulletedValue(lines, "Last Reason") || undefined,
     lastImportOutcome: parseImportOutcome(lines),
-    degradedLyrics: parseBulletedValue(lines, "Degraded Lyrics") === "true"
+    degradedLyrics: parseBulletedValue(lines, "Degraded Lyrics") === "true",
+    observationSummary: parseObservationSummary(lines)
   };
 }
 
@@ -166,6 +181,7 @@ function renderSongStateBlock(state: SongState): string {
     `- Last Reason: ${state.lastReason ?? ""}`,
     `- Last Import Outcome: ${state.lastImportOutcome ? JSON.stringify(state.lastImportOutcome) : ""}`,
     `- Degraded Lyrics: ${state.degradedLyrics ? "true" : "false"}`,
+    `- Observation Summary: ${state.observationSummary ? JSON.stringify(state.observationSummary) : ""}`,
     stateBlockEnd
   ].join("\n");
 }
@@ -298,7 +314,8 @@ export async function updateSongState(root: string, songId: string, patch: SongS
     runCount: Math.max(0, current.runCount + (patch.runCountDelta ?? 0)),
     lastReason: patch.reason ?? current.lastReason,
     lastImportOutcome: patch.lastImportOutcome ?? current.lastImportOutcome,
-    degradedLyrics: patch.degradedLyrics ?? current.degradedLyrics
+    degradedLyrics: patch.degradedLyrics ?? current.degradedLyrics,
+    observationSummary: patch.observationSummary ?? current.observationSummary
   };
   return writeSongState(root, next);
 }
