@@ -88,7 +88,8 @@ export async function createAndPersistSunoPromptPack(input: PersistSunoPromptPac
   await mkdir(snapshotDir, { recursive: true });
 
   const lyricsVersioned = join(lyricsDir, `lyrics.v${version}.md`);
-  const yamlLatest = join(lyricsDir, "yaml-suno.md");
+  const lyricsSunoLatest = join(sunoDir, "lyrics-suno.md");
+  const yamlLatest = join(sunoDir, "yaml-suno.md");
   const styleLatest = join(sunoDir, "style.md");
   const excludeLatest = join(sunoDir, "exclude.md");
   const slidersLatest = join(sunoDir, "sliders.json");
@@ -98,6 +99,7 @@ export async function createAndPersistSunoPromptPack(input: PersistSunoPromptPac
 
   await Promise.all([
     writeText(lyricsVersioned, `${input.lyricsText}\n`),
+    writeText(lyricsSunoLatest, `${input.lyricsText}\n`),
     writeText(yamlLatest, `${pack.yamlLyrics}\n`),
     writeText(styleLatest, `${pack.style}\n`),
     writeText(excludeLatest, `${pack.exclude}\n`),
@@ -105,6 +107,7 @@ export async function createAndPersistSunoPromptPack(input: PersistSunoPromptPac
     writeJson(payloadLatest, pack.payload),
     writeJson(validationLatest, pack.validation),
     writeText(join(snapshotDir, "lyrics.md"), `${input.lyricsText}\n`),
+    writeText(join(snapshotDir, "lyrics-suno.md"), `${input.lyricsText}\n`),
     writeText(join(snapshotDir, "yaml-suno.md"), `${pack.yamlLyrics}\n`),
     writeText(join(snapshotDir, "style.md"), `${pack.style}\n`),
     writeText(join(snapshotDir, "exclude.md"), `${pack.exclude}\n`),
@@ -124,6 +127,7 @@ export async function createAndPersistSunoPromptPack(input: PersistSunoPromptPac
 
   const commonRefs = [
     join(snapshotDir, "lyrics.md"),
+    join(snapshotDir, "lyrics-suno.md"),
     join(snapshotDir, "yaml-suno.md"),
     join(snapshotDir, "style.md"),
     join(snapshotDir, "exclude.md"),
@@ -150,7 +154,7 @@ export async function createAndPersistSunoPromptPack(input: PersistSunoPromptPac
       actor: "artist",
       artistReason: input.artistReason,
       inputRefs: ["ARTIST.md", "artist/CURRENT_STATE.md", ...sourceRefs],
-      outputRefs: [lyricsVersioned, join(snapshotDir, "lyrics.md")],
+      outputRefs: [lyricsVersioned, lyricsSunoLatest, join(snapshotDir, "lyrics.md"), join(snapshotDir, "lyrics-suno.md")],
       promptText: input.lyricsText,
       promptHash: pack.promptHash,
       configSnapshot: input.configSnapshot,
@@ -163,7 +167,7 @@ export async function createAndPersistSunoPromptPack(input: PersistSunoPromptPac
       songId: input.songId,
       actor: "artist",
       artistReason: input.artistReason,
-      inputRefs: [lyricsVersioned, ...sourceRefs],
+      inputRefs: [lyricsSunoLatest, ...sourceRefs],
       outputRefs: [styleLatest, join(snapshotDir, "style.md")],
       outputSummary: pack.style,
       promptHash: pack.promptHash,
@@ -176,7 +180,7 @@ export async function createAndPersistSunoPromptPack(input: PersistSunoPromptPac
       stage: "suno_exclude_generation",
       songId: input.songId,
       actor: "artist",
-      inputRefs: [lyricsVersioned, ...sourceRefs],
+      inputRefs: [lyricsSunoLatest, ...sourceRefs],
       outputRefs: [excludeLatest, join(snapshotDir, "exclude.md")],
       outputSummary: pack.exclude,
       promptHash: pack.promptHash,
@@ -189,7 +193,7 @@ export async function createAndPersistSunoPromptPack(input: PersistSunoPromptPac
       stage: "suno_yaml_generation",
       songId: input.songId,
       actor: "artist",
-      inputRefs: [lyricsVersioned, ...sourceRefs],
+      inputRefs: [lyricsSunoLatest, ...sourceRefs],
       outputRefs: [yamlLatest, join(snapshotDir, "yaml-suno.md")],
       outputSummary: pack.yamlLyrics,
       promptHash: pack.promptHash,
@@ -233,6 +237,7 @@ export async function createAndPersistSunoPromptPack(input: PersistSunoPromptPac
     artifactPaths: {
       lyricsVersioned,
       yamlLatest,
+      lyricsSunoLatest,
       styleLatest,
       excludeLatest,
       slidersLatest,

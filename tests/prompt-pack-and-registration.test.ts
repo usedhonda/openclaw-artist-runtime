@@ -84,7 +84,7 @@ describe("prompt pack", () => {
 
     expect(result.packVersion).toBe(1);
     expect(result.ledgerEntryIds).toHaveLength(6);
-    expect(readFileSync(result.artifactPaths.styleLatest, "utf8")).toContain("alternative pop");
+    expect(readFileSync(result.artifactPaths.styleLatest, "utf8")).toContain("BPM");
     expect(readFileSync(result.artifactPaths.lyricsVersioned, "utf8")).toContain("駅の光だけが");
     expect(readFileSync(result.artifactPaths.promptLedger, "utf8")).toContain("\"stage\":\"suno_payload_build\"");
   });

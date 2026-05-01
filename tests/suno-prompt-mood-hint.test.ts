@@ -14,30 +14,31 @@ const base = {
 describe("Suno prompt mood hint", () => {
   it("injects moodHint as one style token", () => {
     const pack = createSunoPromptPack({ ...base, moodHint: "civic dread pulse" });
-    expect(pack.style).toContain("cold synth texture, civic dread pulse, restrained drums");
+    expect(pack.style).toContain("civic dread pulse");
+    expect(pack.style.length).toBeLessThanOrEqual(400);
   });
 
-  it("drops artistReason before moodHint when style exceeds 200 chars", () => {
+  it("keeps moodHint while style stays within the V5.5 400 char total", () => {
     const pack = createSunoPromptPack({
       ...base,
       artistReason: "a very long observation reason ".repeat(8),
       moodHint: "civic dread pulse"
     });
-    expect(pack.style.length).toBeLessThanOrEqual(200);
+    expect(pack.style.length).toBeLessThanOrEqual(400);
     expect(pack.style).toContain("civic dread pulse");
     expect(pack.style).not.toContain("song intent:");
-    expect(pack.style).toContain("restrained drums");
+    expect(pack.style).toContain("brushed drums");
   });
 
-  it("drops moodHint only after artistReason when style still exceeds 200 chars", () => {
+  it("drops oversized moodHint when core tags exceed 120 chars", () => {
     const pack = createSunoPromptPack({
       ...base,
       artistReason: "long reason ".repeat(24),
       moodHint: "oversized mood hint ".repeat(12)
     });
-    expect(pack.style.length).toBeLessThanOrEqual(200);
+    expect(pack.style.length).toBeLessThanOrEqual(400);
     expect(pack.style).not.toContain("song intent:");
     expect(pack.style).not.toContain("oversized mood hint");
-    expect(pack.style).toContain("restrained drums");
+    expect(pack.style).toContain("brushed drums");
   });
 });

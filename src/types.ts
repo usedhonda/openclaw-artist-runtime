@@ -851,6 +851,11 @@ export interface SunoPromptPack {
   songId: string;
   songTitle: string;
   artistReason: string;
+  lyricsBundle?: {
+    lyricsText: string;
+    yamlLyrics: string;
+    moodHint?: string;
+  };
   style: string;
   exclude: string;
   yamlLyrics: string;
@@ -890,6 +895,7 @@ export interface PersistedPromptPackResult {
   artifactPaths: {
     lyricsVersioned: string;
     yamlLatest: string;
+    lyricsSunoLatest: string;
     styleLatest: string;
     excludeLatest: string;
     slidersLatest: string;

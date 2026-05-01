@@ -1,53 +1,13 @@
 import { createHash } from "node:crypto";
 import type { CreateSunoPromptPackInput, SunoPromptPack, SunoSliders } from "../types.js";
 import { validateSunoPromptPack } from "../validators/promptPackValidator.js";
+import { buildExclude as buildExcludeV55 } from "./buildExclude.js";
+import { buildSliders as buildSlidersV55 } from "./buildSliders.js";
+import { buildStyle as buildStyleV55 } from "./buildStyle.js";
+import { buildYaml as buildYamlV55 } from "./buildYaml.js";
 
 function hashText(value: string): string {
   return createHash("sha256").update(value).digest("hex");
-}
-
-function buildStyle(input: CreateSunoPromptPackInput): string {
-  const moodHint = input.moodHint?.trim();
-  const intent = input.artistReason ? `song intent: ${input.artistReason}` : undefined;
-  const tokens = [
-    "alternative pop",
-    "close fragile vocal",
-    "cold synth texture",
-    moodHint,
-    "restrained drums",
-    intent
-  ].filter(Boolean) as string[];
-  const style = tokens.join(", ");
-  if (style.length <= 200) {
-    return style;
-  }
-  const withoutIntent = intent ? tokens.filter((token) => token !== intent).join(", ") : style;
-  if (withoutIntent.length <= 200 || !moodHint) {
-    return withoutIntent.slice(0, 200);
-  }
-  return tokens.filter((token) => token !== intent && token !== moodHint).join(", ").slice(0, 200);
-}
-
-function buildExclude(): string {
-  return "generic EDM drop, celebrity voice imitation, copyrighted artist cloning, fake crowd noise";
-}
-
-function buildYamlLyrics(input: CreateSunoPromptPackInput): string {
-  return [
-    `title: ${input.songTitle}`,
-    "sections:",
-    "  - type: verse",
-    "    lines:",
-    ...input.lyricsText.split("\n").filter(Boolean).map((line) => `      - ${line}`)
-  ].join("\n");
-}
-
-function buildSliders(): SunoSliders {
-  return {
-    weirdness: 42,
-    styleInfluence: 72,
-    audioInfluence: 25
-  };
 }
 
 function buildPayload(input: CreateSunoPromptPackInput, style: string, exclude: string, yamlLyrics: string, sliders: SunoSliders): Record<string, unknown> {
@@ -57,6 +17,7 @@ function buildPayload(input: CreateSunoPromptPackInput, style: string, exclude: 
     artistReason: input.artistReason,
     styleAndFeel: style,
     excludeStyles: exclude,
+    lyrics: yamlLyrics,
     lyricsText: input.lyricsText,
     lyricsYaml: yamlLyrics,
     sliders
@@ -64,10 +25,36 @@ function buildPayload(input: CreateSunoPromptPackInput, style: string, exclude: 
 }
 
 export function createSunoPromptPack(input: CreateSunoPromptPackInput): SunoPromptPack {
-  const style = buildStyle(input);
-  const exclude = buildExclude();
-  const yamlLyrics = buildYamlLyrics(input);
-  const sliders = buildSliders();
+  const genre = `${input.artistReason} ${input.moodHint ?? ""}`;
+  const styleResult = buildStyleV55({
+    artistProfile: input.artistSnapshot,
+    brief: input.artistReason,
+    moodHint: input.moodHint,
+    genre,
+    vibe: input.moodHint
+  });
+  const style = styleResult.total;
+  const exclude = buildExcludeV55({
+    genre,
+    artistAvoid: ["generic EDM drop", "fake crowd noise"],
+    copyrightSourceNameDenylist: [input.songTitle]
+  }).text;
+  const yamlLyrics = buildYamlV55({
+    title: input.songTitle,
+    lyrics: input.lyricsText,
+    meta: {
+      tempo: 124,
+      key: "minor",
+      signature: "4/4",
+      form: "intro-verse-hook-verse-bridge-verse-hook-outro",
+      vibe: input.moodHint ?? "observational dusk",
+      language: "ja"
+    },
+    vocals: "close, dry lead vocal; keep doubles restrained and intelligible",
+    productionNotes: "bass forward, restrained drums, no novelty genre pivot",
+    notes: "original lyrics and style only; no source-name imitation"
+  });
+  const sliders = buildSlidersV55({ genre, moodHint: input.moodHint });
   const payload = buildPayload(input, style, exclude, yamlLyrics, sliders);
   const payloadHash = hashText(JSON.stringify(payload));
   const promptHash = hashText(`${style}\n${exclude}\n${yamlLyrics}`);
@@ -79,6 +66,11 @@ export function createSunoPromptPack(input: CreateSunoPromptPackInput): SunoProm
     songId: input.songId,
     songTitle: input.songTitle,
     artistReason: input.artistReason,
+    lyricsBundle: {
+      lyricsText: input.lyricsText,
+      yamlLyrics,
+      moodHint: input.moodHint
+    },
     style,
     exclude,
     yamlLyrics,

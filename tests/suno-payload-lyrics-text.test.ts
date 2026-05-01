@@ -15,7 +15,8 @@ describe("Suno payload lyrics text split", () => {
 
     expect(pack.payload.lyricsText).toBe("line one\nline two");
     expect(pack.payload.lyricsYaml).toContain("title: Plain Signal");
-    expect(pack.payload.lyricsYaml).toContain("- line one");
-    expect(pack.payload).not.toHaveProperty("lyrics");
+    expect(pack.payload.lyricsYaml).toContain("LYRICS START");
+    expect(pack.payload.lyricsYaml).toContain("line one");
+    expect(pack.payload.lyrics).toBe(pack.payload.lyricsYaml);
   });
 });
