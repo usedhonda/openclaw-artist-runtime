@@ -1,0 +1,80 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <title>Suno Create Fixture</title>
+  </head>
+  <body>
+    <main data-testid="create-page">
+      <form aria-label="Create a song">
+        <label>
+          Song title
+          <input placeholder="Song Title (Optional)" value="">
+        </label>
+
+        <button type="button" aria-label="Add your own lyrics">Custom lyrics</button>
+        <label>
+          Lyrics
+          <textarea data-testid="lyrics-textarea"></textarea>
+        </label>
+
+        <section data-testid="create-form-styles-wrapper">
+          <label>
+            Style textarea
+            <textarea placeholder="Describe the sound you want"></textarea>
+          </label>
+          <label>
+            Style input variant
+            <input placeholder="Describe the sound you want">
+          </label>
+        </section>
+
+        <label>
+          Exclude styles input
+          <input placeholder="Exclude styles">
+        </label>
+        <label>
+          Exclude styles textarea variant
+          <textarea placeholder="Exclude styles"></textarea>
+        </label>
+
+        <button
+          type="button"
+          aria-label="Check this to generate an instrumental only song"
+          aria-pressed="false"
+        >
+          Instrumental
+        </button>
+
+        <button type="button" aria-label="Create song">Create</button>
+      </form>
+
+      <section aria-label="Generated clips">
+        <article
+          data-testid="clip-row"
+          data-clip-status="generating"
+          aria-label="Watapp Groups"
+        >
+          <span>Generating</span>
+          <a href="https://suno.com/song/still-generating">Generating placeholder</a>
+        </article>
+
+        <article
+          data-testid="clip-row"
+          data-clip-status="complete"
+          aria-label="Watapp Groups"
+        >
+          <a href="https://suno.com/song/watapp-groups-a">Watapp Groups A</a>
+        </article>
+
+        <article
+          data-testid="clip-row"
+          data-clip-status="complete"
+          aria-label="Other Title"
+        >
+          <a href="https://suno.com/song/other-title">Other Title</a>
+        </article>
+      </section>
+    </main>
+  </body>
+</html>
