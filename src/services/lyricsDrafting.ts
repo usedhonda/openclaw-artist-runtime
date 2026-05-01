@@ -4,6 +4,8 @@ import type { AiReviewProvider, ArtistRuntimeConfig } from "../types.js";
 import { isAiProviderMockFallbackResponse, callAiProvider } from "./aiProviderClient.js";
 import { readArtistMind, updateSongState } from "./artistState.js";
 import { appendPromptLedger, createPromptLedgerEntry, getSongPromptLedgerPath } from "./promptLedger.js";
+import { repairLyricsV55 } from "./lyricsRepair.js";
+import { validateLyricsV55 } from "./lyricsValidator.js";
 import { secretLikePattern } from "./personaMigrator.js";
 import { emitRuntimeEvent } from "./runtimeEventBus.js";
 
@@ -18,6 +20,13 @@ interface LyricsDraft {
   title: string;
   lyrics: string;
   moodHint: string;
+}
+
+interface ParsedAiLyricsSection {
+  tag?: string;
+  label?: string;
+  lines?: string[];
+  text?: string;
 }
 
 async function nextLyricsVersion(root: string, songId: string): Promise<number> {
@@ -58,14 +67,31 @@ function parseField(raw: string, field: string): string {
   return match?.[1]?.trim() ?? "";
 }
 
-function buildPrompt(input: { artistMd: string; currentState: string; briefText: string; title: string }): string {
+async function readKnowledgeDigest(): Promise<string> {
+  const root = join(process.cwd(), "src", "suno-production", "knowledge");
+  const names = ["lyric_craft.md", "song_structures.md", "suno_v55_reference.md"];
+  const parts = await Promise.all(names.map(async (name) => {
+    const raw = await readFile(join(root, name), "utf8").catch(() => "");
+    return raw
+      .split(/\r?\n/)
+      .filter((line) => /section|metatag|line|command|copyright|duration|hook|verse|bridge|outro/i.test(line))
+      .slice(0, 16)
+      .join("\n");
+  }));
+  return parts.filter(Boolean).join("\n\n").slice(0, 2400);
+}
+
+function buildPrompt(input: { artistMd: string; currentState: string; briefText: string; title: string; knowledgeDigest: string; repairNotes?: string[] }): string {
   return [
     "Write lyrics for used::honda from the provided raw material.",
     "Extract one motif from the observation-bearing brief, metabolize it through the artist persona, and avoid generic placeholder lyrics.",
-    "Return exactly these fields:",
-    "title: 2-4 word short title",
-    "lyrics: 4-8 lines of markdown lyrics",
-    "moodHint: 2-4 word sonic mood",
+    "Return strict JSON only: {\"title\":\"2-4 words\",\"form\":\"short form name\",\"sections\":[{\"tag\":\"Verse 1 - tight flow\",\"lines\":[\"line\"]}],\"bilingual_hint\":\"short note\",\"moodHint\":\"2-4 word sonic mood\"}.",
+    "Use 7-10 tagged sections. Verse sections need 4-21 lines, Hook 2-6, Bridge 1-3, Intro/Outro 0-1.",
+    "Every section tag must include an annotation after the section name. Do not place commands outside tags. Do not name existing artists or songs.",
+    input.repairNotes?.length ? `Repair notes from previous draft: ${input.repairNotes.join("; ")}` : "",
+    "",
+    "Suno V5.5 knowledge digest:",
+    truncate(input.knowledgeDigest),
     "",
     "ARTIST.md:",
     truncate(input.artistMd),
@@ -85,17 +111,63 @@ function mockStructuredDraft(title: string, briefText: string): string {
     ?? briefText.split(/\r?\n/).find((line) => line.trim() && !line.startsWith("#"))?.trim()
     ?? "街のノイズがまだ消えない。";
   return [
-    `title: ${title.split(/\s+/).slice(0, 4).join(" ") || "Night Ledger"}`,
-    "lyrics:",
-    `${source.slice(0, 80)}`,
-    "誰も見ない窓にだけ信号が残る",
-    "便利な声ほど責任を遠くへ置く",
-    "朝になる前に低いベースで数え直す",
-    "moodHint: observed urban unease"
+    "{",
+    `  "title": "${title.split(/\s+/).slice(0, 4).join(" ") || "Night Ledger"}",`,
+    "  \"form\": \"nine-section compact pop\",",
+    "  \"sections\": [",
+    `    { "tag": "Intro - muted street image", "lines": ["${source.slice(0, 60).replace(/"/g, "'")}"] },`,
+    "    { \"tag\": \"Verse 1 - tight civic flow\", \"lines\": [\"誰も見ない窓にだけ信号が残る\", \"既読の街で責任だけが遅れる\", \"低いベースが名前を削っていく\", \"朝の手前でまだ息を数える\"] },",
+    "    { \"tag\": \"Hook - repeated anchor\", \"lines\": [\"逃げた声を追わない\", \"画面の外で鳴る\", \"逃げた声を追わない\"] },",
+    "    { \"tag\": \"Verse 2 - detail turn\", \"lines\": [\"便利な橋ほど足跡を消した\", \"神棚みたいな稟議が白く光る\", \"笑った顔だけログに残って\", \"誰の夜かを誰も言わない\"] },",
+    "    { \"tag\": \"Bridge - thin contrast\", \"lines\": [\"それでも爪の先だけ熱い\", \"黙ったまま角を曲がる\"] },",
+    "    { \"tag\": \"Verse 3 - consequence\", \"lines\": [\"錆びた時計が二拍だけずれる\", \"古い店名が雨でほどける\", \"遠い通知に街灯が瞬く\", \"まだ消えないものを拾う\"] },",
+    "    { \"tag\": \"Hook - final anchor\", \"lines\": [\"逃げた声を追わない\", \"画面の外で鳴る\", \"逃げた声を追わない\"] },",
+    "    { \"tag\": \"Outro - hard stop\", \"lines\": [\"夜明けだけが未送信のまま\"] }",
+    "  ],",
+    "  \"bilingual_hint\": \"keep Japanese main text\",",
+    "  \"moodHint\": \"observed urban unease\"",
+    "}"
   ].join("\n");
 }
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function parseJsonDraft(raw: string, fallbackTitle: string): LyricsDraft | undefined {
+  const parsed = (() => {
+    try {
+      return JSON.parse(raw);
+    } catch {
+      return undefined;
+    }
+  })();
+  if (!isRecord(parsed)) {
+    return undefined;
+  }
+  const sections = Array.isArray(parsed.sections) ? parsed.sections as ParsedAiLyricsSection[] : [];
+  const lyrics = sections
+    .map((section) => {
+      const tag = typeof section.tag === "string" ? section.tag : typeof section.label === "string" ? section.label : "Verse - repaired section";
+      const lines = Array.isArray(section.lines)
+        ? section.lines.filter((line): line is string => typeof line === "string")
+        : typeof section.text === "string" ? section.text.split(/\r?\n/) : [];
+      return [`[${tag}]`, ...lines].join("\n");
+    })
+    .join("\n\n")
+    .trim();
+  const moodHint = typeof parsed.moodHint === "string" ? parsed.moodHint : "";
+  const title = typeof parsed.title === "string" ? parsed.title : fallbackTitle;
+  return lyrics && moodHint
+    ? { title: title.split(/\s+/).slice(0, 4).join(" "), lyrics, moodHint: moodHint.split(/\s+/).slice(0, 4).join(" ") }
+    : undefined;
+}
+
 function parseDraft(raw: string, fallbackTitle: string): LyricsDraft | undefined {
+  const jsonDraft = parseJsonDraft(raw, fallbackTitle);
+  if (jsonDraft) {
+    return jsonDraft;
+  }
   const title = parseField(raw, "title") || fallbackTitle;
   const lyrics = parseField(raw, "lyrics");
   const moodHint = parseField(raw, "moodHint");
@@ -108,19 +180,32 @@ function parseDraft(raw: string, fallbackTitle: string): LyricsDraft | undefined
 async function composeLyricsDraft(input: DraftLyricsInput, title: string, briefText: string): Promise<LyricsDraft> {
   const provider = input.aiReviewProvider ?? input.config?.aiReview?.provider ?? "mock";
   const mind = await readArtistMind(input.workspaceRoot);
-  const prompt = buildPrompt({ artistMd: mind.artist, currentState: mind.currentState, briefText, title });
-  assertSafe("input", prompt);
-  const raw = provider === "mock" ? mockStructuredDraft(title, briefText) : await callAiProvider(prompt, { provider });
-  assertSafe("response", raw);
-  if (isAiProviderMockFallbackResponse(raw)) {
-    throw new Error("lyrics_generation_degraded");
+  const knowledgeDigest = await readKnowledgeDigest();
+  let repairNotes: string[] = [];
+  for (let attempt = 0; attempt < 3; attempt += 1) {
+    const prompt = buildPrompt({ artistMd: mind.artist, currentState: mind.currentState, briefText, title, knowledgeDigest, repairNotes });
+    assertSafe("input", prompt);
+    const raw = provider === "mock" ? mockStructuredDraft(title, briefText) : await callAiProvider(prompt, { provider });
+    assertSafe("response", raw);
+    if (isAiProviderMockFallbackResponse(raw)) {
+      repairNotes = ["provider fallback response"];
+      continue;
+    }
+    const parsed = parseDraft(raw, title);
+    if (!parsed) {
+      repairNotes = ["missing structured title, sections, or moodHint"];
+      continue;
+    }
+    const repaired = repairLyricsV55(parsed.lyrics);
+    const validation = validateLyricsV55(repaired, { denylist: ["Drake", "Taylor Swift", "Beatles"] });
+    if (validation.valid) {
+      const finalDraft = { ...parsed, lyrics: repaired };
+      assertSafe("final", `${finalDraft.title}\n${finalDraft.lyrics}\n${finalDraft.moodHint}`);
+      return finalDraft;
+    }
+    repairNotes = validation.issues.map((issue) => `${issue.code}: ${issue.message}`).slice(0, 5);
   }
-  const parsed = parseDraft(raw, title);
-  if (!parsed) {
-    throw new Error("lyrics_generation_degraded");
-  }
-  assertSafe("final", `${parsed.title}\n${parsed.lyrics}\n${parsed.moodHint}`);
-  return parsed;
+  throw new Error("lyrics_generation_degraded");
 }
 
 export async function draftLyrics(input: DraftLyricsInput): Promise<{ lyricsText: string; lyricsPath: string; version: number }> {
