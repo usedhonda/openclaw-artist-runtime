@@ -9,6 +9,7 @@
   },
   "files": [
     "dist/**/*.js",
+    "src/suno-production/knowledge/**",
     "ui/dist/index.html",
     "templates/**",
     "prompts/**",
