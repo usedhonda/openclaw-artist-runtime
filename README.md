@@ -160,6 +160,30 @@ Suno integration is designed around a background logged-in browser profile or a 
 copy fallback. It must not use CAPTCHA bypass, credential capture, or non-consensual
 voice/artist imitation flows.
 
+For distribution installs that use the live Suno browser worker, bring your own
+local Chrome session and attach through Chrome DevTools Protocol (CDP) on the
+loopback interface:
+
+```bash
+bash scripts/start-chrome-cdp.sh
+```
+
+The helper starts Chrome with CDP on port `9222`. Keep CDP bound to
+`127.0.0.1`; an open debugging port is a local attack surface that can control
+the browser. Run this Chrome only when Suno work is needed, close it when the
+worker is idle, and avoid running untrusted local apps while the port is open.
+
+Before any live Suno use, run the doctor from the package root:
+
+```bash
+bash scripts/suno-doctor.sh
+```
+
+The doctor is a connection/readiness check, not a generation flow. It must not
+click Create, submit a form, spend credits, or publish anything. The distributed
+CDP setup does not require Tampermonkey, userscripts, clipboard injection, or
+browser extensions.
+
 Every Suno run must persist the complete prompt lineage before any generation action:
 
 - artist snapshot;
