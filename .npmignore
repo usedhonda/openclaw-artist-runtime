@@ -10,6 +10,7 @@ artist
 tests
 src
 ui/src
+ui/dist/assets
 ui/vite.config.ts
 ui/README.md
 scripts

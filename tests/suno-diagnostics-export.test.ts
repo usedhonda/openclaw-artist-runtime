@@ -5,12 +5,19 @@ import { ensureSongState, updateSongState } from "../src/services/artistState.js
 import { createInProcessGateway } from "./harness/inProcessGateway.js";
 
 async function seedDiagnosticsWorkspace(root: string): Promise<void> {
+  const now = Date.now();
+  const daysAgo = (days: number) => new Date(now - days * 24 * 60 * 60 * 1000).toISOString();
+  const recentResetAt = daysAgo(2);
+  const oldResetAt = daysAgo(20);
+  const recentImportAt = daysAgo(2);
+  const oldImportAt = daysAgo(20);
+
   await mkdir(join(root, "runtime", "suno"), { recursive: true });
   await writeFile(
     join(root, "runtime", "suno", "budget-reset.jsonl"),
     [
-      JSON.stringify({ timestamp: "2026-04-24T00:00:00.000Z", consumedBefore: 30, reason: "recent_reset" }),
-      JSON.stringify({ timestamp: "2026-04-01T00:00:00.000Z", consumedBefore: 50, reason: "old_reset" })
+      JSON.stringify({ timestamp: recentResetAt, consumedBefore: 30, reason: "recent_reset" }),
+      JSON.stringify({ timestamp: oldResetAt, consumedBefore: 50, reason: "old_reset" })
     ].join("\n") + "\n",
     "utf8"
   );
@@ -34,7 +41,7 @@ async function seedDiagnosticsWorkspace(root: string): Promise<void> {
       paths: [join(root, "runtime", "suno", "run-recent", "track.mp3")],
       failedUrls: [],
       reason: "imported",
-      at: "2026-04-24T12:00:00.000Z",
+      at: recentImportAt,
       dryRun: false
     }
   });
@@ -47,7 +54,7 @@ async function seedDiagnosticsWorkspace(root: string): Promise<void> {
       paths: [],
       failedUrls: [{ url: "https://suno.com/song/old", reason: "404" }],
       reason: "old",
-      at: "2026-04-02T00:00:00.000Z",
+      at: oldImportAt,
       dryRun: false
     }
   });

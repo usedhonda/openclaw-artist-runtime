@@ -9,7 +9,7 @@
   },
   "files": [
     "dist/**/*.js",
-    "ui/dist/**",
+    "ui/dist/index.html",
     "templates/**",
     "prompts/**",
     "schemas/**",
