@@ -1,31 +1,41 @@
-# V10 Phase 6 — Suno Live Run Runbook
+# V10.5 Phase D — Suno Live Run Runbook (v10.4 Phase 6 隔離継続 + v10.5 driver fix 反映)
 
-Plan v10.4 Phase 6 (実機検証) の operator 手順書。**実機 LIVE=on 操作は本 Plan の completion 条件外**、御大の明示 GO 後に CC が手動で orchestrate する。
+Plan v10.5 Phase D の operator 手順書。**実機 LIVE=on 操作は本 Plan の completion 条件外**、御大の明示 GO 後に CC が手動で orchestrate する。Plan v10.4 Phase 6 の隔離規律を継承し、v10.5 で追加された driver 構造原因 4 個 fix と CDP doctor を活用する。
 
 ## 0. 前提条件
 
 このランブックを実行する前に、以下が全て完了していること:
 
+### v10.4 (基盤)
 - ✅ Phase 1 (tarball narrowing): commit済み、tarball ≤220,000、pack/import smoke pass
 - ✅ Phase 2 (knowledge clean room reimpl): commit済み、knowledge files MIT 統一、tarball R6 内
 - ✅ Phase 3 (payload/driver contract): commit済み、`lyrics` 優先 / `lyricsText` fallback、v9.27 hotfix 取り込み
 - ✅ Phase 4a/4b/4c (lyrics V5.5 + builders + orchestration): 3 commit、targeted + full test pass
 - ✅ Phase 5 (Telegram 観察出典 + privacy guard 三重): commit済み
-- ✅ 御大の明示 GO (例: 「v10 Phase 6 流していい」「Suno で実機やって」)
+
+### v10.5 (driver fix + 配布対応)
+- ✅ Phase A (b38c51b): driver deterministic fill (`:visible` await / `bringToFront()` / React event dispatch / LYRICS extraction)
+- ✅ Phase B (29d5c93): CDP doctor + `127.0.0.1` bind 強制 + 配布 README + no-submit sentinel test
+- ✅ Phase C (c5a844b): distribution smoke + selector regression + fixture HTML
+
+### 操作前
+- ✅ 御大の明示 GO (例: 「v10.5 Phase D 流していい」「Suno で実機やって」)
+- ✅ tarball ≤281,914 bytes (230.1 kB / R6 余裕 51.8 kB / 177 files)
+- ✅ R10 三重防護: `OPENCLAW_SUNO_LIVE=off` / `liveGoArmed=false` / `driver=mock` / `paused=true`
 
 GO 待ちの間、本ランブックを御大に提示して内容確認を取る。
 
-## 1. Preflight (artifacts deterministic 検証)
+## 1. Preflight (artifacts deterministic 検証 + v10.5 doctor)
 
 実機 create に進む前に、artifact 段階で以下を全部 pass させる:
 
 ```bash
 cd /Users/usedhonda/projects/openclaw/artist-runtime
 
-# Phase 1-5 の test 全 pass
+# Phase 1-5 + v10.5 A/B/C の test 全 pass (216 files / 751 tests 想定)
 npm test -- --run
 
-# tarball サイズ R6 内
+# tarball サイズ R6 内 (v10.5 完走時点 230.1 kB / 177 files)
 npm pack --dry-run | grep "package size"
 # 期待: ≤281,914 bytes
 
@@ -34,7 +44,23 @@ grep -E "OPENCLAW_SUNO_LIVE|liveGoArmed|driver:.*mock" .local/social-credentials
 # 期待: LIVE=off / liveGoArmed=false / driver=mock
 ```
 
-artifacts レベルで全 pass すれば、(後述の制約付き) live run へ進める。
+### v10.5 追加: CDP doctor 通過必須
+
+Section 2 (Live Run) に進む前に、Chrome を CDP port 9222 で起動した上で **doctor を必ず通す** (v10.5 Phase B):
+
+```bash
+# 1. Chrome を CDP attach 起動 (127.0.0.1:9222 強制)
+bash scripts/start-chrome-cdp.sh
+
+# 2. doctor で機械判定: CDP reachable / Suno tab / create form writable
+bash scripts/suno-doctor.sh
+# 期待: exit 0、stdout に "doctor passed" 等
+# 失敗時: exit 1 + 原因 stdout、live run 中止
+```
+
+doctor は **submit / create を絶対押さない** (no-submit sentinel test で固定済)。doctor 通過しない限り Section 2 へ進まない。
+
+artifacts + doctor 全 pass すれば、(後述の制約付き) live run へ進める。
 
 ### ⚠️ 重要: artifacts では duration > 180 sec を保証不能
 
@@ -63,16 +89,19 @@ sed -i '' 's/^OPENCLAW_AUTOPILOT_DRYRUN_OVERRIDE=.*/OPENCLAW_AUTOPILOT_DRYRUN_OV
 grep -E "OPENCLAW_SUNO_LIVE|DRYRUN" .local/social-credentials.env
 ```
 
-### 2-2. Operator Chrome CDP attach 起動
+### 2-2. Operator Chrome CDP attach 起動 (Section 1 doctor 既に通過済前提)
+
+Section 1 で `start-chrome-cdp.sh` + `suno-doctor.sh` を既に通過済の場合は、本ステップは確認のみ:
 
 ```bash
-# 御大の主 Chrome に CDP port 9222 で attach
-# (memory: project_suno_profile_strategy.md - 御大の主 Chrome profile を使う)
-bash scripts/start-chrome-cdp.sh
+# CDP port 9222 が 127.0.0.1 bind で生きているか
+curl -sS http://127.0.0.1:9222/json/version | jq -r '.Browser // "unreachable"'
+# 期待: Chrome/<version>
 
-# 起動後、Suno がログイン済みか確認
-# https://suno.com/create でログインユーザー確認
+# Suno がログイン済みか視認 (Chrome window で https://suno.com/create を開いた状態)
 ```
+
+CDP が落ちていたら Section 1 から再実行。doctor 未通過のまま 2-3 へ進むのは禁止。
 
 ### 2-3. Autopilot resume + run-cycle
 
@@ -106,7 +135,7 @@ run-cycle 1 周完走後、以下を全て確認:
 | 5 | `songs/song-NNN/suno/style.md` | core ≤120 字、total ≤400 字 (V5.5 current canon) |
 | 6 | `songs/song-NNN/suno/exclude.md` | ≤200 字、2-5 項目、copyright source-name なし |
 | 7 | `songs/song-NNN/suno/yaml-suno.md` | ≤4000 字、META + vocals + production_notes 完備 |
-| 8 | `songs/song-NNN/suno/payload.json` | `lyrics` ← yaml-suno、`lyricsText` ← lyrics-suno |
+| 8 | `songs/song-NNN/suno/payload.json` (v10.5 contract) | `lyrics` ← **LYRICS body のみ** (`extractLyricsBody` 通過済、UI textarea 投入用)、`payloadYaml` ← YAML 全体 (ledger / 永続化用)、`lyricsText` ← lyrics-suno (driver fallback) |
 | 9 | Suno で 2 takes 生成 | **duration > 180 sec (3 分以上)** |
 | 10 | Telegram message | 5 ブロック (🌐観察元 / 💬抜粋 / 🎯動機 / 🎵タイトル / 🔗 1.URL / 2.URL) + privacy guard 三重 (URL allowlist / quote ≤140 / handle redaction) |
 
@@ -122,8 +151,9 @@ run-cycle 1 周完走後、以下を全て確認:
 
 失敗例:
 - duration < 180 sec (Suno 側挙動、artifacts は OK でも発生し得る) → 27 秒駄作の再発と同じ
-- driver timeout (CDP attach 切れ等)
-- payload validation fail (lyrics の構造が壊れる)
+- driver timeout (CDP attach 切れ / textarea state await 失敗 / `bringToFront()` 効かず) — v10.5 Phase A で軽減済だが完全防止ではない
+- React controlled input value reflection assertion fail (v10.5 Phase A で 1 回 retry 後 fail)
+- payload validation fail (lyrics の構造が壊れる、`extractLyricsBody` で空 body)
 - Telegram formatter exception
 
 いずれも rollback → 御大に状況報告 → 御大判断。
@@ -162,6 +192,7 @@ rm .local/social-credentials.env.bak
 御大に以下を報告:
 
 - 実行日時 (JST)
+- doctor 通過確認 (v10.5 Phase B)
 - run-cycle 結果 (success / fail)
 - artifact path (song-NNN)
 - Suno take URLs (2 つ)
@@ -169,11 +200,13 @@ rm .local/social-credentials.env.bak
 - Telegram message スクショ
 - env rollback 完了確認
 - R10 三重防護復帰確認
-- Plan v10.4 Phase 6 完了宣言
+- Plan v10.5 Phase D 完了宣言
 
 ## Out of Scope (本ランブック対象外)
 
 - 連続 cycle 自動実行 (1 回 only)
 - duration < 180 sec 時の自動 retry (禁止、御大判断必須)
-- Phase 1-5 のコード変更 (本ランブックは実行のみ)
+- Phase 1-5 + v10.5 Phase A/B/C のコード変更 (本ランブックは実行のみ)
 - 公開 path (御大の take 選択 → 配信) — 別 runbook
+- 専用 headed Chrome profile fallback (v10.5 で混ぜず、別 Plan で評価)
+- Tampermonkey / userscript / clipboard inject 等の外部依存 (v10.5 で完全廃止)
