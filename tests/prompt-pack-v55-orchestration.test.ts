@@ -34,8 +34,9 @@ describe("Suno V5.5 prompt pack orchestration", () => {
     expect(pack.exclude.length).toBeLessThanOrEqual(200);
     expect(pack.yamlLyrics.length).toBeLessThanOrEqual(4000);
     expect(pack.yamlLyrics).toContain("LYRICS START");
-    expect(pack.payload.lyrics).toBe(pack.yamlLyrics);
+    expect(pack.payload.lyrics).toBe(lyrics);
     expect(pack.payload.lyricsText).toBe(lyrics);
+    expect(pack.payload.payloadYaml).toBe(pack.yamlLyrics);
     expect(pack.sliders.weirdness).toBeGreaterThanOrEqual(15);
     expect(pack.sliders.weirdness).toBeLessThanOrEqual(85);
     expect(pack.validation.valid).toBe(true);
@@ -72,8 +73,11 @@ describe("Suno V5.5 prompt pack orchestration", () => {
     expect(exclude.length).toBeLessThanOrEqual(201);
     expect(yaml).toContain("LYRICS START");
     expect(lyricsSuno).toContain("[Verse 1 - tight civic flow]");
-    expect(payload.lyrics).toBe(result.pack.yamlLyrics);
+    expect(payload.lyrics).toBe(lyrics);
     expect(payload.lyricsText).toBe(lyrics);
+    expect(payload.payloadYaml).toBe(result.pack.yamlLyrics);
+    expect(String(payload.lyrics)).not.toContain("LYRICS START");
+    expect(String(payload.lyrics)).not.toContain("# META");
     expect(ledger).toContain("style.md");
     expect(ledger).toContain("exclude.md");
     expect(ledger).toContain("yaml-suno.md");

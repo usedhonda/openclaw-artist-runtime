@@ -764,11 +764,15 @@ export interface SunoWorkerStatus {
 
 export interface SunoCreatePayload {
   /**
-   * Primary Suno lyrics payload. Phase 4 writes this from yaml-suno.md: a
-   * single field containing YAML META plus the lyrics body intended for Suno.
-   * The Playwright driver must prefer this field when both lyrics fields exist.
+   * Primary Suno lyrics payload. This is the UI textarea body only, with YAML
+   * META and lyrics boundary markers removed.
    */
   lyrics?: string;
+  /**
+   * Full Suno payload YAML retained for ledger and persistence. This is not
+   * intended to be pasted into the Suno lyrics textarea.
+   */
+  payloadYaml?: string;
   /**
    * Driver fallback only. Phase 4 writes this from lyrics-suno.md: plain lyrics
    * plus section metatags, without YAML META. Used only when payload.lyrics is

@@ -19,6 +19,7 @@ function pageMock() {
     goto: vi.fn(async () => undefined),
     waitForLoadState: vi.fn(async () => undefined),
     waitForTimeout: vi.fn(async () => undefined),
+    bringToFront: vi.fn(async () => undefined),
     screenshot: vi.fn(async () => undefined),
     content: vi.fn(async () => "<html></html>"),
     url: vi.fn(() => SUNO_CREATE_URL),
@@ -27,7 +28,8 @@ function pageMock() {
       first: () => ({
         waitFor: vi.fn(async () => undefined),
         isVisible: vi.fn(async () => true),
-        fill: vi.fn(async (value: string) => fills.push({ selector, value }))
+        fill: vi.fn(async (value: string) => fills.push({ selector, value })),
+        evaluate: vi.fn(async (_callback: unknown, value: string) => value)
       }),
       fill: vi.fn(async (value: string) => fills.push({ selector, value })),
       click: vi.fn(async () => undefined),
@@ -61,11 +63,19 @@ describe("Suno driver payload contract", () => {
     launchPersistentContextMock.mockReset();
   });
 
-  it("prefers payload.lyrics when lyrics and lyricsText both exist", async () => {
+  it("extracts UI lyrics body from payloadYaml when present", async () => {
     await expect(filledLyrics({
-      lyrics: "meta:\n  title: YAML first\nlyrics:\n  - canonical",
+      payloadYaml: "# META\ntitle: YAML first\nLYRICS START\n[Verse]\ncanonical\nLYRICS END",
+      lyrics: "[Verse]\nbody fallback",
       lyricsText: "[Verse]\nplain fallback"
-    })).resolves.toBe("meta:\n  title: YAML first\nlyrics:\n  - canonical");
+    })).resolves.toBe("[Verse]\ncanonical");
+  });
+
+  it("prefers payload.lyrics when payloadYaml is missing and lyricsText also exists", async () => {
+    await expect(filledLyrics({
+      lyrics: "[Verse]\nbody first",
+      lyricsText: "[Verse]\nplain fallback"
+    })).resolves.toBe("[Verse]\nbody first");
   });
 
   it("uses payload.lyricsText only when payload.lyrics is missing", async () => {

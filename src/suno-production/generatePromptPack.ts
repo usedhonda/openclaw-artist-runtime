@@ -1,4 +1,5 @@
 import { createHash } from "node:crypto";
+import { extractLyricsBody } from "../services/lyricsExtraction.js";
 import type { CreateSunoPromptPackInput, SunoPromptPack, SunoSliders } from "../types.js";
 import { validateSunoPromptPack } from "../validators/promptPackValidator.js";
 import { buildExclude as buildExcludeV55 } from "./buildExclude.js";
@@ -11,14 +12,16 @@ function hashText(value: string): string {
 }
 
 function buildPayload(input: CreateSunoPromptPackInput, style: string, exclude: string, yamlLyrics: string, sliders: SunoSliders): Record<string, unknown> {
+  const lyricsBody = extractLyricsBody(yamlLyrics);
   return {
     songId: input.songId,
     songName: input.songTitle,
     artistReason: input.artistReason,
     styleAndFeel: style,
     excludeStyles: exclude,
-    lyrics: yamlLyrics,
+    lyrics: lyricsBody,
     lyricsText: input.lyricsText,
+    payloadYaml: yamlLyrics,
     lyricsYaml: yamlLyrics,
     sliders
   };
