@@ -123,7 +123,7 @@ export class PlaywrightSunoDriver implements SunoBrowserDriver {
       await page.waitForLoadState("domcontentloaded").catch(() => undefined);
 
       const payload = request.payload ?? {};
-      const lyrics = this.readPayloadText(payload.lyricsText ?? payload.lyrics);
+      const lyrics = this.readPayloadText(payload.lyrics) ?? this.readPayloadText(payload.lyricsText);
       const style = this.readPayloadText(payload.styleAndFeel);
       const exclude = this.readPayloadText(payload.excludeStyles);
       const instrumental = Boolean(payload.instrumental);
@@ -391,7 +391,7 @@ export class PlaywrightSunoDriver implements SunoBrowserDriver {
     }
 
     if (input.title) {
-      await page.locator("input[placeholder=\"Song Title (Optional)\"]").first().fill(input.title);
+      await page.locator("input[placeholder=\"Song Title (Optional)\"]:visible").first().fill(input.title);
     }
 
     if (input.exclude) {

@@ -22,7 +22,7 @@ function pageMock() {
     screenshot: vi.fn(async () => undefined),
     content: vi.fn(async () => "<html></html>"),
     url: vi.fn(() => SUNO_CREATE_URL),
-    evaluate: vi.fn(async () => ["https://suno.com/song/existing"]),
+    evaluate: vi.fn(async () => []),
     locator: vi.fn((selector: string) => ({
       first: () => ({
         waitFor: vi.fn(async () => undefined),
@@ -39,42 +39,40 @@ function pageMock() {
   return page;
 }
 
-describe("Suno driver title fill", () => {
+async function filledLyrics(payload: Record<string, unknown>): Promise<string | undefined> {
+  const page = pageMock();
+  launchPersistentContextMock.mockResolvedValue({
+    pages: vi.fn(() => [page]),
+    newPage: vi.fn(async () => page),
+    close: vi.fn(async () => undefined)
+  });
+  await new PlaywrightSunoDriver(".profile", "skip").create({
+    dryRun: false,
+    authority: "auto_create_and_select_take",
+    runId: "run-contract",
+    payload
+  });
+  return page.fills.find((fill) => fill.selector === "textarea[data-testid=\"lyrics-textarea\"]")?.value;
+}
+
+describe("Suno driver payload contract", () => {
   beforeEach(() => {
     delete process.env.OPENCLAW_SUNO_USE_CDP;
     launchPersistentContextMock.mockReset();
   });
 
-  it("fills songName into the optional title input and prefers contract lyrics over lyricsText", async () => {
-    const page = pageMock();
-    launchPersistentContextMock.mockResolvedValue({
-      pages: vi.fn(() => [page]),
-      newPage: vi.fn(async () => page),
-      close: vi.fn(async () => undefined)
-    });
+  it("prefers payload.lyrics when lyrics and lyricsText both exist", async () => {
+    await expect(filledLyrics({
+      lyrics: "meta:\n  title: YAML first\nlyrics:\n  - canonical",
+      lyricsText: "[Verse]\nplain fallback"
+    })).resolves.toBe("meta:\n  title: YAML first\nlyrics:\n  - canonical");
+  });
 
-    await new PlaywrightSunoDriver(".profile", "skip").create({
-      dryRun: false,
-      authority: "auto_create_and_select_take",
-      runId: "run-title",
-      payload: {
-        songName: "Dead Neon Clock",
-        lyricsText: "plain lyric",
-        lyrics: "title: Dead Neon Clock\nsections:\n  - yaml fallback"
-      }
-    });
+  it("uses payload.lyricsText only when payload.lyrics is missing", async () => {
+    await expect(filledLyrics({ lyricsText: "[Verse]\nplain fallback" })).resolves.toBe("[Verse]\nplain fallback");
+  });
 
-    expect(page.fills).toContainEqual({
-      selector: "input[placeholder=\"Song Title (Optional)\"]:visible",
-      value: "Dead Neon Clock"
-    });
-    expect(page.fills).toContainEqual({
-      selector: "textarea[data-testid=\"lyrics-textarea\"]",
-      value: "title: Dead Neon Clock\nsections:\n  - yaml fallback"
-    });
-    expect(page.fills).not.toContainEqual({
-      selector: "textarea[data-testid=\"lyrics-textarea\"]",
-      value: "plain lyric"
-    });
+  it("uses payload.lyricsText when payload.lyrics is blank", async () => {
+    await expect(filledLyrics({ lyrics: "  ", lyricsText: "[Chorus]\nplain fallback" })).resolves.toBe("[Chorus]\nplain fallback");
   });
 });

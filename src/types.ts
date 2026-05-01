@@ -754,10 +754,26 @@ export interface SunoWorkerStatus {
   };
 }
 
+export interface SunoCreatePayload {
+  /**
+   * Primary Suno lyrics payload. Phase 4 writes this from yaml-suno.md: a
+   * single field containing YAML META plus the lyrics body intended for Suno.
+   * The Playwright driver must prefer this field when both lyrics fields exist.
+   */
+  lyrics?: string;
+  /**
+   * Driver fallback only. Phase 4 writes this from lyrics-suno.md: plain lyrics
+   * plus section metatags, without YAML META. Used only when payload.lyrics is
+   * absent or blank.
+   */
+  lyricsText?: string;
+  [key: string]: unknown;
+}
+
 export interface SunoCreateRequest {
   dryRun: boolean;
   authority: SunoAuthority;
-  payload: Record<string, unknown>;
+  payload: SunoCreatePayload;
   songId?: string;
   runId?: string;
   payloadHash?: string;
