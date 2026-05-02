@@ -899,6 +899,7 @@ export interface PersistSunoPromptPackInput extends Omit<CreateSunoPromptPackInp
   configSnapshot?: unknown;
   observationPath?: string;
   observationSummary?: ObservationSummary;
+  aiReviewProvider?: AiReviewProvider;
 }
 
 export interface PersistedPromptPackResult {

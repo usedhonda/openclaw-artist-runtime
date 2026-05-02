@@ -5,7 +5,7 @@ import type { PersistSunoPromptPackInput, PersistedPromptPackResult, PromptLedge
 import { ensureArtistWorkspace, readArtistSnapshots } from "./artistWorkspace.js";
 import { readSongState, updateSongState } from "./artistState.js";
 import { appendPromptLedger, createPromptLedgerEntry, getSongPromptLedgerPath } from "./promptLedger.js";
-import { createSunoPromptPack } from "../suno-production/generatePromptPack.js";
+import { createSunoPromptPack, createSunoPromptPackWithAi } from "../suno-production/generatePromptPack.js";
 import { extractObservationSummary } from "./songIdeation.js";
 
 async function nextPromptPackVersion(promptsDir: string): Promise<number> {
@@ -74,11 +74,15 @@ export async function createAndPersistSunoPromptPack(input: PersistSunoPromptPac
   await createSongSkeleton(input.workspaceRoot, input.songId);
 
   const { artistSnapshot, currentStateSnapshot } = await readArtistSnapshots(input.workspaceRoot);
-  const pack = createSunoPromptPack({
+  const promptPackInput = {
     ...input,
     artistSnapshot: input.artistSnapshot || artistSnapshot,
     currentStateSnapshot: input.currentStateSnapshot || currentStateSnapshot
-  });
+  };
+  const useAi = input.aiReviewProvider && input.aiReviewProvider !== "mock";
+  const pack = useAi
+    ? await createSunoPromptPackWithAi({ ...promptPackInput, aiReviewProvider: input.aiReviewProvider })
+    : createSunoPromptPack(promptPackInput);
 
   const promptsDir = join(input.workspaceRoot, "songs", input.songId, "prompts");
   const lyricsDir = join(input.workspaceRoot, "songs", input.songId, "lyrics");

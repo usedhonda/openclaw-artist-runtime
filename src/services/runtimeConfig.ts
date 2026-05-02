@@ -161,6 +161,10 @@ export function applyRuntimeEnvOverrides(config: ArtistRuntimeConfig, env: NodeJ
   if (env.OPENCLAW_AUTOPILOT_DRYRUN_OVERRIDE?.trim().toLowerCase() === "off") {
     next.autopilot.dryRun = false;
   }
+  const providerOverride = env.OPENCLAW_AI_REVIEW_PROVIDER?.trim().toLowerCase();
+  if (providerOverride === "mock" || providerOverride === "openclaw" || providerOverride === "openai-codex") {
+    next.aiReview = { ...config.aiReview, provider: providerOverride };
+  }
   return next;
 }
 

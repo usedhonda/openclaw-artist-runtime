@@ -158,16 +158,21 @@ async function currentSong(root: string, preferredSongId?: string): Promise<Song
   return songs.find((song) => song.status !== "scheduled" && song.status !== "published" && song.status !== "archived" && song.status !== "failed");
 }
 
-async function ensureLyrics(root: string, song: SongState): Promise<SongState> {
+async function ensureLyrics(root: string, song: SongState, config?: Partial<ArtistRuntimeConfig>): Promise<SongState> {
   if (song.status === "lyrics" || song.status === "suno_prompt_pack" || song.status === "suno_running" || song.status === "takes_imported" || song.status === "take_selected" || song.status === "social_assets" || song.status === "published") {
     return song;
   }
-  await draftLyrics({ workspaceRoot: root, songId: song.songId });
+  await draftLyrics({
+    workspaceRoot: root,
+    songId: song.songId,
+    config,
+    aiReviewProvider: config?.aiReview?.provider
+  });
   return readSongState(root, song.songId);
 }
 
 async function createPromptPackForSong(root: string, song: SongState, config?: Partial<ArtistRuntimeConfig>): Promise<SongState> {
-  const readySong = await ensureLyrics(root, song);
+  const readySong = await ensureLyrics(root, song, config);
   const lyricsVersion = readySong.lyricsVersion ?? 1;
   const lyricsPath = join(root, "songs", readySong.songId, "lyrics", `lyrics.v${lyricsVersion}.md`);
   const [lyricsText, briefText, moodHint] = await Promise.all([
@@ -185,7 +190,8 @@ async function createPromptPackForSong(root: string, song: SongState, config?: P
     knowledgePackVersion: "local-dev",
     configSnapshot: config,
     moodHint: moodHint.trim() || undefined,
-    observationPath: observationPath && observationPath !== "(runtime observation)" ? isAbsolute(observationPath) ? observationPath : join(root, observationPath) : undefined
+    observationPath: observationPath && observationPath !== "(runtime observation)" ? isAbsolute(observationPath) ? observationPath : join(root, observationPath) : undefined,
+    aiReviewProvider: config?.aiReview?.provider
   });
   return readSongState(root, readySong.songId);
 }
