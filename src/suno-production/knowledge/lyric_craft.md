@@ -1,121 +1,464 @@
-<!-- Author: artist-runtime contributors. Sources: Suno official docs (suno.com/blog), V5.5 release notes. License: MIT. -->
+<!-- Source: /Users/usedhonda/projects/docs/sunomanual (CC BY-NC 4.0, Copyright 2025-2026 usedhonda) -->
 
-# Lyric Craft Rules
+# 作詞クラフト — 伏線・韻・フック・品質ルール詳細
 
-These rules are written for generated songs that will be sent through Suno
-Custom mode with original lyrics. Suno's own Help Center states that Custom mode
-accepts user lyrics and additional context, and that original lyrics remain the
-writer's rights. This file focuses on making those lyrics singable before they
-reach the create form.
+## 1. 伏線テクニック
 
-## Core Principle
+### 基本原則
+- 1曲に伏線は**1つだけ**。欲張らない。1つを深く。
+- 最初の登場は**何気なく、普通に**。重要性を匂わせない。
+- 回収は**Bridge か Final Chorus**で。早すぎると浅くなる。
+- 回収の瞬間、聴き手が「ああ、そういうことか」と感じるのが理想。
 
-Write lyrics as a performance script, not as a prose essay. Every non-tag line
-in the lyric body may be sung, so the text must already sound like something a
-vocalist can phrase.
+### パターン1: 同語反転型
+同じ言葉を再登場させ、意味だけ変える。
 
-## Drafting Sequence
+**種まき（Verse 1）:**
+```
+あめがふるたびに きみがかさをさしだしてくれた
+```
+**回収（Final Chorus）:**
+```
+あめがふるたびに わたしがかさをさしだす ばんになった
+```
+→ 「傘を差し出す」の主語が入れ替わり、成長や喪失を暗示。
 
-1. Define the speaker and emotional pressure.
-2. Pick one concrete image that can return later.
-3. Decide the chorus hook before filling verses.
-4. Sketch the section map.
-5. Write short, singable lines.
-6. Check repetition, vowel endings, and breath points.
-7. Convert production notes into bracketed section tags or YAML metadata, not
-   into lyric lines.
+### パターン2: 情景反転型
+同じ場所を別の感情で描く。
 
-## Concrete Writing
+**種まき（Verse 1）:**
+```
+えきまえのベンチ ふたりでわけた あたたかいカフェオレ
+```
+**回収（Bridge）:**
+```
+えきまえのベンチ ひとりでのむ つめたいカフェオレ
+```
+→ 同じ場所、同じ飲み物。温度が変わるだけで関係の変化を語る。
 
-Prefer sensory and visible details:
+### パターン3: 台詞反転型
+冒頭の一言が終盤で別の文脈を持つ。
 
-- good: a train gate, a cracked phone screen, a cold cup, a blinking sign
-- weak: sadness, society, anxiety, future, love as abstract nouns
+**種まき（Verse 1）:**
+```
+「またあした」って てをふった
+```
+**回収（Final Chorus）:**
+```
+「またあした」が もう こない
+```
+→ 日常の挨拶が、喪失の重みを持つ。
 
-Emotion can appear, but it should not carry the whole line. If a line explains
-what the listener should feel, replace part of it with an object or action.
+### パターン4: 欠落補完型
+最初は語られなかった対象が後半で明かされる。
 
-## Foreshadowing
+**Verse 1-2:** 「きみ」への思いを語るが、「きみ」が誰かは不明。
+**Bridge:** 実は「きみ」は**過去の自分**、または**もういない人**だったと気づく。
 
-Use one recurring image per song. Place it quietly in the first verse, alter it
-in the bridge or final chorus, and let the listener notice the shift.
+### motif スロット（毎回これを決める）
+```
+motif: [具体物を1つ — 傘、改札、空のグラス、窓の結露、etc.]
+plant_point: Verse 1（何気なく登場）
+recall_point: Bridge or Final Chorus（意味が変わって再登場）
+transformation: [同語反転 / 情景反転 / 台詞反転 / 欠落補完]
+```
 
-Examples of safe transformation patterns:
+---
 
-- object changes owner
-- place changes weather or time of day
-- casual phrase returns with a darker meaning
-- missing detail becomes visible near the end
+## 2. 韻テクニック（日本語特化）
 
-Do not stack multiple symbolic systems. One image that changes is stronger than
-five images that only decorate.
+### 母音韻（基本）
+行末の母音を揃える。日本語は母音5種（a/i/u/e/o）しかないので比較的揃えやすい。
 
-## Hook Rules
+```
+かぜがふく (u)
+ゆめをつく (u)
+```
+```
+よるのそら (a)
+きみのこえ (e) ← 揃えない選択も有効（変化をつける）
+```
 
-A chorus hook should be short enough to remember after one listen. Aim for:
+### 行中韻（J-Pop頻出）
+行の同じ位置（例: 3文字目と3文字目）で母音を揃える。J-Popの上位ヒット曲で多用される技法。
 
-- three to eight words
-- a strong first phrase
-- repeatable wording with one small variation
-- open vowel endings when possible
-- a line that names the song's emotional argument
+```
+ま「ち」のあかりが (i)
+か「ぜ」がほおを   (e)
+```
+→ 完全一致でなくても、同じ位置にリズムの核を置くと歌が流れる。
 
-The hook is not required to explain the whole story. It should be the phrase the
-song keeps returning to because the speaker cannot escape it.
+### 3文字韻（上級）
+語尾3文字の母音パターンを揃える。
 
-## Rhyme and Flow
+```
+ひかり (i-a-i)
+きざし (i-a-i)
+```
+```
+ゆめのなか (e-o-a-a)
+こえのまま (o-e-o-a-a) ← 完全一致でなくても母音の流れが近ければOK
+```
 
-Use rhyme as stability, not decoration.
+### 音節数
+- 同セクション内の隣接行は音節数を揃える（±1音節）
+- Verse: 7-10音節/行が歌いやすい
+- Chorus: 5-8音節/行（短い方がキャッチー）
+- 1行15音節を超えると息継ぎできない
 
-- Verses can use loose vowel echoes.
-- Choruses should rhyme or rhythmically repeat more clearly.
-- Bridges can break rhyme to signal a perspective change.
-- Rap sections should group internal rhymes by bar, not only by line ending.
+### 英日クロス韻
+英語と日本語で韻を踏む。自然に使えると洗練される。
 
-For Japanese lyrics, watch vowel movement and line length. Adjacent lines in the
-same section should feel close enough to sing in the same melodic pocket.
+```
+tonight / こんないと (night / ないと)
+my way / まよいながら (way / ゎい→まよい)
+dream / どりーむ
+so far away / はなれてく
+```
 
-## Singability Checklist
+### 韻の強度コントロール
+- Chorusは韻を**強め**に（反復性が記憶に残る）
+- Verseは韻を**控えめ**に（物語の自然さを優先）
+- Bridgeは韻を**外す**のもアリ（コントラスト）
 
-- Verse lines: usually medium length, enough room for detail.
-- Chorus lines: shorter, cleaner, and easier to repeat.
-- Avoid repeated tongue-twisters unless the style is explicitly percussive.
-- Avoid stuffing proper nouns into every line; save them for impact points.
-- Use punctuation for breath, not for prose grammar.
-- Keep English phrases intentional and pronounceable.
+---
 
-## Bracket Safety
+## 3. フック設計
 
-Suno lyric fields may interpret plain text as singable. Keep instructions inside
-brackets:
+### フックの条件
+1. Chorus冒頭の3-6語
+2. 口ずさめる（複雑すぎない）
+3. 曲の核を1行で言い切る
+4. 繰り返しても飽きない
 
-- `[Verse 1 - close vocal, sparse drums]`
-- `[Chorus - full band, wide harmony]`
-- `[Bridge - stripped, half-time feel]`
+### フック強化テクニック
 
-Never write a sentence like "make this chorus louder" outside a bracket.
+**反復バリエーション**: 同じフレーズを少しずつ変える
+```
+[Chorus]
+はしりだせ いますぐに
+はしりだせ ゆめのさきへ
+はしりだせ なみだごと
+```
 
-## Rights and Identity Safety
+**母音の波**: フレーズ内の母音を揃えると耳に残る
+```
+あいたい あいにいく (a-i-a-i / a-i-i-i-u) → "a-i"の繰り返し
+```
 
-- Do not ask for a living artist's voice.
-- Do not title a style after an existing song, album, or performer.
-- Do not paste lyrics from another writer unless the operator confirms rights.
-- Do not imitate a private person's voice or identity.
+**直前ブレイク**: サビ直前に1拍の空白（休符）を置く
+```
+[Pre-Chorus - building, rising, anticipation]
+もうもどれない...
 
-## Repair Targets
+[Chorus - explosive, full band, powerful]
+（ここにフック）
+```
 
-When repairing AI lyrics, prefer these fixes:
+**問いかけフック**: 疑問形で始めると引き込まれる
+```
+どこにいるの あのひのきみは
+```
 
-1. Remove prose instructions from the lyric body.
-2. Shorten lines that cannot be sung.
-3. Add a stronger chorus hook.
-4. Replace abstract explanation with a visible image.
-5. Reduce repeated ideas.
-6. Add a final landing line so the song does not feel endless.
+---
 
-## Primary Sources Checked
+## 4. 禁止事項と対比例
 
-- https://help.suno.com/en/articles/2415873
-- https://help.suno.com/en/articles/2417409
-- https://help.suno.com/en/articles/3599681
-- https://suno.com/community-guidelines
+### 感情語の多用 → 情景に置き換え
+❌ 悪い例:
+```
+かなしくて さびしくて くるしくて
+もうなにもかんじない
+```
+
+✅ 良い例:
+```
+のみかけのコーヒーが さめていく
+まどのむこう あめがガラスをつたう
+```
+
+### 説明口調 → 動作と情景
+❌ 悪い例:
+```
+あのひきみとであったから ぼくはかわれたんだ
+きみがいたからつよくなれた
+```
+
+✅ 良い例:
+```
+きみがわらうたび せかいにいろがついた
+はじめてうたを くちずさんだ かえりみち
+```
+
+### 比喩の盛りすぎ → 1つの比喩を深く
+❌ 悪い例:
+```
+きみはたいよう きみはうみ きみはかぜ きみはほし
+```
+
+✅ 良い例:
+```
+きみはたいよう
+ぼくはずっと ひなたにいたくて
+やけどしてもいいと おもってた
+```
+→ 1つの比喩（太陽）を3行で展開。深くなる。
+
+### 抽象名詞の連打 → 具体物に落とす
+❌ 悪い例:
+```
+きぼう ゆめ みらい あい
+すべてがここにある
+```
+
+✅ 良い例:
+```
+ポケットのなかの きっぷいちまい
+いきさきはまだ きめてない
+```
+→ 「希望」を「切符」という具体物で表現。
+
+---
+
+## 5. 歌唱可能性チェック
+
+### 行長
+- 1行: **6-12音節が最適**（コミュニティ検証: 70%の初回生成が3回以上の再生成を必要とし、主因は音節数の逸脱）
+- 5音節以下: グリッチが発生しやすい
+- 13音節超: 息切れ+再生成率が上昇
+- 同セクション内: ±1音節の差に収める
+- **セクション間コントラスト**: Verse(8-10音節) → Chorus(5-7音節)の密度差がSunoのセクション認識を助ける
+
+### 発音しやすさ
+- 促音（っ）が2連続しない: ❌「きっとずっと」→ ✅ 分割する
+- 子音クラスター回避: ❌「つきすすむ」→ ✅「つきをおって」
+- 「ん」の連続は歌いにくい: ❌「しんしんかんかん」
+
+### 母音の流れ
+- 開口母音（a, o）は伸ばしやすく、サビ向き
+- 閉口母音（i, u）は繊細で、Verse向き
+- サビの最後の音は**a か o**が気持ちいい
+
+### 句読点リズム（Suno音声合成向け）
+Sunoは句読点を「息継ぎ/ポーズ」として解釈する。歌の呼吸を設計できる。
+
+| 記号 | 効果 | 例 |
+|------|------|-----|
+| カンマ(,) | 軽い切れ（0.1-0.2拍相当） | `きみを, おもうとき` |
+| 三点リーダー(...) | 余韻・フェード（0.5-1拍相当） | `もうもどれない...` |
+| ダッシュ(-) | リズミカルな刻み（スタッカート的） | `あいが- ここに- ある` |
+| スペース | 各音を分離 | `ああ ああ ああ` → 3つの独立した音 |
+| EMダッシュ(—) | 強い分断、語尾カット | `gone — too far` |
+| 全大文字(CAPS) | 押し出しアクセント、叫び寄り | `DON'T LOOK BACK` |
+| 伸ばし綴り(doooOOOooo) | 保持音の意図的延長、音量プロファイル変化 | `whoaaa... hooooome` |
+
+**使い分けの指針:**
+- Verse: カンマで語りのリズムを作る
+- Chorus冒頭: 直前に`...`で一拍空けるとフックが際立つ
+- Bridge: ダッシュで断片的な感情を表現
+- EMダッシュ・CAPS・伸ばし綴りは **V5.5 の「メロディ惰性を壊すハック」専用**（次節参照）
+
+### メロディ惰性を壊すハック（V5.5 Pattern A 限定）
+
+V5.5 では「BPM やジャンルを変えても毎回同じメロディが出る」「保持音や行間の処理が似通う」という現象が 2026-04 のコミュニティ投稿で複数報告されている（Reddit / r/SunoAI `1sfpu59` など）。歌詞側に**記号アグレッションと行分割**を差し込むと、保持音・ブレス・行間が崩れてメロディ惰性を壊せる可能性がある。
+
+**【厳格】このハックは Pattern A（テーマから生成）専用。Pattern B（持ち込み歌詞・一字一句変えない）では禁止。** ユーザーが元から記号や CAPS を含めている場合のみ、そのまま転記する。
+
+**技法（1 つずつ A/B テスト。全部盛り禁止）:**
+- 行末を EM ダッシュでカット: `gone—`, `too far—`
+- 三点リーダーで保持音を作る: `rain falls... on the glass...`
+- 強調キーワードを全大文字化: `STOP / GO / RUN`
+- 伸ばし綴りで母音を引き延ばす: `whoaaa... hooooome`
+- セクション冒頭に 1 拍だけ囁き指示: `(whispered)` / `(breath)`
+
+**効きやすい曲種**: lyric-driven なポップ / バラード / オルタナ。Instrumental 中心やラップ寄りでは効きにくい。
+
+**副作用:**
+- 記号をそのまま歌ってしまう（「ダッシュ」と発声される等）
+- 歌詞の読み上げが不自然になり、全体のまとまりを壊す
+- CAPS を詰めすぎると逆に平板化する
+
+Confidence: medium。保持音や行間が動くことは確認されているが、再現性は take ごとに揺れる。
+
+### フォネティック・スペル（英語ホモグラフ対策）
+英語混じりの歌詞で、Sunoが意図と違う発音をする場合の修正テクニック。
+
+| 単語（意図） | 誤読リスク | 修正スペル |
+|-------------|-----------|-----------|
+| live (ライブの意) | liv (住む) | lyve |
+| bass (楽器の意) | base (基礎) | basss / bahss |
+| tear (涙の意) | tare (引き裂く) | teer |
+| read (過去形) | reed (現在形) | redd |
+
+- 日本語歌詞に英語を混ぜるときは、意図した発音になるか確認
+- 英日クロス韻（night/ないと等）では特に注意
+
+### Ending 設計メモ
+- Ending は最後に直すより、最終行を先に決めた方が安定する
+- Final Chorus の着地点と Outro の長さを先に設計する
+- 最後の1-2行は「まだ続きそう」ではなく、解決・停止・余韻のどれかを明示する
+- `Extend` で引っ張る前に、Final Chorus と Outro の言葉が終止形になっているか見直す
+
+### 構造制御タグの扱い
+- bars / silence / sparse/full band のような制御タグは有効だが、正本ルールは `knowledge/suno_v55_reference.md` の `Lyrics-as-Control-Panel` に置く
+- ここでは歌詞側の原則だけ覚える:
+  - Pattern A: annotation で構造制御してよい
+  - Pattern B: **本文不変**。annotation のみで制御する
+  - タグは短く、演出の核だけ書く
+- 例:
+  - `[Break - silence between phrases]`
+  - `[Verse 2 - 16 bars, minimal piano]`
+
+---
+
+## 6. 物語駆動型作詞法
+
+テーマが抽象的なとき、「短い物語」を内部で作ってから歌詞にする：
+1. 主人公は誰か（年齢、立場）
+2. 何を失った or 何を求めている
+3. 転換点は何か（Bridge で明かされる）
+4. 最後にどうなるか（Final Chorus の着地）
+
+この物語は歌詞に**直接書かない**。情景と断片でほのめかす。
+聴き手が自分の経験を重ねられる余白を残す。
+
+---
+
+## 7. 高度な物語技法
+
+### 視点転換
+- Verse 1 は「わたし」、Verse 2 は「きみ」、Bridge で第三者視点へ切り替えると物語に奥行きが出る
+- 視点が変わるときは、同じモチーフを再提示すると迷子になりにくい
+
+**例:**
+```text
+Verse 1: ぼくは改札のまえで まだきみをまってた
+Verse 2: きみは改札のむこうで ふりむかずにいた
+Bridge : あの駅は だれの記憶にも まだ雨のままだ
+```
+
+### 信頼できない語り手
+- 語り手の認識が正しいとは限らない、という設計
+- 直接「うそをつく」のではなく、**後半で別解釈が立つ情報**を置く
+
+**例:**
+```text
+ずっとひとりだった と いいきっていた
+でも部屋のすみに ふたつぶんのマグカップ
+```
+
+### 時間跳躍
+- Verse ごとに現在 / 過去 / 未来を切り替える
+- 切替点は Bridge か Verse 2 冒頭が扱いやすい
+
+**例:**
+```text
+きのうのきみが わらっていて
+あしたのぼくは それをまだしらない
+```
+
+### 対話
+- 一方的な叙述だけでなく、短い台詞を差すと空気が立つ
+- 台詞は長くしすぎず、感情の爆心だけ残す
+
+**例:**
+```text
+「いかないで」って きこえた気がした
+でもくちびるは たしかにわらってた
+```
+
+### サブテクスト
+- 書かれている内容より、**書かれていない感情**を読ませる
+- 愛していると書かずに、湯気、改札、置き忘れた鍵で言う
+
+**ルール**
+- 感情語を1つ減らし、具体物を1つ足す
+- 説明を1行削り、行間を残す
+
+---
+
+## 8. 感情アーク設計
+
+### 感情モメンタム vs エネルギー
+- エネルギーが上がっても、感情が解決に向かうとは限らない
+- Chorus は音圧を上げつつ、歌詞は未解決のままでもよい
+
+| 項目 | 意味 | 例 |
+|------|------|-----|
+| 感情モメンタム | 心がどちらへ動いているか | 許す / 執着する / 諦める |
+| エネルギー | 音楽的な勢い、声量、密度 | ささやき / 高揚 / 爆発 |
+
+### 感情矛盾
+- 「笑っているのに苦しい」「前へ進むのに忘れられない」のような矛盾は歌詞を強くする
+- 感情を1色に塗らない。相反する語を1行内で共存させる
+
+**例:**
+```text
+やっとほどけたのに まだあたたかい
+```
+
+### クライマックスと解決を一致させない
+- Final Chorus が最大音量でも、歌詞上は未解決でよい
+- むしろ「音は解放、意味は未解決」のズレが余韻を作る
+
+**パターン例**
+- 音楽: 最終Chorusで全開
+- 歌詞: 「わからない」「まだここにいる」で閉じる
+
+### 実務ルール
+1. Verse 1 で感情の初期位置を決める
+2. Verse 2 で感情を深めるか、反転の予感を入れる
+3. Bridge で最も私的な本音か矛盾を出す
+4. Final Chorus は「答え」ではなく「いまの真実」を置く
+
+---
+
+## 9. コーチングセクション仕様
+
+歌詞出力の後に、以下の構成でコーチングを出す。通常の日本語（漢字あり）で書く。
+
+### 9-1. この歌詞の設計図（必須・毎回）
+
+仕込んだ技法を「何をしたか」+「なぜそうしたか」で解説:
+- **伏線**: 種まき位置 → 回収位置。なぜその変化が効くか
+- **韻の仕掛け**: どの行同士が韻を踏んでいるか。韻の種類（母音韻、行中韻、多音節韻等）
+- **フック分析**: サビ冒頭がなぜ記憶に残るか（響き、繰り返し構造、感情凝縮）
+- **構成の意図**: なぜこの曲構成を選んだか。エネルギーカーブの設計意図
+- **感情アーク**: 曲全体で感情がどう動いているか
+
+例: 「Verse 1の"かさ"がBridgeで"ひとりのかさ"に。主語が変わることで関係性の変化を暗示（同語反転型の伏線）。」
+
+### 9-2. ここが良い / ここを磨ける（必須・毎回）
+
+**強み（1-2点）**: 具体的な行を引用して褒める。
+**改善余地（2-3点）**: 以下の観点から具体的に指摘し、改善方向を添える。
+
+| 観点 | チェック内容 |
+|------|-------------|
+| 🎭 情景力 | 感情語に頼っていないか？ 具体物で描けているか |
+| 🔗 伏線 | 種まきと回収はあるか？ タイミングは適切か |
+| 🎵 韻の密度 | 韻が薄い/無理な箇所はないか |
+| 🪝 フック | サビ冒頭は口ずさめるか？ 3秒で覚えられるか |
+| 📐 構成 | セクション間のコントラストは十分か |
+| 🗣️ 歌いやすさ | 音節数・子音の詰まり具合は適切か |
+| 📖 物語 | 主人公は明確か。感情の変化はあるか |
+| 🌐 言語バランス | バイリンガル時、英語配置は自然か |
+
+### 9-3. 次の一手（必須・3-5個）
+
+番号付き選択肢。各選択肢に「なぜ効くか」の一言理由をつけ、ユーザーの作詞判断力を育てる。
+
+例:
+1. 🎭 **伏線を強化** — Verse 1のモチーフをBridgeで別の意味で回収 → 深みが増す
+2. 🏗️ **Pre-Chorus追加** — Verse→Chorusの間に2行の助走 → サビの爆発力倍増
+3. 🎵 **韻をタイトに** — 語尾母音を揃える → 流れが締まる
+4. 🗣️ **フックを英語に** — キャッチーさUP（バイリンガル化）
+5. 🔥 **ラップVerse** — Chorusとのコントラストが劇的に
+
+### 9-4. 作詞ワンポイント（任意）
+
+今回の歌詞に関連する作詞テクニックを1つ、短く教える。次に自分で書くとき使える知識。
+
+例:
+- 「**同語反転のコツ**: 初回は"日常の動作"、回収時は"特別な意味"。差が大きいほど感動が深い。」
+- 「**TikTok時代のフック**: 冒頭1.7秒（≒1行目）で世界観が伝わるかがバズの分岐点。」
