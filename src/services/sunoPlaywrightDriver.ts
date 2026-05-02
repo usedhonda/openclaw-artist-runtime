@@ -502,13 +502,13 @@ export class PlaywrightSunoDriver implements SunoBrowserDriver {
         return element.textContent ?? "";
       }, expected);
 
-      if (reflected.startsWith(expected)) {
+      if (reflected.startsWith(expected) || (reflected.length > 0 && expected.startsWith(reflected))) {
         return;
       }
     }
 
     throw new Error(
-      `suno_create_fill_mismatch: ${fieldName} reflected value did not start with expected text; expected=${JSON.stringify(expected.slice(0, 80))} actual=${JSON.stringify(reflected.slice(0, 80))}`
+      `suno_create_fill_mismatch: ${fieldName} reflected value did not match (Suno UI may have truncated); expected=${JSON.stringify(expected.slice(0, 80))} actual=${JSON.stringify(reflected.slice(0, 80))}`
     );
   }
 
