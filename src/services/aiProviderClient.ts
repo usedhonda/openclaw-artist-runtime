@@ -208,7 +208,8 @@ function extractResponseText(payload: unknown): string | undefined {
 }
 
 function extractSseResponseText(streamText: string): string | undefined {
-  const parts: string[] = [];
+  const deltas: string[] = [];
+  let completed: string | undefined;
   for (const line of streamText.split(/\r?\n/)) {
     if (!line.startsWith("data:")) {
       continue;
@@ -222,18 +223,19 @@ function extractSseResponseText(streamText: string): string | undefined {
       continue;
     }
     if (event.type === "response.output_text.delta" && typeof event.delta === "string") {
-      parts.push(event.delta);
+      deltas.push(event.delta);
       continue;
     }
     if (event.type === "response.output_item.done" && isRecord(event.item)) {
       const content = Array.isArray(event.item.content) ? event.item.content : [];
       for (const contentItem of content) {
         if (isRecord(contentItem) && contentItem.type === "output_text" && typeof contentItem.text === "string") {
-          parts.push(contentItem.text);
+          completed = contentItem.text;
         }
       }
     }
   }
+  const parts = completed ? [completed] : deltas;
   return parts.join("").trim() || undefined;
 }
 
