@@ -8,6 +8,7 @@ import { repairLyricsV55 } from "./lyricsRepair.js";
 import { validateLyricsV55 } from "./lyricsValidator.js";
 import { secretLikePattern } from "./personaMigrator.js";
 import { emitRuntimeEvent } from "./runtimeEventBus.js";
+import { buildLyricsDraftingPrompt, readLyricsKnowledgeDigest } from "./lyricsDraftingPrompt.js";
 
 export interface DraftLyricsInput {
   workspaceRoot: string;
@@ -58,52 +59,9 @@ function deriveLyrics(title: string, brief: string): string {
   ].join("\n");
 }
 
-function truncate(value: string, max = 2400): string {
-  return value.length <= max ? value : value.slice(0, max);
-}
-
 function parseField(raw: string, field: string): string {
   const match = raw.match(new RegExp(`(?:^|\\n)${field}:\\s*([\\s\\S]*?)(?=\\n(?:title|lyrics|moodHint):\\s*|$)`, "i"));
   return match?.[1]?.trim() ?? "";
-}
-
-async function readKnowledgeDigest(): Promise<string> {
-  const root = join(process.cwd(), "src", "suno-production", "knowledge");
-  const names = ["lyric_craft.md", "song_structures.md", "suno_v55_reference.md"];
-  const parts = await Promise.all(names.map(async (name) => {
-    const raw = await readFile(join(root, name), "utf8").catch(() => "");
-    return raw
-      .split(/\r?\n/)
-      .filter((line) => /section|metatag|line|command|copyright|duration|hook|verse|bridge|outro/i.test(line))
-      .slice(0, 16)
-      .join("\n");
-  }));
-  return parts.filter(Boolean).join("\n\n").slice(0, 2400);
-}
-
-function buildPrompt(input: { artistMd: string; currentState: string; briefText: string; title: string; knowledgeDigest: string; repairNotes?: string[] }): string {
-  return [
-    "Write lyrics for used::honda from the provided raw material.",
-    "Extract one motif from the observation-bearing brief, metabolize it through the artist persona, and avoid generic placeholder lyrics.",
-    "Return strict JSON only: {\"title\":\"2-4 words\",\"form\":\"short form name\",\"sections\":[{\"tag\":\"Verse 1 - tight flow\",\"lines\":[\"line\"]}],\"bilingual_hint\":\"short note\",\"moodHint\":\"2-4 word sonic mood\"}.",
-    "Use 7-10 tagged sections. Verse sections need 4-21 lines, Hook 2-6, Bridge 1-3, Intro/Outro 0-1.",
-    "Every section tag must include an annotation after the section name. Do not place commands outside tags. Do not name existing artists or songs.",
-    input.repairNotes?.length ? `Repair notes from previous draft: ${input.repairNotes.join("; ")}` : "",
-    "",
-    "Suno V5.5 knowledge digest:",
-    truncate(input.knowledgeDigest),
-    "",
-    "ARTIST.md:",
-    truncate(input.artistMd),
-    "",
-    "artist/CURRENT_STATE.md:",
-    truncate(input.currentState),
-    "",
-    `title hint: ${input.title}`,
-    "",
-    "brief.md:",
-    truncate(input.briefText)
-  ].join("\n");
 }
 
 function mockStructuredDraft(title: string, briefText: string): string {
@@ -180,10 +138,10 @@ function parseDraft(raw: string, fallbackTitle: string): LyricsDraft | undefined
 async function composeLyricsDraft(input: DraftLyricsInput, title: string, briefText: string): Promise<LyricsDraft> {
   const provider = input.aiReviewProvider ?? input.config?.aiReview?.provider ?? "mock";
   const mind = await readArtistMind(input.workspaceRoot);
-  const knowledgeDigest = await readKnowledgeDigest();
+  const knowledgeDigest = await readLyricsKnowledgeDigest();
   let repairNotes: string[] = [];
   for (let attempt = 0; attempt < 3; attempt += 1) {
-    const prompt = buildPrompt({ artistMd: mind.artist, currentState: mind.currentState, briefText, title, knowledgeDigest, repairNotes });
+    const prompt = buildLyricsDraftingPrompt({ artistMd: mind.artist, currentState: mind.currentState, briefText, title, knowledgeDigest, repairNotes });
     assertSafe("input", prompt);
     const raw = provider === "mock" ? mockStructuredDraft(title, briefText) : await callAiProvider(prompt, { provider });
     assertSafe("response", raw);

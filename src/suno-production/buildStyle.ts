@@ -1,3 +1,7 @@
+import type { AiReviewProvider } from "../types.js";
+import { callAiProvider, isAiProviderMockFallbackResponse } from "../services/aiProviderClient.js";
+import { buildStyleSynthesisPrompt } from "./styleSynthesisPrompt.js";
+
 export interface BuildStyleInput {
   artistProfile?: string;
   brief?: string;
@@ -16,6 +20,10 @@ export interface BuildStyleResult {
   coreTags: string;
   performanceDirection?: string;
   total: string;
+}
+
+export interface StyleAiSynthesisOptions {
+  provider?: AiReviewProvider;
 }
 
 function compact(value: string): string {
@@ -58,8 +66,23 @@ function inferMood(input: BuildStyleInput): string {
   return splitTags(input.moodHint ?? input.vibe ?? "observational dusk").slice(0, 2).join(" ") || "observational dusk";
 }
 
+function inferInstruments(input: BuildStyleInput): string[] {
+  const source = `${input.brief ?? ""} ${input.artistProfile ?? ""}`.toLowerCase();
+  const candidates = [
+    ["Rhodes", /\brhodes\b/],
+    ["sax", /\bsax(?:ophone)?\b/],
+    ["upright bass", /\bupright bass\b/],
+    ["brushed drums", /\bbrushed drums?\b|\bbrushes\b/],
+    ["warm bass", /\bwarm bass\b/],
+    ["cold synth", /\bcold synth\b/],
+    ["glass synth", /\bglass synth\b/]
+  ] as const;
+  return candidates.filter(([, pattern]) => pattern.test(source)).map(([label]) => label);
+}
+
 export function buildStyle(input: BuildStyleInput): BuildStyleResult {
   const vibe = compact(input.vibe ?? inferMood(input));
+  const instruments = input.instruments ?? inferInstruments(input);
   const tags = uniq([
     vibe,
     inferGenre(input),
@@ -67,7 +90,7 @@ export function buildStyle(input: BuildStyleInput): BuildStyleResult {
     input.key ?? "minor key",
     inferMood(input),
     input.vocalDescriptor ?? "close dry vocal",
-    ...(input.instruments ?? ["warm bass", "brushed drums", "cold synth"]).slice(0, 3),
+    ...(instruments.length > 0 ? instruments : ["warm bass", "brushed drums", "cold synth"]).slice(0, 3),
     input.mixKeyword ?? "intimate mix",
     vibe
   ]);
@@ -77,4 +100,32 @@ export function buildStyle(input: BuildStyleInput): BuildStyleResult {
     : undefined;
   const total = direction ? `${coreTags}. ${direction}`.slice(0, 400) : coreTags;
   return { coreTags, performanceDirection: direction, total };
+}
+
+function normalizeAiStyle(raw: string): BuildStyleResult | undefined {
+  const text = raw
+    .replace(/```(?:text)?/gi, "")
+    .replace(/```/g, "")
+    .replace(/^#\s*Style\s*/im, "")
+    .trim();
+  if (!text || isAiProviderMockFallbackResponse(text)) {
+    return undefined;
+  }
+  const total = text.slice(0, 400);
+  const coreSource = text
+    .split(/\r?\n/)
+    .map((line) => line.replace(/^[-*]\s*/, "").trim())
+    .filter((line) => line && !/^#/.test(line))
+    .join(", ");
+  const coreTags = fitTags(splitTags(coreSource), 120);
+  return { coreTags: coreTags || fitTags(splitTags(total), 120), total };
+}
+
+export async function synthesizeStyle(input: BuildStyleInput, options: StyleAiSynthesisOptions = {}): Promise<BuildStyleResult> {
+  if (!options.provider || options.provider === "mock") {
+    return buildStyle(input);
+  }
+  const prompt = buildStyleSynthesisPrompt(input);
+  const raw = await callAiProvider([prompt.system, "", prompt.user].join("\n"), { provider: options.provider });
+  return normalizeAiStyle(raw) ?? buildStyle(input);
 }

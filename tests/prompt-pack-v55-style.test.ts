@@ -1,5 +1,10 @@
 import { describe, expect, it } from "vitest";
 import { buildStyle } from "../src/suno-production/buildStyle";
+import {
+  STYLE_SYNTHESIS_KNOWLEDGE_REFERENCES,
+  STYLE_SYNTHESIS_SYSTEM_PROMPT,
+  buildStyleSynthesisPrompt
+} from "../src/suno-production/styleSynthesisPrompt";
 
 describe("Suno V5.5 style builder", () => {
   it("builds short core tags under 120 chars and total under 400 chars", () => {
@@ -28,5 +33,30 @@ describe("Suno V5.5 style builder", () => {
 
     expect(result.coreTags).not.toMatch(/\.$/);
     expect(result.coreTags.split(",").length).toBeGreaterThanOrEqual(6);
+  });
+
+  it("extracts brief-specific instrument terms for fallback style tags", () => {
+    const result = buildStyle({
+      brief: "A midnight room-trio sketch built around Rhodes, sax, and upright bass.",
+      moodHint: "blue municipal hush"
+    });
+
+    expect(result.coreTags).toContain("Rhodes");
+    expect(result.coreTags).toContain("sax");
+    expect(result.coreTags).toContain("upright bass");
+  });
+
+  it("exposes mygpts-derived style synthesis prompt guidance with catalog attribution", () => {
+    const prompt = buildStyleSynthesisPrompt({
+      brief: "Rhodes and sax move under a restrained vocal.",
+      moodHint: "blue municipal hush"
+    });
+
+    expect(prompt.sourceAttribution).toContain("mygpts/style-analyzer/instructions.md");
+    expect(STYLE_SYNTHESIS_SYSTEM_PROMPT).toContain("Performance direction");
+    expect(STYLE_SYNTHESIS_SYSTEM_PROMPT).toContain("meta.vibe appears verbatim");
+    expect(STYLE_SYNTHESIS_SYSTEM_PROMPT).toContain("style_catalog.md");
+    expect(STYLE_SYNTHESIS_KNOWLEDGE_REFERENCES).toContain("style_catalog.md");
+    expect(prompt.user).toContain("Rhodes and sax");
   });
 });

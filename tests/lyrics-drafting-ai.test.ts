@@ -4,6 +4,12 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { draftLyrics } from "../src/services/lyricsDrafting";
+import {
+  LYRICS_KNOWLEDGE_DIGEST_FILES,
+  LYRICS_WRITER_INSTRUCTIONS_ATTRIBUTION,
+  buildLyricsDraftingPrompt,
+  readLyricsKnowledgeDigest
+} from "../src/services/lyricsDraftingPrompt";
 import { readSongState } from "../src/services/artistState";
 
 async function workspace(): Promise<string> {
@@ -25,6 +31,33 @@ async function workspace(): Promise<string> {
 }
 
 describe("AI lyrics drafting", () => {
+  it("builds a strengthened lyrics prompt from the attributed lyrics-writer source and expanded knowledge references", async () => {
+    const prompt = buildLyricsDraftingPrompt({
+      artistMd: "artist mind",
+      currentState: "current state",
+      briefText: "brief",
+      title: "Dead Neon Clock",
+      knowledgeDigest: "knowledge"
+    });
+
+    expect(prompt).toContain(LYRICS_WRITER_INSTRUCTIONS_ATTRIBUTION);
+    expect(prompt).toContain("韻");
+    expect(prompt).toContain("伏線");
+    expect(prompt).toContain("情景");
+    expect(prompt).toContain("パターンA");
+    expect(prompt).toContain("rap_and_flow.md");
+    expect(prompt).toContain("english_lyrics.md");
+    expect(prompt).toContain("master_reference.md");
+    expect(LYRICS_KNOWLEDGE_DIGEST_FILES).toContain("rap_and_flow.md");
+    expect(LYRICS_KNOWLEDGE_DIGEST_FILES).toContain("english_lyrics.md");
+    expect(LYRICS_KNOWLEDGE_DIGEST_FILES).toContain("master_reference.md");
+
+    const digest = await readLyricsKnowledgeDigest();
+    expect(digest).toContain("## rap_and_flow.md");
+    expect(digest).toContain("## english_lyrics.md");
+    expect(digest).toContain("## master_reference.md");
+  });
+
   it("drafts lyrics, short title, and mood hint from the observation-bearing brief", async () => {
     const root = await workspace();
     const result = await draftLyrics({ workspaceRoot: root, songId: "song-001", aiReviewProvider: "mock" });

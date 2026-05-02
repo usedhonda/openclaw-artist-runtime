@@ -1,3 +1,7 @@
+import type { AiReviewProvider } from "../types.js";
+import { callAiProvider, isAiProviderMockFallbackResponse } from "../services/aiProviderClient.js";
+import { buildExcludeSynthesisPrompt } from "./excludeSynthesisPrompt.js";
+
 export interface BuildExcludeInput {
   artistAvoid?: string[];
   genre?: string;
@@ -8,6 +12,10 @@ export interface BuildExcludeInput {
 export interface BuildExcludeResult {
   items: string[];
   text: string;
+}
+
+export interface ExcludeAiSynthesisOptions {
+  provider?: AiReviewProvider;
 }
 
 function normalize(value: string): string {
@@ -41,4 +49,32 @@ export function buildExclude(input: BuildExcludeInput = {}): BuildExcludeResult 
     items: safeItems,
     text: safeItems.join(", ").slice(0, 200)
   };
+}
+
+function normalizeAiExclude(raw: string, denylist: string[]): BuildExcludeResult | undefined {
+  const text = raw
+    .replace(/```(?:text)?/gi, "")
+    .replace(/```/g, "")
+    .replace(/^#\s*Exclude Styles\s*/im, "")
+    .trim();
+  if (!text || isAiProviderMockFallbackResponse(text)) {
+    return undefined;
+  }
+  const items = [...new Set(text.split(",").map(normalize))]
+    .filter((item) => item && !/^no\s+/i.test(item))
+    .filter((item) => !containsSourceName(item, denylist))
+    .slice(0, 5);
+  if (items.length < 2) {
+    return undefined;
+  }
+  return { items, text: items.join(", ").slice(0, 200) };
+}
+
+export async function synthesizeExclude(input: BuildExcludeInput = {}, options: ExcludeAiSynthesisOptions = {}): Promise<BuildExcludeResult> {
+  if (!options.provider || options.provider === "mock") {
+    return buildExclude(input);
+  }
+  const prompt = buildExcludeSynthesisPrompt(input);
+  const raw = await callAiProvider([prompt.system, "", prompt.user].join("\n"), { provider: options.provider });
+  return normalizeAiExclude(raw, input.copyrightSourceNameDenylist ?? []) ?? buildExclude(input);
 }
