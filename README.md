@@ -160,6 +160,12 @@ Suno integration is designed around a background logged-in browser profile or a 
 copy fallback. It must not use CAPTCHA bypass, credential capture, or non-consensual
 voice/artist imitation flows.
 
+The bundled Suno knowledge pack includes `sunomanual` material by usedhonda
+(Copyright 2025-2026) under CC BY-NC 4.0. The Artist Runtime code remains under
+its own repository license, while the copied knowledge files and embedded
+lyrics/style prompt instructions retain their `sunomanual` attribution and
+non-commercial license notice in `NOTICE.md`.
+
 For distribution installs that use the live Suno browser worker, bring your own
 local Chrome session and attach through Chrome DevTools Protocol (CDP) on the
 loopback interface:

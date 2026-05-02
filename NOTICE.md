@@ -7,9 +7,25 @@ Suno, X/Twitter through Bird, Instagram, and TikTok. Those services are not bund
 with this package and are governed by their own terms, rate limits, account rules,
 and developer policies.
 
-`sunomanual` integration is expected to be supplied by the repository owner in the
-same repository or copied into `src/suno-production/knowledge/` using the included
-import script. Do not publish third-party material unless you have the rights to do so.
+## Sunomanual Knowledge Bundle
+
+This package includes a `sunomanual` knowledge bundle copied from
+`/Users/usedhonda/projects/docs/sunomanual` for the usedhonda private
+non-commercial Artist Runtime project.
+
+- Copyright: Copyright (c) 2025-2026 usedhonda
+- License: Creative Commons Attribution-NonCommercial 4.0 International
+  (CC BY-NC 4.0)
+- Legal code: https://creativecommons.org/licenses/by-nc/4.0/legalcode
+- Bundled material: `src/suno-production/knowledge/` knowledge files,
+  `master_reference.md`, and the `mygpts/lyrics-writer` and
+  `mygpts/style-analyzer` prompt instructions embedded in prompt modules.
+- Attribution locations: copied source files retain HTML source comments, and
+  prompt modules retain attribution constants alongside embedded instructions.
+
+The NonCommercial term is satisfied because this repository is operated as
+usedhonda's private non-commercial Artist Runtime project. Do not redistribute
+the `sunomanual` material for commercial use without separate permission.
 
 ## Third-Party Notices
 
