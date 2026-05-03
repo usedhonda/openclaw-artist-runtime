@@ -50,7 +50,7 @@ export function registerServices(api: unknown): void {
 
   safeRegisterService(api, {
     name: "sunoBrowserWorker",
-    create: () => new SunoBrowserWorker()
+    create: () => new SunoBrowserWorker(resolveDefaultWorkspaceRoot())
   });
 
   safeRegisterService(api, {
