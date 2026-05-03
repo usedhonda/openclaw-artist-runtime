@@ -1,6 +1,7 @@
 import { readFile } from "node:fs/promises";
 import { isAbsolute, join } from "node:path";
 import { applyConfigDefaults } from "../config/schema.js";
+import { BrowserWorkerSunoConnector } from "../connectors/suno/browserWorkerConnector.js";
 import type { AutopilotRunState, AutopilotStage, AutopilotStatus, ArtistRuntimeConfig, SocialPublishLedgerEntry, SocialPublishResult, SongState } from "../types.js";
 import { composeDailyVoice } from "./artistDailyVoiceComposer.js";
 import { markPulsed, shouldPulse } from "./artistPulseRateLimiter.js";
@@ -15,7 +16,7 @@ import { createSongIdea } from "./songIdeation.js";
 import { draftLyrics } from "./lyricsDrafting.js";
 import { prepareSocialAssets } from "./socialAssets.js";
 import { createAndPersistSunoPromptPack } from "./sunoPromptPackFiles.js";
-import { generateSunoRun } from "./sunoRuns.js";
+import { generateSunoRun, importSunoResults, readLatestSunoRun } from "./sunoRuns.js";
 import { publishSocialAction } from "./socialPublishing.js";
 import { selectTake } from "./takeSelection.js";
 import { evaluateSunoTakeSelection } from "./sunoTakeSelector.js";
@@ -83,6 +84,40 @@ function writeStageState(root: string, previous: AutopilotRunState, next: Autopi
 
 export async function writeAutopilotRunState(root: string, state: AutopilotRunState): Promise<AutopilotRunState> {
   return writeAutopilotState(root, state);
+}
+
+async function importPendingSunoGeneration(
+  root: string,
+  songId: string,
+  config: ArtistRuntimeConfig
+): Promise<{ imported: true } | { imported: false; reason?: string } | undefined> {
+  const connector = new BrowserWorkerSunoConnector(root, { config });
+  const workerStatus = await connector.status().catch(() => undefined);
+  if (workerStatus?.state !== "generating") {
+    return undefined;
+  }
+
+  const latestRun = await readLatestSunoRun(root, songId);
+  const runId = workerStatus.currentRunId ?? latestRun?.runId;
+  if (!runId) {
+    return { imported: false, reason: "suno_import_missing_run_id" };
+  }
+
+  const result = await connector.importResults({ runId, urls: [] });
+  if (result.urls.length === 0) {
+    return { imported: false, reason: result.reason ?? "waiting for Suno result import" };
+  }
+
+  await importSunoResults({
+    workspaceRoot: root,
+    songId,
+    runId: result.runId ?? runId,
+    urls: result.urls,
+    selectedTakeId: result.selectedTakeId,
+    resultRefs: result.paths ?? [],
+    config
+  });
+  return { imported: true };
 }
 
 export async function readAutopilotRunState(root: string): Promise<AutopilotRunState> {
@@ -620,6 +655,30 @@ export class ArtistAutopilotService {
           }
           if (retryDecision.action === "failed") {
             return handleSunoGenerateFailure(input.workspaceRoot, existing, baseState, song, retryDecision.reason);
+          }
+          const pendingImport = await importPendingSunoGeneration(input.workspaceRoot, song.songId, config);
+          if (pendingImport?.imported) {
+            return writeStageState(input.workspaceRoot, existing, {
+              ...baseState,
+              currentSongId: song.songId,
+              stage: "take_selection",
+              blockedReason: undefined,
+              lastError: undefined,
+              lastSuccessfulStage: "suno_generation",
+              retryCount: 0,
+              cycleCount: existing.cycleCount + 1
+            });
+          }
+          if (pendingImport && !pendingImport.imported) {
+            return writeStageState(input.workspaceRoot, existing, {
+              ...baseState,
+              currentSongId: song.songId,
+              stage: "suno_generation",
+              blockedReason: pendingImport.reason,
+              lastError: pendingImport.reason,
+              lastSuccessfulStage: existing.lastSuccessfulStage,
+              cycleCount: existing.cycleCount + 1
+            });
           }
           const budget = await reserveSunoGenerationBudget(input.workspaceRoot, 1);
           if (!budget.ok) {
