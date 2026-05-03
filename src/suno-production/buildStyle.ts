@@ -1,6 +1,8 @@
 import type { AiReviewProvider } from "../types.js";
 import { callAiProvider, isAiProviderMockFallbackResponse } from "../services/aiProviderClient.js";
 import { buildStyleSynthesisPrompt } from "./styleSynthesisPrompt.js";
+import { KNOWLEDGE_BUNDLE } from "./knowledge-bundle.js";
+import { STYLE_TEMPLATES, type Genre } from "./styleTemplates.js";
 
 export interface BuildStyleInput {
   artistProfile?: string;
@@ -53,10 +55,11 @@ function fitTags(tags: string[], max: number): string {
   return fitted.join(", ");
 }
 
-function inferGenre(input: BuildStyleInput): string {
+function inferGenre(input: BuildStyleInput): Genre {
   const source = `${input.genre ?? ""} ${input.brief ?? ""} ${input.artistProfile ?? ""}`.toLowerCase();
+  if (/nu.?jazz/.test(source) && /rap|hip.?hop/.test(source)) return "nu-jazz rap";
   if (/rap|hip.?hop/.test(source)) return "rap";
-  if (/jazz|nu.?jazz/.test(source)) return "nu-jazz";
+  if (/jazz|nu.?jazz/.test(source)) return "nu-jazz rap";
   if (/edm|club|dance/.test(source)) return "edm";
   if (/rock|post.?punk/.test(source)) return "post-punk";
   return "alternative pop";
@@ -82,23 +85,70 @@ function inferInstruments(input: BuildStyleInput): string[] {
 
 export function buildStyle(input: BuildStyleInput): BuildStyleResult {
   const vibe = compact(input.vibe ?? inferMood(input));
+  const genre = inferGenre(input);
+  const template = STYLE_TEMPLATES[genre] ?? STYLE_TEMPLATES.default;
   const instruments = input.instruments ?? inferInstruments(input);
   const tags = uniq([
     vibe,
-    inferGenre(input),
+    genre,
     `BPM ${Math.round(input.bpm ?? 124)}`,
     input.key ?? "minor key",
     inferMood(input),
     input.vocalDescriptor ?? "close dry vocal",
-    ...(instruments.length > 0 ? instruments : ["warm bass", "brushed drums", "cold synth"]).slice(0, 3),
+    ...(instruments.length > 0 ? instruments : template.instruments).slice(0, 3),
     input.mixKeyword ?? "intimate mix",
     vibe
   ]);
   const coreTags = fitTags(tags, 120);
-  const direction = input.performanceDirection
-    ? compact(input.performanceDirection).slice(0, 280)
-    : undefined;
-  const total = direction ? `${coreTags}. ${direction}`.slice(0, 1000) : coreTags;
+  const direction = compact(input.performanceDirection ?? "Keep performance restrained, intelligible, and image-led; avoid arena-pop exaggeration.").slice(0, 100);
+  const injectedInstruments = uniq([...instruments, ...template.instruments]).slice(0, 7);
+  const vocabulary = [
+    "wide stereo",
+    "close-mic",
+    "vocal-forward",
+    "bass-heavy",
+    "full arrangement"
+  ].filter((term) => KNOWLEDGE_BUNDLE["style_catalog.md"].toLowerCase().includes(term));
+  const render = (arrangement: string[]) => [
+    "# Style",
+    "",
+    vibe,
+    "",
+    `- BPM: ${Math.round(input.bpm ?? 124)}`,
+    `- Key: ${input.key ?? "minor key"}`,
+    "- Signature: 4/4",
+    "",
+    `- Genre & Era: ${template.genreLine}`,
+    `- Instruments: ${injectedInstruments.join(", ")}`,
+    `- Mix Vision: ${template.mixVision.join(", ")}`,
+    `- Texture: ${template.texture.join(", ")}`,
+    `- Vocal Production: ${template.vocalProduction.join(", ")}`,
+    `- Arrangement Notes: ${arrangement.join("; ")}`,
+    `- Performance Direction: ${direction}`,
+    `- Knowledge Vocabulary: ${vocabulary.join(", ")}`,
+    "",
+    vibe
+  ].join("\n");
+  const arrangement = [...template.arrangementNotes];
+  let total = render(arrangement);
+  const padding = [
+    "Keep each section specific rather than generic",
+    "let instruments answer the lyric image",
+    "preserve vocal intelligibility over density",
+    "keep the final hook wider without crowd noise"
+  ];
+  while (total.length < 900 && padding.length > 0) {
+    arrangement.push(padding.shift() as string);
+    total = render(arrangement);
+  }
+  while (total.length > 1000 && arrangement.length > 1) {
+    arrangement.pop();
+    total = render(arrangement);
+  }
+  if (total.length > 1000) {
+    const suffix = `\n${vibe}`;
+    total = `${total.slice(0, 1000 - suffix.length).trimEnd()}${suffix}`;
+  }
   return { coreTags, performanceDirection: direction, total };
 }
 
