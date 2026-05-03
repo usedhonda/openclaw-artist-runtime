@@ -30,14 +30,35 @@ function containsSourceName(value: string, denylist: string[]): boolean {
   });
 }
 
+// Genre-specific clashing styles drawn from yaml_template.md L172 examples and
+// style_catalog.md exclusions. Suno V5.5 prefers concrete sonic conflicts over
+// generic "no X" phrasing.
+const genreClashMap: Record<string, readonly string[]> = {
+  rap: ["opera vibrato", "festival EDM drop"],
+  hip: ["opera vibrato"],
+  jazz: ["festival EDM drop", "EDM supersaws"],
+  edm: ["acoustic campfire strum"],
+  rock: ["female humming"],
+  punk: ["female humming"]
+};
+
+function genreClashFor(genre: string): string[] {
+  const lower = genre.toLowerCase();
+  const matches = new Set<string>();
+  for (const [key, values] of Object.entries(genreClashMap)) {
+    if (lower.includes(key)) {
+      for (const value of values) matches.add(value);
+    }
+  }
+  return [...matches];
+}
+
 export function buildExclude(input: BuildExcludeInput = {}): BuildExcludeResult {
   const denylist = input.copyrightSourceNameDenylist ?? [];
   const genre = (input.genre ?? "").toLowerCase();
   const base = [
     ...(input.artistAvoid ?? []),
-    genre.includes("rap") ? "opera vibrato" : undefined,
-    genre.includes("jazz") ? "festival EDM drop" : undefined,
-    genre.includes("edm") ? "acoustic campfire strum" : undefined,
+    ...genreClashFor(genre),
     (input.voices ?? []).length > 0 ? "celebrity voice imitation" : "source-name imitation",
     "muddy master"
   ].filter((item): item is string => Boolean(item));

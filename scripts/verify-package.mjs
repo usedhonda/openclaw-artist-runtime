@@ -1,4 +1,5 @@
 import { readFileSync, existsSync } from "node:fs";
+import { execSync } from "node:child_process";
 
 const required = [
   "package.json",
@@ -10,6 +11,7 @@ const required = [
   "CHANGELOG.md",
   "LICENSE",
   "dist/index.js",
+  "dist/suno-production/knowledge-bundle.js",
   "ui/dist/index.html"
 ];
 
@@ -29,6 +31,28 @@ if (!pkg.openclaw?.compat?.minGatewayVersion) { console.error("package.json open
 const manifest = JSON.parse(readFileSync("openclaw.plugin.json", "utf8"));
 for (const key of ["id", "name", "description", "main", "configSchema"]) {
   if (!(key in manifest)) { console.error(`openclaw.plugin.json ${key} is required`); ok = false; }
+}
+
+// v10.7 — ensure tarball ships the inline knowledge bundle and does not double-ship
+// the original Markdown sources. The bundle keeps prompt builders path-independent
+// for distribution; raw .md sources stay in src/ for `--write` regeneration but
+// must not be carried in the package.
+try {
+  const pack = JSON.parse(execSync("npm pack --dry-run --json", { encoding: "utf8" }));
+  const tarballFiles = pack[0]?.files?.map((entry) => entry.path) ?? [];
+  const hasKnowledgeBundle = tarballFiles.includes("dist/suno-production/knowledge-bundle.js");
+  if (!hasKnowledgeBundle) {
+    console.error("tarball missing dist/suno-production/knowledge-bundle.js (v10.7 inline bundle)");
+    ok = false;
+  }
+  const leakedKnowledge = tarballFiles.filter((path) => /^src\/suno-production\/knowledge\/.+\.md$/.test(path));
+  if (leakedKnowledge.length > 0) {
+    console.error(`tarball still ships ${leakedKnowledge.length} legacy .md source(s) under src/suno-production/knowledge/ (remove from package.json files)`);
+    ok = false;
+  }
+} catch (error) {
+  console.error(`npm pack inspection failed: ${error instanceof Error ? error.message : String(error)}`);
+  ok = false;
 }
 
 if (!ok) process.exit(1);
