@@ -419,7 +419,7 @@ describe("PlaywrightSunoDriver create", () => {
       urls: ["https://suno.com/song/new-lib-1"],
       dryRun: false
     });
-    expect(page.waitForTimeout).toHaveBeenCalledWith(1);
+    expect(page.waitForTimeout).not.toHaveBeenCalled();
     expect(page.goto.mock.calls.filter(([url]) => url === SUNO_LIBRARY_URL).length).toBeGreaterThan(1);
   });
 
@@ -451,7 +451,7 @@ describe("PlaywrightSunoDriver create", () => {
     expect(result.accepted).toBe(false);
     expect(result.reason).toBe(PLAYWRIGHT_LIVE_TIMEOUT_REASON);
     expect(page.clicks).toContain("button[aria-label=\"Create song\"]");
-    expect(page.waitForTimeout).toHaveBeenCalledWith(1);
+    expect(page.waitForTimeout).not.toHaveBeenCalled();
   });
 
   it("times out when both create-card polling and library fallback find no new songs", async () => {
@@ -482,7 +482,7 @@ describe("PlaywrightSunoDriver create", () => {
     expect(result.accepted).toBe(false);
     expect(result.reason).toBe(PLAYWRIGHT_LIVE_TIMEOUT_REASON);
     expect(page.clicks).toContain("button[aria-label=\"Create song\"]");
-    expect(page.waitForTimeout).toHaveBeenCalledWith(1);
+    expect(page.waitForTimeout).not.toHaveBeenCalled();
     expect(page.goto.mock.calls.filter(([url]) => url === SUNO_LIBRARY_URL).length).toBeGreaterThan(1);
   });
 

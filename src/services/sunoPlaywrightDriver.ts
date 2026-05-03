@@ -41,6 +41,10 @@ interface OpenedSunoContext {
   close: () => Promise<void>;
 }
 
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
 /**
  * Round 38 adds probe automation.
  * Round 39 adds create/import automation, and Round 40 adds audio download
@@ -610,7 +614,7 @@ export class PlaywrightSunoDriver implements SunoBrowserDriver {
         return newUrls;
       }
       if (attempt < maxAttempts - 1) {
-        await page.waitForTimeout(this.polling.intervalMs);
+        await sleep(this.polling.intervalMs);
       }
     }
     return [];
@@ -624,7 +628,7 @@ export class PlaywrightSunoDriver implements SunoBrowserDriver {
         return newUrls;
       }
       if (attempt < maxAttempts - 1) {
-        await page.waitForTimeout(this.polling.intervalMs);
+        await sleep(this.polling.intervalMs);
       }
     }
     return [];
