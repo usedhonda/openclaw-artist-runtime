@@ -55,9 +55,25 @@ export function createSunoPromptPack(input: CreateSunoPromptPackInput): SunoProm
       vibe: input.moodHint ?? "observational dusk",
       language: "ja"
     },
-    vocals: "close, dry lead vocal; keep doubles restrained and intelligible",
-    productionNotes: "bass forward, restrained drums, no novelty genre pivot",
-    notes: "original lyrics and style only; no source-name imitation"
+    vocals: {
+      parts: [
+        { id: "lead", tone: "close, dry, intelligible" },
+        { id: "hook_double", tone: "restrained width only on repeated hook lines" }
+      ],
+      rules: [
+        "keep doubles restrained and intelligible",
+        "let consonants stay forward over bass movement"
+      ]
+    },
+    production_notes: [
+      "bass forward, restrained drums, no novelty genre pivot",
+      "leave enough midrange space for dense Japanese phrasing"
+    ],
+    notes: [
+      "original lyrics and style only; no source-name imitation",
+      "metadata describes delivery; lyrics body remains the singable text"
+    ],
+    cues: ["Intro: sparse texture before groove; Hook: widen rhythm without crowd noise"]
   });
   const sliders = buildSlidersV55({ genre, moodHint: input.moodHint });
   const payload = buildPayload(input, style, exclude, yamlLyrics, sliders);
@@ -120,9 +136,25 @@ export async function createSunoPromptPackWithAi(
       vibe: input.moodHint ?? "observational dusk",
       language: "ja"
     },
-    vocals: "close, dry lead vocal; keep doubles restrained and intelligible",
-    productionNotes: "bass forward, restrained drums, no novelty genre pivot",
-    notes: "original lyrics and style only; no source-name imitation"
+    vocals: {
+      parts: [
+        { id: "lead", tone: "close, dry, intelligible" },
+        { id: "hook_double", tone: "restrained width only on repeated hook lines" }
+      ],
+      rules: [
+        "keep doubles restrained and intelligible",
+        "let consonants stay forward over bass movement"
+      ]
+    },
+    production_notes: [
+      "bass forward, restrained drums, no novelty genre pivot",
+      "leave enough midrange space for dense Japanese phrasing"
+    ],
+    notes: [
+      "original lyrics and style only; no source-name imitation",
+      "metadata describes delivery; lyrics body remains the singable text"
+    ],
+    cues: ["Intro: sparse texture before groove; Hook: widen rhythm without crowd noise"]
   });
   const sliders = buildSlidersV55({ genre, moodHint: input.moodHint });
   const payload = buildPayload(input, styleResult.total, excludeResult.text, yamlLyrics, sliders);
