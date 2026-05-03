@@ -1,6 +1,6 @@
-// Verify current OpenClaw SDK signatures before implementation.
-// This file is intentionally thin so Codex can adapt it to the target OpenClaw version.
-
+// Plugin entry for OpenClaw 2026.5.x SDK contract (definePluginEntry-shape).
+// Local shim mirrors openclaw/plugin-sdk's definePluginEntry passthrough so the
+// distributed tarball doesn't import openclaw at module-eval time (peer dep).
 import { registerTools } from "./tools/index.js";
 import { registerHooks } from "./hooks/index.js";
 import { registerServices } from "./services/index.js";
@@ -9,6 +9,17 @@ import { registerCommands } from "./commands/index.js";
 
 interface PluginCommandSpecLike {
   name?: string;
+}
+
+interface PluginEntrySpec {
+  id: string;
+  name: string;
+  description: string;
+  register: (api: unknown) => void;
+}
+
+function definePluginEntry(spec: PluginEntrySpec): PluginEntrySpec {
+  return spec;
 }
 
 function logTelegramCommandSpecs(api: unknown): void {
@@ -27,11 +38,16 @@ function logTelegramCommandSpecs(api: unknown): void {
   }
 }
 
-export default function registerArtistRuntime(api: unknown): void {
-  registerTools(api);
-  registerHooks(api);
-  registerServices(api);
-  registerRoutes(api);
-  registerCommands(api);
-  logTelegramCommandSpecs(api);
-}
+export default definePluginEntry({
+  id: "artist-runtime",
+  name: "Artist Runtime",
+  description: "Runs OpenClaw as a public autonomous AI musician using Suno and social distribution.",
+  register(api: unknown): void {
+    registerTools(api);
+    registerHooks(api);
+    registerServices(api);
+    registerRoutes(api);
+    registerCommands(api);
+    logTelegramCommandSpecs(api);
+  }
+});

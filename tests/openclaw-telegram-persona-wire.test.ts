@@ -47,7 +47,7 @@ async function writeSparsePersona(root: string): Promise<void> {
 
 function captureCommands(root: string): Map<string, CapturedCommand> {
   const commands = new Map<string, CapturedCommand>();
-  registerArtistRuntime({
+  registerArtistRuntime.register({
     pluginConfig: { artist: { workspaceRoot: root } },
     registerCommand(command: CapturedCommand) {
       commands.set(command.name, command);

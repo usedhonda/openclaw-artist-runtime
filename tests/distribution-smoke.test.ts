@@ -80,7 +80,9 @@ describe("distribution smoke", () => {
       const installedMain = join(installDir, "node_modules", "@yzhonda", "openclaw-artist-runtime", "dist", "index.js");
       expect(existsSync(installedMain)).toBe(true);
       const installedModule = await import(pathToFileURL(installedMain).href);
-      expect(typeof installedModule.default).toBe("function");
+      expect(typeof installedModule.default).toBe("object");
+      expect(installedModule.default.id).toBe("artist-runtime");
+      expect(typeof installedModule.default.register).toBe("function");
     } finally {
       await Promise.all([
         rm(packDir, { recursive: true, force: true }),

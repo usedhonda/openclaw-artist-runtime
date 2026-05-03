@@ -6,6 +6,10 @@
   "version": "0.3.0",
   "main": "./dist/index.js",
   "kind": "tool",
+  "activation": {
+    "onStartup": true
+  },
+  "enabledByDefault": true,
   "categories": [
     "music",
     "social",
@@ -24,7 +28,7 @@
   "license": "MIT",
   "homepage": "https://github.com/yzhonda/openclaw-artist-runtime",
   "repository": "https://github.com/yzhonda/openclaw-artist-runtime",
-  "capabilities": {
+  "contracts": {
     "tools": [
       "artist_song_ideate",
       "artist_suno_create_prompt_pack",
@@ -33,7 +37,9 @@
       "artist_take_select",
       "artist_social_publish",
       "artist_social_reply"
-    ],
+    ]
+  },
+  "legacy": {
     "hooks": [
       "agent:bootstrap",
       "before_tool_call",

@@ -31,7 +31,7 @@ describe("artist-runtime command registration diagnostics", () => {
     const warn = vi.spyOn(console, "warn").mockImplementation(() => undefined);
     const commands: string[] = [];
 
-    registerArtistRuntime({
+    registerArtistRuntime.register({
       registerCommand(command: CommandRegistration) {
         commands.push(command.name);
       },
@@ -70,7 +70,7 @@ describe("artist-runtime command registration diagnostics", () => {
     const info = vi.spyOn(console, "info").mockImplementation(() => undefined);
     const warn = vi.spyOn(console, "warn").mockImplementation(() => undefined);
 
-    expect(() => registerArtistRuntime({})).not.toThrow();
+    expect(() => registerArtistRuntime.register({})).not.toThrow();
 
     expect(warn).toHaveBeenCalledWith("[artist-runtime] registerCommand unavailable for: persona");
     expect(warn).toHaveBeenCalledWith("[artist-runtime] registerCommand unavailable for: talk");
