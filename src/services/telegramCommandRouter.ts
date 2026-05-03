@@ -13,6 +13,7 @@ import { formatPersonaMigratePlan, planPersonaMigrate } from "./personaMigrator.
 import { isLegacyWizardEnabled } from "./runtimeConfig.js";
 import { readSoulPersonaSummary } from "./soulFileBuilder.js";
 import { isConversationalSongCreate, routeTelegramConversation, type TelegramProposalButtonsRequest } from "./telegramConversationalRouter.js";
+import { readObservationsReport, type ObservationReport } from "./xObservationCollector.js";
 
 export type TelegramCommandKind =
   | "help"
@@ -25,6 +26,7 @@ export type TelegramCommandKind =
   | "resume"
   | "setup"
   | "persona"
+  | "observations"
   | "unknown"
   | "free_text";
 
@@ -126,6 +128,7 @@ export async function routeTelegramCommand(input: TelegramRouteInput): Promise<T
         "/review <songId> - run a debug-only mock AI review",
         "/setup - talk with the artist about persona direction",
         "/persona show|fields|check|reset|migrate - inspect or migrate persona files",
+        "/observations [YYYY-MM-DD] - show what artist-runtime collected from X",
         "/pause - pause autopilot",
         "/resume - resume autopilot",
         "/help - show this help"
@@ -313,6 +316,15 @@ export async function routeTelegramCommand(input: TelegramRouteInput): Promise<T
     };
   }
 
+  if (command === "/observations") {
+    if (!input.workspaceRoot) {
+      return { kind: "observations", responseText: "Observations unavailable: workspace root missing.", shouldStoreFreeText: false };
+    }
+    const dateArg = args[0]?.trim();
+    const report = await readObservationsReport(input.workspaceRoot, dateArg || new Date());
+    return { kind: "observations", responseText: formatObservationsReport(report), shouldStoreFreeText: false };
+  }
+
   if (command === "/regen") {
     const songId = args[0];
     if (!input.workspaceRoot || !songId) {
@@ -462,6 +474,49 @@ async function formatPersonaShow(root: string): Promise<string> {
     `Refusal style: ${soul.refusalStyle || "(not set)"}`
   ].join("\n");
   return response.length > 1600 ? `${response.slice(0, 1597)}...` : response;
+}
+
+function truncateInline(value: string, max: number): string {
+  const collapsed = value.replace(/\s+/g, " ").trim();
+  return collapsed.length <= max ? collapsed : `${collapsed.slice(0, max - 1)}…`;
+}
+
+export function formatObservationsReport(report: ObservationReport): string {
+  const header = `🌐 X 観察 ${report.date}`;
+  if (!report.exists || report.entries.length === 0) {
+    return [
+      header,
+      report.exists ? "(エントリなし)" : "(まだ収集されてない)",
+      `Source: ${report.path}`
+    ].join("\n");
+  }
+  const top = report.entries
+    .filter((entry) => {
+      const text = entry.text?.trim() ?? "";
+      if (!text) return false;
+      if (/^date:\s+/i.test(text)) return false;
+      return true;
+    })
+    .slice(0, 10);
+  const lines = [
+    header,
+    report.query ? `Query: ${report.query}` : "Source: timeline",
+    `Total: ${report.entries.length} entries (showing ${top.length})`,
+    ""
+  ];
+  top.forEach((entry, index) => {
+    const author = entry.author ? `@${entry.author}` : "(anonymous)";
+    const text = truncateInline(entry.text, 180);
+    lines.push(`${index + 1}. ${author}`);
+    lines.push(`   ${text}`);
+    if (entry.url) {
+      lines.push(`   ${entry.url}`);
+    }
+  });
+  lines.push("");
+  lines.push(`Source: ${report.path}`);
+  const joined = lines.join("\n");
+  return joined.length > 3500 ? `${joined.slice(0, 3497)}...` : joined;
 }
 
 export function classifyTelegramFreeText(text: string): "pause" | "resume" | "status" | "artist_inbox" {

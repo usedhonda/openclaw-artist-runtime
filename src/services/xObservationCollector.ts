@@ -117,6 +117,101 @@ export async function readTodayObservations(root: string, now = new Date()): Pro
   return readFile(observationPath(root, now), "utf8").catch(() => "");
 }
 
+export interface ObservationReport {
+  date: string;
+  path: string;
+  exists: boolean;
+  query?: string;
+  entries: XObservationEntry[];
+}
+
+const isoDateOnlyPattern = /^\d{4}-\d{2}-\d{2}$/;
+
+function parseObservationFile(content: string): { query?: string; entries: XObservationEntry[] } {
+  const lines = content.split(/\r?\n/);
+  const queryLine = lines.find((line) => /^Query:\s+/i.test(line) || /^Source:\s+/i.test(line));
+  const query = queryLine?.replace(/^(?:Query|Source):\s+/i, "").trim();
+  const entries: XObservationEntry[] = [];
+  let current: Partial<XObservationEntry> | undefined;
+  let usedKeyedFormat = false;
+  for (const rawLine of lines) {
+    const textMatch = rawLine.match(/^-\s+text:\s+(.*)$/);
+    if (textMatch) {
+      usedKeyedFormat = true;
+      if (current?.text) {
+        entries.push({ ...current, text: current.text } as XObservationEntry);
+      }
+      current = { text: parseQuoted(textMatch[1]) };
+      continue;
+    }
+    if (!current) continue;
+    const authorMatch = rawLine.match(/^\s+author:\s+(.*)$/);
+    if (authorMatch) {
+      current.author = parseQuoted(authorMatch[1]) || undefined;
+      continue;
+    }
+    const urlMatch = rawLine.match(/^\s+url:\s+(.*)$/);
+    if (urlMatch) {
+      current.url = parseQuoted(urlMatch[1]) || undefined;
+      continue;
+    }
+    const postedMatch = rawLine.match(/^\s+postedAt:\s+(.*)$/);
+    if (postedMatch) {
+      current.postedAt = parseQuoted(postedMatch[1]) || undefined;
+    }
+  }
+  if (current?.text) {
+    entries.push({ ...current, text: current.text } as XObservationEntry);
+  }
+  if (!usedKeyedFormat && entries.length === 0) {
+    for (const rawLine of lines) {
+      const legacy = rawLine.match(/^-\s+(.*)$/);
+      if (!legacy) continue;
+      const body = legacy[1].trim();
+      if (!body) continue;
+      const url = body.match(tweetUrlPattern)?.[0];
+      const authorTag = body.match(authorPattern)?.[1] ?? url?.match(/(?:twitter|x)\.com\/([^/\s]+)\/status/i)?.[1];
+      const postedAt = body.match(isoDatePattern)?.[0];
+      const text = body
+        .replace(tweetUrlPattern, "")
+        .replace(isoDatePattern, "")
+        .replace(/\s+/g, " ")
+        .trim();
+      entries.push({ text: text || body, author: authorTag, url, postedAt });
+    }
+  }
+  return { query, entries };
+}
+
+function parseQuoted(value: string): string {
+  const trimmed = value.trim();
+  if (trimmed === "null") return "";
+  if ((trimmed.startsWith('"') && trimmed.endsWith('"')) || (trimmed.startsWith("'") && trimmed.endsWith("'"))) {
+    try {
+      return JSON.parse(trimmed.replace(/^'|'$/g, '"'));
+    } catch {
+      return trimmed.slice(1, -1);
+    }
+  }
+  return trimmed;
+}
+
+export async function readObservationsReport(root: string, dateOrNow: string | Date = new Date()): Promise<ObservationReport> {
+  const now = typeof dateOrNow === "string" && isoDateOnlyPattern.test(dateOrNow)
+    ? new Date(`${dateOrNow}T00:00:00+09:00`)
+    : dateOrNow instanceof Date
+      ? dateOrNow
+      : new Date();
+  const date = jstDate(now);
+  const path = observationPath(root, now);
+  const content = await readFile(path, "utf8").catch(() => "");
+  if (!content) {
+    return { date, path, exists: false, entries: [] };
+  }
+  const { query, entries } = parseObservationFile(content);
+  return { date, path, exists: true, query, entries };
+}
+
 export async function collectObservations(root: string, context: XObservationContext = {}): Promise<XObservationResult> {
   const now = context.now ?? new Date();
   const path = observationPath(root, now);

@@ -129,6 +129,13 @@ export function registerCommands(api: unknown): void {
     requireAuth: true,
     handler: (ctx) => handleRoutedCommand("setup", ctx as PluginCommandContextLike, apiConfig)
   }, logRegistration);
+  safeRegisterCommand(api, {
+    name: "observations",
+    description: "Show what artist-runtime collected from X today (or for a given YYYY-MM-DD).",
+    acceptsArgs: true,
+    requireAuth: true,
+    handler: (ctx) => handleRoutedCommand("observations", ctx as PluginCommandContextLike, apiConfig)
+  }, logRegistration);
   for (const name of ["confirm", "cancel"]) {
     safeRegisterCommand(api, {
       name,
