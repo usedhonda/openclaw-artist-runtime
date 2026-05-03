@@ -1,4 +1,4 @@
-import { parseLyricsSections } from "./lyricsValidator.js";
+import { isCommandLeakLine, parseLyricsSections } from "./lyricsValidator.js";
 
 const defaultTags = [
   "Intro - sparse image",
@@ -10,8 +10,6 @@ const defaultTags = [
   "Hook - final anchor",
   "Outro - hard stop"
 ];
-
-const commandLeakPattern = /\b(write|generate|make|create|sing|produce|arrange|use|add|remove|ensure|must|should)\b.*\b(lyrics?|song|chorus|verse|style|vocal|prompt|section)\b/i;
 
 function formatSection(tag: string, lines: string[]): string {
   return [`[${tag}]`, ...lines].join("\n");
@@ -73,9 +71,13 @@ export function repairLineCount(lyrics: string): string {
 export function repairCommandLeak(lyrics: string): string {
   return parseLyricsSections(lyrics)
     .map((section) => {
+      const hitCount = section.lines.filter(isCommandLeakLine).length;
+      if (hitCount > 5) {
+        return undefined;
+      }
       const moved: string[] = [];
       const lines = section.lines.filter((line) => {
-        if (!commandLeakPattern.test(line)) {
+        if (!isCommandLeakLine(line)) {
           return true;
         }
         moved.push(line.replace(/[.[\]]/g, "").slice(0, 48));
@@ -86,6 +88,7 @@ export function repairCommandLeak(lyrics: string): string {
         : section.tag || "Verse - repaired section";
       return formatSection(tag, lines);
     })
+    .filter(Boolean)
     .join("\n\n");
 }
 

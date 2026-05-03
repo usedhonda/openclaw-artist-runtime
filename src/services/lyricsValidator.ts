@@ -22,7 +22,34 @@ export interface LyricsValidationResult {
   sections: LyricsSection[];
 }
 
-const commandLeakPattern = /\b(write|generate|make|create|sing|produce|arrange|use|add|remove|ensure|must|should)\b.*\b(lyrics?|song|chorus|verse|style|vocal|prompt|section)\b/i;
+export const commandLeakPatterns = [
+  /\b(write|generate|make|create|sing|produce|arrange|use|add|remove|ensure|must|should)\b.*\b(lyrics?|song|chorus|verse|style|vocal|prompt|section)\b/i,
+  /\b(internal\s+rhyme|multisyllabic|on-beat|off-beat|assonance|consonance|prosody|meter|syllable|perfect\s+rhyme|slant\s+rhyme)\b/i,
+  /\b(flow|rhyme|hook|verse|bridge|chorus|perfect|slant|bars|lyrics|style|aabb|abab)\b/i,
+  /(韻|伏線|反転型|同語|情景|台詞反転|欠落補完|母音韻|行中韻|多音節韻|クロス韻|語尾韻)/,
+  /^\s*[\w -]+\s*[:：]/i,
+  /\S+\s*=\s*\S+/,
+  /\d+-?\d*\s*語の(?:hook|フック)/i,
+  /\d+\s*bars?ごとに/i
+];
+
+export function isCommandLeakLine(line: string): boolean {
+  const trimmed = line.trim();
+  if (!trimmed || /^\[[^\]]+\]$/.test(trimmed)) {
+    return false;
+  }
+  return commandLeakPatterns.some((pattern) => pattern.test(trimmed));
+}
+
+function rawLyricsLines(lyrics: string): string[] {
+  const lines = lyrics.split(/\r?\n/);
+  const start = lines.findIndex((line) => /^\s*(?:=+\s*)?LYRICS START\b/i.test(line));
+  if (start < 0) {
+    return lines;
+  }
+  const end = lines.findIndex((line, index) => index > start && /^\s*(?:=+\s*)?LYRICS END\b/i.test(line));
+  return lines.slice(start + 1, end < 0 ? undefined : end);
+}
 
 export function parseLyricsSections(lyrics: string): LyricsSection[] {
   const sections: LyricsSection[] = [];
@@ -98,9 +125,13 @@ export function validateLineCount(lyrics: string): LyricsValidationIssue[] {
 }
 
 export function validateNoCommandLeak(lyrics: string): LyricsValidationIssue[] {
-  const leaked = parseLyricsSections(lyrics).flatMap((section) => section.lines).some((line) => commandLeakPattern.test(line));
+  return validateRawLyricsBlock(lyrics);
+}
+
+export function validateRawLyricsBlock(lyrics: string): LyricsValidationIssue[] {
+  const leaked = rawLyricsLines(lyrics).some(isCommandLeakLine);
   return leaked
-    ? [{ code: "command_leak", message: "Found instruction-like text outside section tags." }]
+    ? [{ code: "command_leak", message: "Found songwriting meta or instruction-like text in lyrics body." }]
     : [];
 }
 

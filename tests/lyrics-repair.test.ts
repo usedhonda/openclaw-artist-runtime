@@ -42,6 +42,38 @@ describe("lyrics V5.5 repair", () => {
     expect(repaired).toContain("note:");
   });
 
+  it("removes song-008 Japanese and technical meta leakage from lyric lines", () => {
+    const leaked = fixture("song-008-leak.txt");
+    const repaired = repairCommandLeak([
+      "[Verse 1 - tight flow]",
+      "ゲートのよこに, だれかのかさが ねむる",
+      ...leaked.split(/\r?\n/).filter(Boolean),
+      "BGMになるまで, くうきのねじを まわす"
+    ].join("\n"));
+
+    for (const line of leaked.split(/\r?\n/).filter(Boolean)) {
+      expect(repaired).not.toContain(line);
+    }
+    expect(validateNoCommandLeak(repaired)).toEqual([]);
+  });
+
+  it("drops sections with dense songwriting-meta leakage", () => {
+    const leaked = fixture("song-008-leak.txt");
+    const repaired = repairCommandLeak([
+      "[Verse 3 - progressive switch]",
+      "ポケットのなかで, ふるえる きょうの みどころ",
+      ...leaked.split(/\r?\n/).filter(Boolean),
+      "",
+      "[Hook - final anchor]",
+      "BGMにして ぬけろ",
+      "Gateがなる, まちがずれる"
+    ].join("\n"));
+
+    expect(repaired).not.toContain("[Verse 3 - progressive switch]");
+    expect(repaired).not.toContain("ポケットのなかで");
+    expect(repaired).toContain("[Hook - final anchor]");
+  });
+
   it("runs deterministic repairs as a single pipeline", () => {
     const repaired = repairLyricsV55(fixture("lyrics-v55-bad-no-tags.md"));
     expect(validateLyricsV55(repaired).valid).toBe(true);

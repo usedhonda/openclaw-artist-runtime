@@ -7,6 +7,7 @@ import {
   validateMetatagPresence,
   validateNoCommandLeak,
   validateNoCopyrightSourceName,
+  validateRawLyricsBlock,
   validateSectionCount
 } from "../src/services/lyricsValidator";
 
@@ -33,6 +34,33 @@ describe("lyrics V5.5 validator", () => {
 
   it("detects command-like prompt leakage outside tags", () => {
     expect(validateNoCommandLeak(fixture("lyrics-v55-bad-command-leak.md")).map((issue) => issue.code)).toContain("command_leak");
+  });
+
+  it("detects song-008 Japanese and technical songwriting meta leakage", () => {
+    expect(validateNoCommandLeak(fixture("song-008-leak.txt")).map((issue) => issue.code)).toContain("command_leak");
+  });
+
+  it("raw-scans only the LYRICS START/END body for leaked meta", () => {
+    const yaml = [
+      "# META",
+      "notes:",
+      "  direction: Lyrics = What is safe outside body",
+      "LYRICS START",
+      "[Verse 1 - tight flow]",
+      "flow = リズム + phrasing + accent + rhyme",
+      "LYRICS END"
+    ].join("\n");
+
+    expect(validateRawLyricsBlock(yaml).map((issue) => issue.code)).toContain("command_leak");
+    expect(validateRawLyricsBlock([
+      "# META",
+      "notes:",
+      "  direction: Lyrics = What is safe outside body",
+      "LYRICS START",
+      "[Verse 1 - tight flow]",
+      "ゲートのよこに, だれかのかさが ねむる",
+      "LYRICS END"
+    ].join("\n"))).toEqual([]);
   });
 
   it("detects blocked source names", () => {

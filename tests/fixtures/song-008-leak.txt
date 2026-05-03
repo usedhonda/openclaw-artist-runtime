@@ -1,0 +1,8 @@
+flow = リズム + phrasing + accent + rhyme
+perfect rhyme: light / night, でもここは night / ないと
+Lyrics = What, Style = How, そこだけは ぶれない
+Verse 1でねむり, Bridgeでまちを さしたから
+同語反転型, さしだすひとが きえた
+情景反転型, タイルのあめが みえた
+3-6語のhook, くちがさきに おぼえる
+4 barsごとに flow のどれか かえる
