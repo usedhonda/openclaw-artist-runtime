@@ -1,6 +1,4 @@
-import { readFile } from "node:fs/promises";
-import { dirname, join } from "node:path";
-import { fileURLToPath } from "node:url";
+import { KNOWLEDGE_BUNDLE, type KnowledgeFile } from "../suno-production/knowledge-bundle.js";
 
 export const LYRICS_WRITER_INSTRUCTIONS_ATTRIBUTION =
   "Source: /Users/usedhonda/projects/docs/sunomanual/mygpts/lyrics-writer/instructions.md (CC BY-NC 4.0, Copyright 2025-2026 usedhonda)";
@@ -50,25 +48,19 @@ const KNOWLEDGE_FILE_BUDGETS: Record<string, number> = {
   "suno_v55_reference.md": 2000
 };
 
-// Resolve knowledge path relative to this module so the digest works in any
-// host cwd (gateway, distributed npm install, smoke harness). The build copies
-// src/suno-production/knowledge/ to dist/suno-production/knowledge/ so the
-// runtime path is dist/services/.. -> dist/suno-production/knowledge.
-const KNOWLEDGE_DIR = join(dirname(fileURLToPath(import.meta.url)), "..", "suno-production", "knowledge");
-
+// Knowledge ships as inline TypeScript constants (see knowledge-bundle.ts) so
+// runtime path resolution is no longer required. Distribution-safe: tarball
+// install carries the same string literals.
 export async function readLyricsKnowledgeDigest(): Promise<string> {
-  const root = KNOWLEDGE_DIR;
-  const parts = await Promise.all(
-    LYRICS_KNOWLEDGE_DIGEST_FILES.map(async (name) => {
-      const raw = await readFile(join(root, name), "utf8").catch(() => "");
-      if (!raw) {
-        return "";
-      }
-      const budget = KNOWLEDGE_FILE_BUDGETS[name] ?? 10000;
-      const body = raw.length <= budget ? raw : raw.slice(0, budget);
-      return `## ${name}\n${body}`;
-    })
-  );
+  const parts = LYRICS_KNOWLEDGE_DIGEST_FILES.map((name) => {
+    const raw = KNOWLEDGE_BUNDLE[name as KnowledgeFile] ?? "";
+    if (!raw) {
+      return "";
+    }
+    const budget = KNOWLEDGE_FILE_BUDGETS[name] ?? 10000;
+    const body = raw.length <= budget ? raw : raw.slice(0, budget);
+    return `## ${name}\n${body}`;
+  });
   return parts.filter(Boolean).join("\n\n");
 }
 

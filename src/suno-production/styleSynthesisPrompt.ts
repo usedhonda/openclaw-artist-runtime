@@ -1,11 +1,5 @@
-import { readFile } from "node:fs/promises";
-import { dirname, join } from "node:path";
-import { fileURLToPath } from "node:url";
 import type { BuildStyleInput } from "./buildStyle.js";
-
-// Knowledge files ship next to this module (dist/suno-production/knowledge/),
-// so resolve from import.meta.url to keep distribution-safe.
-const KNOWLEDGE_DIR = join(dirname(fileURLToPath(import.meta.url)), "knowledge");
+import { KNOWLEDGE_BUNDLE, type KnowledgeFile } from "./knowledge-bundle.js";
 
 export interface StyleSynthesisPrompt {
   sourceAttribution: string;
@@ -29,16 +23,13 @@ export async function readStyleKnowledgeDigest(): Promise<string> {
   if (cachedStyleKnowledgeDigest !== undefined) {
     return cachedStyleKnowledgeDigest;
   }
-  const root = KNOWLEDGE_DIR;
-  const parts = await Promise.all(
-    STYLE_SYNTHESIS_KNOWLEDGE_REFERENCES.map(async (name) => {
-      const raw = await readFile(join(root, name), "utf8").catch(() => "");
-      if (!raw) return "";
-      const budget = STYLE_KNOWLEDGE_BUDGETS[name] ?? 10000;
-      const body = raw.length <= budget ? raw : raw.slice(0, budget);
-      return `## ${name}\n${body}`;
-    })
-  );
+  const parts = STYLE_SYNTHESIS_KNOWLEDGE_REFERENCES.map((name) => {
+    const raw = KNOWLEDGE_BUNDLE[name as KnowledgeFile] ?? "";
+    if (!raw) return "";
+    const budget = STYLE_KNOWLEDGE_BUDGETS[name] ?? 10000;
+    const body = raw.length <= budget ? raw : raw.slice(0, budget);
+    return `## ${name}\n${body}`;
+  });
   cachedStyleKnowledgeDigest = parts.filter(Boolean).join("\n\n");
   return cachedStyleKnowledgeDigest;
 }

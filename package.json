@@ -9,8 +9,6 @@
   },
   "files": [
     "dist/**/*.js",
-    "dist/suno-production/knowledge/**",
-    "src/suno-production/knowledge/**",
     "ui/dist/index.html",
     "templates/**",
     "prompts/**",
@@ -39,8 +37,8 @@
     "docs/PACKAGE_CONTENTS.md"
   ],
   "scripts": {
-    "build:runtime": "tsc -p tsconfig.json && npm run build:knowledge",
-    "build:knowledge": "mkdir -p dist/suno-production/knowledge && cp src/suno-production/knowledge/*.md dist/suno-production/knowledge/",
+    "build:runtime": "npm run build:knowledge && tsc -p tsconfig.json",
+    "build:knowledge": "node scripts/build-knowledge-bundle.mjs --check",
     "build:ui": "npm --prefix ui install --package-lock=false --include=dev --no-fund --no-audit && npm --prefix ui run build",
     "build": "npm run build:runtime && npm run build:ui",
     "typecheck": "tsc -p tsconfig.json --noEmit",
