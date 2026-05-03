@@ -16,13 +16,14 @@ async function workspace(): Promise<string> {
 }
 
 describe("theme proposer", () => {
-  it("returns a mock theme from observation context", async () => {
+  it("returns a motif-anchored mock theme", async () => {
     const root = await workspace();
     const proposal = await proposeTheme(root, { observations: "- people arguing under neon" });
 
     expect(proposal.provider).toBe("mock");
-    expect(proposal.theme).toContain("pressure");
-    expect(proposal.reason).toContain("observations");
+    expect(proposal.motifSummary).toContain("satire");
+    expect(proposal.theme).toContain("satire");
+    expect(proposal.reason).toContain("motif anchor");
   });
 
   it("rejects secret-like context", async () => {

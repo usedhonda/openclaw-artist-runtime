@@ -4,6 +4,8 @@ import { isBirdBanIndication, recordBirdCall, triggerCooldown, tryAcquireBirdCal
 import { emitRuntimeEvent } from "./runtimeEventBus.js";
 import { secretLikePattern } from "./personaMigrator.js";
 import { planQueryStrategy } from "./xQueryStrategyPlanner.js";
+import { extractPersonaMotifs, summarizeMotifs, type PersonaMotifBundle } from "./personaMotifExtractor.js";
+import { rankObservations, summarizeMatches, type ScoredObservation } from "./xObservationScorer.js";
 
 export interface XObservationContext {
   personaText?: string;
@@ -26,6 +28,8 @@ export interface XObservationEntry {
   author?: string;
   url?: string;
   postedAt?: string;
+  motifMatch?: string;
+  motifScore?: number;
 }
 
 const tweetUrlPattern = /https:\/\/(?:t\.co\/[A-Za-z0-9]+|(?:twitter|x)\.com\/[^/\s]+\/status\/\d+)/i;
@@ -75,42 +79,53 @@ function parseBirdOutput(source: string): XObservationEntry[] {
     });
 }
 
-function filterObservationEntries(source: string, personaText?: string): XObservationEntry[] {
-  const personaWords = new Set(
-    (personaText ?? "")
-      .toLowerCase()
-      .split(/[^a-z0-9一-龠ぁ-んァ-ヶー]+/i)
-      .filter((word) => word.length >= 3)
-      .slice(0, 80)
-  );
-  const entries = parseBirdOutput(source);
-  if (personaWords.size === 0) {
-    return entries.slice(0, 12);
-  }
-  const matched = entries.filter((entry) => {
-    const lower = `${entry.text} ${entry.author ?? ""}`.toLowerCase();
-    return [...personaWords].some((word) => lower.includes(word));
-  });
-  return (matched.length > 0 ? matched : entries).slice(0, 12);
+function filterObservationEntries(
+  source: string,
+  motifs: PersonaMotifBundle
+): { entries: XObservationEntry[]; scored: ScoredObservation<XObservationEntry>[] } {
+  const parsed = parseBirdOutput(source);
+  const ranked = rankObservations(parsed, motifs);
+  const entries = ranked.map((scored) => ({
+    ...scored.entry,
+    motifMatch: scored.matched.length > 0 ? summarizeMatches(scored) : undefined,
+    motifScore: scored.score
+  }));
+  return { entries, scored: ranked };
 }
 
 function jsonValue(value: string | undefined): string {
   return value ? JSON.stringify(value) : "null";
 }
 
-function renderObservation(entries: XObservationEntry[], now: Date, query?: string): string {
-  return [
+function renderObservation(
+  entries: XObservationEntry[],
+  now: Date,
+  query?: string,
+  motifs?: PersonaMotifBundle
+): string {
+  const motifLine = motifs ? summarizeMotifs(motifs) : "";
+  const lines = [
     `# X Observations ${jstDate(now)}`,
     "",
-    query ? `Query: ${query}` : "Source: timeline",
-    "",
-    ...entries.flatMap((entry) => [
-      `- text: ${JSON.stringify(entry.text)}`,
-      `  author: ${jsonValue(entry.author)}`,
-      `  url: ${jsonValue(entry.url)}`,
-      `  postedAt: ${jsonValue(entry.postedAt)}`
-    ])
-  ].join("\n");
+    query ? `Query: ${query}` : "Source: timeline"
+  ];
+  if (motifLine) {
+    lines.push(`Motifs: ${motifLine}`);
+  }
+  lines.push("");
+  for (const entry of entries) {
+    lines.push(`- text: ${JSON.stringify(entry.text)}`);
+    lines.push(`  author: ${jsonValue(entry.author)}`);
+    lines.push(`  url: ${jsonValue(entry.url)}`);
+    lines.push(`  postedAt: ${jsonValue(entry.postedAt)}`);
+    if (entry.motifMatch) {
+      lines.push(`  motifMatch: ${JSON.stringify(entry.motifMatch)}`);
+    }
+    if (typeof entry.motifScore === "number" && entry.motifScore !== 0) {
+      lines.push(`  motifScore: ${entry.motifScore}`);
+    }
+  }
+  return lines.join("\n");
 }
 
 export async function readTodayObservations(root: string, now = new Date()): Promise<string> {
@@ -158,6 +173,17 @@ function parseObservationFile(content: string): { query?: string; entries: XObse
     const postedMatch = rawLine.match(/^\s+postedAt:\s+(.*)$/);
     if (postedMatch) {
       current.postedAt = parseQuoted(postedMatch[1]) || undefined;
+      continue;
+    }
+    const motifMatch = rawLine.match(/^\s+motifMatch:\s+(.*)$/);
+    if (motifMatch) {
+      current.motifMatch = parseQuoted(motifMatch[1]) || undefined;
+      continue;
+    }
+    const motifScoreMatch = rawLine.match(/^\s+motifScore:\s+(-?\d+)$/);
+    if (motifScoreMatch) {
+      const parsed = Number.parseInt(motifScoreMatch[1], 10);
+      current.motifScore = Number.isFinite(parsed) ? parsed : undefined;
     }
   }
   if (current?.text) {
@@ -222,10 +248,12 @@ export async function collectObservations(root: string, context: XObservationCon
       return { status: "cached", path, observations: cached };
     }
   }
+  const motifs = extractPersonaMotifs(context.personaText);
   const strategy = await planQueryStrategy({
     personaText: context.personaText,
     observationHistory: context.observationHistory,
-    manualSeed: context.manualSeed
+    manualSeed: context.manualSeed,
+    motifs
   });
   const gate = await tryAcquireBirdCall(root, now);
   if (!gate.allowed) {
@@ -251,7 +279,8 @@ export async function collectObservations(root: string, context: XObservationCon
       throw new Error("x_observation_contains_secret_like_text");
     }
     await recordBirdCall(root, now, { query: context.query ?? strategy.query, mode: strategy.mode });
-    const observations = renderObservation(filterObservationEntries(result.stdout, context.personaText), now, context.query ?? strategy.query);
+    const filtered = filterObservationEntries(result.stdout, motifs);
+    const observations = renderObservation(filtered.entries, now, context.query ?? strategy.query, motifs);
     await mkdir(dirname(path), { recursive: true });
     await writeFile(path, `${observations.trim()}\n`, "utf8");
     return { status: "collected", path, observations };
