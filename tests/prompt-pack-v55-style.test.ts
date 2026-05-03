@@ -46,8 +46,8 @@ describe("Suno V5.5 style builder", () => {
     expect(result.coreTags).toContain("upright bass");
   });
 
-  it("exposes mygpts-derived style synthesis prompt guidance with catalog attribution", () => {
-    const prompt = buildStyleSynthesisPrompt({
+  it("exposes mygpts-derived style synthesis prompt guidance with catalog attribution", async () => {
+    const prompt = await buildStyleSynthesisPrompt({
       brief: "Rhodes and sax move under a restrained vocal.",
       moodHint: "blue municipal hush"
     });

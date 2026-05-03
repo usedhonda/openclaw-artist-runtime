@@ -43,5 +43,5 @@ export function buildYaml(input: BuildYamlInput): string {
     input.lyrics.trim(),
     "LYRICS END"
   ].join("\n");
-  return yaml.length <= 4000 ? yaml : `${yaml.slice(0, 3984)}\nLYRICS END`;
+  return yaml.length <= 4500 ? yaml : `${yaml.slice(0, 4484)}\nLYRICS END`;
 }

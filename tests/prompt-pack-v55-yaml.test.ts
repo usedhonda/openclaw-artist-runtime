@@ -30,7 +30,7 @@ describe("Suno V5.5 YAML builder", () => {
       notes: "no source-name imitation"
     });
 
-    expect(yaml.length).toBeLessThanOrEqual(4000);
+    expect(yaml.length).toBeLessThanOrEqual(4500);
     expect(yaml).toContain("# META");
     expect(yaml).toContain("version: v5.5");
     expect(yaml).toContain("vocals:");
@@ -41,14 +41,14 @@ describe("Suno V5.5 YAML builder", () => {
     expect(yaml).toContain("LYRICS END");
   });
 
-  it("caps oversized YAML at 4000 chars while retaining the end delimiter", () => {
+  it("caps oversized YAML at 4500 chars while retaining the end delimiter", () => {
     const yaml = buildYaml({
       title: "Long Signal",
       lyrics: `${lyrics}\n${"長い行\n".repeat(1000)}`,
       meta: { vibe: "long civic dread" }
     });
 
-    expect(yaml.length).toBeLessThanOrEqual(4000);
+    expect(yaml.length).toBeLessThanOrEqual(4500);
     expect(yaml.endsWith("LYRICS END")).toBe(true);
   });
 });

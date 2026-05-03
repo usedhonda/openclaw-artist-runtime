@@ -1,9 +1,46 @@
+import { readFile } from "node:fs/promises";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
 import type { BuildStyleInput } from "./buildStyle.js";
+
+// Knowledge files ship next to this module (dist/suno-production/knowledge/),
+// so resolve from import.meta.url to keep distribution-safe.
+const KNOWLEDGE_DIR = join(dirname(fileURLToPath(import.meta.url)), "knowledge");
 
 export interface StyleSynthesisPrompt {
   sourceAttribution: string;
   system: string;
   user: string;
+}
+
+// Tighter budgets to keep the digest near ~22k chars (~5.5k tokens). gpt-5.5
+// codex returns empty bodies past ~90k input chars; staying well below keeps
+// the style call resilient.
+const STYLE_KNOWLEDGE_BUDGETS: Record<string, number> = {
+  "master_reference.md": 10000,
+  "style_catalog.md": 5000,
+  "suno_v55_reference.md": 4000,
+  "yaml_template.md": 3000
+};
+
+let cachedStyleKnowledgeDigest: string | undefined;
+
+export async function readStyleKnowledgeDigest(): Promise<string> {
+  if (cachedStyleKnowledgeDigest !== undefined) {
+    return cachedStyleKnowledgeDigest;
+  }
+  const root = KNOWLEDGE_DIR;
+  const parts = await Promise.all(
+    STYLE_SYNTHESIS_KNOWLEDGE_REFERENCES.map(async (name) => {
+      const raw = await readFile(join(root, name), "utf8").catch(() => "");
+      if (!raw) return "";
+      const budget = STYLE_KNOWLEDGE_BUDGETS[name] ?? 10000;
+      const body = raw.length <= budget ? raw : raw.slice(0, budget);
+      return `## ${name}\n${body}`;
+    })
+  );
+  cachedStyleKnowledgeDigest = parts.filter(Boolean).join("\n\n");
+  return cachedStyleKnowledgeDigest;
 }
 
 export const STYLE_SYNTHESIS_PROMPT_SOURCE =
@@ -27,12 +64,14 @@ function optionalLine(label: string, value: string | number | string[] | undefin
   return text.trim() ? `${label}: ${text}` : undefined;
 }
 
-export function buildStyleSynthesisPrompt(input: BuildStyleInput): StyleSynthesisPrompt {
+export async function buildStyleSynthesisPrompt(input: BuildStyleInput): Promise<StyleSynthesisPrompt> {
+  const knowledge = await readStyleKnowledgeDigest();
   const user = [
     "Create a Suno V5.5 Style field for this original artist work.",
     "Return only the Style text, no markdown fence.",
-    "Do not browse; use only the supplied artist brief and runtime snapshots.",
-    `Knowledge references: ${STYLE_SYNTHESIS_KNOWLEDGE_REFERENCES.join(", ")}`,
+    "Do not browse; use only the supplied artist brief, runtime snapshots, and the knowledge digest below.",
+    "Length budget: target 900-1000 characters; absolute upper bound 1000. Treat anything below 800 as a draft failure — keep expanding Instruments, Mix Vision, Texture, Vocal Production, and Arrangement Notes until you reach the target before returning.",
+    "Quote concrete production vocabulary from the knowledge digest (instrument descriptors, mix terms, era markers, V5.5 metatag entries) instead of paraphrasing it away.",
     optionalLine("Artist profile", input.artistProfile),
     optionalLine("Song brief", input.brief),
     optionalLine("Mood hint / meta.vibe", input.moodHint ?? input.vibe),
@@ -42,7 +81,10 @@ export function buildStyleSynthesisPrompt(input: BuildStyleInput): StyleSynthesi
     optionalLine("Vocal descriptor", input.vocalDescriptor),
     optionalLine("Instruments", input.instruments),
     optionalLine("Mix keyword", input.mixKeyword),
-    optionalLine("Performance direction", input.performanceDirection)
+    optionalLine("Performance direction", input.performanceDirection),
+    "",
+    "Knowledge digest (read in full — production lexicon and templates live here):",
+    knowledge.slice(0, 24000)
   ].filter((line): line is string => Boolean(line));
 
   return {

@@ -98,7 +98,7 @@ export function buildStyle(input: BuildStyleInput): BuildStyleResult {
   const direction = input.performanceDirection
     ? compact(input.performanceDirection).slice(0, 280)
     : undefined;
-  const total = direction ? `${coreTags}. ${direction}`.slice(0, 400) : coreTags;
+  const total = direction ? `${coreTags}. ${direction}`.slice(0, 1000) : coreTags;
   return { coreTags, performanceDirection: direction, total };
 }
 
@@ -111,7 +111,7 @@ function normalizeAiStyle(raw: string): BuildStyleResult | undefined {
   if (!text || isAiProviderMockFallbackResponse(text)) {
     return undefined;
   }
-  const total = text.slice(0, 400);
+  const total = text.slice(0, 1000);
   const coreSource = text
     .split(/\r?\n/)
     .map((line) => line.replace(/^[-*]\s*/, "").trim())
@@ -125,7 +125,7 @@ export async function synthesizeStyle(input: BuildStyleInput, options: StyleAiSy
   if (!options.provider || options.provider === "mock") {
     return buildStyle(input);
   }
-  const prompt = buildStyleSynthesisPrompt(input);
+  const prompt = await buildStyleSynthesisPrompt(input);
   const raw = await callAiProvider([prompt.system, "", prompt.user].join("\n"), { provider: options.provider });
   return normalizeAiStyle(raw) ?? buildStyle(input);
 }

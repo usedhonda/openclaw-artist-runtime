@@ -7,8 +7,8 @@ import {
 } from "../src/suno-production/styleSynthesisPrompt";
 
 describe("style synthesis prompt", () => {
-  it("carries the attributed style-analyzer source and style catalog references", () => {
-    const prompt = buildStyleSynthesisPrompt({
+  it("carries the attributed style-analyzer source and style catalog references", async () => {
+    const prompt = await buildStyleSynthesisPrompt({
       brief: "nu-jazz rap with Rhodes, sax, upright bass, and dissonant room tone",
       moodHint: "blue municipal hush"
     });

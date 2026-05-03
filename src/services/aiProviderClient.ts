@@ -320,6 +320,6 @@ export async function callAiProvider(prompt: string, options: AiProviderCallOpti
     auth.profile,
     auth.model,
     options.fetchImpl ?? fetch,
-    options.timeoutMs ?? 30000
+    options.timeoutMs ?? 120000
   );
 }

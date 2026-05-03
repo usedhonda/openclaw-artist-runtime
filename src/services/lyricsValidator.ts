@@ -10,7 +10,9 @@ export interface LyricsValidationIssue {
     | "missing_metatag"
     | "line_count"
     | "command_leak"
-    | "copyright_source_name";
+    | "copyright_source_name"
+    | "lyrics_too_short"
+    | "lyrics_too_long";
   message: string;
 }
 
@@ -113,13 +115,29 @@ export function validateNoCopyrightSourceName(lyrics: string, denylist: string[]
     : [];
 }
 
-export function validateLyricsV55(lyrics: string, options: { denylist?: string[] } = {}): LyricsValidationResult {
+// Suno V5.5 Custom Lyrics character cap is 5000. The lyrics-writer system prompt
+// asks for 4400-4600 chars; anything under 3800 is treated as a thin draft and
+// triggers a repair pass so the AI keeps expanding hooks/verses until the body
+// uses the available space (御大: 「最大文字数ギリギリまで使うくらいに」).
+export function validateLyricsLength(lyrics: string): LyricsValidationIssue[] {
+  const length = lyrics.length;
+  if (length < 3800) {
+    return [{ code: "lyrics_too_short", message: `Lyrics body is ${length} chars; target 4400-4600 (min 3800). Expand verses, hook variations, and bridge with concrete imagery before returning.` }];
+  }
+  if (length > 4800) {
+    return [{ code: "lyrics_too_long", message: `Lyrics body is ${length} chars; absolute upper bound 4800. Tighten verses or shorten outro.` }];
+  }
+  return [];
+}
+
+export function validateLyricsV55(lyrics: string, options: { denylist?: string[]; enforceLength?: boolean } = {}): LyricsValidationResult {
   const issues = [
     ...validateSectionCount(lyrics),
     ...validateMetatagPresence(lyrics),
     ...validateLineCount(lyrics),
     ...validateNoCommandLeak(lyrics),
-    ...validateNoCopyrightSourceName(lyrics, options.denylist ?? [])
+    ...validateNoCopyrightSourceName(lyrics, options.denylist ?? []),
+    ...(options.enforceLength ? validateLyricsLength(lyrics) : [])
   ];
   return {
     valid: issues.length === 0,

@@ -1,5 +1,6 @@
 import { readFile } from "node:fs/promises";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
 
 export const LYRICS_WRITER_INSTRUCTIONS_ATTRIBUTION =
   "Source: /Users/usedhonda/projects/docs/sunomanual/mygpts/lyrics-writer/instructions.md (CC BY-NC 4.0, Copyright 2025-2026 usedhonda)";
@@ -24,26 +25,51 @@ export interface BuildLyricsPromptInput {
   repairNotes?: string[];
 }
 
-function truncate(value: string, max = 2400): string {
+function truncate(value: string, max = 8000): string {
   return value.length <= max ? value : value.slice(0, max);
 }
 
+// Per-file budget tuned to keep the full digest under ~120k chars while still
+// shipping each knowledge file at near-original depth so the AI can actually
+// pull craft-level detail (rhyme tables, structure formulas, V5.5 metatag
+// vocabulary) into the draft instead of paraphrasing a few headers.
+// Per-file budget tuned to keep the digest near ~32k chars (~8k tokens) so we
+// inject genuine craft depth without blowing the codex/codex-style provider
+// input window. Past 90k+ chars the gpt-5.5 codex SSE returns empty bodies.
+// Per-file budget tuned to keep the digest near ~18k chars. Combined with the
+// ~8k system prompt and ~6k of artist/brief context, the total stays around
+// ~32k chars (~8k tokens) — within the codex SSE response window. Past ~40k
+// total prompt the gpt-5.5 codex provider returns empty bodies.
+const KNOWLEDGE_FILE_BUDGETS: Record<string, number> = {
+  "master_reference.md": 7000,
+  "lyric_craft.md": 3500,
+  "song_structures.md": 2500,
+  "style_catalog.md": 2000,
+  "rap_and_flow.md": 1500,
+  "english_lyrics.md": 1500,
+  "suno_v55_reference.md": 2000
+};
+
+// Resolve knowledge path relative to this module so the digest works in any
+// host cwd (gateway, distributed npm install, smoke harness). The build copies
+// src/suno-production/knowledge/ to dist/suno-production/knowledge/ so the
+// runtime path is dist/services/.. -> dist/suno-production/knowledge.
+const KNOWLEDGE_DIR = join(dirname(fileURLToPath(import.meta.url)), "..", "suno-production", "knowledge");
+
 export async function readLyricsKnowledgeDigest(): Promise<string> {
-  const root = join(process.cwd(), "src", "suno-production", "knowledge");
+  const root = KNOWLEDGE_DIR;
   const parts = await Promise.all(
     LYRICS_KNOWLEDGE_DIGEST_FILES.map(async (name) => {
       const raw = await readFile(join(root, name), "utf8").catch(() => "");
-      const digest = raw
-        .split(/\r?\n/)
-        .filter((line) =>
-          /section|metatag|line|command|copyright|duration|hook|verse|bridge|outro|韻|rhyme|flow|prosody|structure|伏線|情景|stress|bilingual|v5\.5/i.test(line)
-        )
-        .slice(0, 18)
-        .join("\n");
-      return digest ? `## ${name}\n${digest}` : "";
+      if (!raw) {
+        return "";
+      }
+      const budget = KNOWLEDGE_FILE_BUDGETS[name] ?? 10000;
+      const body = raw.length <= budget ? raw : raw.slice(0, budget);
+      return `## ${name}\n${body}`;
     })
   );
-  return parts.filter(Boolean).join("\n\n").slice(0, 7200);
+  return parts.filter(Boolean).join("\n\n");
 }
 
 export function buildLyricsDraftingPrompt(input: BuildLyricsPromptInput): string {
@@ -63,20 +89,22 @@ export function buildLyricsDraftingPrompt(input: BuildLyricsPromptInput): string
     "Return strict JSON only: {\"title\":\"2-4 words\",\"form\":\"short form name\",\"sections\":[{\"tag\":\"Verse 1 - tight flow\",\"lines\":[\"line\"]}],\"bilingual_hint\":\"short note\",\"moodHint\":\"2-4 word sonic mood\"}.",
     "Use 7-10 tagged sections. Verse sections need 4-21 lines, Hook 2-6, Bridge 1-3, Intro/Outro 0-1.",
     "Every section tag must include an annotation after the section name. Do not place commands outside tags. Do not name existing artists or songs.",
+    "Length budget: total lyric body (joined section lines + tag overhead, before YAML META) must reach 4400-4600 characters; absolute upper bound 4800. Treat anything under 4000 as a draft failure and keep expanding verses, hook variations, and bridge before returning.",
+    "Use the full knowledge digest below — quote rhyme tables, structure formulas, and V5.5 metatag vocabulary explicitly when they apply. Do not paraphrase the references away.",
     input.repairNotes?.length ? `Repair notes from previous draft: ${input.repairNotes.join("; ")}` : "",
     "",
-    "Suno V5.5 knowledge digest:",
-    truncate(input.knowledgeDigest),
+    "Suno V5.5 knowledge digest (read the full text — it is the craft reference):",
+    truncate(input.knowledgeDigest, 20000),
     "",
-    "ARTIST.md:",
-    truncate(input.artistMd),
+    "ARTIST.md (full persona — adapt voice and motifs to it):",
+    truncate(input.artistMd, 4000),
     "",
-    "artist/CURRENT_STATE.md:",
-    truncate(input.currentState),
+    "artist/CURRENT_STATE.md (recent works, avoid repeating their hooks):",
+    truncate(input.currentState, 3000),
     "",
     `title hint: ${input.title}`,
     "",
-    "brief.md:",
-    truncate(input.briefText)
+    "brief.md (observation source, theme, mood, tempo, duration — anchor the lyric to this):",
+    truncate(input.briefText, 3000)
   ].join("\n");
 }
