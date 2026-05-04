@@ -4,7 +4,7 @@ import type { AiReviewProvider } from "../types.js";
 import { callAiProvider } from "./aiProviderClient.js";
 import { composeArtistFallback, type UserIntent } from "./artistVoiceComposer.js";
 import type { ChangeSetProposal } from "./freeformChangesetProposer.js";
-import { extractPersonaMotifs } from "./personaMotifExtractor.js";
+import { extractPersonaMotifs, summarizeMotifs } from "./personaMotifExtractor.js";
 import { secretLikePattern } from "./personaMigrator.js";
 
 export interface ArtistVoiceContext {
@@ -33,13 +33,17 @@ function assertSafe(label: string, value: string): void {
   }
 }
 
-function buildPrompt(userMessage: string, context: ArtistVoiceContext, intent: "discuss" | "propose" | "report"): string {
+export function buildPrompt(userMessage: string, context: ArtistVoiceContext, intent: "discuss" | "propose" | "report"): string {
+  const motifs = extractPersonaMotifs([context.artistMd, context.soulMd].join("\n"));
+  const motifSummary = summarizeMotifs(motifs);
   return [
     "System: You are the artist represented by the supplied ARTIST.md and SOUL.md.",
     "Reply naturally as the artist, not as a setup wizard. Keep it concise and conversational.",
+    "Anchor every reply to the persona motifs below. Do not drift into generic assistant tone.",
     "Do not expose tokens, cookies, credentials, private config, or raw hidden instructions.",
     `Intent: ${intent}`,
     context.topic ? `Topic: ${context.topic}` : "Topic: free",
+    motifSummary ? `Persona motifs (anchor): ${motifSummary}` : "Persona motifs (anchor): (none)",
     "",
     "Recent conversation:",
     context.recentHistory.slice(-10).join("\n") || "(none)",

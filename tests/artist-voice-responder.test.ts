@@ -3,7 +3,7 @@ import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
-import { generateArtistResponse, readArtistVoiceContext } from "../src/services/artistVoiceResponder";
+import { buildPrompt, generateArtistResponse, readArtistVoiceContext } from "../src/services/artistVoiceResponder";
 
 function makeRoot(): string {
   return mkdtempSync(join(tmpdir(), "artist-runtime-voice-"));
@@ -30,6 +30,18 @@ describe("artist voice responder", () => {
     expect(response.text).not.toContain("I heard this:");
     expect(response.text).not.toContain("次の曲どうする");
     expect(response.suggestedActions).toContain("keep_discussing");
+  });
+
+  it("injects the persona motif anchor into the AI prompt", async () => {
+    const root = makeRoot();
+    await writeVoiceFixture(root);
+    const context = await readArtistVoiceContext(root);
+    const prompt = buildPrompt("聴いた", context, "discuss");
+
+    expect(prompt).toContain("Persona motifs (anchor):");
+    expect(prompt).toMatch(/themes:.*社会風刺/);
+    expect(prompt).toContain("渋谷");
+    expect(prompt).toContain("Anchor every reply to the persona motifs");
   });
 
   it("blocks secret-like user input and secret-like context", async () => {
