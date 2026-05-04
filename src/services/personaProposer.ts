@@ -2,12 +2,14 @@ import type { AiReviewProvider, PersonaField } from "../types.js";
 import { callAiProvider } from "./aiProviderClient.js";
 import { secretLikePattern, parseIntentDirectives } from "./personaMigrator.js";
 import { soulPersonaQuestions } from "./soulFileBuilder.js";
+import { extractPersonaMotifs, summarizeMotifs, type PersonaMotifBundle } from "./personaMotifExtractor.js";
 
 export interface PersonaProposerSourceContext {
   artistMd: string;
   soulMd: string;
   roughInput?: string;
   customSections?: string[];
+  motifs?: PersonaMotifBundle;
 }
 
 export interface PersonaFieldDraft {
@@ -63,13 +65,40 @@ function splitOrigin(value: string): { draft: string; reasoning?: string } {
   };
 }
 
+function ensureMotifs(source: PersonaProposerSourceContext): PersonaMotifBundle {
+  return source.motifs ?? extractPersonaMotifs(source.artistMd);
+}
+
+function motifConversationTone(motifs: PersonaMotifBundle): string | undefined {
+  const themes = motifs.themes.slice(0, 3);
+  if (themes.length === 0) return undefined;
+  const themeList = themes.join("・");
+  return `${themeList}を直球で語る。事実を述べず、景色と行動で切る。`;
+}
+
+function motifRefusalStyle(motifs: PersonaMotifBundle): string | undefined {
+  const avoid = motifs.avoid.slice(0, 3);
+  if (avoid.length === 0) return undefined;
+  const avoidList = avoid.join("・");
+  return `${avoidList}は受け流す。説明口調を避け、皮肉で切り返す。`;
+}
+
+function motifAwareDefault(field: PersonaField, motifs: PersonaMotifBundle): string | undefined {
+  if (field === "soul-tone") return motifConversationTone(motifs);
+  if (field === "soul-refusal") return motifRefusalStyle(motifs);
+  return undefined;
+}
+
 export function buildPersonaProposerPrompt(req: PersonaProposerRequest): string {
+  const motifSummary = summarizeMotifs(ensureMotifs(req.source));
   return [
     "System: You help build a concise musical artist persona.",
     "Return one line per requested field using: fieldKey: value (origin: source).",
     "Keep each value under 200 characters. Do not include secrets, tokens, cookies, or credentials.",
+    "Anchor every proposal to the persona motifs below; do not propose values that contradict them.",
     "",
     `Requested fields: ${req.fields.join(", ")}`,
+    motifSummary ? `Persona motifs (anchor): ${motifSummary}` : "Persona motifs (anchor): (none)",
     req.source.roughInput ? `Rough input: ${req.source.roughInput}` : "Rough input: (none)",
     req.source.customSections?.length ? `Custom sections: ${req.source.customSections.join(", ")}` : "Custom sections: (none)",
     "",
@@ -106,13 +135,25 @@ export function parsePersonaProposerResponse(raw: string, fields: PersonaField[]
   });
 }
 
-function mockDrafts(fields: PersonaField[]): PersonaFieldDraft[] {
-  return fields.map((field) => ({
-    field,
-    draft: fieldDefaults.get(field) ?? "<TBD>",
-    status: "proposed",
-    reasoning: "mock provider default"
-  }));
+function mockDrafts(fields: PersonaField[], motifs: PersonaMotifBundle): PersonaFieldDraft[] {
+  const motifSummary = summarizeMotifs(motifs);
+  return fields.map((field) => {
+    const motifAware = motifAwareDefault(field, motifs);
+    if (motifAware) {
+      return {
+        field,
+        draft: motifAware,
+        status: "proposed",
+        reasoning: motifSummary ? `mock provider derived from motifs: ${motifSummary}` : "mock provider default"
+      };
+    }
+    return {
+      field,
+      draft: fieldDefaults.get(field) ?? "<TBD>",
+      status: "proposed",
+      reasoning: "mock provider default"
+    };
+  });
 }
 
 function secretFieldsFromDirectives(value: string | undefined, fields: PersonaField[]): Set<PersonaField> {
@@ -155,11 +196,12 @@ export async function proposePersonaFields(
       drafts: req.fields.map((field) => ({ field, draft: "", status: "skipped", reasoning: "secret-like rough input" }))
     };
   }
+  const motifs = ensureMotifs(req.source);
   if (provider === "mock") {
     return {
       provider: "mock",
       warnings,
-      drafts: applySecretSkips(mockDrafts(req.fields), roughInputSecretFields, "secret-like rough input")
+      drafts: applySecretSkips(mockDrafts(req.fields, motifs), roughInputSecretFields, "secret-like rough input")
     };
   }
   const raw = await callAiProvider(buildPersonaProposerPrompt(req), { provider });

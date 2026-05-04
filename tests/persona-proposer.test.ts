@@ -104,4 +104,43 @@ describe("persona proposer", () => {
       reasoning: "unsafe response"
     });
   });
+
+  it("uses motif-anchored mock drafts for soul-tone and soul-refusal when ARTIST.md has motifs", async () => {
+    const artistMd = [
+      "## Lyrics",
+      "- テーマ: 社会風刺、皮肉、権力構造",
+      "- 避けること:",
+      "  - 自己紹介",
+      "  - 感情語連打",
+      "  - 説明口調"
+    ].join("\n");
+    const result = await proposePersonaFields({
+      fields: ["soul-tone", "soul-refusal", "artistName"],
+      source: { artistMd, soulMd: "" }
+    });
+
+    expect(result.provider).toBe("mock");
+    const tone = result.drafts.find((draft) => draft.field === "soul-tone");
+    expect(tone?.status).toBe("proposed");
+    expect(tone?.draft).toContain("社会風刺");
+    expect(tone?.reasoning).toContain("motifs");
+    const refusal = result.drafts.find((draft) => draft.field === "soul-refusal");
+    expect(refusal?.draft).toContain("自己紹介");
+    expect(refusal?.draft).toContain("受け流す");
+    const name = result.drafts.find((draft) => draft.field === "artistName");
+    expect(name?.draft).toBe("Unnamed OpenClaw Artist");
+  });
+
+  it("includes the persona motif anchor in the AI prompt when ARTIST.md has motifs", () => {
+    const prompt = buildPersonaProposerPrompt({
+      fields: ["soul-tone"],
+      source: {
+        artistMd: "## Lyrics\n- テーマ: 社会風刺と再開発の矛盾\n- 地理的スタンス: 渋谷、六本木",
+        soulMd: ""
+      }
+    });
+
+    expect(prompt).toContain("Persona motifs (anchor):");
+    expect(prompt).toContain("社会風刺");
+  });
 });
