@@ -493,6 +493,10 @@ export async function formatRuntimeEvent(
         `missing: ${event.missing.join(", ")}`,
         "補完案を作った。進めるなら Yes。"
       ].join("\n");
+    case "observation_collected":
+      return `Observations collected: ${event.entryCount} entries${typeof event.topScore === "number" ? `, top score=${event.topScore}` : ""}${event.topMotifMatch ? ` (${event.topMotifMatch})` : ""}`;
+    case "artist_presence":
+      return event.text;
     case "error":
       return `Runtime error: ${event.source} ${event.reason}${event.songId ? ` (${event.songId})` : ""}`;
   }

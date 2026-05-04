@@ -283,6 +283,14 @@ export async function collectObservations(root: string, context: XObservationCon
     const observations = renderObservation(filtered.entries, now, context.query ?? strategy.query, motifs);
     await mkdir(dirname(path), { recursive: true });
     await writeFile(path, `${observations.trim()}\n`, "utf8");
+    const topScored = filtered.scored[0];
+    emitRuntimeEvent({
+      type: "observation_collected",
+      topMotifMatch: topScored?.matched.length ? topScored.entry.motifMatch : undefined,
+      topScore: topScored?.score,
+      entryCount: filtered.entries.length,
+      timestamp: now.getTime()
+    });
     return { status: "collected", path, observations };
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
