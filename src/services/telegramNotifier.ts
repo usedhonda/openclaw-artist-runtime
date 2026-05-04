@@ -32,6 +32,7 @@ export class TelegramNotifier {
   }
 
   async notify(event: RuntimeEvent): Promise<void> {
+    if (event.type === "observation_collected") return;
     const text = await formatRuntimeEvent(event, {
       workspaceRoot: this.options.workspaceRoot,
       aiReviewProvider: this.options.aiReviewProvider
