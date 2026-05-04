@@ -9,7 +9,7 @@ import { readConversationalSession } from "../src/services/conversationalSession
 async function workspace(): Promise<string> {
   const root = mkdtempSync(join(tmpdir(), "artist-runtime-natural-message-"));
   await mkdir(join(root, "artist"), { recursive: true });
-  await writeFile(join(root, "ARTIST.md"), "Artist name: Ash Unit\n", "utf8");
+  await writeFile(join(root, "ARTIST.md"), "Artist name: Ash Unit\n\n## Current artist core\n- Core obsessions: 社会風刺\n\n渋谷\n", "utf8");
   await writeFile(join(root, "SOUL.md"), "Conversation tone: blunt\n", "utf8");
   await writeFile(join(root, "artist", "CURRENT_STATE.md"), "awake\n", "utf8");
   await writeFile(join(root, "artist", "SOCIAL_VOICE.md"), "short\n", "utf8");
@@ -27,7 +27,8 @@ describe("telegram natural message conversational entry", () => {
       workspaceRoot: root
     });
 
-    expect(result.responseText).toContain("Ash Unit");
+    expect(result.responseText).toContain("社会風刺");
+    expect(result.responseText).not.toContain("I heard this:");
     expect(result.shouldStoreFreeText).toBe(true);
     const session = await readConversationalSession(root, 2, 1);
     expect(session?.history.map((turn) => turn.role)).toEqual(["user", "artist"]);

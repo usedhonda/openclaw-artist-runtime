@@ -11,9 +11,9 @@ function makeRoot(): string {
 
 async function writeVoiceFixture(root: string): Promise<void> {
   await mkdir(join(root, "artist"), { recursive: true });
-  await writeFile(join(root, "ARTIST.md"), "# ARTIST.md\n\nArtist name: Ghost Relay\n\n## Sound\n\nCold station pop.\n", "utf8");
-  await writeFile(join(root, "SOUL.md"), "# SOUL.md\n\nConversation tone: short, direct, ash-road loyal.\n", "utf8");
-  await writeFile(join(root, "artist", "CURRENT_STATE.md"), "# CURRENT_STATE.md\n\nWatching late trains.\n", "utf8");
+  await writeFile(join(root, "ARTIST.md"), "# ARTIST.md\n\nArtist name: Ghost Relay\n\n## Current artist core\n\n- Core obsessions: 社会風刺\n\n## Sound\n\nCold station pop.\n\n## Places\n\n渋谷\n", "utf8");
+  await writeFile(join(root, "SOUL.md"), "# SOUL.md\n\nConversation tone: short, direct, ash-road loyal.\n\n- Emotional weather: late train pressure\n", "utf8");
+  await writeFile(join(root, "artist", "CURRENT_STATE.md"), "# CURRENT_STATE.md\n\n- Emotional weather: Watching late trains.\n", "utf8");
   await writeFile(join(root, "artist", "SOCIAL_VOICE.md"), "# SOCIAL_VOICE.md\n\nNo sales pitch.\n", "utf8");
 }
 
@@ -25,8 +25,10 @@ describe("artist voice responder", () => {
 
     const response = await generateArtistResponse("次の曲どうする?", context, { intent: "discuss" });
 
-    expect(response.text).toContain("Ghost Relay");
-    expect(response.text).toContain("short, direct");
+    expect(response.text).toContain("社会風刺");
+    expect(response.text).toContain("渋谷");
+    expect(response.text).not.toContain("I heard this:");
+    expect(response.text).not.toContain("次の曲どうする");
     expect(response.suggestedActions).toContain("keep_discussing");
   });
 

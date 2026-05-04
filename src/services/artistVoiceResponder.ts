@@ -2,7 +2,9 @@ import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 import type { AiReviewProvider } from "../types.js";
 import { callAiProvider } from "./aiProviderClient.js";
+import { composeArtistFallback, type UserIntent } from "./artistVoiceComposer.js";
 import type { ChangeSetProposal } from "./freeformChangesetProposer.js";
+import { extractPersonaMotifs } from "./personaMotifExtractor.js";
 import { secretLikePattern } from "./personaMigrator.js";
 
 export interface ArtistVoiceContext {
@@ -58,10 +60,22 @@ function buildPrompt(userMessage: string, context: ArtistVoiceContext, intent: "
   ].join("\n");
 }
 
-function mockArtistResponse(userMessage: string, context: ArtistVoiceContext): string {
-  const name = context.artistMd.match(/Artist name:\s*(.+)/)?.[1]?.trim() || "the artist";
-  const tone = context.soulMd.match(/Conversation tone:\s*(.+)/)?.[1]?.trim() || "direct";
-  return `${name}: ${tone}. I heard this: "${truncate(userMessage, 120)}". I'll keep it as a conversation, not a form.`;
+function pickLine(label: string, value: string): string | undefined {
+  return value.match(new RegExp(`${label}:\\s*(.+)`, "i"))?.[1]?.trim();
+}
+
+function mapIntent(intent: "discuss" | "propose" | "report"): UserIntent {
+  return intent;
+}
+
+function fallbackArtistResponse(userMessage: string, context: ArtistVoiceContext, intent: "discuss" | "propose" | "report"): string {
+  return composeArtistFallback({
+    userMessage,
+    motifs: extractPersonaMotifs([context.artistMd, context.soulMd].join("\n")),
+    tone: pickLine("Conversation tone", context.soulMd),
+    currentMood: pickLine("Emotional weather", context.currentState) ?? pickLine("Emotional weather", context.soulMd),
+    userIntent: mapIntent(intent)
+  });
 }
 
 export async function readArtistVoiceContext(root: string, options: Partial<Pick<ArtistVoiceContext, "topic" | "recentHistory">> = {}): Promise<ArtistVoiceContext> {
@@ -98,7 +112,7 @@ export async function generateArtistResponse(
   }
   const provider = options.aiReviewProvider ?? "mock";
   const text = provider === "mock"
-    ? mockArtistResponse(userMessage, context)
+    ? fallbackArtistResponse(userMessage, context, options.intent)
     : await callAiProvider(buildPrompt(userMessage, context, options.intent), { provider });
   assertSafe("artist_response", text);
   return {

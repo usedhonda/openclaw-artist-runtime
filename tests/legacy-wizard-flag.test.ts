@@ -28,6 +28,7 @@ describe("legacy wizard flag", () => {
 
     const result = await routeTelegramCommand({ text: "/setup", fromUserId: 1, chatId: 2, workspaceRoot: root });
 
-    expect(result.responseText).toContain("the artist:");
+    expect(result.responseText).not.toContain("I heard this:");
+    expect(result.responseText.length).toBeGreaterThan(0);
   });
 });

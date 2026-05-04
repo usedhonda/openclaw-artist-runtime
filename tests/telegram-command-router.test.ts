@@ -101,7 +101,8 @@ describe("telegram command router", () => {
     const result = await routeTelegramCommand({ ...baseInput, text: "/setup", workspaceRoot: root });
 
     expect(result.kind).toBe("setup");
-    expect(result.responseText).toContain("the artist:");
+    expect(result.responseText).not.toContain("I heard this:");
+    expect(result.responseText.length).toBeGreaterThan(0);
     expect(result.shouldStoreFreeText).toBe(true);
   });
 
@@ -110,7 +111,8 @@ describe("telegram command router", () => {
     const root = makeRoot();
     const result = await routeTelegramCommand({ ...baseInput, text: "/setup", workspaceRoot: root });
 
-    expect(result.responseText).toContain("the artist:");
+    expect(result.responseText).not.toContain("I heard this:");
+    expect(result.responseText.length).toBeGreaterThan(0);
     expect(result.shouldStoreFreeText).toBe(true);
   });
 

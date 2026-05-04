@@ -93,7 +93,8 @@ describe("OpenClaw Telegram persona command wire", () => {
 
     const setup = await commands.get("setup")?.handler(commandContext("", root));
 
-    expect(setup?.text).toContain("the artist:");
+    expect(setup?.text).not.toContain("I heard this:");
+    expect(setup?.text.length).toBeGreaterThan(0);
   });
 
   it("routes /confirm migrate through native command session control", async () => {
