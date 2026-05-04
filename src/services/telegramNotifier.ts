@@ -396,6 +396,29 @@ function formatObservationSource(summary?: ObservationSummary): string[] {
   ];
 }
 
+function formatObservationMetadata(summary?: ObservationSummary): string[] {
+  const [source, quote, motivation] = formatObservationSource(summary);
+  return [motivation, source, quote];
+}
+
+function formatSongMetadata(title: string, take: string, urls: string, summary?: ObservationSummary): string {
+  return [
+    `🎵 ${title}${take}`,
+    "🔗 試聴:",
+    urls,
+    ...formatObservationMetadata(summary),
+    "非公開、御大のみ"
+  ].join("\n");
+}
+
+function sanitizeArtistTop(text: string, fallback: string): string {
+  const clean = text
+    .replace(/https?:\/\/\S+/g, "")
+    .replace(/\s+\n/g, "\n")
+    .trim();
+  return !clean || secretLikePattern.test(clean) ? fallback : clean;
+}
+
 async function readSongCompletionContext(event: Extract<RuntimeEvent, { type: "song_take_completed" }>, workspaceRoot?: string): Promise<{ title: string; observationSummary?: ObservationSummary }> {
   if (!workspaceRoot) {
     return { title: event.songId, observationSummary: event.observationSummary };
@@ -407,19 +430,26 @@ async function readSongCompletionContext(event: Extract<RuntimeEvent, { type: "s
   };
 }
 
-async function formatSongTakeCompleted(event: Extract<RuntimeEvent, { type: "song_take_completed" }>, workspaceRoot?: string): Promise<string> {
+async function formatSongTakeCompleted(
+  event: Extract<RuntimeEvent, { type: "song_take_completed" }>,
+  options: Pick<TelegramNotifierOptions, "workspaceRoot" | "aiReviewProvider"> = {}
+): Promise<string> {
   const take = event.selectedTakeId ? ` (selected: ${event.selectedTakeId})` : "";
   const urls = event.urls.length
     ? event.urls.map((url, index) => `${index + 1}. ${url}`).join("\n")
     : "(URL なし)";
-  const context = await readSongCompletionContext(event, workspaceRoot);
+  const context = await readSongCompletionContext(event, options.workspaceRoot);
+  const fallbackTop = `できた。${context.title}。聴いて、感想ほしい。`;
+  const artistTop = sanitizeArtistTop(await artistReport(
+    event,
+    fallbackTop,
+    options
+  ), fallbackTop);
   return [
-    ...formatObservationSource(context.observationSummary),
-    `🎵 タイトル: ${context.title}${take}`,
-    "🔗 試聴:",
-    urls,
-    "----------",
-    "非公開、御大のみ"
+    artistTop,
+    "",
+    "─────",
+    formatSongMetadata(context.title, take, urls, context.observationSummary)
   ].join("\n");
 }
 
@@ -435,7 +465,7 @@ export async function formatRuntimeEvent(
     case "autopilot_state_changed":
       return `Autopilot state: enabled=${event.enabled} paused=${event.paused}${event.reason ? ` reason=${event.reason}` : ""}`;
     case "song_take_completed":
-      return formatSongTakeCompleted(event, options.workspaceRoot);
+      return formatSongTakeCompleted(event, options);
     case "theme_generated":
       return artistReport(event, `Theme generated: ${event.theme}. Reason: ${event.reason}`, options);
     case "suno_budget_low":

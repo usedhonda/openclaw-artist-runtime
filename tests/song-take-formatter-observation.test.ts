@@ -7,7 +7,7 @@ import { updateSongState } from "../src/services/artistState";
 import { formatRuntimeEvent } from "../src/services/telegramNotifier";
 
 describe("song take formatter observation source", () => {
-  it("renders song_take_completed as five producer-readable blocks", async () => {
+  it("renders song_take_completed as artist voice plus folded metadata", async () => {
     const root = mkdtempSync(join(tmpdir(), "artist-runtime-song-take-observation-"));
     await ensureArtistWorkspace(root);
     await updateSongState(root, "song-observe", {
@@ -30,10 +30,12 @@ describe("song take formatter observation source", () => {
       timestamp: 1
     }, { workspaceRoot: root });
 
+    expect(message).toContain("─────");
+    expect(message.split("─────")[0]).not.toContain("https://");
     expect(message).toContain("🌐 観察元: @citywatch (https://x.com/citywatch/status/42)");
     expect(message).toContain("💬 抜粋: 「old live houses disappear under identical signs」");
     expect(message).toContain("🎯 動機: ARTIST.md の都市観察と SOUL.md の静かな違和感に接続");
-    expect(message).toContain("🎵 タイトル: Civic Static (selected: take-2)");
+    expect(message).toContain("🎵 Civic Static (selected: take-2)");
     expect(message).toContain("🔗 試聴:\n1. https://suno.com/song/a\n2. https://suno.com/song/b");
   });
 });
