@@ -1,0 +1,132 @@
+import { mkdir, writeFile } from "node:fs/promises";
+import { mkdtempSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { describe, expect, it } from "vitest";
+import { isUnsafeCommandVoiceTopForTest, wrapCommandVoice } from "../src/services/commandVoiceWrapper";
+import { ensureSongState } from "../src/services/artistState";
+import { routeTelegramCommand } from "../src/services/telegramCommandRouter";
+
+function makeRoot(): string {
+  return mkdtempSync(join(tmpdir(), "artist-runtime-command-voice-"));
+}
+
+async function writeVoice(root: string): Promise<void> {
+  await mkdir(join(root, "artist"), { recursive: true });
+  await writeFile(
+    join(root, "ARTIST.md"),
+    "# ARTIST.md\n\n## Current artist core\n\n- Core obsessions: 社会風刺\n\n## Places\n\n渋谷\n",
+    "utf8"
+  );
+  await writeFile(
+    join(root, "SOUL.md"),
+    [
+      "# SOUL.md",
+      "",
+      "_俺は報告書じゃない。_",
+      "",
+      "## The Vibe",
+      "低い熱で近く話す。",
+      "",
+      "### Signature Moves",
+      "- 見たものを音に戻す",
+      "",
+      "## 文体 variation rule",
+      "",
+      "### forbidden_phrases",
+      "- Available commands:",
+      "- Autopilot:",
+      "",
+      "### sentence_endings",
+      "- だね。",
+      "- と思う。",
+      "",
+      "### reaction_phrases",
+      "- うん",
+      "",
+      "## Producer (relationship in music-making)",
+      "ゆずるさんに先に見せる。",
+      "",
+      "### Producer call",
+      "- producer_callname: ゆずるさん",
+      "- first_person: 俺"
+    ].join("\n"),
+    "utf8"
+  );
+  await writeFile(join(root, "artist", "CURRENT_STATE.md"), "# CURRENT_STATE.md\n\n- Emotional weather: 低い熱\n", "utf8");
+}
+
+function topOf(text: string): string {
+  return text.split("─────")[0].trim();
+}
+
+describe("command voice wrapper", () => {
+  it("wraps deterministic info below an artist voice top", async () => {
+    const root = makeRoot();
+    await writeVoice(root);
+
+    const text = await wrapCommandVoice({
+      kind: "status",
+      workspaceRoot: root,
+      info: "Autopilot: enabled (dry-run)\nStage: planning\nSong: song-001",
+      userMessage: "/status"
+    });
+
+    expect(text).toContain("─────\ninfo\nAutopilot: enabled");
+    expect(topOf(text)).not.toContain("Autopilot:");
+    expect(topOf(text)).not.toContain("song-001");
+    expect(isUnsafeCommandVoiceTopForTest(topOf(text))).toBe(false);
+  });
+
+  it("falls back when generated top would contain technical ids", async () => {
+    const root = makeRoot();
+    await writeVoice(root);
+    await writeFile(
+      join(root, "SOUL.md"),
+      [
+        "# SOUL.md",
+        "",
+        "## The Vibe",
+        "",
+        "### Signature Moves",
+        "- song-1234 を口に出してしまう",
+        "",
+        "## 文体 variation rule",
+        "",
+        "### sentence_endings",
+        "- 。",
+        "",
+        "## Producer (relationship in music-making)",
+        "",
+        "### Producer call",
+        "- producer_callname: ゆずるさん",
+        "- first_person: 俺"
+      ].join("\n"),
+      "utf8"
+    );
+
+    const text = await wrapCommandVoice({
+      kind: "song",
+      workspaceRoot: root,
+      info: "song-1234 | take_selected | Test",
+      userMessage: "次の案ある?"
+    });
+
+    expect(topOf(text)).toBe("その曲の中身、下に出す。");
+    expect(text).toContain("song-1234 | take_selected | Test");
+  });
+
+  it("routes high-frequency commands as voice plus info", async () => {
+    const root = makeRoot();
+    await writeVoice(root);
+    await ensureSongState(root, "song-001", "Ash Road");
+
+    const help = await routeTelegramCommand({ text: "/help", fromUserId: 1, chatId: 1, workspaceRoot: root });
+    const songs = await routeTelegramCommand({ text: "/songs", fromUserId: 1, chatId: 1, workspaceRoot: root });
+
+    expect(help.responseText).toContain("─────\ninfo\nAvailable commands:");
+    expect(songs.responseText).toContain("─────\ninfo\nsong-001");
+    expect(topOf(help.responseText)).not.toContain("/status");
+    expect(topOf(songs.responseText)).not.toContain("song-001");
+  });
+});

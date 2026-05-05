@@ -14,6 +14,7 @@ import { isLegacyWizardEnabled } from "./runtimeConfig.js";
 import { readSoulPersonaSummary } from "./soulFileBuilder.js";
 import { isConversationalSongCreate, routeTelegramConversation, type TelegramProposalButtonsRequest } from "./telegramConversationalRouter.js";
 import { readObservationsReport, type ObservationReport } from "./xObservationCollector.js";
+import { wrapCommandVoice, type CommandVoiceKind } from "./commandVoiceWrapper.js";
 
 export type TelegramCommandKind =
   | "help"
@@ -63,12 +64,40 @@ function formatStatus(status?: AutopilotStatus): string {
   ].filter(Boolean).join("\n");
 }
 
+async function voiceCommand(kind: CommandVoiceKind, info: string, input: TelegramRouteInput, userMessage?: string): Promise<string> {
+  return wrapCommandVoice({
+    kind,
+    info,
+    workspaceRoot: input.workspaceRoot,
+    userMessage: userMessage ?? input.text
+  });
+}
+
+function helpInfo(): string {
+  return [
+    "Available commands:",
+    "/status - show autopilot status",
+    "/songs - list recent songs",
+    "/song <songId> - show song detail",
+    "/song create [hint] - ask the artist to make a song",
+    "/commission <brief> - propose a producer commission for autopilot",
+    "/regen <songId> - queue a dry-run regeneration note",
+    "/review <songId> - run a debug-only mock AI review",
+    "/setup - talk with the artist about persona direction",
+    "/persona show|fields|check|reset|migrate - inspect or migrate persona files",
+    "/observations [YYYY-MM-DD] - show what artist-runtime collected from X",
+    "/pause - pause autopilot",
+    "/resume - resume autopilot",
+    "/help - show this help"
+  ].join("\n");
+}
+
 export async function routeTelegramCommand(input: TelegramRouteInput): Promise<TelegramRouteResult> {
   const text = input.text.trim();
   if (!text) {
     return {
       kind: "unknown",
-      responseText: "Send /help for available artist-runtime commands.",
+      responseText: await voiceCommand("error", "Send /help for available artist-runtime commands.", input, "empty command"),
       shouldStoreFreeText: false
     };
   }
@@ -109,7 +138,7 @@ export async function routeTelegramCommand(input: TelegramRouteInput): Promise<T
     if (command === "/skip" || command === "/back" || command === "/answer") {
       return {
         kind: "free_text",
-        responseText: "もうその wizard 用の言葉は使わなくていい。普通に話してくれれば拾う。",
+        responseText: await voiceCommand("ack", "Legacy wizard command ignored. Speak normally and the artist conversation router will pick it up.", input, "legacy wizard ignored"),
         shouldStoreFreeText: false
       };
     }
@@ -117,22 +146,7 @@ export async function routeTelegramCommand(input: TelegramRouteInput): Promise<T
   if (command === "/help" || command === "/start") {
     return {
       kind: "help",
-      responseText: [
-        "Available commands:",
-        "/status - show autopilot status",
-        "/songs - list recent songs",
-        "/song <songId> - show song detail",
-        "/song create [hint] - ask the artist to make a song",
-        "/commission <brief> - propose a producer commission for autopilot",
-        "/regen <songId> - queue a dry-run regeneration note",
-        "/review <songId> - run a debug-only mock AI review",
-        "/setup - talk with the artist about persona direction",
-        "/persona show|fields|check|reset|migrate - inspect or migrate persona files",
-        "/observations [YYYY-MM-DD] - show what artist-runtime collected from X",
-        "/pause - pause autopilot",
-        "/resume - resume autopilot",
-        "/help - show this help"
-      ].join("\n"),
+      responseText: await voiceCommand("help", helpInfo(), input),
       shouldStoreFreeText: false
     };
   }
@@ -236,21 +250,22 @@ export async function routeTelegramCommand(input: TelegramRouteInput): Promise<T
   if (command === "/status") {
     return {
       kind: "status",
-      responseText: formatStatus(input.autopilotStatus),
+      responseText: await voiceCommand("status", formatStatus(input.autopilotStatus), input),
       shouldStoreFreeText: false
     };
   }
 
   if (command === "/songs") {
     if (!input.workspaceRoot) {
-      return { kind: "songs", responseText: "Song list unavailable: workspace root missing.", shouldStoreFreeText: false };
+      return { kind: "songs", responseText: await voiceCommand("error", "Song list unavailable: workspace root missing.", input, "songs unavailable"), shouldStoreFreeText: false };
     }
     const songs = await listRecentSongs(input.workspaceRoot, 10);
+    const info = songs.length === 0
+      ? "No songs yet."
+      : songs.map((song) => `${song.songId} | ${song.status} | ${song.title}`).join("\n");
     return {
       kind: "songs",
-      responseText: songs.length === 0
-        ? "No songs yet."
-        : songs.map((song) => `${song.songId} | ${song.status} | ${song.title}`).join("\n"),
+      responseText: await voiceCommand("songs", info, input),
       shouldStoreFreeText: false
     };
   }
@@ -259,7 +274,7 @@ export async function routeTelegramCommand(input: TelegramRouteInput): Promise<T
     const subcommand = args[0]?.toLowerCase();
     if (subcommand === "update") {
       if (!input.workspaceRoot || !args[1]) {
-        return { kind: "song", responseText: "Usage: /song update <songId>", shouldStoreFreeText: false };
+        return { kind: "song", responseText: await voiceCommand("error", "Usage: /song update <songId>", input, "song update usage"), shouldStoreFreeText: false };
       }
       const routed = await routeTelegramConversation({
         text: `/song ${args[1]} ${args.slice(2).join(" ") || "この曲を更新したい"}`,
@@ -273,7 +288,7 @@ export async function routeTelegramCommand(input: TelegramRouteInput): Promise<T
     }
     if (subcommand === "add") {
       if (!input.workspaceRoot) {
-        return { kind: "song", responseText: "Song add unavailable: workspace root missing.", shouldStoreFreeText: false };
+        return { kind: "song", responseText: await voiceCommand("error", "Song add unavailable: workspace root missing.", input, "song add unavailable"), shouldStoreFreeText: false };
       }
       const routed = await routeTelegramConversation({
         text: `/song create ${args.slice(1).join(" ")}`.trim(),
@@ -287,7 +302,7 @@ export async function routeTelegramCommand(input: TelegramRouteInput): Promise<T
     }
     if (subcommand === "create") {
       if (!input.workspaceRoot) {
-        return { kind: "song", responseText: "Song create unavailable: workspace root missing.", shouldStoreFreeText: false };
+        return { kind: "song", responseText: await voiceCommand("error", "Song create unavailable: workspace root missing.", input, "song create unavailable"), shouldStoreFreeText: false };
       }
       const routed = await routeTelegramConversation({
         text,
@@ -301,28 +316,29 @@ export async function routeTelegramCommand(input: TelegramRouteInput): Promise<T
     }
     const songId = args[0];
     if (!input.workspaceRoot || !songId) {
-      return { kind: "song", responseText: "Usage: /song <songId> | /song update <songId> | /song add", shouldStoreFreeText: false };
+      return { kind: "song", responseText: await voiceCommand("error", "Usage: /song <songId> | /song update <songId> | /song add", input, "song usage"), shouldStoreFreeText: false };
     }
     const song = await getSongDetail(input.workspaceRoot, songId);
+    const info = [
+      `${song.songId} | ${song.status} | ${song.title}`,
+      song.selectedTakeId ? `Selected take: ${song.selectedTakeId}` : undefined,
+      `Imported assets: ${song.importedPaths.length}`,
+      song.brief ? `Brief: ${song.brief.slice(0, 240)}` : undefined
+    ].filter(Boolean).join("\n");
     return {
       kind: "song",
-      responseText: [
-        `${song.songId} | ${song.status} | ${song.title}`,
-        song.selectedTakeId ? `Selected take: ${song.selectedTakeId}` : undefined,
-        `Imported assets: ${song.importedPaths.length}`,
-        song.brief ? `Brief: ${song.brief.slice(0, 240)}` : undefined
-      ].filter(Boolean).join("\n"),
+      responseText: await voiceCommand("song", info, input, "song detail"),
       shouldStoreFreeText: false
     };
   }
 
   if (command === "/observations") {
     if (!input.workspaceRoot) {
-      return { kind: "observations", responseText: "Observations unavailable: workspace root missing.", shouldStoreFreeText: false };
+      return { kind: "observations", responseText: await voiceCommand("error", "Observations unavailable: workspace root missing.", input, "observations unavailable"), shouldStoreFreeText: false };
     }
     const dateArg = args[0]?.trim();
     const report = await readObservationsReport(input.workspaceRoot, dateArg || new Date());
-    return { kind: "observations", responseText: formatObservationsReport(report), shouldStoreFreeText: false };
+    return { kind: "observations", responseText: await voiceCommand("observations", formatObservationsReport(report), input, "observations report"), shouldStoreFreeText: false };
   }
 
   if (command === "/regen") {
@@ -365,31 +381,31 @@ export async function routeTelegramCommand(input: TelegramRouteInput): Promise<T
 
   if (command === "/pause") {
     if (!input.workspaceRoot) {
-      return { kind: "pause", responseText: "Pause unavailable: workspace root missing.", shouldStoreFreeText: false };
+      return { kind: "pause", responseText: await voiceCommand("error", "Pause unavailable: workspace root missing.", input, "pause unavailable"), shouldStoreFreeText: false };
     }
     await new AutopilotControlService().pause(input.workspaceRoot, `telegram:${input.fromUserId}`);
-    return { kind: "pause", responseText: "Autopilot paused.", shouldStoreFreeText: false };
+    return { kind: "pause", responseText: await voiceCommand("ack", "Autopilot paused.", input, "autopilot paused"), shouldStoreFreeText: false };
   }
 
   if (command === "/resume") {
     if (!input.workspaceRoot) {
-      return { kind: "resume", responseText: "Resume unavailable: workspace root missing.", shouldStoreFreeText: false };
+      return { kind: "resume", responseText: await voiceCommand("error", "Resume unavailable: workspace root missing.", input, "resume unavailable"), shouldStoreFreeText: false };
     }
     await new AutopilotControlService().resume(input.workspaceRoot, { reason: `telegram:${input.fromUserId}`, source: "telegram" });
-    return { kind: "resume", responseText: "Autopilot resumed.", shouldStoreFreeText: false };
+    return { kind: "resume", responseText: await voiceCommand("ack", "Autopilot resumed.", input, "autopilot resumed"), shouldStoreFreeText: false };
   }
 
   if (command.startsWith("/")) {
     return {
       kind: "unknown",
-      responseText: `Unknown command: ${command}. Send /help for available commands.`,
+      responseText: await voiceCommand("error", `Unknown command: ${command}. Send /help for available commands.`, input, "unknown command"),
       shouldStoreFreeText: false
     };
   }
 
   return {
     kind: "free_text",
-    responseText: "Instruction received for local artist inbox staging.",
+    responseText: await voiceCommand("ack", "Instruction received for local artist inbox staging.", input, "free text staged"),
     shouldStoreFreeText: true
   };
 }
