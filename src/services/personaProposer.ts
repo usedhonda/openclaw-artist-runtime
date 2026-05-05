@@ -179,6 +179,22 @@ function applySecretSkips(drafts: PersonaFieldDraft[], secretFields: Set<Persona
   );
 }
 
+const APPEND_ONLY_DENSITY_THRESHOLD = 5000;
+
+export function isPersonaAppendOnly(soulMd: string | undefined, artistMd: string | undefined): boolean {
+  const total = (soulMd?.length ?? 0) + (artistMd?.length ?? 0);
+  return total > APPEND_ONLY_DENSITY_THRESHOLD;
+}
+
+function applyAppendOnlySkips(drafts: PersonaFieldDraft[], reason: string): PersonaFieldDraft[] {
+  return drafts.map((draft) => ({
+    field: draft.field,
+    draft: "",
+    status: "skipped",
+    reasoning: reason
+  }));
+}
+
 export async function proposePersonaFields(
   req: PersonaProposerRequest,
   options: { aiReviewProvider?: AiReviewProvider } = {}
@@ -197,6 +213,20 @@ export async function proposePersonaFields(
     };
   }
   const motifs = ensureMotifs(req.source);
+  const appendOnlyMode = isPersonaAppendOnly(req.source.soulMd, req.source.artistMd);
+  if (appendOnlyMode) {
+    warnings.push(
+      `persona files exceed ${APPEND_ONLY_DENSITY_THRESHOLD} chars; proposer is append-only — manual edits preserved over AI rewrites`
+    );
+    return {
+      provider: provider === "mock" ? "mock" : provider,
+      warnings,
+      drafts: applyAppendOnlySkips(
+        req.fields.map((field) => ({ field, draft: "", status: "skipped" })),
+        "append-only mode: persona file already dense, manual edits preserved"
+      )
+    };
+  }
   if (provider === "mock") {
     return {
       provider: "mock",

@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   buildPersonaProposerPrompt,
+  isPersonaAppendOnly,
   parsePersonaProposerResponse,
   proposePersonaFields
 } from "../src/services/personaProposer";
@@ -142,5 +143,36 @@ describe("persona proposer", () => {
 
     expect(prompt).toContain("Persona motifs (anchor):");
     expect(prompt).toContain("社会風刺");
+  });
+
+  describe("append-only guard (Plan v10.10)", () => {
+    it("activates append-only mode when persona files exceed the density threshold", () => {
+      const dense = "x".repeat(6000);
+      expect(isPersonaAppendOnly(dense, "")).toBe(true);
+      expect(isPersonaAppendOnly("", dense)).toBe(true);
+      expect(isPersonaAppendOnly("a".repeat(3000), "b".repeat(3000))).toBe(true);
+    });
+
+    it("stays in normal mode when persona files are below the density threshold", () => {
+      expect(isPersonaAppendOnly("", "")).toBe(false);
+      expect(isPersonaAppendOnly("short soul", "short artist")).toBe(false);
+      expect(isPersonaAppendOnly("a".repeat(2000), "b".repeat(2000))).toBe(false);
+    });
+
+    it("skips every requested field when persona files are dense, with append-only reasoning", async () => {
+      const denseSoul = "## SOUL.md\n\n" + "用途は試験。文字を埋めるだけ。\n".repeat(400);
+      const result = await proposePersonaFields({
+        fields: allFields,
+        source: { artistMd: "", soulMd: denseSoul }
+      });
+
+      expect(result.warnings.some((w) => w.includes("append-only"))).toBe(true);
+      expect(result.drafts).toHaveLength(allFields.length);
+      for (const draft of result.drafts) {
+        expect(draft.status).toBe("skipped");
+        expect(draft.draft).toBe("");
+        expect(draft.reasoning).toContain("append-only");
+      }
+    });
   });
 });
