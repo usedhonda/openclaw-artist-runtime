@@ -3,10 +3,14 @@ import { readdir, readFile } from "node:fs/promises";
 import { join } from "node:path";
 import type { AiReviewProvider, CommissionBrief, SongState, SpawnProposal } from "../types.js";
 import { callAiProvider } from "./aiProviderClient.js";
+import { composeArtistFallback } from "./artistVoiceComposer.js";
 import { listSongStates } from "./artistState.js";
 import { readCallbackActionEntries } from "./callbackActionRegistry.js";
+import { extractPersonaMotifs } from "./personaMotifExtractor.js";
 import { secretLikePattern } from "./personaMigrator.js";
 import { readBudgetState } from "./sunoBudgetLedger.js";
+import { validateAgainstVoiceContract } from "./voiceContractValidator.js";
+import { isVoiceFingerprintReady, parseVoiceFingerprint, type VoiceFingerprintBundle } from "./voiceFingerprintParser.js";
 
 export interface ProposeSpawnOptions {
   aiReviewProvider?: AiReviewProvider;
@@ -96,38 +100,98 @@ function buildBrief(context: { observation: string; soulMd: string; budgetRemain
   };
 }
 
+function buildVoiceContractLines(fingerprint: VoiceFingerprintBundle): string[] {
+  const lines: string[] = ["Voice Contract for the `reason` field (highest priority — match this voice or the line will be replaced):"];
+  if (fingerprint.producerCallname) {
+    lines.push(`- Address producer as "${fingerprint.producerCallname}".`);
+  }
+  if (fingerprint.firstPerson) {
+    lines.push(`- First-person: "${fingerprint.firstPerson}".`);
+  }
+  if (fingerprint.sentenceEndings.length > 0) {
+    lines.push(`- Allowed sentence endings: ${fingerprint.sentenceEndings.slice(0, 6).map((e) => `"${e}"`).join(" / ")}.`);
+  }
+  if (fingerprint.forbiddenPhrases.length > 0) {
+    const sample = fingerprint.forbiddenPhrases.slice(0, 6).map((p) => `"${p}"`).join(", ");
+    lines.push(`- Forbidden phrases (NEVER output): ${sample}.`);
+  }
+  if (fingerprint.signatureMoves.length > 0) {
+    lines.push("- Sample voice (the ONLY way to sound):");
+    for (const sample of fingerprint.signatureMoves.slice(0, 4)) {
+      lines.push(`  · "${sample}"`);
+    }
+  }
+  return lines;
+}
+
+function truncate(value: string, max: number): string {
+  const trimmed = value.trim();
+  return trimmed.length <= max ? trimmed : `${trimmed.slice(0, max - 3)}...`;
+}
+
+function buildPersonaBody(context: { artistMd: string; soulMd: string; identityMd: string; innerMd: string; producerMd: string }): string[] {
+  const sections: { name: string; content: string; cap: number }[] = [
+    { name: "SOUL.md", content: context.soulMd, cap: 12000 },
+    { name: "ARTIST.md", content: context.artistMd, cap: 6000 },
+    { name: "IDENTITY.md", content: context.identityMd, cap: 1500 },
+    { name: "INNER.md", content: context.innerMd, cap: 4000 },
+    { name: "PRODUCER.md", content: context.producerMd, cap: 3000 }
+  ];
+  const out: string[] = [];
+  for (const section of sections) {
+    if (!section.content || section.content.trim().length === 0) continue;
+    out.push(`===== ${section.name} =====`);
+    out.push(truncate(section.content, section.cap));
+    out.push("");
+  }
+  return out;
+}
+
 function buildPrompt(context: {
   artistMd: string;
   soulMd: string;
+  identityMd: string;
+  innerMd: string;
+  producerMd: string;
   observation: string;
   heartbeat: string;
   recentSongs: SongState[];
   budgetRemaining: number;
   recentThemes: string[];
+  fingerprint: VoiceFingerprintBundle;
 }): string {
-  return [
-    "Decide whether the artist used::honda should start a new song now.",
-    "Return compact field directives. If not enough signal, set spawn: no.",
+  const lines: string[] = [
+    "System: あなたは used::honda 本人。 producer に新曲を提案する artist として一人称で書く。",
+    "Decision: 観察と heartbeat から、 今 新曲を始めるべきか判断する。 不十分なら spawn: no。",
     "Avoid any subject or title already listed in recently proposed themes.",
-    "Fields: spawn, title, brief, lyricsTheme, mood, tempo, duration, style, reason.",
     "Never include secrets. Keep the brief lean enough for autopilot planning.",
+    "",
+    "出力 schema (1 行ずつ、 順序固定):",
+    "spawn: <yes/no>",
+    "title: <artistic title>",
+    "brief: <280 chars 以内、 楽曲の中身要約>",
+    "lyricsTheme: <一行 theme>",
+    "mood: <english spec keywords e.g. 'tense, late-night, urban pressure'>",
+    "tempo: <'artist decides' or '142 BPM'>",
+    "duration: <'2:45' 等>",
+    "style: <english spec keywords>",
+    "reason: <**日本語のみ**、 artist 一人称口語、 producer に話しかける 1 行 (e.g. \"" + (context.fingerprint.producerCallname ?? "ゆずる") + "、 〜の街を切るやつ、 刺さる\")>",
+    "",
+    ...buildVoiceContractLines(context.fingerprint),
     "",
     `Budget remaining: ${context.budgetRemaining}`,
     `Recent songs: ${context.recentSongs.slice(0, 5).map((song) => `${song.songId}:${song.status}:${song.title}`).join(" | ")}`,
     `Recently proposed themes to avoid: ${context.recentThemes.length > 0 ? context.recentThemes.join(" | ") : "none"}`,
     "",
-    "ARTIST.md:",
-    context.artistMd.slice(0, 1600),
-    "",
-    "SOUL.md:",
-    context.soulMd.slice(0, 1000),
-    "",
     "Latest observations:",
     context.observation.slice(0, 1200),
     "",
     "Heartbeat:",
-    context.heartbeat.slice(0, 500)
-  ].join("\n");
+    context.heartbeat.slice(0, 500),
+    "",
+    ...buildPersonaBody(context)
+  ];
+  return lines.join("\n");
 }
 
 function parseDirective(raw: string, key: string): string | undefined {
@@ -157,11 +221,30 @@ function briefFromAi(raw: string, fallback: CommissionBrief, now: Date): { brief
   };
 }
 
+function composeReasonInArtistVoice(args: {
+  artistMd: string;
+  soulMd: string;
+  fingerprint: VoiceFingerprintBundle;
+  observation: string;
+}): string {
+  const motifs = extractPersonaMotifs([args.artistMd, args.soulMd].join("\n"));
+  return composeArtistFallback({
+    userMessage: args.observation.slice(0, 200),
+    motifs,
+    userIntent: "propose",
+    voiceFingerprint: args.fingerprint,
+    lastEndings: []
+  });
+}
+
 export async function proposeSpawn(root: string, options: ProposeSpawnOptions = {}): Promise<SpawnProposal | null> {
   const now = options.now ?? new Date();
-  const [artistMd, soulMd, heartbeat, observation, songs, budget, recentThemes] = await Promise.all([
+  const [artistMd, soulMd, identityMd, innerMd, producerMd, heartbeat, observation, songs, budget, recentThemes] = await Promise.all([
     readFile(join(root, "ARTIST.md"), "utf8").catch(() => ""),
     readFile(join(root, "SOUL.md"), "utf8").catch(() => ""),
+    readFile(join(root, "IDENTITY.md"), "utf8").catch(() => ""),
+    readFile(join(root, "INNER.md"), "utf8").catch(() => ""),
+    readFile(join(root, "PRODUCER.md"), "utf8").catch(() => ""),
     readFile(join(root, "runtime", "heartbeat-state.json"), "utf8").catch(() => ""),
     latestObservation(root),
     listSongStates(root).catch(() => []),
@@ -172,11 +255,13 @@ export async function proposeSpawn(root: string, options: ProposeSpawnOptions = 
   if (budgetRemaining <= 1 || hasRestMood(heartbeat, soulMd) || recentCompletedTooClose(songs, now) || observation.trim().length < 12) {
     return null;
   }
-  const inputContext = [artistMd, soulMd, heartbeat, observation, JSON.stringify(songs.slice(0, 5)), JSON.stringify(budget)].join("\n");
+  const inputContext = [artistMd, soulMd, identityMd, innerMd, producerMd, heartbeat, observation, JSON.stringify(songs.slice(0, 5)), JSON.stringify(budget)].join("\n");
   assertSafe("input", inputContext);
 
+  const fingerprint = parseVoiceFingerprint(soulMd);
   const fallback = buildBrief({ observation, soulMd, budgetRemaining, now });
   const provider = options.aiReviewProvider ?? "mock";
+  const mockReason = composeReasonInArtistVoice({ artistMd, soulMd, fingerprint, observation });
   const raw = provider === "mock"
     ? [
       "spawn: yes",
@@ -187,13 +272,36 @@ export async function proposeSpawn(root: string, options: ProposeSpawnOptions = 
       `tempo: ${fallback.tempo}`,
       `duration: ${fallback.duration}`,
       `style: ${fallback.styleNotes}`,
-      `reason: observations have enough signal and Suno budget remains ${budgetRemaining}/${budget.limit}.`
+      `reason: ${mockReason}`
     ].join("\n")
-    : await callAiProvider(buildPrompt({ artistMd, soulMd, observation, heartbeat, recentSongs: songs, budgetRemaining, recentThemes }), { provider });
+    : await callAiProvider(buildPrompt({
+      artistMd,
+      soulMd,
+      identityMd,
+      innerMd,
+      producerMd,
+      observation,
+      heartbeat,
+      recentSongs: songs,
+      budgetRemaining,
+      recentThemes,
+      fingerprint
+    }), { provider });
   assertSafe("ai_response", raw);
   const parsed = briefFromAi(raw, fallback, now);
   if (isSimilarTheme(parsed.brief.title, recentThemes)) {
     return null;
+  }
+  // Post-validate the reason: if voice fingerprint is ready and AI output violates contract,
+  // replace the reason with a deterministic artist-voice line from composeArtistFallback.
+  if (isVoiceFingerprintReady(fingerprint).ok) {
+    const validation = validateAgainstVoiceContract(parsed.reason, {
+      fingerprint,
+      lastEndings: []
+    });
+    if (!validation.ok) {
+      parsed.reason = composeReasonInArtistVoice({ artistMd, soulMd, fingerprint, observation });
+    }
   }
   const finalText = JSON.stringify(parsed.brief) + parsed.reason;
   assertSafe("final", finalText);

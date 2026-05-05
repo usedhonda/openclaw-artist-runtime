@@ -2,7 +2,7 @@ import { createHash } from "node:crypto";
 import { readdir, readFile } from "node:fs/promises";
 import { join } from "node:path";
 import type { AiReviewProvider, DailyVoiceDraft } from "../types.js";
-import { callAiProvider } from "./aiProviderClient.js";
+import { generateArtistResponse, readArtistVoiceContext } from "./artistVoiceResponder.js";
 import { listSongStates } from "./artistState.js";
 import { secretLikePattern } from "./personaMigrator.js";
 
@@ -230,30 +230,23 @@ function mockDraft(context: { artistMd: string; soulMd: string; observation: str
   ].join("\n");
 }
 
-function buildPrompt(context: { artistMd: string; soulMd: string; observation: string; heartbeat: string; fragment: string; selected?: DailyVoiceObservation }): string {
-  return [
-    "あなたは used::honda として、観察 1 件だけに反応する X 投稿 draft を作る。",
+function buildObservationMessage(context: { observation: string; heartbeat: string; fragment: string; selected?: DailyVoiceObservation }): string {
+  const lines = [
+    "Producer task: 観察 1 件への X 投稿 draft を artist 一人称で書け。",
     "世論の要約は禁止。選んだ observation への個別意見として書く。",
     "rationale は必ず日本語。英語は禁止。",
-    "rationale には、どの observation を選んだか、ARTIST.md の obsession/persona と SOUL.md の tone/mood のどこに基づいてその角度にしたかを必ず書く。",
+    "rationale には、どの observation を選んだか、 SOUL.md / ARTIST.md のどこに基づいてその角度にしたかを書く。",
     "出力は必ず次の 4 field だけ:",
     "selected_url: <url-or-none>",
     "selected_author: <handle-or-none>",
-    "opinion: <text within 257 chars>",
-    "rationale: <日本語 1-2 行。例: ARTIST.md の「社会観察」と SOUL.md の「短く刺す」に基づき、observation「...」を責任の所在への違和感として artist の声に変換した。>",
-    "同じ文を繰り返さない。bot 的な定型句や hashtag は不要。",
-    `opinion は ${maxBodyChars} 文字以内。秘密情報は含めない。`,
+    `opinion: <artist 一人称口語、 ${maxBodyChars} 文字以内、 SOUL.md の sentence_endings と forbidden_phrases を遵守>`,
+    "rationale: <日本語 1-2 行>",
+    "同じ文を繰り返さない。 bot 定型句 / hashtag 不要。 秘密情報は含めない。",
     "",
     "Selected observation:",
     JSON.stringify(context.selected ?? null),
     "",
-    "ARTIST.md:",
-    context.artistMd.slice(0, 1800),
-    "",
-    "SOUL.md:",
-    context.soulMd.slice(0, 1000),
-    "",
-    "Recent observation:",
+    "Recent observation feed:",
     context.observation.slice(0, 1400),
     "",
     "Heartbeat state:",
@@ -261,7 +254,8 @@ function buildPrompt(context: { artistMd: string; soulMd: string; observation: s
     "",
     "Recent production fragment:",
     context.fragment.slice(0, 1000)
-  ].join("\n");
+  ];
+  return lines.join("\n");
 }
 
 export async function composeDailyVoice(root: string, options: ComposeDailyVoiceOptions = {}): Promise<DailyVoiceDraft> {
@@ -276,9 +270,18 @@ export async function composeDailyVoice(root: string, options: ComposeDailyVoice
   assertSafe("daily_voice_input", inputContext);
   const provider = options.aiReviewProvider ?? "mock";
   const selected = selectObservation(observation);
-  const raw = provider === "mock"
-    ? mockDraft({ artistMd, soulMd, observation, fragment, selected })
-    : await callAiProvider(buildPrompt({ artistMd, soulMd, observation, heartbeat, fragment, selected }), { provider });
+  let raw: string;
+  if (provider === "mock") {
+    raw = mockDraft({ artistMd, soulMd, observation, fragment, selected });
+  } else {
+    const ctx = await readArtistVoiceContext(root, { topic: "daily_voice_draft" });
+    const message = buildObservationMessage({ observation, heartbeat, fragment, selected });
+    const response = await generateArtistResponse(message, ctx, {
+      intent: "report",
+      aiReviewProvider: provider
+    });
+    raw = response.text;
+  }
   assertSafe("daily_voice_ai_response", raw);
   const basis = summarizePersonaBasis(artistMd, soulMd);
   const post = parsePost(raw, selected, basis);

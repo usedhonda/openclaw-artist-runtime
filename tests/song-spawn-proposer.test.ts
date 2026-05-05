@@ -36,7 +36,8 @@ describe("song spawn proposer", () => {
     expect(proposal?.candidateSongId).toMatch(/^spawn_/);
     expect(proposal?.brief.songId).toBe(proposal?.candidateSongId);
     expect(proposal?.brief.brief).toContain("ライブハウス");
-    expect(proposal?.reason).toContain("budget remains");
+    expect(proposal?.reason).toMatch(/[ぁ-ん一-龠]/);
+    expect(proposal?.reason).not.toMatch(/\b[a-z]{4,}\b/);
   });
 
   it("skips when budget is too tight or heartbeat asks for rest", async () => {
