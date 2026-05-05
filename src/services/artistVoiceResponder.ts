@@ -6,6 +6,7 @@ import { composeArtistFallback, type UserIntent } from "./artistVoiceComposer.js
 import type { ChangeSetProposal } from "./freeformChangesetProposer.js";
 import { extractPersonaMotifs, summarizeMotifs } from "./personaMotifExtractor.js";
 import { secretLikePattern } from "./personaMigrator.js";
+import { parseVoiceFingerprint } from "./voiceFingerprintParser.js";
 
 export interface ArtistVoiceContext {
   artistMd: string;
@@ -14,6 +15,7 @@ export interface ArtistVoiceContext {
   socialVoice: string;
   topic?: string;
   recentHistory: string[];
+  lastEndings?: string[];
 }
 
 export interface ArtistVoiceResponse {
@@ -73,12 +75,15 @@ function mapIntent(intent: "discuss" | "propose" | "report"): UserIntent {
 }
 
 function fallbackArtistResponse(userMessage: string, context: ArtistVoiceContext, intent: "discuss" | "propose" | "report"): string {
+  const fingerprint = parseVoiceFingerprint(context.soulMd ?? "");
   return composeArtistFallback({
     userMessage,
     motifs: extractPersonaMotifs([context.artistMd, context.soulMd].join("\n")),
     tone: pickLine("Conversation tone", context.soulMd),
     currentMood: pickLine("Emotional weather", context.currentState) ?? pickLine("Emotional weather", context.soulMd),
-    userIntent: mapIntent(intent)
+    userIntent: mapIntent(intent),
+    voiceFingerprint: fingerprint,
+    lastEndings: context.lastEndings ?? []
   });
 }
 
@@ -95,7 +100,8 @@ export async function readArtistVoiceContext(root: string, options: Partial<Pick
     currentState,
     socialVoice,
     topic: options.topic,
-    recentHistory: options.recentHistory ?? []
+    recentHistory: options.recentHistory ?? [],
+    lastEndings: []
   };
 }
 
