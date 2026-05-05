@@ -9,6 +9,7 @@ import { isInlineButtonsEnabled, isXInlineButtonEnabled } from "./runtimeConfig.
 import { readSongState } from "./artistState.js";
 import { secretLikePattern } from "./personaMigrator.js";
 import type { ObservationSummary } from "../types.js";
+import { isUnsafeCommandVoiceTopForTest } from "./commandVoiceWrapper.js";
 
 export interface TelegramNotifierOptions {
   token: string;
@@ -412,12 +413,68 @@ function formatSongMetadata(title: string, take: string, urls: string, summary?:
   ].join("\n");
 }
 
+function compactForArtistTop(value: string | undefined, max: number): string {
+  const clean = capQuote(value ?? "", max).replace(/[「」"']/g, "").trim();
+  return clean || "観察の切れ端";
+}
+
+function inferGeoFromSummary(summary?: ObservationSummary): string {
+  const source = [summary?.author, summary?.quote, summary?.motivation].filter(Boolean).join(" ");
+  if (/渋谷|Shibuya/i.test(source)) return "渋谷";
+  if (/東京|Tokyo/i.test(source)) return "東京";
+  if (/街|都市|city|urban/i.test(source)) return "街";
+  return "その場所";
+}
+
+function inferThemeFromSummary(summary?: ObservationSummary): string {
+  const source = `${summary?.quote ?? ""} ${summary?.motivation ?? ""}`;
+  if (/ライブハウス|venue|music|音/i.test(source)) return "消えていく音";
+  if (/都市|再開発|街|urban|city/i.test(source)) return "街の違和感";
+  if (/責任|政治|government|社会/i.test(source)) return "社会の歪み";
+  return "引っかかったもの";
+}
+
+function inferAngleFromSummary(summary?: ObservationSummary): string {
+  const source = `${summary?.quote ?? ""} ${summary?.motivation ?? ""}`;
+  if (/静か|違和感|quiet|unease/i.test(source)) return "静かな違和感";
+  if (/皮肉|sarcasm|satire|風刺/i.test(source)) return "皮肉";
+  if (/怒|rage|angry/i.test(source)) return "低い熱";
+  return "近い距離";
+}
+
+function buildSongCompletionInspirationTop(title: string, summary?: ObservationSummary): string {
+  if (!summary) {
+    return `できた。${title}。聴いて、感想ほしい。`;
+  }
+  const author = safeAuthor(summary.author);
+  const geo = inferGeoFromSummary(summary);
+  const quote = compactForArtistTop(summary.quote, 72);
+  const motivation = safeMotivation(summary.motivation);
+  const theme = inferThemeFromSummary(summary);
+  const angle = inferAngleFromSummary(summary);
+  return [
+    `ゆずるさん、${geo}で @${author} が「${quote}」って書いてたのを見たんだ。`,
+    `${motivation}が刺さって、${theme}を${angle}で抜いた。`,
+    "これ、どう聞こえる?"
+  ].join("\n");
+}
+
 function sanitizeArtistTop(text: string, fallback: string): string {
   const clean = text
     .replace(/https?:\/\/\S+/g, "")
     .replace(/\s+\n/g, "\n")
     .trim();
-  return !clean || secretLikePattern.test(clean) ? fallback : clean;
+  return !clean || secretLikePattern.test(clean) || isUnsafeCommandVoiceTopForTest(clean) ? fallback : clean;
+}
+
+function sanitizeCompletionArtistTop(text: string, fallback: string, summary?: ObservationSummary): string {
+  const clean = sanitizeArtistTop(text, fallback);
+  if (!summary) return clean;
+  const quoteCore = compactForArtistTop(summary.quote, 32).slice(0, 12);
+  const motivationCore = safeMotivation(summary.motivation).slice(0, 12);
+  if (quoteCore && !clean.includes(quoteCore)) return fallback;
+  if (motivationCore && !clean.includes(motivationCore)) return fallback;
+  return clean;
 }
 
 async function readSongCompletionContext(event: Extract<RuntimeEvent, { type: "song_take_completed" }>, workspaceRoot?: string): Promise<{ title: string; observationSummary?: ObservationSummary }> {
@@ -440,12 +497,12 @@ async function formatSongTakeCompleted(
     ? event.urls.map((url, index) => `${index + 1}. ${url}`).join("\n")
     : "(URL なし)";
   const context = await readSongCompletionContext(event, options.workspaceRoot);
-  const fallbackTop = `できた。${context.title}。聴いて、感想ほしい。`;
-  const artistTop = sanitizeArtistTop(await artistReport(
+  const fallbackTop = buildSongCompletionInspirationTop(context.title, context.observationSummary);
+  const artistTop = sanitizeCompletionArtistTop(await artistReport(
     event,
     fallbackTop,
     options
-  ), fallbackTop);
+  ), fallbackTop, context.observationSummary);
   return [
     artistTop,
     "",

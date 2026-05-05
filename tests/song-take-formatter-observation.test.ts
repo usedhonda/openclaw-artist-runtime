@@ -31,7 +31,13 @@ describe("song take formatter observation source", () => {
     }, { workspaceRoot: root });
 
     expect(message).toContain("─────");
-    expect(message.split("─────")[0]).not.toContain("https://");
+    const top = message.split("─────")[0];
+    expect(top).toContain("ゆずるさん");
+    expect(top).toContain("old live houses disappear under identical signs");
+    expect(top).toContain("ARTIST.md の都市観察と SOUL.md の静かな違和感に接続");
+    expect(top).toContain("これ、どう聞こえる?");
+    expect(top).not.toContain("https://");
+    expect(top).not.toContain("song-observe");
     expect(message).toContain("🌐 観察元: @citywatch (https://x.com/citywatch/status/42)");
     expect(message).toContain("💬 抜粋: 「old live houses disappear under identical signs」");
     expect(message).toContain("🎯 動機: ARTIST.md の都市観察と SOUL.md の静かな違和感に接続");
