@@ -5,7 +5,7 @@ import { extractPersonaMotifs, type PersonaMotifBundle } from "./personaMotifExt
 import { parseVoiceFingerprint } from "./voiceFingerprintParser.js";
 import { secretLikePattern } from "./personaMigrator.js";
 
-export type CommandVoiceKind = "help" | "status" | "songs" | "song" | "observations" | "error" | "ack";
+export type CommandVoiceKind = "help" | "status" | "songs" | "song" | "observations" | "error" | "ack" | "propose";
 
 export interface CommandVoiceInput {
   kind: CommandVoiceKind;
@@ -24,7 +24,8 @@ const fallbackTop: Record<CommandVoiceKind, string> = {
   song: "その曲の中身、下に出す。",
   observations: "見てきたものを置く。",
   error: "止まった。ここは無理に進めない。",
-  ack: "聞いた。"
+  ack: "聞いた。",
+  propose: "次の曲、こんな感じで切るやつ、どう?"
 };
 
 const commandTheme: Record<CommandVoiceKind, string> = {
@@ -34,7 +35,8 @@ const commandTheme: Record<CommandVoiceKind, string> = {
   song: "その曲",
   observations: "観察",
   error: "止まったところ",
-  ack: "受け取ったこと"
+  ack: "受け取ったこと",
+  propose: "次の曲の提案"
 };
 
 const unsafeTopPattern = /(https?:\/\/|(?:^|\b)(?:song|take|run)-[A-Za-z0-9_-]+|\b[A-Fa-f0-9]{8,}\b|\b\d{4,}\b)/;
@@ -69,10 +71,14 @@ function sanitizeTop(top: string, kind: CommandVoiceKind): string {
 }
 
 function intentFor(kind: CommandVoiceKind): UserIntent {
-  return kind === "ack" ? "ack" : kind === "error" ? "report" : "report";
+  return kind === "ack" ? "ack" : kind === "propose" ? "propose" : "report";
 }
 
-export async function wrapCommandVoice(input: CommandVoiceInput): Promise<string> {
+export async function composeVoiceTopOnly(kind: CommandVoiceKind, root?: string, userMessage?: string, lastEndings: string[] = []): Promise<string> {
+  return composeCommandVoiceTop({ kind, info: "", workspaceRoot: root, userMessage, lastEndings });
+}
+
+async function composeCommandVoiceTop(input: CommandVoiceInput): Promise<string> {
   const { artistMd, soulMd, currentState } = await readVoiceFiles(input.workspaceRoot);
   const motifs = extractPersonaMotifs([artistMd, soulMd].join("\n"));
   const text = composeArtistFallback({
@@ -83,7 +89,11 @@ export async function wrapCommandVoice(input: CommandVoiceInput): Promise<string
     voiceFingerprint: soulMd ? parseVoiceFingerprint(soulMd) : undefined,
     lastEndings: input.lastEndings ?? []
   });
-  const top = sanitizeTop(text, input.kind);
+  return sanitizeTop(text, input.kind);
+}
+
+export async function wrapCommandVoice(input: CommandVoiceInput): Promise<string> {
+  const top = await composeCommandVoiceTop(input);
   return [top, "", separator, "info", input.info].join("\n");
 }
 

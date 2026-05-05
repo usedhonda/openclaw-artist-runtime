@@ -565,8 +565,9 @@ export async function formatRuntimeEvent(
       ].filter(Boolean).join("\n");
     case "song_spawn_proposed":
       return [
-        "次の曲、こんな感じはどう?",
+        event.voiceTop ?? "次の曲、こんな感じはどう?",
         "",
+        "─────",
         `- songId: ${event.candidateSongId}`,
         `- title: ${event.brief.title}`,
         `- mood: ${event.brief.mood}`,

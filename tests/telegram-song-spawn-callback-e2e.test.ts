@@ -64,6 +64,7 @@ describe("telegram song spawn callback e2e", () => {
       brief: spawnBrief(),
       reason: "observations align with SOUL mood and budget remains.",
       candidateSongId: "spawn_e7c3b2",
+      voiceTop: "ゆずる、静かな夜の勘定書を切る。",
       timestamp: Date.parse("2026-04-29T00:00:00.000Z")
     });
     const entries = await readCallbackActionEntries(root);

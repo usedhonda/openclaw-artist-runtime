@@ -34,6 +34,7 @@ import { shouldSpawn } from "./songSpawnRateLimiter.js";
 import { validatePlanningFiles } from "./planningSkeletonValidator.js";
 import { applyChangeSet } from "./changeSetApplier.js";
 import { syncSongbookFromITunes } from "./songbookSyncer.js";
+import { composeVoiceTopOnly } from "./commandVoiceWrapper.js";
 
 export function isPublishBlockedByDryRun(
   result: Pick<SocialPublishResult, "accepted" | "dryRun">,
@@ -464,11 +465,13 @@ export class ArtistAutopilotService {
         if (!proposal) {
           return;
         }
+        const voiceTop = await composeVoiceTopOnly("propose", input.workspaceRoot).catch(() => undefined);
         emitRuntimeEvent({
           type: "song_spawn_proposed",
           brief: proposal.brief,
           reason: proposal.reason,
           candidateSongId: proposal.candidateSongId,
+          voiceTop,
           timestamp: Date.now()
         });
       }).catch((error) => {

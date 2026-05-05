@@ -3,7 +3,7 @@ import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
-import { isUnsafeCommandVoiceTopForTest, wrapCommandVoice } from "../src/services/commandVoiceWrapper";
+import { composeVoiceTopOnly, isUnsafeCommandVoiceTopForTest, wrapCommandVoice } from "../src/services/commandVoiceWrapper";
 import { ensureSongState } from "../src/services/artistState";
 import { routeTelegramCommand } from "../src/services/telegramCommandRouter";
 
@@ -114,6 +114,17 @@ describe("command voice wrapper", () => {
 
     expect(topOf(text)).toBe("その曲の中身、下に出す。");
     expect(text).toContain("song-1234 | take_selected | Test");
+  });
+
+  it("can compose a propose top without the info block", async () => {
+    const root = makeRoot();
+    await writeVoice(root);
+
+    const top = await composeVoiceTopOnly("propose", root, "次の曲どうする?");
+
+    expect(top).not.toContain("─────");
+    expect(top).not.toContain("info");
+    expect(isUnsafeCommandVoiceTopForTest(top)).toBe(false);
   });
 
   it("routes high-frequency commands as voice plus info", async () => {

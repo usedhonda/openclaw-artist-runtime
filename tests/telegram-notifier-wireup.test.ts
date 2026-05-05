@@ -69,6 +69,7 @@ describe("telegram notifier service wireup", () => {
     getRuntimeEventBus().emit({
       type: "song_spawn_proposed",
       candidateSongId: "spawn_test",
+      voiceTop: "ゆずる、次の曲の火種を見た。",
       reason: "observations have signal",
       brief: {
         songId: "spawn_test",
@@ -86,7 +87,7 @@ describe("telegram notifier service wireup", () => {
     });
 
     await vi.waitFor(() => expect(fetchImpl).toHaveBeenCalledWith(expect.stringContaining("/sendMessage"), expect.any(Object)));
-    expect(JSON.parse(String((fetchImpl.mock.calls[0][1] as RequestInit).body)).text).toContain("次の曲");
+    expect(JSON.parse(String((fetchImpl.mock.calls[0][1] as RequestInit).body)).text).toContain("ゆずる、次の曲の火種を見た。");
     await vi.waitFor(() => expect(fetchImpl).toHaveBeenCalledWith(expect.stringContaining("/editMessageReplyMarkup"), expect.any(Object)));
   });
 
