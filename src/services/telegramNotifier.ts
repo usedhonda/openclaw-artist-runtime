@@ -41,7 +41,7 @@ export class TelegramNotifier {
 
   subscribe(bus: RuntimeEventBus): () => void {
     return bus.subscribe((event) => {
-      void this.notify(event);
+      void this.notify(event).catch(() => undefined);
     });
   }
 
