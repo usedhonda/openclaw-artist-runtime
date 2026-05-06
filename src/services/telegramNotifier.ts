@@ -19,6 +19,19 @@ export interface TelegramNotifierOptions {
   fetchImpl?: TelegramFetch;
 }
 
+const TELEGRAM_SILENT_EVENT_TYPES: ReadonlySet<RuntimeEvent["type"]> = new Set([
+  "observation_collected",
+  "autopilot_stage_changed",
+  "bird_cooldown_triggered",
+  "suno_generate_retry",
+  "suno_generate_failed",
+  "error"
+]);
+
+export function isTelegramSilentEvent(event: RuntimeEvent): boolean {
+  return TELEGRAM_SILENT_EVENT_TYPES.has(event.type);
+}
+
 export class TelegramNotifier {
   private readonly client: TelegramClient;
 
@@ -33,7 +46,7 @@ export class TelegramNotifier {
   }
 
   async notify(event: RuntimeEvent): Promise<void> {
-    if (event.type === "observation_collected") return;
+    if (isTelegramSilentEvent(event)) return;
     const text = await formatRuntimeEvent(event, {
       workspaceRoot: this.options.workspaceRoot,
       aiReviewProvider: this.options.aiReviewProvider
