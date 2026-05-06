@@ -1,0 +1,51 @@
+#!/usr/bin/env bash
+# Keep-alive supervisor for the local artist-runtime gateway.
+# Spawned by `openclaw-local-gateway start`. Loops `gateway run` so
+# unexpected exits/crashes are auto-restarted with backoff.
+
+script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=/dev/null
+source "${script_dir}/openclaw-local-env.sh"
+# env.sh enables `set -euo pipefail`; the supervisor must keep running after
+# the child gateway crashes (wait returns 137 etc.), so we relax those.
+set +e
+set +u
+set +o pipefail
+
+supervisor_log="${OPENCLAW_LOCAL_LOGS}/gateway.supervisor.log"
+mkdir -p "${OPENCLAW_LOCAL_LOGS}"
+
+restart_delay_seconds="${OPENCLAW_LOCAL_GATEWAY_RESTART_DELAY:-3}"
+child=""
+
+log_line() {
+  printf '[supervisor %s] %s\n' "$(date '+%Y-%m-%dT%H:%M:%S')" "$1" >>"${supervisor_log}"
+}
+
+handle_term() {
+  log_line "received signal; shutting down"
+  if [[ -n "${child}" ]]; then
+    kill "${child}" 2>/dev/null
+  fi
+  exit 0
+}
+trap handle_term TERM INT QUIT
+
+log_line "started (pid $$)"
+
+while true; do
+  "${script_dir}/openclaw-local" gateway run \
+    --allow-unconfigured \
+    --bind loopback \
+    --auth none \
+    --port "${OPENCLAW_LOCAL_GATEWAY_PORT}" \
+    "$@" >>"${OPENCLAW_LOCAL_GATEWAY_LOG}" 2>&1 &
+  child=$!
+  log_line "spawned gateway pid=${child}"
+
+  wait "${child}"
+  rc=$?
+  log_line "gateway exited pid=${child} rc=${rc}; restart in ${restart_delay_seconds}s"
+  child=""
+  sleep "${restart_delay_seconds}"
+done

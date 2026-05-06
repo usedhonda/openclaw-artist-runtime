@@ -107,8 +107,9 @@ case "${command}" in
       exit 0
     fi
     : > "${OPENCLAW_LOCAL_GATEWAY_LOG}"
-    nohup "${script_dir}/openclaw-local" gateway run "${common_args[@]}" "$@" \
-      >>"${OPENCLAW_LOCAL_GATEWAY_LOG}" 2>&1 < /dev/null &
+    supervisor_meta_log="${OPENCLAW_LOCAL_LOGS}/gateway.supervisor.log"
+    nohup "${script_dir}/openclaw-local-gateway-supervisor" "$@" \
+      >>"${supervisor_meta_log}" 2>&1 < /dev/null &
     gateway_pid=$!
     echo "${gateway_pid}" > "${OPENCLAW_LOCAL_GATEWAY_PID}"
     for _ in $(seq 1 20); do
