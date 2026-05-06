@@ -384,6 +384,11 @@ async function artistReport(event: RuntimeEvent, fallback: string, options: Pick
   }
 }
 
+async function hybridEventReport(event: RuntimeEvent, fallbackTop: string, detail: string, options: Pick<TelegramNotifierOptions, "workspaceRoot" | "aiReviewProvider">): Promise<string> {
+  const top = sanitizeArtistTop(await artistReport(event, fallbackTop, options), fallbackTop);
+  return [top, "", "─────", detail].join("\n");
+}
+
 function dailyVoiceTitle(kind: Extract<RuntimeEvent, { type: "artist_pulse_drafted" }>["voiceKind"]): string {
   if (kind === "studio_whisper") {
     return "🎵 制作中のひとこと draft:";
@@ -577,9 +582,19 @@ export async function formatRuntimeEvent(
     case "song_take_completed":
       return formatSongTakeCompleted(event, options);
     case "theme_generated":
-      return artistReport(event, `Theme generated: ${event.theme}. Reason: ${event.reason}`, options);
+      return hybridEventReport(
+        event,
+        `ゆずるさん、${event.theme}で行く。`,
+        [`theme: ${event.theme}`, `reason: ${event.reason}`].join("\n"),
+        options
+      );
     case "suno_budget_low":
-      return artistReport(event, `Suno budget low: ${event.reason} (${event.used}/${event.limit})`, options);
+      return hybridEventReport(
+        event,
+        `ゆずるさん、残り ${event.used}/${event.limit}。ペース落とす。`,
+        [`songId: ${event.songId ?? "(none)"}`, `used: ${event.used}`, `limit: ${event.limit}`, `reason: ${event.reason}`].join("\n"),
+        options
+      );
     case "lyrics_generation_degraded":
       return artistReport(event, `Lyrics generation degraded: ${event.songId} ${event.reason}`, options);
     case "suno_generate_retry":
@@ -587,11 +602,21 @@ export async function formatRuntimeEvent(
     case "suno_generate_failed":
       return artistReport(event, `Suno generate failed: ${event.songId} retry=${event.retryCount} ${event.reason}`, options);
     case "take_select_pending":
-      return artistReport(event, `Take selection pending: ${event.songId} ${event.reason}`, options);
+      return hybridEventReport(
+        event,
+        "ゆずるさん、take の選別、ちょっと待ってる。",
+        [`songId: ${event.songId}`, `reason: ${event.reason}`].join("\n"),
+        options
+      );
     case "take_select_low_score":
       return artistReport(event, `Take score is low: ${event.songId} best=${event.bestTakeId} score=${event.score}. ${event.reason}`, options);
     case "budget_exhausted":
-      return artistReport(event, `Suno budget exhausted: ${event.reason} (${event.used}/${event.limit})`, options);
+      return hybridEventReport(
+        event,
+        "ゆずるさん、今日は予算切れ。明日に。",
+        [`used: ${event.used}`, `limit: ${event.limit}`, `reason: ${event.reason}`].join("\n"),
+        options
+      );
     case "bird_cooldown_triggered":
       return artistReport(event, `X observation cool-down triggered until ${event.cooldownUntil}: ${event.reason}`, options);
     case "distribution_change_detected":
@@ -648,7 +673,7 @@ export async function formatRuntimeEvent(
     case "observation_collected":
       return `Observations collected: ${event.entryCount} entries${typeof event.topScore === "number" ? `, top score=${event.topScore}` : ""}${event.topMotifMatch ? ` (${event.topMotifMatch})` : ""}`;
     case "artist_presence":
-      return event.text;
+      return [event.text, "", "─────", `trigger: ${event.trigger}${event.songId ? `\nsongId: ${event.songId}` : ""}`].join("\n");
     case "error":
       return `Runtime error: ${event.source} ${event.reason}${event.songId ? ` (${event.songId})` : ""}`;
   }
