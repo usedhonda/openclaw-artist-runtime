@@ -64,6 +64,9 @@ export class TelegramNotifier {
     if (event.type === "song_spawn_proposed") {
       await this.attachSongSpawnButtons(event, sent.message_id).catch(() => undefined);
     }
+    if (event.type === "prompt_pack_ready") {
+      await this.attachPromptPackReadyButtons(event, sent.message_id).catch(() => undefined);
+    }
     if (event.type === "planning_skeleton_incomplete") {
       await this.attachPlanningSkeletonButtons(event, sent.message_id, text).catch(() => undefined);
     }
@@ -235,6 +238,42 @@ export class TelegramNotifier {
         { text: "✓ 進める", callback_data: `cb:${inject.callbackId}` },
         { text: "✗ 今は要らない", callback_data: `cb:${skip.callbackId}` },
         { text: "✏️ 修正", callback_data: `cb:${edit.callbackId}` }
+      ]]
+    });
+  }
+
+  private async attachPromptPackReadyButtons(event: Extract<RuntimeEvent, { type: "prompt_pack_ready" }>, messageId: number): Promise<void> {
+    if (!isInlineButtonsEnabled() || !this.options.workspaceRoot || typeof this.options.chatId !== "number") {
+      return;
+    }
+    const [go, edit, skip] = await Promise.all([
+      registerCallbackAction(this.options.workspaceRoot, {
+        action: "prompt_pack_go",
+        songId: event.songId,
+        chatId: this.options.chatId,
+        messageId,
+        userId: this.options.chatId
+      }),
+      registerCallbackAction(this.options.workspaceRoot, {
+        action: "prompt_pack_edit",
+        songId: event.songId,
+        chatId: this.options.chatId,
+        messageId,
+        userId: this.options.chatId
+      }),
+      registerCallbackAction(this.options.workspaceRoot, {
+        action: "prompt_pack_skip",
+        songId: event.songId,
+        chatId: this.options.chatId,
+        messageId,
+        userId: this.options.chatId
+      })
+    ]);
+    await this.client.editMessageReplyMarkup(this.options.chatId, messageId, {
+      inline_keyboard: [[
+        { text: "▶ Suno に進める", callback_data: `cb:${go.callbackId}` },
+        { text: "✏️ 歌詞修正", callback_data: `cb:${edit.callbackId}` },
+        { text: "⏸ 後で", callback_data: `cb:${skip.callbackId}` }
       ]]
     });
   }
@@ -594,6 +633,17 @@ export async function formatRuntimeEvent(
         "",
         `missing: ${event.missing.join(", ")}`,
         "補完案を作った。進めるなら Yes。"
+      ].join("\n");
+    case "prompt_pack_ready":
+      return [
+        event.voiceTop ?? "ゆずるさん、歌詞こんな感じ。Suno 行く?",
+        "",
+        "─────",
+        event.lyricsExcerpt,
+        "",
+        `- mood: ${event.mood}`,
+        `- tempo: ${event.tempo}`,
+        `- style: ${event.styleNotes}`
       ].join("\n");
     case "observation_collected":
       return `Observations collected: ${event.entryCount} entries${typeof event.topScore === "number" ? `, top score=${event.topScore}` : ""}${event.topMotifMatch ? ` (${event.topMotifMatch})` : ""}`;

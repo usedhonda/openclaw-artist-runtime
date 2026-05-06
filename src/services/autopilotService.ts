@@ -232,6 +232,35 @@ async function createPromptPackForSong(root: string, song: SongState, config?: P
   return readSongState(root, readySong.songId);
 }
 
+function firstLyricsExcerpt(value: string): string {
+  const lines = value
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter((line) => line && !line.startsWith("#") && !/^```/.test(line))
+    .slice(0, 5);
+  return lines.join("\n") || "(歌詞 excerpt なし)";
+}
+
+async function promptPackReadySummary(root: string, song: SongState): Promise<{ lyricsExcerpt: string; mood: string; tempo: string; styleNotes: string }> {
+  const lyricsVersion = song.lyricsVersion ?? 1;
+  const [lyricsText, moodHint, styleText, briefText] = await Promise.all([
+    readFile(join(root, "songs", song.songId, "lyrics", `lyrics.v${lyricsVersion}.md`), "utf8").catch(() => ""),
+    readFile(join(root, "songs", song.songId, "mood-hint.txt"), "utf8").catch(() => ""),
+    readFile(join(root, "songs", song.songId, "suno", "style.md"), "utf8").catch(() => ""),
+    readFile(join(root, "songs", song.songId, "brief.md"), "utf8").catch(() => "")
+  ]);
+  const source = `${styleText}\n${briefText}`;
+  const tempo = source.match(/\b\d{2,3}\s*BPM\b/i)?.[0] ?? "unspecified";
+  const mood = moodHint.trim() || briefText.match(/^- Mood:\s*(.+)$/m)?.[1]?.trim() || "unspecified";
+  const styleNotes = styleText.replace(/\s+/g, " ").trim().slice(0, 180) || briefText.match(/^- Style notes:\s*(.+)$/m)?.[1]?.trim() || "unspecified";
+  return {
+    lyricsExcerpt: firstLyricsExcerpt(lyricsText),
+    mood,
+    tempo,
+    styleNotes
+  };
+}
+
 async function writeCompletedStage(
   root: string,
   existing: AutopilotRunState,
@@ -537,6 +566,17 @@ export class ArtistAutopilotService {
       lastRunAt: nowIso()
     };
 
+    if (song && (existing.suspendedAt === "prompt_pack_ready" || existing.suspendedAt === "user_paused")) {
+      return writeStageState(input.workspaceRoot, existing, {
+        ...baseState,
+        currentSongId: song.songId,
+        stage: "prompt_pack",
+        blockedReason: existing.suspendedAt,
+        lastError: undefined,
+        lastSuccessfulStage: existing.lastSuccessfulStage
+      });
+    }
+
     if (song && existing.stage === "planning") {
       const planningResult = await handlePlanningStage(input.workspaceRoot, song, existing, baseState, config);
       if (planningResult) {
@@ -606,8 +646,9 @@ export class ArtistAutopilotService {
 
       switch (stage) {
         case "prompt_pack": {
+          let packedSong: SongState;
           try {
-            await createPromptPackForSong(input.workspaceRoot, song, config);
+            packedSong = await createPromptPackForSong(input.workspaceRoot, song, config);
           } catch (error) {
             const reason = error instanceof Error ? error.message : String(error);
             if (reason.includes("lyrics_generation_degraded")) {
@@ -624,13 +665,32 @@ export class ArtistAutopilotService {
             }
             throw error;
           }
+          const promptReadySuspension = config.telegram.enabled;
+          if (promptReadySuspension) {
+            const [summary, voiceTop] = await Promise.all([
+              promptPackReadySummary(input.workspaceRoot, packedSong),
+              composeVoiceTopOnly("propose", input.workspaceRoot).catch(() => undefined)
+            ]);
+            emitRuntimeEvent({
+              type: "prompt_pack_ready",
+              songId: packedSong.songId,
+              title: packedSong.title,
+              lyricsExcerpt: summary.lyricsExcerpt,
+              mood: summary.mood,
+              tempo: summary.tempo,
+              styleNotes: summary.styleNotes,
+              voiceTop,
+              timestamp: Date.now()
+            });
+          }
           return writeStageState(input.workspaceRoot, existing, {
             ...baseState,
-            currentSongId: song.songId,
+            currentSongId: packedSong.songId,
             stage: "prompt_pack",
             blockedReason: undefined,
             lastError: undefined,
             lastSuccessfulStage: "prompt_pack",
+            suspendedAt: promptReadySuspension ? "prompt_pack_ready" : undefined,
             cycleCount: existing.cycleCount + 1
           });
         }

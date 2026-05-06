@@ -37,6 +37,10 @@ export interface CallbackActionEntry {
   resolveReason?: string;
 }
 
+export type PromptPackGoAction = CallbackActionEntry & { action: "prompt_pack_go"; songId: string };
+export type PromptPackEditAction = CallbackActionEntry & { action: "prompt_pack_edit"; songId: string };
+export type PromptPackSkipAction = CallbackActionEntry & { action: "prompt_pack_skip"; songId: string };
+
 export interface RegisterCallbackActionInput {
   action: string;
   proposalId?: string;

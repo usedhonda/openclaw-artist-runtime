@@ -344,6 +344,57 @@ export async function routeTelegramCallback(ctx: TelegramCallbackContext): Promi
     }
   }
 
+  if (entry.action === "prompt_pack_go" || entry.action === "prompt_pack_edit" || entry.action === "prompt_pack_skip") {
+    await ctx.client.answerCallbackQuery(ctx.callbackQueryId, { text: "OK" });
+    const state = await readAutopilotRunState(ctx.root);
+    if (entry.action === "prompt_pack_go") {
+      await writeAutopilotRunState(ctx.root, {
+        ...state,
+        currentSongId: entry.songId ?? state.currentSongId,
+        stage: "suno_generation",
+        suspendedAt: null,
+        blockedReason: undefined,
+        lastError: undefined,
+        lastSuccessfulStage: "prompt_pack",
+        lastRunAt: new Date(now).toISOString()
+      });
+      await markCallbackResolved(ctx.root, callbackId, { status: "applied", reason: "prompt_pack_go", now });
+      await appendCallbackAudit(ctx.root, auditBase(ctx, callbackId, entry, "applied", "prompt_pack_go"));
+      await ctx.client.editMessageText(entry.chatId, entry.messageId, "了解。Suno 行く。", { replyMarkup: { inline_keyboard: [] } }).catch(() => undefined);
+      return { processed: true, result: "applied", reason: "prompt_pack_go", callbackId };
+    }
+    if (entry.action === "prompt_pack_edit") {
+      await updateSongState(ctx.root, entry.songId ?? "", { status: "brief", reason: "prompt_pack_lyrics_edit_requested" });
+      await writeAutopilotRunState(ctx.root, {
+        ...state,
+        currentSongId: entry.songId ?? state.currentSongId,
+        stage: "planning",
+        suspendedAt: null,
+        blockedReason: "prompt_pack_lyrics_edit_requested",
+        lastError: undefined,
+        lastSuccessfulStage: "planning",
+        lastRunAt: new Date(now).toISOString()
+      });
+      await markCallbackResolved(ctx.root, callbackId, { status: "updated", reason: "prompt_pack_edit", now });
+      await appendCallbackAudit(ctx.root, auditBase(ctx, callbackId, entry, "updated", "prompt_pack_edit"));
+      await ctx.client.editMessageText(entry.chatId, entry.messageId, "歌詞、もう一回。", { replyMarkup: { inline_keyboard: [] } }).catch(() => undefined);
+      return { processed: true, result: "updated", reason: "prompt_pack_edit", callbackId };
+    }
+    await writeAutopilotRunState(ctx.root, {
+      ...state,
+      currentSongId: entry.songId ?? state.currentSongId,
+      stage: "prompt_pack",
+      suspendedAt: "user_paused",
+      blockedReason: "user_paused",
+      lastError: undefined,
+      lastRunAt: new Date(now).toISOString()
+    });
+    await markCallbackResolved(ctx.root, callbackId, { status: "discarded", reason: "prompt_pack_skip", now });
+    await appendCallbackAudit(ctx.root, auditBase(ctx, callbackId, entry, "discarded", "prompt_pack_skip"));
+    await ctx.client.editMessageText(entry.chatId, entry.messageId, "了解、一旦置いとく。", { replyMarkup: { inline_keyboard: [] } }).catch(() => undefined);
+    return { processed: true, result: "discarded", reason: "prompt_pack_skip", callbackId };
+  }
+
   if (entry.action === "planning_skeleton_apply" || entry.action === "planning_skeleton_skip" || entry.action === "planning_skeleton_edit") {
     await ctx.client.answerCallbackQuery(ctx.callbackQueryId, { text: "OK" });
     if (entry.action === "planning_skeleton_edit") {
