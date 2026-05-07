@@ -102,6 +102,10 @@ export function isTelegramNotifierEnabled(env: NodeJS.ProcessEnv = process.env):
   return env.OPENCLAW_TELEGRAM_NOTIFIER?.trim().toLowerCase() !== "off";
 }
 
+export function isDebugCallbackDispatchEnabled(env: NodeJS.ProcessEnv = process.env): boolean {
+  return env.OPENCLAW_DEBUG_CALLBACK_DISPATCH?.trim().toLowerCase() === "on";
+}
+
 export function isSunoLiveEnabled(env: NodeJS.ProcessEnv = process.env): boolean {
   const live = env.OPENCLAW_SUNO_LIVE?.trim().toLowerCase();
   const driver = env.OPENCLAW_SUNO_DRIVER?.trim().toLowerCase();

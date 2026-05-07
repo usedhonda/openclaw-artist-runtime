@@ -14,12 +14,13 @@ import { ArtistAutopilotService, pauseAutopilot, resumeAutopilot } from "../serv
 import { AutopilotControlService } from "../services/autopilotControlService.js";
 import { getAutopilotTicker, getAutopilotTickerIntervalMs, getLastOutcome, getLastTickAt } from "../services/autopilotTicker.js";
 import { readBirdLedgerDetail, readBirdRateLimitStatus } from "../services/birdRateLimiter.js";
+import { resolveCallbackAction } from "../services/callbackActionRegistry.js";
 import { handleProposalResponse, listPendingProposalDetails, listPendingProposals } from "../services/conversationalSession.js";
 import { buildPlatformStats, readDistributionEvents } from "../services/distributionLedgerReader.js";
 import { getRuntimeEventBus } from "../services/runtimeEventBus.js";
 import { readRuntimeEvents } from "../services/runtimeEventsLedger.js";
 import { getSongPromptLedgerPath } from "../services/promptLedger.js";
-import { mergeResolvedConfig, patchResolvedConfig, readConfigOverrides, resolveRuntimeConfig, resolveSunoDailyBudget, writeRuntimeSafetyOverrides, type RuntimeSafetyOverridesPatch } from "../services/runtimeConfig.js";
+import { isDebugCallbackDispatchEnabled, mergeResolvedConfig, patchResolvedConfig, readConfigOverrides, resolveRuntimeConfig, resolveSunoDailyBudget, writeRuntimeSafetyOverrides, type RuntimeSafetyOverridesPatch } from "../services/runtimeConfig.js";
 import { publishSocialAction, readLatestSocialAction } from "../services/socialPublishing.js";
 import { SocialDistributionWorker } from "../services/socialDistributionWorker.js";
 import { buildEffectiveDryRunMap, resolvePlatformSocialDryRun } from "../services/socialDryRunResolver.js";
@@ -36,6 +37,8 @@ import { SunoBrowserWorker } from "../services/sunoBrowserWorker.js";
 import { createSongIdea } from "../services/songIdeation.js";
 import { buildSongbookLookup, syncSongbookFromITunes } from "../services/songbookSyncer.js";
 import { readTakeHistory, selectTake } from "../services/takeSelection.js";
+import { routeTelegramCallback } from "../services/telegramCallbackHandler.js";
+import type { TelegramClient } from "../services/telegramClient.js";
 import { registerRuntimeEventStreamRoute } from "./runtimeEventStream.js";
 import type {
   ArtistRuntimeConfig,
@@ -166,6 +169,24 @@ function payloadInteger(payload: Record<string, unknown>, key: string, fallback:
   const parsed = typeof raw === "number" ? raw : typeof raw === "string" ? Number(raw) : Number.NaN;
   return Number.isFinite(parsed) ? Math.trunc(parsed) : fallback;
 }
+
+function optionalInteger(value: unknown): number | undefined {
+  const raw = Array.isArray(value) ? value[0] : value;
+  const parsed = typeof raw === "number" ? raw : typeof raw === "string" ? Number(raw) : Number.NaN;
+  return Number.isFinite(parsed) ? Math.trunc(parsed) : undefined;
+}
+
+function isLocalRoutePayload(payload: Record<string, unknown>): boolean {
+  const remote = typeof payload.remoteAddress === "string" ? payload.remoteAddress.trim() : "";
+  return remote === "" || remote === "127.0.0.1" || remote === "::1" || remote === "::ffff:127.0.0.1";
+}
+
+const internalCallbackTelegramClient: TelegramClient = {
+  answerCallbackQuery: async () => true,
+  editMessageReplyMarkup: async () => true,
+  editMessageText: async () => true,
+  sendMessage: async (chatId: number | string) => ({ message_id: 0, chat: { id: Number(chatId) } })
+} as unknown as TelegramClient;
 
 function sunoDiagnosticsDaysFromPayload(payload: Record<string, unknown>): number {
   return Math.min(30, Math.max(1, payloadInteger(payload, "days", 7)));
@@ -985,6 +1006,61 @@ export async function buildSunoDiagnosticsExportResponse(
   };
 }
 
+export interface InternalCallbackDispatchResponse {
+  dispatched: boolean;
+  callbackId?: string;
+  action?: string;
+  result?: string;
+  reason?: string;
+  error?: string;
+  statusCode: number;
+}
+
+export async function buildInternalCallbackDispatchResponse(
+  input: unknown,
+  env: NodeJS.ProcessEnv = process.env
+): Promise<InternalCallbackDispatchResponse> {
+  const payload = payloadRecord(input);
+  if (!isDebugCallbackDispatchEnabled(env)) {
+    return { dispatched: false, error: "debug_callback_dispatch_disabled", statusCode: 403 };
+  }
+  if (!isLocalRoutePayload(payload)) {
+    return { dispatched: false, error: "debug_callback_dispatch_not_local", statusCode: 403 };
+  }
+
+  const callbackId = typeof payload.callbackId === "string" ? payload.callbackId.trim() : "";
+  if (!callbackId) {
+    return { dispatched: false, error: "invalid_callback_id", statusCode: 400 };
+  }
+
+  const config = await resolveRuntimeConfig(payload.config as Partial<ArtistRuntimeConfig> | undefined);
+  const entry = await resolveCallbackAction(config.artist.workspaceRoot, callbackId);
+  if (!entry || entry.status !== "pending") {
+    return { dispatched: false, callbackId, error: "callback_action_not_pending", statusCode: 404 };
+  }
+
+  const chatId = optionalInteger(payload.chatId) ?? entry.chatId;
+  const userId = optionalInteger(payload.userId) ?? entry.userId;
+  const messageId = optionalInteger(payload.messageId) ?? entry.messageId;
+  const result = await routeTelegramCallback({
+    root: config.artist.workspaceRoot,
+    client: internalCallbackTelegramClient,
+    callbackQueryId: `internal:${callbackId}`,
+    data: `cb:${callbackId}`,
+    fromUserId: userId,
+    chatId,
+    messageId,
+    actor: "internal_recovery"
+  });
+  if (result.result === "unauthorized") {
+    return { dispatched: false, callbackId, action: entry.action, result: result.result, reason: result.reason, statusCode: 403 };
+  }
+  if (result.result === "failed") {
+    return { dispatched: false, callbackId, action: entry.action, result: result.result, reason: result.reason, statusCode: 400 };
+  }
+  return { dispatched: true, callbackId, action: entry.action, result: result.result, reason: result.reason, statusCode: 200 };
+}
+
 export async function buildStatusExportResponse(
   config?: Partial<ArtistRuntimeConfig>,
   window: ObservabilityExportWindow = "7d",
@@ -1035,6 +1111,12 @@ export function registerRoutes(api: unknown): void {
         exportWindowFromPayload(payload)
       );
     }
+  });
+
+  safeRegisterRoute(api, {
+    method: "POST",
+    path: "/plugins/artist-runtime/api/telegram/callback-dispatch",
+    handler: buildInternalCallbackDispatchResponse
   });
 
   safeRegisterRoute(api, {

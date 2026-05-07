@@ -26,6 +26,7 @@ export interface TelegramCallbackContext {
   chatId?: number;
   messageId?: number;
   now?: number;
+  actor?: "telegram_callback" | "internal_recovery";
   xPublishSpawnImpl?: XPublishActionInput["spawnImpl"];
 }
 
@@ -51,6 +52,7 @@ interface CallbackAuditEntry {
   draftCharCount?: number;
   tweetUrl?: string;
   birdStatus?: string;
+  actor?: TelegramCallbackContext["actor"];
 }
 
 function auditPath(root: string): string {
@@ -89,6 +91,7 @@ function auditBase(
     userIdHash: hashIdentifier(ctx.fromUserId),
     result,
     reason,
+    actor: ctx.actor,
     ...extra
   };
 }

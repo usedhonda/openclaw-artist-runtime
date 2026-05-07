@@ -173,7 +173,10 @@ function createHttpRouteHandler(route: RouteRegistration) {
     };
     const bodyText = await readRequestBody(req);
     const bodyPayload = parseBodyPayload(bodyText, typeof req.headers["content-type"] === "string" ? req.headers["content-type"] : undefined);
-    const payload = mergeRoutePayload(payloadBase, bodyPayload);
+    const mergedPayload = mergeRoutePayload(payloadBase, bodyPayload);
+    const payload = route.path.endsWith("/api/telegram/callback-dispatch")
+      ? { ...mergedPayload, remoteAddress: req.socket?.remoteAddress }
+      : mergedPayload;
     const result = await route.handler(payload);
     writeRouteResponse(res, route, result);
     return true;
