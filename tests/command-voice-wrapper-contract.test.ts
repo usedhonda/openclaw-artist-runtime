@@ -78,7 +78,7 @@ describe("command voice wrapper", () => {
     expect(isUnsafeCommandVoiceTopForTest(topOf(text))).toBe(false);
   });
 
-  it("falls back when generated top would contain technical ids", async () => {
+  it("allows song ids in voice tops but still rejects hashes", async () => {
     const root = makeRoot();
     await writeVoice(root);
     await writeFile(
@@ -90,6 +90,7 @@ describe("command voice wrapper", () => {
         "",
         "### Signature Moves",
         "- song-1234 を口に出してしまう",
+        "- deadbeefcafebabe を口に出してしまう",
         "",
         "## 文体 variation rule",
         "",
@@ -105,15 +106,54 @@ describe("command voice wrapper", () => {
       "utf8"
     );
 
-    const text = await wrapCommandVoice({
+    const songText = await wrapCommandVoice({
       kind: "song",
       workspaceRoot: root,
       info: "song-1234 | take_selected | Test",
       userMessage: "次の案ある?"
     });
 
-    expect(topOf(text)).toBe("その曲の中身、下に出す。");
-    expect(text).toContain("song-1234 | take_selected | Test");
+    expect(topOf(songText)).toContain("song-1234");
+    expect(isUnsafeCommandVoiceTopForTest(topOf(songText))).toBe(false);
+    expect(songText).toContain("song-1234 | take_selected | Test");
+
+    expect(isUnsafeCommandVoiceTopForTest("song-010 を取り込んだ。")).toBe(false);
+    expect(isUnsafeCommandVoiceTopForTest("deadbeefcafebabe を見た。")).toBe(true);
+
+    const hashRoot = makeRoot();
+    await writeVoice(hashRoot);
+    await writeFile(
+      join(hashRoot, "SOUL.md"),
+      [
+        "# SOUL.md",
+        "",
+        "## The Vibe",
+        "",
+        "### Signature Moves",
+        "- deadbeefcafebabe を口に出してしまう",
+        "",
+        "## 文体 variation rule",
+        "",
+        "### sentence_endings",
+        "- 。",
+        "",
+        "## Producer (relationship in music-making)",
+        "",
+        "### Producer call",
+        "- producer_callname: ゆずるさん",
+        "- first_person: 俺"
+      ].join("\n"),
+      "utf8"
+    );
+    const hashText = await wrapCommandVoice({
+      kind: "song",
+      workspaceRoot: hashRoot,
+      info: "deadbeefcafebabe | take_selected | Test",
+      userMessage: "hash を見せて"
+    });
+
+    expect(topOf(hashText)).toBe("その曲の中身、下に出す。");
+    expect(hashText).toContain("deadbeefcafebabe | take_selected | Test");
   });
 
   it("can compose a propose top without the info block", async () => {

@@ -39,7 +39,7 @@ const commandTheme: Record<CommandVoiceKind, string> = {
   propose: "次の曲の提案"
 };
 
-const unsafeTopPattern = /(https?:\/\/|(?:^|\b)(?:song|take|run)-[A-Za-z0-9_-]+|\b[A-Fa-f0-9]{8,}\b|\b\d{4,}\b)/;
+const unsafeTopPattern = /(https?:\/\/|\b[A-Fa-f0-9]{8,}\b|(?<![A-Za-z0-9_-])\d{4,}\b)/;
 
 function emptyMotifs(kind: CommandVoiceKind): PersonaMotifBundle {
   return {

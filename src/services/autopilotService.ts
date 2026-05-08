@@ -83,6 +83,26 @@ function writeStageState(root: string, previous: AutopilotRunState, next: Autopi
   return writeAutopilotRunState(root, next);
 }
 
+function isMockSunoGenerationBypass(config: ArtistRuntimeConfig): boolean {
+  return config.music.suno.driver === "mock" && !config.autopilot.dryRun;
+}
+
+async function importMockSunoGeneration(root: string, songId: string, state: AutopilotRunState, config: ArtistRuntimeConfig): Promise<void> {
+  const runId = `${state.runId ?? songId}-mock`.replace(/[^A-Za-z0-9_-]/g, "-");
+  await importSunoResults({
+    workspaceRoot: root,
+    songId,
+    runId,
+    urls: [
+      `mock://take/${songId}/${runId}/take-1`,
+      `mock://take/${songId}/${runId}/take-2`
+    ],
+    selectedTakeId: "take-1",
+    resultRefs: [],
+    config
+  });
+}
+
 export async function writeAutopilotRunState(root: string, state: AutopilotRunState): Promise<AutopilotRunState> {
   return writeAutopilotState(root, state);
 }
@@ -695,6 +715,19 @@ export class ArtistAutopilotService {
           });
         }
         case "suno_generation": {
+          if (isMockSunoGenerationBypass(config)) {
+            await importMockSunoGeneration(input.workspaceRoot, song.songId, existing, config);
+            return writeStageState(input.workspaceRoot, existing, {
+              ...baseState,
+              currentSongId: song.songId,
+              stage: "take_selection",
+              blockedReason: undefined,
+              lastError: undefined,
+              lastSuccessfulStage: "suno_generation",
+              retryCount: 0,
+              cycleCount: existing.cycleCount + 1
+            });
+          }
           const retryDecision = nextSunoRetryDecision(existing);
           if (retryDecision.action === "wait") {
             emitRuntimeEvent({
