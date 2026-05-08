@@ -1,6 +1,6 @@
 import type { AiReviewProvider, SongUpdateField } from "../types.js";
 import { songUpdateFields } from "../types.js";
-import { callAiProvider } from "./aiProviderClient.js";
+import { callAiProvider, isAiNotConfiguredResponse } from "./aiProviderClient.js";
 import { secretLikePattern } from "./personaMigrator.js";
 
 export interface SongProposerSourceContext {
@@ -281,7 +281,7 @@ export async function proposeSongFields(
     responseSecretFields,
     "secret-like AI response"
   );
-  if (raw.includes("is not configured")) {
+  if (isAiNotConfiguredResponse(raw)) {
     warnings.push(`AI provider ${provider} is not configured; parsed fallback response only`);
     return { provider: "not_configured", warnings, drafts };
   }

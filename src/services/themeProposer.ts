@@ -1,7 +1,7 @@
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 import type { AiReviewProvider } from "../types.js";
-import { callAiProvider } from "./aiProviderClient.js";
+import { callAiProvider, isAiNotConfiguredResponse } from "./aiProviderClient.js";
 import { readArtistVoiceContext } from "./artistVoiceResponder.js";
 import { secretLikePattern } from "./personaMigrator.js";
 import { extractPersonaMotifs, summarizeMotifs } from "./personaMotifExtractor.js";
@@ -108,7 +108,7 @@ export async function proposeTheme(root: string, context: ThemeProposalContext =
   return {
     theme: parsed.theme,
     reason: reasonWithMotif,
-    provider: raw.includes("is not configured") ? "not_configured" : provider,
+    provider: isAiNotConfiguredResponse(raw) ? "not_configured" : provider,
     motifSummary: motifSummary || undefined
   };
 }

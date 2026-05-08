@@ -58,6 +58,10 @@ export function isAiProviderMockFallbackResponse(value: string): boolean {
   return AI_PROVIDER_MOCK_FALLBACK_PREFIXES.some((prefix) => value.startsWith(prefix));
 }
 
+export function isAiNotConfiguredResponse(raw: string): boolean {
+  return /AI provider '[^']+' is not configured\./.test(raw);
+}
+
 function mockResponse(prompt: string, prefix = "Mock provider"): string {
   return `${prefix}: ${truncate(prompt, 200)}`;
 }

@@ -2,7 +2,7 @@ import { createHash } from "node:crypto";
 import { readdir, readFile } from "node:fs/promises";
 import { join } from "node:path";
 import type { AiReviewProvider, CommissionBrief, SongState, SpawnProposal } from "../types.js";
-import { callAiProvider } from "./aiProviderClient.js";
+import { callAiProvider, isAiNotConfiguredResponse } from "./aiProviderClient.js";
 import { composeArtistFallback } from "./artistVoiceComposer.js";
 import { listSongStates } from "./artistState.js";
 import { readCallbackActionEntries } from "./callbackActionRegistry.js";
@@ -288,7 +288,7 @@ export async function proposeSpawn(root: string, options: ProposeSpawnOptions = 
       fingerprint
     }), { provider });
   assertSafe("ai_response", raw);
-  const parsed = briefFromAi(raw, fallback, now);
+  const parsed = briefFromAi(isAiNotConfiguredResponse(raw) ? "" : raw, fallback, now);
   if (isSimilarTheme(parsed.brief.title, recentThemes)) {
     return null;
   }
