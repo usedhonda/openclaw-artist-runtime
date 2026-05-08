@@ -31,4 +31,18 @@ describe("theme proposer", () => {
 
     await expect(proposeTheme(root, { observations: "PASSWORD=do-not-store" })).rejects.toThrow("secret");
   });
+
+  it("falls back to motif-anchored theme when configured AI provider is not available", async () => {
+    const root = await workspace();
+    const proposal = await proposeTheme(root, {
+      observations: "- people arguing under neon",
+      aiReviewProvider: "openai-codex"
+    });
+
+    expect(proposal.provider).toBe("not_configured");
+    expect(proposal.theme).not.toMatch(/is not configured/i);
+    expect(proposal.theme).not.toMatch(/no external model/i);
+    expect(proposal.theme).toContain("satire");
+    expect(proposal.reason).toContain("motif anchor");
+  });
 });

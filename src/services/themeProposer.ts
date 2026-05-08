@@ -89,6 +89,7 @@ export async function proposeTheme(root: string, context: ThemeProposalContext =
   const motifSummary = summarizeMotifs(motifs);
   const provider = context.aiReviewProvider ?? "mock";
   let raw: string;
+  let aiNotConfigured = false;
   if (provider === "mock") {
     const fallback = pickMotifFocus(motifSummary);
     raw = `theme: ${fallback.theme}\nreason: ${fallback.reason}`;
@@ -97,6 +98,11 @@ export async function proposeTheme(root: string, context: ThemeProposalContext =
       buildPrompt(voiceContext.artistMd, voiceContext.currentState, observations, motifSummary),
       { provider }
     );
+    if (isAiNotConfiguredResponse(raw)) {
+      aiNotConfigured = true;
+      const fallback = pickMotifFocus(motifSummary);
+      raw = `theme: ${fallback.theme}\nreason: ${fallback.reason}`;
+    }
   }
   if (secretLikePattern.test(raw)) {
     throw new Error("theme_response_contains_secret_like_text");
@@ -108,7 +114,7 @@ export async function proposeTheme(root: string, context: ThemeProposalContext =
   return {
     theme: parsed.theme,
     reason: reasonWithMotif,
-    provider: isAiNotConfiguredResponse(raw) ? "not_configured" : provider,
+    provider: aiNotConfigured ? "not_configured" : provider,
     motifSummary: motifSummary || undefined
   };
 }
