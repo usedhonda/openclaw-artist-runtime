@@ -73,8 +73,8 @@ describe("telegram distribution apply callbacks", () => {
     expect(markupCall).toBeTruthy();
     const markupPayload = JSON.parse(String((markupCall?.[1] as RequestInit).body)) as { reply_markup: { inline_keyboard: Array<Array<{ text: string; callback_data: string }>> } };
     expect(markupPayload.reply_markup.inline_keyboard[0]).toEqual([
-      { text: "✓ 反映する", callback_data: `cb:${apply?.callbackId}` },
-      { text: "⏸ 後で", callback_data: `cb:${actions.find((entry) => entry.action === "dist_skip")?.callbackId}` }
+      { text: "反映する", callback_data: `cb:${apply?.callbackId}` },
+      { text: "あとで", callback_data: `cb:${actions.find((entry) => entry.action === "dist_skip")?.callbackId}` }
     ]);
 
     const client = callbackClient();

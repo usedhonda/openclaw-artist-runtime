@@ -87,7 +87,7 @@ describe("telegram daily voice callback e2e", () => {
     const publish = actions.find((entry) => entry.action === "daily_voice_publish");
     expect(publish).toMatchObject({ messageId: 77, status: "pending", draftHash: expect.any(String), draftCharCount: expect.any(Number) });
     const editPayload = JSON.parse(String((fetchImpl.mock.calls[1]?.[1] as RequestInit).body)) as { reply_markup: { inline_keyboard: Array<Array<{ text: string }>> } };
-    expect(editPayload.reply_markup.inline_keyboard.flat().map((button) => button.text)).toEqual(["▶ X 投稿", "✏️ 修正", "✗ 取消"]);
+    expect(editPayload.reply_markup.inline_keyboard.flat().map((button) => button.text)).toEqual(["これで出す", "直す", "やめる"]);
 
     const client = callbackClient();
     const result = await routeTelegramCallback({

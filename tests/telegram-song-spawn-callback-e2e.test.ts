@@ -70,7 +70,7 @@ describe("telegram song spawn callback e2e", () => {
     const entries = await readCallbackActionEntries(root);
     expect(entries.map((entry) => entry.action).sort()).toEqual(["song_spawn_edit", "song_spawn_inject", "song_spawn_skip"].sort());
     const markupCall = fetchImpl.mock.calls.find((call) => String(call[0]).includes("/editMessageReplyMarkup"));
-    expect(String((markupCall?.[1] as RequestInit).body)).toContain("進める");
+    expect(String((markupCall?.[1] as RequestInit).body)).toContain("これで作る");
 
     const inject = entries.find((entry) => entry.action === "song_spawn_inject");
     const result = await routeTelegramCallback({
