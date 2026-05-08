@@ -10,6 +10,7 @@ import { readSongState } from "./artistState.js";
 import { secretLikePattern } from "./personaMigrator.js";
 import type { ObservationSummary } from "../types.js";
 import { composeVoiceTopOnly, isUnsafeCommandVoiceTopForTest } from "./commandVoiceWrapper.js";
+import { buttonVoiceLabels } from "./buttonVoiceLabels.js";
 
 export interface TelegramNotifierOptions {
   token: string;
@@ -105,9 +106,9 @@ export class TelegramNotifier {
     ];
     const [write, skip, xPrepare] = await Promise.all(actions);
     const buttons = [
-      { text: "📝 SONGBOOK 反映", callback_data: `cb:${write.callbackId}` },
-      { text: "⏸ 後で", callback_data: `cb:${skip.callbackId}` },
-      ...(xPrepare ? [{ text: "▶ X 投稿準備", callback_data: `cb:${xPrepare.callbackId}` }] : [])
+      { text: buttonVoiceLabels.songCompletion.write, callback_data: `cb:${write.callbackId}` },
+      { text: buttonVoiceLabels.songCompletion.later, callback_data: `cb:${skip.callbackId}` },
+      ...(xPrepare ? [{ text: buttonVoiceLabels.songCompletion.xPrepare, callback_data: `cb:${xPrepare.callbackId}` }] : [])
     ];
     await this.client.editMessageReplyMarkup(this.options.chatId, messageId, {
       inline_keyboard: [buttons]
@@ -154,8 +155,8 @@ export class TelegramNotifier {
     ]);
     await this.client.editMessageReplyMarkup(this.options.chatId, messageId, {
       inline_keyboard: [[
-        { text: "✓ 反映する", callback_data: `cb:${apply.callbackId}` },
-        { text: "⏸ 後で", callback_data: `cb:${skip.callbackId}` }
+        { text: buttonVoiceLabels.distribution.apply, callback_data: `cb:${apply.callbackId}` },
+        { text: buttonVoiceLabels.distribution.later, callback_data: `cb:${skip.callbackId}` }
       ]]
     });
   }
@@ -193,9 +194,9 @@ export class TelegramNotifier {
     ]);
     await this.client.editMessageReplyMarkup(this.options.chatId, messageId, {
       inline_keyboard: [[
-        { text: "▶ X 投稿", callback_data: `cb:${publish.callbackId}` },
-        { text: "✏️ 修正", callback_data: `cb:${edit.callbackId}` },
-        { text: "✗ 取消", callback_data: `cb:${cancel.callbackId}` }
+        { text: buttonVoiceLabels.dailyVoice.publish, callback_data: `cb:${publish.callbackId}` },
+        { text: buttonVoiceLabels.dailyVoice.edit, callback_data: `cb:${edit.callbackId}` },
+        { text: buttonVoiceLabels.dailyVoice.cancel, callback_data: `cb:${cancel.callbackId}` }
       ]]
     });
   }
@@ -235,9 +236,9 @@ export class TelegramNotifier {
     ]);
     await this.client.editMessageReplyMarkup(this.options.chatId, messageId, {
       inline_keyboard: [[
-        { text: "✓ 進める", callback_data: `cb:${inject.callbackId}` },
-        { text: "✗ 今は要らない", callback_data: `cb:${skip.callbackId}` },
-        { text: "✏️ 修正", callback_data: `cb:${edit.callbackId}` }
+        { text: buttonVoiceLabels.songSpawn.inject, callback_data: `cb:${inject.callbackId}` },
+        { text: buttonVoiceLabels.songSpawn.skip, callback_data: `cb:${skip.callbackId}` },
+        { text: buttonVoiceLabels.songSpawn.edit, callback_data: `cb:${edit.callbackId}` }
       ]]
     });
   }
@@ -271,9 +272,9 @@ export class TelegramNotifier {
     ]);
     await this.client.editMessageReplyMarkup(this.options.chatId, messageId, {
       inline_keyboard: [[
-        { text: "▶ Suno に進める", callback_data: `cb:${go.callbackId}` },
-        { text: "✏️ 歌詞修正", callback_data: `cb:${edit.callbackId}` },
-        { text: "⏸ 後で", callback_data: `cb:${skip.callbackId}` }
+        { text: buttonVoiceLabels.promptPackReady.go, callback_data: `cb:${go.callbackId}` },
+        { text: buttonVoiceLabels.promptPackReady.edit, callback_data: `cb:${edit.callbackId}` },
+        { text: buttonVoiceLabels.promptPackReady.skip, callback_data: `cb:${skip.callbackId}` }
       ]]
     });
   }
@@ -317,9 +318,9 @@ export class TelegramNotifier {
     ]);
     await this.client.editMessageReplyMarkup(this.options.chatId, messageId, {
       inline_keyboard: [[
-        { text: "✓ Yes", callback_data: `cb:${apply.callbackId}` },
-        { text: "✗ No", callback_data: `cb:${skip.callbackId}` },
-        { text: "✏️ Edit", callback_data: `cb:${edit.callbackId}` }
+        { text: buttonVoiceLabels.planningSkeleton.apply, callback_data: `cb:${apply.callbackId}` },
+        { text: buttonVoiceLabels.planningSkeleton.skip, callback_data: `cb:${skip.callbackId}` },
+        { text: buttonVoiceLabels.planningSkeleton.edit, callback_data: `cb:${edit.callbackId}` }
       ]]
     });
   }
@@ -354,9 +355,9 @@ export class TelegramNotifier {
     ]);
     await this.client.editMessageReplyMarkup(this.options.chatId, messageId, {
       inline_keyboard: [[
-        { text: "✓ 採用", callback_data: `cb:${accept.callbackId}` },
-        { text: "↻ Suno再生成", callback_data: `cb:${regen.callbackId}` },
-        { text: "⏸ 後で", callback_data: `cb:${skip.callbackId}` }
+        { text: buttonVoiceLabels.takeSelect.accept, callback_data: `cb:${accept.callbackId}` },
+        { text: buttonVoiceLabels.takeSelect.regenerate, callback_data: `cb:${regen.callbackId}` },
+        { text: buttonVoiceLabels.takeSelect.skip, callback_data: `cb:${skip.callbackId}` }
       ]]
     });
   }

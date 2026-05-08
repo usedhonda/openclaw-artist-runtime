@@ -960,7 +960,7 @@ export interface AutopilotRunState {
   currentSongId?: string;
   stage: AutopilotStage;
   paused: boolean;
-  suspendedAt?: "prompt_pack_ready" | "user_paused" | string | null;
+  suspendedAt?: "prompt_pack_ready" | "user_paused" | "planning_skeleton_pending" | string | null;
   pausedReason?: string | null;
   hardStopReason?: string | null;
   blockedReason?: string | null;

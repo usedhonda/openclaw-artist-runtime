@@ -350,23 +350,37 @@ async function handlePlanningStage(
     aiReviewProvider: config.aiReview.provider
   });
   if (validation.complete) {
+    if (existing.suspendedAt === "planning_skeleton_pending") {
+      return writeStageState(root, existing, {
+        ...baseState,
+        currentSongId: song.songId,
+        stage: existing.stage,
+        suspendedAt: null,
+        blockedReason: undefined,
+        lastError: undefined,
+        cycleCount: existing.cycleCount
+      });
+    }
     return undefined;
   }
   if (!validation.proposal) {
     return undefined;
   }
   if (config.telegram.enabled) {
-    emitRuntimeEvent({
-      type: "planning_skeleton_incomplete",
-      songId: song.songId,
-      missing: validation.missing,
-      proposal: validation.proposal,
-      timestamp: Date.now()
-    });
+    if (existing.suspendedAt !== "planning_skeleton_pending") {
+      emitRuntimeEvent({
+        type: "planning_skeleton_incomplete",
+        songId: song.songId,
+        missing: validation.missing,
+        proposal: validation.proposal,
+        timestamp: Date.now()
+      });
+    }
     return writeStageState(root, existing, {
       ...baseState,
       currentSongId: song.songId,
       stage: "planning",
+      suspendedAt: "planning_skeleton_pending",
       blockedReason: `planning_skeleton_incomplete:${validation.missing.join(",")}`,
       lastError: undefined,
       cycleCount: existing.cycleCount + 1

@@ -425,11 +425,21 @@ export async function routeTelegramCallback(ctx: TelegramCallbackContext): Promi
         ...state,
         currentSongId: entry.songId ?? state.currentSongId,
         stage: "prompt_pack",
+        suspendedAt: null,
         blockedReason: undefined,
         lastError: undefined,
         lastSuccessfulStage: "planning",
         lastRunAt: new Date(now).toISOString()
       });
+    } else if (proposalResult.status === "discarded" || proposalResult.status === "already_resolved") {
+      const state = await readAutopilotRunState(ctx.root);
+      if (state.suspendedAt === "planning_skeleton_pending") {
+        await writeAutopilotRunState(ctx.root, {
+          ...state,
+          suspendedAt: null,
+          lastRunAt: new Date(now).toISOString()
+        });
+      }
     }
     const callbackStatus: Exclude<CallbackActionStatus, "pending"> =
       proposalResult.status === "applied" ? "applied"

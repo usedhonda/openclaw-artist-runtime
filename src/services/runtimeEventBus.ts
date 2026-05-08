@@ -29,9 +29,19 @@ export type RuntimeEvent =
 
 export type RuntimeEventHandler = (event: RuntimeEvent) => void | Promise<void>;
 
+const DEFAULT_DEDUP_MS = 5000;
+
+export interface EmitWithDedupOptions {
+  event: RuntimeEvent;
+  dedupKey: string;
+  dedupMs?: number;
+  now?: number;
+}
+
 export class RuntimeEventBus {
   private readonly handlers = new Set<RuntimeEventHandler>();
   private readonly recentEvents: RuntimeEvent[] = [];
+  private readonly dedupTimestamps = new Map<string, number>();
 
   subscribe(handler: RuntimeEventHandler): () => void {
     this.handlers.add(handler);
@@ -48,6 +58,18 @@ export class RuntimeEventBus {
     }
   }
 
+  emitWithDedup(options: EmitWithDedupOptions): boolean {
+    const dedupMs = options.dedupMs ?? DEFAULT_DEDUP_MS;
+    const now = options.now ?? Date.now();
+    const last = this.dedupTimestamps.get(options.dedupKey);
+    if (typeof last === "number" && now - last < dedupMs) {
+      return false;
+    }
+    this.dedupTimestamps.set(options.dedupKey, now);
+    this.emit(options.event);
+    return true;
+  }
+
   listRecent(limit = 20): RuntimeEvent[] {
     return this.recentEvents.slice(0, Math.max(0, limit));
   }
@@ -55,6 +77,7 @@ export class RuntimeEventBus {
   clearForTest(): void {
     this.handlers.clear();
     this.recentEvents.length = 0;
+    this.dedupTimestamps.clear();
   }
 }
 
@@ -66,4 +89,8 @@ export function getRuntimeEventBus(): RuntimeEventBus {
 
 export function emitRuntimeEvent(event: RuntimeEvent): void {
   singleton.emit(event);
+}
+
+export function emitRuntimeEventWithDedup(options: EmitWithDedupOptions): boolean {
+  return singleton.emitWithDedup(options);
 }
