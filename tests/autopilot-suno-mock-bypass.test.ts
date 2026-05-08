@@ -8,7 +8,7 @@ import { ArtistAutopilotService, writeAutopilotRunState } from "../src/services/
 import { readLatestSunoRun } from "../src/services/sunoRuns.js";
 
 describe("autopilot Suno mock bypass", () => {
-  it("imports mock takes without requiring a connected browser worker when driver is mock", async () => {
+  it.each([true, false])("imports mock takes without requiring a connected browser worker when driver is mock and dryRun=%s", async (dryRun) => {
     const root = mkdtempSync(join(tmpdir(), "artist-runtime-suno-mock-bypass-"));
     await ensureArtistWorkspace(root);
     await ensureSongState(root, "mock-song", "Mock Song");
@@ -30,7 +30,7 @@ describe("autopilot Suno mock bypass", () => {
     const service = new ArtistAutopilotService();
     const config = {
       artist: { workspaceRoot: root },
-      autopilot: { enabled: true, dryRun: false },
+      autopilot: { enabled: true, dryRun },
       music: { suno: { driver: "mock" as const, connectionMode: "background_browser_worker" as const } },
       telegram: { enabled: false }
     };

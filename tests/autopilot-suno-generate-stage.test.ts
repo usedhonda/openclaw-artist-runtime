@@ -39,7 +39,7 @@ describe("autopilot Suno generate stage", () => {
     const root = mkdtempSync(join(tmpdir(), "artist-runtime-autopilot-suno-stage-"));
     await seedPlanningSong(root);
     const service = new ArtistAutopilotService();
-    const config = { artist: { workspaceRoot: root }, autopilot: { enabled: true, dryRun: true }, telegram: { enabled: false } };
+    const config = { artist: { workspaceRoot: root }, autopilot: { enabled: true, dryRun: true }, music: { suno: { driver: "playwright" as const } }, telegram: { enabled: false } };
     const events: RuntimeEvent[] = [];
     const unsubscribe = getRuntimeEventBus().subscribe((event) => events.push(event));
 
@@ -73,7 +73,7 @@ describe("autopilot Suno generate stage", () => {
 
     const state = await new ArtistAutopilotService().runCycle({
       workspaceRoot: root,
-      config: { artist: { workspaceRoot: root }, autopilot: { enabled: true, dryRun: true } }
+      config: { artist: { workspaceRoot: root }, autopilot: { enabled: true, dryRun: true }, music: { suno: { driver: "playwright" as const } } }
     });
 
     unsubscribe();
@@ -103,7 +103,7 @@ describe("autopilot Suno generate stage", () => {
 
     const state = await new ArtistAutopilotService().runCycle({
       workspaceRoot: root,
-      config: { artist: { workspaceRoot: root }, autopilot: { enabled: true, dryRun: true } }
+      config: { artist: { workspaceRoot: root }, autopilot: { enabled: true, dryRun: true }, music: { suno: { driver: "playwright" as const } } }
     });
 
     unsubscribe();

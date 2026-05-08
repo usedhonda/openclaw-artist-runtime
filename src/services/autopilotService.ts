@@ -84,7 +84,7 @@ function writeStageState(root: string, previous: AutopilotRunState, next: Autopi
 }
 
 function isMockSunoGenerationBypass(config: ArtistRuntimeConfig): boolean {
-  return config.music.suno.driver === "mock" && !config.autopilot.dryRun;
+  return config.music.suno.driver === "mock";
 }
 
 async function importMockSunoGeneration(root: string, songId: string, state: AutopilotRunState, config: ArtistRuntimeConfig): Promise<void> {
@@ -716,6 +716,33 @@ export class ArtistAutopilotService {
         }
         case "suno_generation": {
           if (isMockSunoGenerationBypass(config)) {
+            const budget = await reserveSunoGenerationBudget(input.workspaceRoot, 1);
+            if (!budget.ok) {
+              emitRuntimeEvent({
+                type: "suno_budget_low",
+                songId: song.songId,
+                reason: budget.reason ?? "daily Suno budget low",
+                limit: budget.state.limit,
+                used: budget.state.used,
+                timestamp: Date.now()
+              });
+              emitRuntimeEvent({
+                type: "budget_exhausted",
+                reason: budget.reason ?? "daily Suno budget exhausted",
+                limit: budget.state.limit,
+                used: budget.state.used,
+                timestamp: Date.now()
+              });
+              return writeStageState(input.workspaceRoot, existing, {
+                ...baseState,
+                currentSongId: song.songId,
+                stage: "suno_generation",
+                blockedReason: budget.reason,
+                lastError: budget.reason,
+                lastSuccessfulStage: existing.lastSuccessfulStage,
+                cycleCount: existing.cycleCount + 1
+              });
+            }
             await importMockSunoGeneration(input.workspaceRoot, song.songId, existing, config);
             return writeStageState(input.workspaceRoot, existing, {
               ...baseState,

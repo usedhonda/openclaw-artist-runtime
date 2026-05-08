@@ -53,7 +53,7 @@ describe("autopilot Suno import stage", () => {
 
     const state = await new ArtistAutopilotService().runCycle({
       workspaceRoot: root,
-      config: { artist: { workspaceRoot: root }, autopilot: { enabled: true, dryRun: true } }
+      config: { artist: { workspaceRoot: root }, autopilot: { enabled: true, dryRun: true }, music: { suno: { driver: "playwright" as const } } }
     });
 
     expect(connectorImportResults).toHaveBeenCalledWith({ runId: "run-live", urls: [] });

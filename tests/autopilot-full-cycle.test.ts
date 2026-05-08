@@ -37,6 +37,9 @@ describe("ArtistAutopilotService full dry-run cycle", () => {
         enabled: true,
         dryRun: true
       },
+      music: {
+        suno: { driver: "playwright" as const }
+      },
       distribution: {
         enabled: true,
         platforms: {

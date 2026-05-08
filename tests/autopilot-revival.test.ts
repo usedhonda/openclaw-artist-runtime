@@ -102,7 +102,7 @@ describe("autopilot revival smoke coverage", () => {
       config: {
         artist: { workspaceRoot: root },
         autopilot: { dryRun: true },
-        music: { suno: { submitMode: "live", authority: "auto_create_and_select_take" } }
+        music: { suno: { driver: "playwright" as const, submitMode: "live", authority: "auto_create_and_select_take" } }
       }
     });
     const runLog = await readFile(join(root, "songs", "song-001", "suno", "runs.jsonl"), "utf8");
@@ -125,7 +125,7 @@ describe("autopilot revival smoke coverage", () => {
     const config = {
       artist: { workspaceRoot: root },
       autopilot: { enabled: true, dryRun: true },
-      music: { suno: { submitMode: "live", authority: "auto_create_and_select_take" } }
+      music: { suno: { driver: "playwright" as const, submitMode: "live", authority: "auto_create_and_select_take" } }
     };
 
     const planning = await service.runCycle({ workspaceRoot: root, config });

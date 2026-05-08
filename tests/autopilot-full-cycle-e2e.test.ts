@@ -23,7 +23,7 @@ describe("autopilot planning to completed e2e", () => {
     const events: RuntimeEvent[] = [];
     const unsubscribe = getRuntimeEventBus().subscribe((event) => events.push(event));
     const service = new ArtistAutopilotService();
-    const config = { artist: { workspaceRoot: root }, autopilot: { enabled: true, dryRun: true }, distribution: { enabled: true, platforms: { x: { enabled: true } } } };
+    const config = { artist: { workspaceRoot: root }, autopilot: { enabled: true, dryRun: true }, music: { suno: { driver: "playwright" as const } }, distribution: { enabled: true, platforms: { x: { enabled: true } } } };
     const stages: string[] = [];
 
     stages.push((await service.runCycle({ workspaceRoot: root, config })).stage);

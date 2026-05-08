@@ -40,7 +40,7 @@ describe("autopilot stuck guard bypass", () => {
 
     const state = await new ArtistAutopilotService().runCycle({
       workspaceRoot: root,
-      config: { artist: { workspaceRoot: root }, autopilot: { enabled: true, dryRun: true } }
+      config: { artist: { workspaceRoot: root }, autopilot: { enabled: true, dryRun: true }, music: { suno: { driver: "playwright" as const } } }
     });
 
     expect(state.cycleCount).toBe(8);
@@ -65,7 +65,7 @@ describe("autopilot stuck guard bypass", () => {
 
     const state = await new ArtistAutopilotService().runCycle({
       workspaceRoot: root,
-      config: { artist: { workspaceRoot: root }, autopilot: { enabled: true, dryRun: true } }
+      config: { artist: { workspaceRoot: root }, autopilot: { enabled: true, dryRun: true }, music: { suno: { driver: "playwright" as const } } }
     });
 
     expect(state.cycleCount).toBe(7);
