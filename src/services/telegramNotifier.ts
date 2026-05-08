@@ -10,6 +10,7 @@ import { readSongState } from "./artistState.js";
 import { secretLikePattern } from "./personaMigrator.js";
 import type { ObservationSummary } from "../types.js";
 import { composeVoiceTopOnly, isUnsafeCommandVoiceTopForTest } from "./commandVoiceWrapper.js";
+import { composePlanningSkeletonVoice } from "./planningSkeletonVoiceComposer.js";
 import { buttonVoiceLabels } from "./buttonVoiceLabels.js";
 
 export interface TelegramNotifierOptions {
@@ -665,9 +666,16 @@ export async function formatRuntimeEvent(
         event.reason
       ].join("\n");
     case "planning_skeleton_incomplete": {
-      const voiceTop = await composeVoiceTopOnly("propose", options.workspaceRoot).catch(() => "次の曲、まず骨組み。");
+      const monolog = options.workspaceRoot
+        ? await composePlanningSkeletonVoice({
+            workspaceRoot: options.workspaceRoot,
+            songId: event.songId,
+            missing: event.missing,
+            aiReviewProvider: options.aiReviewProvider
+          }).catch(() => "次の曲、まず骨組み。")
+        : "次の曲、まず骨組み。";
       return [
-        voiceTop || "次の曲、まず骨組み。",
+        monolog,
         "",
         "─────",
         `${humanizeMissingFields(event.missing)}を埋める案、出した。これで進めていい?`
