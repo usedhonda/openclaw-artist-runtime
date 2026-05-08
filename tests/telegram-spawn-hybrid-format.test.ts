@@ -32,10 +32,9 @@ describe("telegram spawn hybrid format", () => {
       "ゆずる、再開発の街を切るやつ、刺さる",
       "",
       "─────",
-      "- songId: spawn_9a57b4"
+      "『Backyard Cure』、tense, cynical, urgent、148 BPM で 2:45 秒。"
     ]);
-    expect(text).toContain("- title: Backyard Cure");
-    expect(text).toContain("- reason: 街の剥がれ方が刺さった。低い熱で行く。");
+    expect(text).toContain("街の剥がれ方が刺さった。低い熱で行く。");
   });
 
   it("keeps a fallback top when voiceTop is absent", async () => {
@@ -51,7 +50,7 @@ describe("telegram spawn hybrid format", () => {
       "次の曲、こんな感じはどう?",
       "",
       "─────",
-      "- songId: spawn_9a57b4"
+      "『Backyard Cure』、tense, cynical, urgent、148 BPM で 2:45 秒。"
     ]);
   });
 });

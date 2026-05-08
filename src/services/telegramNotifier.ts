@@ -9,7 +9,7 @@ import { isInlineButtonsEnabled, isXInlineButtonEnabled } from "./runtimeConfig.
 import { readSongState } from "./artistState.js";
 import { secretLikePattern } from "./personaMigrator.js";
 import type { ObservationSummary } from "../types.js";
-import { isUnsafeCommandVoiceTopForTest } from "./commandVoiceWrapper.js";
+import { composeVoiceTopOnly, isUnsafeCommandVoiceTopForTest } from "./commandVoiceWrapper.js";
 
 export interface TelegramNotifierOptions {
   token: string;
@@ -534,6 +534,21 @@ function sanitizeCompletionArtistTop(text: string, fallback: string, summary?: O
   return clean;
 }
 
+function humanizeMissingFields(fields: string[]): string {
+  const labels: Record<string, string> = {
+    tempo: "テンポ",
+    duration: "長さ",
+    "style notes": "style",
+    "lyrics theme": "テーマ",
+    mood: "ムード"
+  };
+  const humanized = fields.map((field) => labels[field] ?? field).filter(Boolean);
+  if (humanized.length === 0) return "細部";
+  if (humanized.length === 1) return humanized[0];
+  if (humanized.length === 2) return `${humanized[0]}と${humanized[1]}`;
+  return `${humanized.slice(0, -1).join("、")}と${humanized.at(-1)}`;
+}
+
 async function readSongCompletionContext(event: Extract<RuntimeEvent, { type: "song_take_completed" }>, workspaceRoot?: string): Promise<{ title: string; observationSummary?: ObservationSummary }> {
   if (!workspaceRoot) {
     return { title: event.songId, observationSummary: event.observationSummary };
@@ -645,20 +660,18 @@ export async function formatRuntimeEvent(
         event.voiceTop ?? "次の曲、こんな感じはどう?",
         "",
         "─────",
-        `- songId: ${event.candidateSongId}`,
-        `- title: ${event.brief.title}`,
-        `- mood: ${event.brief.mood}`,
-        `- tempo: ${event.brief.tempo}`,
-        `- duration: ${event.brief.duration}`,
-        `- reason: ${event.reason}`
+        `『${event.brief.title}』、${event.brief.mood}、${event.brief.tempo} で ${event.brief.duration} 秒。`,
+        event.reason
       ].join("\n");
-    case "planning_skeleton_incomplete":
+    case "planning_skeleton_incomplete": {
+      const voiceTop = await composeVoiceTopOnly("propose", options.workspaceRoot).catch(() => "次の曲、まず骨組み。");
       return [
-        `Planning skeleton incomplete: ${event.songId}`,
+        voiceTop || "次の曲、まず骨組み。",
         "",
-        `missing: ${event.missing.join(", ")}`,
-        "補完案を作った。進めるなら Yes。"
+        "─────",
+        `${humanizeMissingFields(event.missing)}を埋める案、出した。これで進めていい?`
       ].join("\n");
+    }
     case "prompt_pack_ready":
       return [
         event.voiceTop ?? "ゆずるさん、歌詞こんな感じ。Suno 行く?",
@@ -666,9 +679,7 @@ export async function formatRuntimeEvent(
         "─────",
         event.lyricsExcerpt,
         "",
-        `- mood: ${event.mood}`,
-        `- tempo: ${event.tempo}`,
-        `- style: ${event.styleNotes}`
+        `${event.mood}・${event.tempo}・${event.styleNotes}`
       ].join("\n");
     case "observation_collected":
       return `Observations collected: ${event.entryCount} entries${typeof event.topScore === "number" ? `, top score=${event.topScore}` : ""}${event.topMotifMatch ? ` (${event.topMotifMatch})` : ""}`;
