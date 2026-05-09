@@ -44,10 +44,12 @@ describe("hybrid event info voice formatting", () => {
 
     expect(text).not.toMatch(/- (songId|title|mood|tempo|duration|reason):/);
     expect(text).toContain("『Backyard Cure』");
-    expect(text).toContain("tense, cynical, urgent");
-    expect(text).toContain("148 BPM");
-    expect(text).toContain("165");
+    expect(text).toContain("テンポは速め");
+    expect(text).toContain("緊張感のある3分くらい");
+    expect(text).toContain("これで合ってる気がする");
     expect(text).toContain("街の剥がれ方が刺さった。低い熱で行く。");
+    expect(text).not.toContain("tense, cynical, urgent");
+    expect(text).not.toContain("148 BPM");
   });
 
   it("formats prompt_pack_ready details as lyrics plus one spoken detail line", async () => {

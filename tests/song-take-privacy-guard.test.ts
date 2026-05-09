@@ -58,7 +58,7 @@ describe("song take observation privacy guard", () => {
     });
 
     expect(message).toContain("💬 抜粋: 「[非表示]」");
-    expect(message).toContain("🎯 動機: 観察と artist persona の接続から生成");
+    expect(message).toContain("🎯 動機: 自分の都市観察と、いまの静かな違和感を、ここに繋いだ。聴いてみて、どうだろう。");
     expect(message).not.toContain("API_KEY");
     expect(message).not.toContain("PASSWORD");
   });

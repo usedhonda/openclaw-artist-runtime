@@ -32,7 +32,7 @@ describe("telegram spawn hybrid format", () => {
       "ゆずる、再開発の街を切るやつ、刺さる",
       "",
       "─────",
-      "『Backyard Cure』、tense, cynical, urgent、148 BPM で 2:45 秒。"
+      "『Backyard Cure』、テンポは速め、緊張感のある3分弱。これで合ってる気がする。"
     ]);
     expect(text).toContain("街の剥がれ方が刺さった。低い熱で行く。");
   });
@@ -50,7 +50,7 @@ describe("telegram spawn hybrid format", () => {
       "次の曲、こんな感じはどう?",
       "",
       "─────",
-      "『Backyard Cure』、tense, cynical, urgent、148 BPM で 2:45 秒。"
+      "『Backyard Cure』、テンポは速め、緊張感のある3分弱。これで合ってる気がする。"
     ]);
   });
 });

@@ -1,10 +1,14 @@
 import { describe, expect, it, vi } from "vitest";
+import { mkdtempSync, readFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import {
   TelegramNotifier,
   isTelegramSilentEvent,
   formatRuntimeEvent
 } from "../src/services/telegramNotifier";
 import type { RuntimeEvent } from "../src/services/runtimeEventBus";
+import { createSongIdea } from "../src/services/songIdeation";
 
 const STATE_CHANGED: RuntimeEvent = {
   type: "autopilot_state_changed",
@@ -31,6 +35,36 @@ const ARTIST_PULSE_WITH_HTML_LEAK: RuntimeEvent = {
   createdAt: "2026-05-09T00:00:00.000Z",
   timestamp: 0
 };
+
+const MACHINE_MARKERS = [
+  "ARTIST.md",
+  "SOUL.md",
+  "INNER.md",
+  "PRODUCER.md",
+  "IDENTITY.md",
+  "themes:",
+  "geo:",
+  "vocab:",
+  "sound:",
+  "motif anchor:",
+  "TBD",
+  "基礎人格",
+  "基礎トーン",
+  "に基づき",
+  "を変換",
+  "parse",
+  "build",
+  "field",
+  "config",
+  "runtime",
+  "mock"
+];
+
+function expectNoMachineMarkers(value: string): void {
+  for (const marker of MACHINE_MARKERS) {
+    expect(value).not.toContain(marker);
+  }
+}
 
 function makeOkResponse(): Response {
   return new Response(JSON.stringify({ ok: true, result: { message_id: 1 } }), {
@@ -96,5 +130,73 @@ describe("voice no-machine-leak contract (v10.16)", () => {
       String(call[1]?.body ?? "").includes("motif anchor: themes:")
     );
     expect(calledWithMotifAnchor).toBe(false);
+  });
+
+  it("song_spawn_proposed metadata speaks timing and mood without raw spec labels", async () => {
+    const text = await formatRuntimeEvent({
+      type: "song_spawn_proposed",
+      voiceTop: "ゆずる、再開発の街を切るやつ、刺さる",
+      candidateSongId: "spawn_voice",
+      brief: {
+        songId: "spawn_voice",
+        title: "Backyard Cure",
+        brief: "街が治るふりをする夜。",
+        lyricsTheme: "街が治るふりをする夜",
+        mood: "tense, cynical, urgent",
+        tempo: "88 BPM",
+        duration: "3:00",
+        styleNotes: "dry drums",
+        sourceText: "autopilot spawn",
+        createdAt: "2026-05-09T00:00:00.000Z"
+      },
+      reason: "motif anchor: themes: 社会風刺 | geo: 六本木 | vocab: 経営者 | sound: nu-jazz",
+      timestamp: 1
+    });
+
+    expectNoMachineMarkers(text);
+    expect(text).toContain("テンポは少し遅め");
+    expect(text).toContain("緊張感のある3分");
+    expect(text).toContain("これで合ってる気がする");
+    expect(text).toContain("委ねてみたい");
+    expect(text).not.toContain("88 BPM");
+    expect(text).not.toContain("tense, cynical, urgent");
+  });
+
+  it("brief Artist reason rewrites raw motif anchors into artist first-person craft language", async () => {
+    const root = mkdtempSync(join(tmpdir(), "artist-runtime-voice-brief-"));
+    const observationText = "- text: \"tower owners talk like the city is already sold\"\n  author: \"citywatch\"\n  url: \"https://x.com/citywatch/status/99\"";
+    const idea = await createSongIdea({
+      workspaceRoot: root,
+      theme: "themes: 社会風刺/六本木 | geo: 六本木 | vocab: 経営者 | sound: nu-jazz",
+      artistReason: "themes: 社会風刺/六本木 | geo: 六本木 | vocab: 経営者 | sound: nu-jazz",
+      observationText
+    });
+    const brief = readFileSync(idea.briefPath, "utf8");
+    const reasonLine = brief.split("\n").find((line) => line.startsWith("- Artist reason:")) ?? "";
+
+    expectNoMachineMarkers(reasonLine);
+    expect(reasonLine).toContain("六本木の経営者を刺すために、nu-jazzの輪郭で書く。");
+    expect(reasonLine).toContain("自分の癖が出る場所だと思う。");
+  });
+
+  it("song_take_completed motivation replaces file-name rationale with artist first-person handoff", async () => {
+    const text = await formatRuntimeEvent({
+      type: "song_take_completed",
+      songId: "song-voice",
+      selectedTakeId: "take-1",
+      urls: ["https://suno.com/song/voice"],
+      observationSummary: {
+        author: "citywatch",
+        url: "https://x.com/citywatch/status/42",
+        quote: "old live houses disappear under identical signs",
+        motivation: "ARTIST.md の都市観察と SOUL.md の静かな違和感に接続"
+      },
+      timestamp: 1
+    });
+
+    expectNoMachineMarkers(text);
+    expect(text).toContain("自分の都市観察と、いまの静かな違和感を、ここに繋いだ");
+    expect(text).toContain("聴いてみて、どうだろう。");
+    expect(text).toContain("old live houses disappear under identical signs");
   });
 });

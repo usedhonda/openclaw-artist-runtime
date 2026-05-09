@@ -430,10 +430,14 @@ function capQuote(value: string, max = 140): string {
 
 function safeMotivation(value?: string): string {
   const clean = stripHandles(value ?? "").replace(/\s+/g, " ").trim();
-  if (!clean || secretLikePattern.test(clean)) {
-    return "観察と artist persona の接続から生成";
+  if (!clean || secretLikePattern.test(clean) || isMachineVoiceArtifact(clean)) {
+    return "自分の都市観察と、いまの静かな違和感を、ここに繋いだ。聴いてみて、どうだろう。";
   }
   return Array.from(clean).slice(0, 160).join("");
+}
+
+function isMachineVoiceArtifact(value: string): boolean {
+  return /(?:ARTIST\.md|SOUL\.md|INNER\.md|PRODUCER\.md|IDENTITY\.md|themes:|geo:|vocab:|sound:|motif anchor:|\bparse\b|\bbuild\b|\bfield\b|\bconfig\b|\bruntime\b|\bmock\b)|TBD|未定|未記入|todo|fixme|none|n\/a|基礎人格|基礎トーン|基礎理性|基礎商業|に基づき|に従い|を変換|を生成/i.test(value);
 }
 
 function safeAuthor(value?: string): string {
@@ -551,6 +555,55 @@ function humanizeMissingFields(fields: string[]): string {
   if (humanized.length === 1) return humanized[0];
   if (humanized.length === 2) return `${humanized[0]}と${humanized[1]}`;
   return `${humanized.slice(0, -1).join("、")}と${humanized.at(-1)}`;
+}
+
+function humanizeTempo(value?: string): string {
+  const clean = value?.trim() ?? "";
+  const bpm = clean.match(/(\d{2,3})\s*bpm/i)?.[1];
+  if (bpm) {
+    const n = Number(bpm);
+    if (n < 96) return "テンポは少し遅め";
+    if (n < 126) return "テンポは中速";
+    return "テンポは速め";
+  }
+  if (/artist decides|決める|decide/i.test(clean)) return "テンポは手触りで決める";
+  return "テンポは呼吸に合わせる";
+}
+
+function humanizeDuration(value?: string): string {
+  const clean = value?.trim() ?? "";
+  const mmss = clean.match(/^(\d+):(\d{2})$/);
+  if (mmss) {
+    const minutes = Number(mmss[1]);
+    const seconds = Number(mmss[2]);
+    return seconds === 0 ? `${minutes}分` : `${minutes + 1}分弱`;
+  }
+  const numericSeconds = clean.match(/^(\d{2,3})$/)?.[1];
+  if (numericSeconds) {
+    const minutes = Math.max(1, Math.round(Number(numericSeconds) / 60));
+    return `${minutes}分くらい`;
+  }
+  if (/artist decides|決める|decide/i.test(clean)) return "長さは歌が止まるところまで";
+  return clean ? `${clean}くらい` : "短くまとめる";
+}
+
+function humanizeMood(value?: string): string {
+  const clean = value?.toLowerCase() ?? "";
+  if (/tense|urgent|pressure|緊張/.test(clean)) return "緊張感のある";
+  if (/cold|quiet|静か/.test(clean)) return "冷たく静かな";
+  if (/sarcasm|cynical|皮肉|風刺/.test(clean)) return "皮肉を含んだ";
+  if (/observ/.test(clean)) return "観察の目が残る";
+  return "引っかかりのある";
+}
+
+function formatSpawnBriefVoiceDetail(brief: Extract<RuntimeEvent, { type: "song_spawn_proposed" }>["brief"], reason: string): string {
+  const cleanReason = isMachineVoiceArtifact(reason)
+    ? "この切り口、ずっと抱えてた街のざらつきに近い。委ねてみたい。"
+    : reason;
+  return [
+    `『${brief.title}』、${humanizeTempo(brief.tempo)}、${humanizeMood(brief.mood)}${humanizeDuration(brief.duration)}。これで合ってる気がする。`,
+    cleanReason
+  ].join("\n");
 }
 
 async function readSongCompletionContext(event: Extract<RuntimeEvent, { type: "song_take_completed" }>, workspaceRoot?: string): Promise<{ title: string; observationSummary?: ObservationSummary }> {
@@ -680,8 +733,7 @@ async function formatRuntimeEventRaw(
         event.voiceTop ?? "次の曲、こんな感じはどう?",
         "",
         "─────",
-        `『${event.brief.title}』、${event.brief.mood}、${event.brief.tempo} で ${event.brief.duration} 秒。`,
-        event.reason
+        formatSpawnBriefVoiceDetail(event.brief, event.reason)
       ].join("\n");
     case "planning_skeleton_incomplete": {
       const monolog = options.workspaceRoot

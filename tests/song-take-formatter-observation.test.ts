@@ -34,13 +34,15 @@ describe("song take formatter observation source", () => {
     const top = message.split("─────")[0];
     expect(top).toContain("ゆずるさん");
     expect(top).toContain("old live houses disappear under identical signs");
-    expect(top).toContain("ARTIST.md の都市観察と SOUL.md の静かな違和感に接続");
+    expect(top).toContain("自分の都市観察と、いまの静かな違和感を、ここに繋いだ");
     expect(top).toContain("これ、どう聞こえる?");
+    expect(top).not.toContain("ARTIST.md");
+    expect(top).not.toContain("SOUL.md");
     expect(top).not.toContain("https://");
     expect(top).not.toContain("song-observe");
     expect(message).toContain("🌐 観察元: @citywatch (https://x.com/citywatch/status/42)");
     expect(message).toContain("💬 抜粋: 「old live houses disappear under identical signs」");
-    expect(message).toContain("🎯 動機: ARTIST.md の都市観察と SOUL.md の静かな違和感に接続");
+    expect(message).toContain("🎯 動機: 自分の都市観察と、いまの静かな違和感を、ここに繋いだ。聴いてみて、どうだろう。");
     expect(message).toContain("🎵 Civic Static (selected: take-2)");
     expect(message).toContain("🔗 試聴:\n1. https://suno.com/song/a\n2. https://suno.com/song/b");
   });

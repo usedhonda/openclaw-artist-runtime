@@ -80,6 +80,31 @@ function parseObservationField(value: string): string | undefined {
   }
 }
 
+const placeholderPattern = /^(?:-|tbd|未定|未記入|todo|fixme|none|n\/a|null)$/i;
+const machineReasonPattern = /(?:ARTIST\.md|SOUL\.md|INNER\.md|PRODUCER\.md|IDENTITY\.md|themes:|geo:|vocab:|sound:|motif anchor:|\bparse\b|\bbuild\b|\bfield\b|\bconfig\b|\bruntime\b|\bmock\b)|基礎人格|基礎トーン|基礎理性|基礎商業|に基づき|に従い|を変換|を生成/i;
+
+function cleanVoiceToken(value?: string): string | undefined {
+  const token = value?.split(/[\/|,、]/)[0]?.trim();
+  return token && !placeholderPattern.test(token) ? token : undefined;
+}
+
+function tokenAfter(label: string, source: string): string | undefined {
+  const match = source.match(new RegExp(`${label}:\\s*([^|\\n]+)`, "i"));
+  return cleanVoiceToken(match?.[1]);
+}
+
+function artistReasonVoice(theme: string, reason?: string): string {
+  const clean = reason?.replace(/\s+/g, " ").trim();
+  if (clean && !placeholderPattern.test(clean) && !machineReasonPattern.test(clean)) {
+    return clean;
+  }
+  const source = `${theme} | ${clean ?? ""}`;
+  const place = tokenAfter("geo", source) ?? cleanVoiceToken(theme) ?? "街";
+  const object = tokenAfter("vocab", source) ?? tokenAfter("themes", source) ?? cleanVoiceToken(theme) ?? "引っかかり";
+  const sound = tokenAfter("sound", source) ?? "低い輪郭";
+  return `${place}の${object}を刺すために、${sound}の輪郭で書く。自分の癖が出る場所だと思う。`;
+}
+
 export function extractObservationSummary(observationText?: string, motivation?: string): ObservationSummary | undefined {
   const source = observationText?.trim();
   if (!source) {
@@ -148,7 +173,7 @@ export async function createSongIdea(input: CreateSongIdeaInput): Promise<SongId
   const theme = input.theme?.trim() || chooseTheme(artistMind.artist, artistMind.currentState);
   const title = input.title?.trim() || buildTitle(theme, sequence);
   const songId = `song-${String(sequence).padStart(3, "0")}`;
-  const artistReason = input.artistReason ?? `caught on ${theme}`;
+  const artistReason = artistReasonVoice(theme, input.artistReason ?? `caught on ${theme}`);
   const briefText = buildBrief(title, theme, artistReason, input.observationText, input.observationPath);
   const observationSummary = extractObservationSummary(input.observationText, artistReason);
   const observationInputRef = input.observationText?.trim() ? observationRef(input.workspaceRoot, input.observationPath) : undefined;
