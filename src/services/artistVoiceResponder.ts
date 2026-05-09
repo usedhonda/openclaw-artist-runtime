@@ -195,8 +195,8 @@ export async function generateArtistResponse(
       });
       if (!validation.ok) {
         const violations = validation.violations.map((v) => v.detail).join("; ");
-        // fallback to deterministic composer when AI output violates voice contract
-        text = `${fallbackArtistResponse(userMessage, context, options.intent)}\n\n<!-- voice contract fallback: ${violations} -->`;
+        console.warn(`[voice-contract-fallback] ${violations}`);
+        text = fallbackArtistResponse(userMessage, context, options.intent);
       }
     }
   }

@@ -107,10 +107,10 @@ describe("TelegramNotifier", () => {
     const notifier = new TelegramNotifier({ token: "token", chatId: 123, fetchImpl });
     const unsubscribe = notifier.subscribe(bus);
 
-    bus.emit({ type: "autopilot_state_changed", enabled: true, paused: false, timestamp: 1 });
+    bus.emit({ type: "take_imported", songId: "song-001", paths: ["a.mp3"], metadata: [], timestamp: 1 });
     await vi.waitFor(() => expect(fetchImpl).toHaveBeenCalledTimes(1));
     unsubscribe();
 
-    expect(JSON.parse(fetchImpl.mock.calls[0][1].body as string).text).toContain("enabled=true");
+    expect(JSON.parse(fetchImpl.mock.calls[0][1].body as string).text).toContain("song-001");
   });
 });

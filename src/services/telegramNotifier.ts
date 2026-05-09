@@ -24,6 +24,8 @@ export interface TelegramNotifierOptions {
 const TELEGRAM_SILENT_EVENT_TYPES: ReadonlySet<RuntimeEvent["type"]> = new Set([
   "observation_collected",
   "autopilot_stage_changed",
+  "autopilot_state_changed",
+  "theme_generated",
   "bird_cooldown_triggered",
   "suno_generate_retry",
   "suno_generate_failed",
@@ -585,7 +587,23 @@ async function formatSongTakeCompleted(
   ].join("\n");
 }
 
+function stripHtmlComments(text: string): string {
+  if (!text.includes("<!--")) return text;
+  return text
+    .replace(/<!--[\s\S]*?-->/g, "")
+    .replace(/[ \t]+\n/g, "\n")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
+}
+
 export async function formatRuntimeEvent(
+  event: RuntimeEvent,
+  options: Pick<TelegramNotifierOptions, "workspaceRoot" | "aiReviewProvider"> = {}
+): Promise<string> {
+  return stripHtmlComments(await formatRuntimeEventRaw(event, options));
+}
+
+async function formatRuntimeEventRaw(
   event: RuntimeEvent,
   options: Pick<TelegramNotifierOptions, "workspaceRoot" | "aiReviewProvider"> = {}
 ): Promise<string> {
