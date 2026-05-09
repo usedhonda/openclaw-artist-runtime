@@ -18,16 +18,39 @@ interface BriefSlots {
   coreTheme?: string;
   mood?: string;
   observationQuote?: string;
+  observationAuthor?: string;
+  observationUrl?: string;
 }
 
 const FALLBACK_MONOLOG = "次の曲、まず骨組み。これで進めていい?";
 
+const PLACEHOLDER_PATTERN = /^[\s\-*•・]*(?:tbd|todo|fixme|未定|未記入|none|n\/a|—|–|-|\?+|unknown)[\s\-*•・]*$/i;
+
+function isPlaceholder(value: string | undefined): boolean {
+  if (!value) return true;
+  const trimmed = value.trim();
+  if (!trimmed) return true;
+  return PLACEHOLDER_PATTERN.test(trimmed);
+}
+
+function isFullTweetUrl(url: string | undefined): url is string {
+  return !!url && /^https:\/\/(?:twitter|x)\.com\/[A-Za-z0-9_]+\/status\/\d+/.test(url);
+}
+
 function readBriefSlots(briefMd: string): BriefSlots {
   if (!briefMd) return {};
-  const coreTheme = briefMd.match(/^- Core theme:\s*(.+)$/m)?.[1]?.trim();
-  const mood = briefMd.match(/^- Mood:\s*(.+)$/m)?.[1]?.trim();
-  const observationQuote = briefMd.match(/^- Quote:\s*(.+)$/m)?.[1]?.trim();
-  return { coreTheme, mood, observationQuote };
+  const coreThemeRaw = briefMd.match(/^- Core theme:\s*(.+)$/m)?.[1]?.trim();
+  const moodRaw = briefMd.match(/^- Mood:\s*(.+)$/m)?.[1]?.trim();
+  const observationQuoteRaw = briefMd.match(/^- Quote:\s*(.+)$/m)?.[1]?.trim();
+  const observationAuthorRaw = briefMd.match(/^- Author:\s*(.+)$/m)?.[1]?.trim();
+  const observationUrlRaw = briefMd.match(/^- URL:\s*(.+)$/m)?.[1]?.trim();
+  return {
+    coreTheme: isPlaceholder(coreThemeRaw) ? undefined : coreThemeRaw,
+    mood: isPlaceholder(moodRaw) ? undefined : moodRaw,
+    observationQuote: isPlaceholder(observationQuoteRaw) ? undefined : observationQuoteRaw,
+    observationAuthor: isPlaceholder(observationAuthorRaw) ? undefined : observationAuthorRaw,
+    observationUrl: observationUrlRaw && !isPlaceholder(observationUrlRaw) ? observationUrlRaw : undefined
+  };
 }
 
 function hashKey(songId: string, missing: string[]): number {
@@ -82,16 +105,17 @@ function buildMotifSentence(motifs: PersonaMotifBundle, hash: number): string {
 }
 
 function buildObservationSentence(slots: BriefSlots, hash: number): string {
-  if (slots.observationQuote) {
-    const trimmed = trimQuote(slots.observationQuote);
-    if (trimmed.length > 0) {
-      const variants = [
-        `「${trimmed}」、この声が観察ログに残ったんだ。`,
-        `観察で「${trimmed}」を拾った、それが入り口だな。`,
-        `タイムラインの「${trimmed}」が刺さってる、忘れたくない。`
-      ];
-      return pickFromHash(variants, hash, 1);
-    }
+  const trimmed = slots.observationQuote ? trimQuote(slots.observationQuote) : "";
+  const author = slots.observationAuthor;
+  const url = isFullTweetUrl(slots.observationUrl) ? slots.observationUrl : undefined;
+  if (trimmed.length > 0 && author && url) {
+    const attribution = `(@${author} · ${url})`;
+    const variants = [
+      `「${trimmed}」 ${attribution} が観察ログに残ったんだ。`,
+      `観察で「${trimmed}」を拾った ${attribution}、それが入り口だな。`,
+      `タイムラインの「${trimmed}」が刺さってる ${attribution}、忘れたくない。`
+    ];
+    return pickFromHash(variants, hash, 1);
   }
   const variants = [
     "観察ログから音にする入り口を、今日 1 つ拾った。",
