@@ -15,8 +15,10 @@ export interface ComposePlanningVoiceInput {
 }
 
 interface BriefSlots {
+  title?: string;
   coreTheme?: string;
   mood?: string;
+  styleNotes?: string;
   observationQuote?: string;
   observationAuthor?: string;
   observationUrl?: string;
@@ -39,14 +41,18 @@ function isFullTweetUrl(url: string | undefined): url is string {
 
 function readBriefSlots(briefMd: string): BriefSlots {
   if (!briefMd) return {};
+  const titleRaw = briefMd.match(/^#\s+Brief for\s+(.+)$/m)?.[1]?.trim();
   const coreThemeRaw = briefMd.match(/^- Core theme:\s*(.+)$/m)?.[1]?.trim();
   const moodRaw = briefMd.match(/^- Mood:\s*(.+)$/m)?.[1]?.trim();
+  const styleNotesRaw = briefMd.match(/^- Style notes:\s*(.+)$/m)?.[1]?.trim();
   const observationQuoteRaw = briefMd.match(/^- Quote:\s*(.+)$/m)?.[1]?.trim();
   const observationAuthorRaw = briefMd.match(/^- Author:\s*(.+)$/m)?.[1]?.trim();
   const observationUrlRaw = briefMd.match(/^- URL:\s*(.+)$/m)?.[1]?.trim();
   return {
+    title: isPlaceholder(titleRaw) ? undefined : titleRaw,
     coreTheme: isPlaceholder(coreThemeRaw) ? undefined : coreThemeRaw,
     mood: isPlaceholder(moodRaw) ? undefined : moodRaw,
+    styleNotes: isPlaceholder(styleNotesRaw) ? undefined : styleNotesRaw,
     observationQuote: isPlaceholder(observationQuoteRaw) ? undefined : observationQuoteRaw,
     observationAuthor: isPlaceholder(observationAuthorRaw) ? undefined : observationAuthorRaw,
     observationUrl: observationUrlRaw && !isPlaceholder(observationUrlRaw) ? observationUrlRaw : undefined
@@ -63,45 +69,50 @@ function pickFromHash<T>(values: T[], hash: number, offset: number): T {
   return values[(hash + offset) % values.length];
 }
 
-function humanizeMissing(fields: string[]): string {
-  const labels: Record<string, string> = {
-    tempo: "テンポ",
-    duration: "長さ",
-    "style notes": "style",
-    "lyrics theme": "テーマ",
-    mood: "ムード"
-  };
-  const humanized = fields.map((f) => labels[f] ?? f).filter(Boolean);
-  if (humanized.length === 0) return "細部";
-  if (humanized.length === 1) return humanized[0];
-  if (humanized.length === 2) return `${humanized[0]}と${humanized[1]}`;
-  return `${humanized.slice(0, -1).join("、")}と${humanized.at(-1)}`;
-}
-
 function trimQuote(raw: string): string {
   return raw.replace(/^["「『]+|["」』]+$/g, "").replace(/\s+/g, " ").trim().slice(0, 36);
 }
 
-function buildMotifSentence(motifs: PersonaMotifBundle, hash: number): string {
+function buildMotifSentence(slots: BriefSlots, motifs: PersonaMotifBundle, hash: number): string {
+  const core = slots.coreTheme;
   const theme = motifs.themes[hash % Math.max(motifs.themes.length, 1)];
   const geo = motifs.geographies[hash % Math.max(motifs.geographies.length, 1)];
+  if (core && theme && geo) {
+    const variants = [
+      `この曲は${core}、${theme}の視点から${geo}で削る、ずっと抱えてた角度だ。`,
+      `${core}に${theme}の癖を乗せる、${geo}の音で書く。`,
+      `${core}を${theme}の側から刺す、${geo}の手触りで一本通すつもりだ。`
+    ];
+    return pickFromHash(variants, hash, 0);
+  }
+  if (core && theme) {
+    const variants = [
+      `この曲は${core}、${theme}の角度で書く、自分の癖が出る場所だと思う。`,
+      `${core}を${theme}でしか書けない手触りで通す。`,
+      `${core}を${theme}側から削る、ずっと抱えてた重さだ。`
+    ];
+    return pickFromHash(variants, hash, 0);
+  }
+  if (core) {
+    const variants = [
+      `この曲は${core}の話だ、ずっと抱えてた重さを今日鳴らす。`,
+      `${core}を観察の温度のまま削る、自分の癖が出る場所だと思う。`,
+      `この曲は${core}、cold で刺すしかない手触りだ。`
+    ];
+    return pickFromHash(variants, hash, 0);
+  }
   if (theme && geo) {
     const variants = [
-      `${geo}から${theme}を切る、それが今日の俺の角度だ。`,
-      `${theme}は${geo}の路地で熟してる、放っておけないな。`,
-      `${geo}の音が${theme}を呼んでる、無視したくない。`
+      `次の曲、${geo}から${theme}を切る角度を取る。`,
+      `次の曲は${theme}、${geo}の路地の手触りで書く。`,
+      `次の曲、${geo}の音が${theme}を呼んでる、それを掴んだ。`
     ];
     return pickFromHash(variants, hash, 0);
   }
   if (theme) {
-    const variants = [
-      `今は${theme}が頭から離れない、それを音にしたい。`,
-      `${theme}の重さ、まだ降ろせない。今日も鳴らす。`,
-      `${theme}を、もう一度こちら側で言い直す。`
-    ];
-    return pickFromHash(variants, hash, 0);
+    return `次の曲、今は${theme}を音にしたい、それだけは確かだ。`;
   }
-  return "次の曲、観察の温度をそのまま音にしたい。";
+  return "次の曲、観察の温度をそのまま音にする、それで行く。";
 }
 
 function buildObservationSentence(slots: BriefSlots, hash: number): string {
@@ -125,15 +136,38 @@ function buildObservationSentence(slots: BriefSlots, hash: number): string {
   return pickFromHash(variants, hash, 1);
 }
 
+function humanizeMood(rawMood: string | undefined): string {
+  const clean = (rawMood ?? "").toLowerCase();
+  if (!clean) return "観察者の温度";
+  if (/tense|urgent|pressure|緊張/.test(clean)) return "緊張感のある";
+  if (/cold|quiet|静か/.test(clean)) return "cold";
+  if (/sarcasm|cynical|皮肉|風刺/.test(clean)) return "皮肉";
+  if (/observ/.test(clean)) return "観察の温度";
+  if (/dark|sombre|sober/.test(clean)) return "陰の手触り";
+  return "観察者の温度";
+}
+
+function humanizeStyle(rawStyle: string | undefined): string | undefined {
+  const clean = (rawStyle ?? "").toLowerCase();
+  if (!clean) return undefined;
+  if (/thick bass|deep bass|低音/.test(clean)) return "厚い低音";
+  if (/restrained drum|controlled drum|抑制/.test(clean)) return "削いだドラム";
+  if (/unsentimental|dry|sober/.test(clean)) return "感傷を抜いたヴォーカル";
+  if (/nu.?jazz|jazz/.test(clean)) return "nu-jazz の輪郭";
+  if (/hip.?hop|rap/.test(clean)) return "hip-hop の骨格";
+  if (/synth|electronic/.test(clean)) return "電子の骨組み";
+  return undefined;
+}
+
 function buildLogicSentence(slots: BriefSlots, hash: number): string {
-  const moodRaw = slots.mood?.split(",")[0]?.trim() ?? "観察者の温度";
-  const mood = moodRaw.length > 24 ? `${moodRaw.slice(0, 24)}…` : moodRaw;
-  const core = slots.coreTheme;
-  if (core) {
+  const moodSource = slots.mood?.split(",")[0]?.trim();
+  const mood = humanizeMood(moodSource);
+  const style = humanizeStyle(slots.styleNotes?.split(",")[0]?.trim());
+  if (style) {
     const variants = [
-      `${core}を、${mood}で削るつもりだ。`,
-      `${core}、${mood}でいけば嘘にならないな。`,
-      `${core}を選んだのは、${mood}の方が刺さるからだ。`
+      `${mood}のまま、${style}で骨だけ残す。`,
+      `${mood}を芯にして、${style}でいく、嘘にならない気がする。`,
+      `${mood}と${style}、それが今日の輪郭だ。`
     ];
     return pickFromHash(variants, hash, 2);
   }
@@ -145,12 +179,12 @@ function buildLogicSentence(slots: BriefSlots, hash: number): string {
   return pickFromHash(variants, hash, 2);
 }
 
-function buildQuestionSentence(missing: string[], hash: number): string {
-  const humanized = humanizeMissing(missing);
+function buildClosingSentence(_missing: string[], hash: number): string {
   const variants = [
-    `${humanized}は埋めた、これで進めていい?`,
-    `${humanized}の案、出した。これで通すか?`,
-    `${humanized}はもう書いた、行ってよし?`
+    "ここから一緒に hash out したい、これで進めていいかな?",
+    "委ねたい部分は委ねる、これで通すか?",
+    "骨組みはこれで通す。ここから lyrics と style に入って、行ってよし?",
+    "この角度で行く、合ってる気がする。これで進めていい?"
   ];
   return pickFromHash(variants, hash, 3);
 }
@@ -183,15 +217,15 @@ export async function composePlanningSkeletonVoice(input: ComposePlanningVoiceIn
   }
 
   const hash = hashKey(input.songId, input.missing);
-  const motifSentence = buildMotifSentence(motifs, hash);
+  const motifSentence = buildMotifSentence(slots, motifs, hash);
   const observationSentence = buildObservationSentence(slots, hash);
   const logicSentence = buildLogicSentence(slots, hash);
-  const questionSentence = buildQuestionSentence(input.missing, hash);
+  const closingSentence = buildClosingSentence(input.missing, hash);
 
   const patternA = (hash & 1) === 0;
   const ordered = patternA
-    ? [motifSentence, observationSentence, logicSentence, questionSentence]
-    : [observationSentence, motifSentence, logicSentence, questionSentence];
+    ? [motifSentence, observationSentence, logicSentence, closingSentence]
+    : [observationSentence, motifSentence, logicSentence, closingSentence];
 
   const filtered = applyForbiddenFilter(ordered, fingerprint);
 

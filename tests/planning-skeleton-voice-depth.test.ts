@@ -126,7 +126,7 @@ describe("planning skeleton voice depth contract", () => {
     }
   });
 
-  it("threads the producer-facing question into the closing sentence", async () => {
+  it("closing sentence is producer-facing invitation (committed/任せ/委ね) but does not paste missing field labels", async () => {
     const root = await setupWorkspace();
     const text = await composePlanningSkeletonVoice({
       workspaceRoot: root,
@@ -134,8 +134,8 @@ describe("planning skeleton voice depth contract", () => {
       missing: ["tempo", "duration", "style notes"]
     });
 
-    expect(text).toMatch(/(進めていい|通すか|行ってよし)/);
-    expect(text).toMatch(/(テンポ|長さ|style)/);
+    expect(text).toMatch(/(進めていい|通すか|行ってよし|合ってる気がする|委ね|hash out)/);
+    expect(text).not.toMatch(/テンポ.*長さ.*style/);
   });
 
   it("produces three different monologs for three different (songId, missing) combos", async () => {

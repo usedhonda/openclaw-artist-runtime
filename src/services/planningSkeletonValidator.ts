@@ -10,6 +10,7 @@ export interface PlanningCompletenessResult {
   missing: string[];
   suggestions?: PlanningSkeletonDraft;
   proposal?: ChangeSetProposal;
+  briefAbsent?: boolean;
 }
 
 export interface ValidatePlanningOptions {
@@ -138,5 +139,8 @@ export async function validatePlanningCompleteness(
 export async function validatePlanningFiles(root: string, songId: string, options: ValidatePlanningOptions = {}): Promise<PlanningCompletenessResult> {
   const songMd = await readFile(join(root, "songs", songId, "song.md"), "utf8").catch(() => "");
   const briefMd = await readFile(join(root, "songs", songId, "brief.md"), "utf8").catch(() => "");
+  if (!songMd.trim() && !briefMd.trim()) {
+    return { complete: false, missing: [], briefAbsent: true };
+  }
   return validatePlanningCompleteness(songId, songMd, briefMd, { ...options, root });
 }

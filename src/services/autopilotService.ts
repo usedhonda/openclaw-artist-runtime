@@ -363,6 +363,17 @@ async function handlePlanningStage(
     }
     return undefined;
   }
+  if (validation.briefAbsent) {
+    return writeStageState(root, existing, {
+      ...baseState,
+      currentSongId: undefined,
+      stage: "planning",
+      suspendedAt: null,
+      blockedReason: undefined,
+      lastError: `song_dir_missing:${song.songId}`,
+      cycleCount: existing.cycleCount + 1
+    });
+  }
   if (!validation.proposal) {
     return undefined;
   }
