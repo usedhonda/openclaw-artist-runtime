@@ -138,10 +138,21 @@ function parseField(raw: string, field: (typeof dailyVoiceFields)[number]): stri
   return match?.[1]?.trim() || undefined;
 }
 
-function summarizePersonaBasis(artistMd: string, soulMd: string): { obsession: string; tone: string } {
+const PLACEHOLDER_PATTERN = /^[\s\-*•・]*(?:tbd|todo|fixme|未定|未記入|none|n\/a|—|–|-)[\s\-*•・]*$/i;
+
+function isPlaceholderValue(value: string | undefined): boolean {
+  if (!value) return true;
+  const trimmed = value.replace(/^[\s\-*•・]+/, "").replace(/[\s\-*•・]+$/, "").trim();
+  if (!trimmed) return true;
+  return PLACEHOLDER_PATTERN.test(value.trim());
+}
+
+function summarizePersonaBasis(artistMd: string, soulMd: string): { obsession?: string; tone?: string } {
+  const obsessionRaw = artistMd.match(/obsessions?:\s*(.+)/i)?.[1]?.trim();
+  const toneRaw = soulMd.match(/tone:\s*(.+)/i)?.[1]?.trim();
   return {
-    obsession: artistMd.match(/obsessions?:\s*(.+)/i)?.[1]?.trim() ?? "ARTIST.md の基礎人格",
-    tone: soulMd.match(/tone:\s*(.+)/i)?.[1]?.trim() ?? "SOUL.md の基礎トーン"
+    obsession: isPlaceholderValue(obsessionRaw) ? undefined : obsessionRaw,
+    tone: isPlaceholderValue(toneRaw) ? undefined : toneRaw
   };
 }
 
@@ -153,15 +164,34 @@ function observationCore(selected?: DailyVoiceObservation): string {
   return selected?.text ? selected.text.slice(0, 52) : "今日の観察全体";
 }
 
-function structuredRationale(basis: { obsession: string; tone: string }, selected?: DailyVoiceObservation): string {
-  return fitRationale(`ARTIST.md の「${basis.obsession}」と SOUL.md の「${basis.tone}」に基づき、observation「${observationCore(selected)}」を社会の違和感として artist の声に変換した。`);
+function structuredRationale(basis: { obsession?: string; tone?: string }, selected?: DailyVoiceObservation): string {
+  const observation = observationCore(selected);
+  const motif = basis.obsession;
+  const tone = basis.tone;
+  if (motif && tone) {
+    return fitRationale(`「${observation}」、自分の motif の ${motif} に重なってる。${tone} のまま、自分の声で書いた。`);
+  }
+  if (motif) {
+    return fitRationale(`「${observation}」、自分の motif の ${motif} と地続きだ。今日の温度のまま、自分の声で書いた。`);
+  }
+  if (tone) {
+    return fitRationale(`「${observation}」、${tone} を芯にして、自分の声で書いた。`);
+  }
+  return fitRationale(`「${observation}」、自分の motif と観察を重ねて、今日の声にした。`);
 }
 
 function isJapaneseText(value: string): boolean {
   return /[ぁ-んァ-ヶ一-龠]/.test(value);
 }
 
-function parsePost(raw: string, selected: DailyVoiceObservation | undefined, basis: { obsession: string; tone: string }): { opinion: string; url?: string; author?: string; rationale?: string } {
+const MACHINE_RATIONALE_PATTERN = /(ARTIST|SOUL|INNER|PRODUCER|IDENTITY)\.md|基礎人格|基礎トーン|に基づき.*?(変換|生成|出力|作成)した|TBD|未定|todo|fixme/i;
+
+function isMachineRationale(value: string): boolean {
+  if (!value) return false;
+  return MACHINE_RATIONALE_PATTERN.test(value);
+}
+
+function parsePost(raw: string, selected: DailyVoiceObservation | undefined, basis: { obsession?: string; tone?: string }): { opinion: string; url?: string; author?: string; rationale?: string } {
   const normalized = normalizeText(raw);
   const selectedUrl = parseField(normalized, "selected_url");
   const selectedAuthor = parseField(normalized, "selected_author");
@@ -171,11 +201,15 @@ function parsePost(raw: string, selected: DailyVoiceObservation | undefined, bas
     ?? normalized.match(sourceUrlPattern)?.[0]
     ?? selected?.url;
   const opinionSource = fieldOpinion ?? (url ? normalized.replace(url, "") : normalized);
+  const rationaleAcceptable =
+    fieldRationale &&
+    isJapaneseText(fieldRationale) &&
+    !isMachineRationale(fieldRationale);
   return {
     opinion: fitDraft(opinionSource),
     url,
     author: selectedAuthor && selectedAuthor !== "none" ? selectedAuthor.replace(/^@/, "") : selected?.author,
-    rationale: fieldRationale && isJapaneseText(fieldRationale) ? fitRationale(fieldRationale) : structuredRationale(basis, selected)
+    rationale: rationaleAcceptable ? fitRationale(fieldRationale) : structuredRationale(basis, selected)
   };
 }
 
@@ -215,12 +249,10 @@ async function latestSongFragment(root: string): Promise<string> {
 
 function mockDraft(context: { artistMd: string; soulMd: string; observation: string; fragment: string; selected?: DailyVoiceObservation }): string {
   const basis = summarizePersonaBasis(context.artistMd, context.soulMd);
-  const obsession = basis.obsession
-    ?? context.selected?.text
-    ?? "街の端が今日も少しだけ欠けていた";
-  const tone = basis.tone;
+  const obsession = basis.obsession ?? context.selected?.text ?? "街の端が今日も少しだけ欠けていた";
   const anchor = context.selected?.text ?? obsession;
-  const opinion = fitDraft(`${tone}。「${anchor.slice(0, 48)}」には、便利さの影だけ出てる。言い切らず、でも目は逸らさない。`);
+  const toneIntro = basis.tone ? `${basis.tone}のまま` : "今日の温度のまま";
+  const opinion = fitDraft(`${toneIntro}、「${anchor.slice(0, 48)}」には便利さの影だけ出てる。言い切らず、でも目は逸らさない。`);
   const rationale = structuredRationale(basis, context.selected);
   return [
     `selected_url: ${context.selected?.url ?? "none"}`,
@@ -235,7 +267,8 @@ function buildObservationMessage(context: { observation: string; heartbeat: stri
     "Producer task: 観察 1 件への X 投稿 draft を artist 一人称で書け。",
     "世論の要約は禁止。選んだ observation への個別意見として書く。",
     "rationale は必ず日本語。英語は禁止。",
-    "rationale には、どの observation を選んだか、 SOUL.md / ARTIST.md のどこに基づいてその角度にしたかを書く。",
+    "rationale は artist の心の声で書く。 内部 file 名 (ARTIST.md, SOUL.md) を文中に出さない。 'TBD' / '未定' / '基礎人格' などの placeholder や builder 語彙を出さない。",
+    "rationale は「自分の motif の <X> に観察の <Y> が重なってる」 のような artist 一人称で 1-2 行。",
     "出力は必ず次の 4 field だけ:",
     "selected_url: <url-or-none>",
     "selected_author: <handle-or-none>",
