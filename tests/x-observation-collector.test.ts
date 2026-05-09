@@ -14,7 +14,10 @@ describe("x observation collector", () => {
   it("uses bird runner once and then reads the daily cache", async () => {
     const root = workspace();
     const runner = vi.fn(async () => ({
-      stdout: ["society satire is spiking", "unrelated market noise"].join("\n")
+      stdout: [
+        "@watch_a society satire is spiking https://x.com/watch_a/status/1111111111111111111 2026-04-29T00:30:00.000Z",
+        "@watch_b unrelated market noise https://x.com/watch_b/status/2222222222222222222 2026-04-29T00:45:00.000Z"
+      ].join("\n")
     }));
 
     const first = await collectObservations(root, {
@@ -37,8 +40,8 @@ describe("x observation collector", () => {
   it("refreshes the daily cache after six hours", async () => {
     const root = workspace();
     const runner = vi.fn()
-      .mockResolvedValueOnce({ stdout: "first city observation" })
-      .mockResolvedValueOnce({ stdout: "second city observation" });
+      .mockResolvedValueOnce({ stdout: "@firstwatcher first city observation https://x.com/firstwatcher/status/1111111111111111111 2026-04-29T01:00:00.000Z" })
+      .mockResolvedValueOnce({ stdout: "@secondwatcher second city observation https://x.com/secondwatcher/status/2222222222222222222 2026-04-29T08:00:00.000Z" });
     const first = await collectObservations(root, {
       now: new Date("2026-04-29T01:00:00.000Z"),
       runner
@@ -82,13 +85,13 @@ describe("x observation collector", () => {
     await writeFile(join(root, "runtime", "config-overrides.json"), JSON.stringify({ bird: { rateLimits: { dailyMax: 1, minIntervalMinutes: 60 } } }), "utf8");
     await collectObservations(root, {
       now: new Date("2026-04-29T01:00:00.000Z"),
-      runner: async () => ({ stdout: "first observation" })
+      runner: async () => ({ stdout: "@watcher first observation https://x.com/watcher/status/1111111111111111111 2026-04-29T01:00:00.000Z" })
     });
     await writeFile(join(root, "observations", "2026-04-29.md"), "", "utf8");
 
     const result = await collectObservations(root, {
       now: new Date("2026-04-29T02:00:00.000Z"),
-      runner: async () => ({ stdout: "second observation" })
+      runner: async () => ({ stdout: "@watcher second observation https://x.com/watcher/status/2222222222222222222 2026-04-29T02:00:00.000Z" })
     });
 
     expect(result.status).toBe("skipped");

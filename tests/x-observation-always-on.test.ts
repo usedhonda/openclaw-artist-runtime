@@ -35,7 +35,7 @@ describe("autopilot always-on X observation", () => {
   it("collects observations even while a song is already in production", async () => {
     const root = mkdtempSync(join(tmpdir(), "artist-runtime-x-observation-always-on-"));
     await seedActiveSong(root);
-    const runner = vi.fn(async () => ({ stdout: "society keeps blinking under neon ash" }));
+    const runner = vi.fn(async () => ({ stdout: "@neon_watcher society keeps blinking under neon ash https://x.com/neon_watcher/status/1111111111111111111 2026-05-09T08:00:00.000Z" }));
 
     const state = await new ArtistAutopilotService().runCycle({
       workspaceRoot: root,

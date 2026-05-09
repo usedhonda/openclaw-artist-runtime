@@ -1,4 +1,4 @@
-import { mkdir, readFile, stat, writeFile } from "node:fs/promises";
+import { appendFile, mkdir, readFile, stat, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { isBirdBanIndication, recordBirdCall, triggerCooldown, tryAcquireBirdCall } from "./birdRateLimiter.js";
 import { emitRuntimeEvent } from "./runtimeEventBus.js";
@@ -33,9 +33,50 @@ export interface XObservationEntry {
 }
 
 const tweetUrlPattern = /https:\/\/(?:t\.co\/[A-Za-z0-9]+|(?:twitter|x)\.com\/[^/\s]+\/status\/\d+)/i;
+const fullTweetUrlPattern = /https:\/\/(?:twitter|x)\.com\/[^/\s]+\/status\/\d+/i;
 const authorPattern = /(?:^|\s)@([A-Za-z0-9_]{1,20})\b/;
 const isoDatePattern = /\b\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{3})?Z\b/;
 const observationCacheTtlMs = 6 * 60 * 60 * 1000;
+
+type RejectionReason = "short_url_only" | "missing_author" | "missing_postedAt";
+
+interface RejectedEntry {
+  text: string;
+  author?: string;
+  url?: string;
+  postedAt?: string;
+  reason: RejectionReason;
+}
+
+function isAcceptable(
+  entry: XObservationEntry
+): { ok: true } | { ok: false; reason: RejectionReason } {
+  if (!entry.url || !fullTweetUrlPattern.test(entry.url)) {
+    return { ok: false, reason: "short_url_only" };
+  }
+  if (!entry.author || entry.author === "_") {
+    return { ok: false, reason: "missing_author" };
+  }
+  if (!entry.postedAt) {
+    return { ok: false, reason: "missing_postedAt" };
+  }
+  return { ok: true };
+}
+
+async function appendRejectedLog(
+  root: string,
+  now: Date,
+  rejected: RejectedEntry[]
+): Promise<void> {
+  if (rejected.length === 0) return;
+  const logPath = join(root, "runtime", "x-observation-rejected.jsonl");
+  await mkdir(dirname(logPath), { recursive: true });
+  const rejectedAt = now.toISOString();
+  const lines = rejected
+    .map((entry) => JSON.stringify({ ...entry, rejectedAt }))
+    .join("\n");
+  await appendFile(logPath, `${lines}\n`, "utf8");
+}
 
 function jstDate(now = new Date()): string {
   return new Date(now.getTime() + 9 * 60 * 60 * 1000).toISOString().slice(0, 10);
@@ -82,15 +123,25 @@ function parseBirdOutput(source: string): XObservationEntry[] {
 function filterObservationEntries(
   source: string,
   motifs: PersonaMotifBundle
-): { entries: XObservationEntry[]; scored: ScoredObservation<XObservationEntry>[] } {
+): { entries: XObservationEntry[]; scored: ScoredObservation<XObservationEntry>[]; rejected: RejectedEntry[] } {
   const parsed = parseBirdOutput(source);
-  const ranked = rankObservations(parsed, motifs);
+  const accepted: XObservationEntry[] = [];
+  const rejected: RejectedEntry[] = [];
+  for (const entry of parsed) {
+    const check = isAcceptable(entry);
+    if (check.ok) {
+      accepted.push(entry);
+    } else {
+      rejected.push({ ...entry, reason: check.reason });
+    }
+  }
+  const ranked = rankObservations(accepted, motifs);
   const entries = ranked.map((scored) => ({
     ...scored.entry,
     motifMatch: scored.matched.length > 0 ? summarizeMatches(scored) : undefined,
     motifScore: scored.score
   }));
-  return { entries, scored: ranked };
+  return { entries, scored: ranked, rejected };
 }
 
 function jsonValue(value: string | undefined): string {
@@ -280,6 +331,7 @@ export async function collectObservations(root: string, context: XObservationCon
     }
     await recordBirdCall(root, now, { query: context.query ?? strategy.query, mode: strategy.mode });
     const filtered = filterObservationEntries(result.stdout, motifs);
+    await appendRejectedLog(root, now, filtered.rejected);
     const observations = renderObservation(filtered.entries, now, context.query ?? strategy.query, motifs);
     await mkdir(dirname(path), { recursive: true });
     await writeFile(path, `${observations.trim()}\n`, "utf8");
