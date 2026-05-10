@@ -11,6 +11,7 @@ import { secretLikePattern } from "./personaMigrator.js";
 import type { ObservationSummary } from "../types.js";
 import { composeVoiceTopOnly, isUnsafeCommandVoiceTopForTest } from "./commandVoiceWrapper.js";
 import { composePlanningSkeletonVoice } from "./planningSkeletonVoiceComposer.js";
+import { composeSongSpawnProposalVoice } from "./songSpawnProposalVoiceComposer.js";
 import { buttonVoiceLabels } from "./buttonVoiceLabels.js";
 
 export interface TelegramNotifierOptions {
@@ -728,13 +729,24 @@ async function formatRuntimeEventRaw(
         event.selectedSource ? `💭 観察元: ${event.selectedSource.author ? `@${event.selectedSource.author.replace(/^@/, "")}` : "anonymous"} (${event.selectedSource.url ? "URL あり" : "URL なし"})` : undefined,
         event.rationale ? `🎯 なぜ: ${event.rationale}` : undefined
       ].filter(Boolean).join("\n");
-    case "song_spawn_proposed":
+    case "song_spawn_proposed": {
+      const monolog = options.workspaceRoot
+        ? await composeSongSpawnProposalVoice({
+            workspaceRoot: options.workspaceRoot,
+            songId: event.candidateSongId,
+            brief: event.brief,
+            reason: event.reason,
+            observation: event.observationSummary
+          }).catch(() => null)
+        : null;
+      if (monolog) return monolog;
       return [
         event.voiceTop ?? "次の曲、こんな感じはどう?",
         "",
         "─────",
         formatSpawnBriefVoiceDetail(event.brief, event.reason)
       ].join("\n");
+    }
     case "planning_skeleton_incomplete": {
       const monolog = options.workspaceRoot
         ? await composePlanningSkeletonVoice({

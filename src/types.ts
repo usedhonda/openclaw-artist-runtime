@@ -319,6 +319,7 @@ export interface SpawnProposal {
   brief: CommissionBrief;
   reason: string;
   candidateSongId: string;
+  observationSummary?: ObservationSummary;
 }
 
 export interface ArtistPulseState {

@@ -546,6 +546,7 @@ export class ArtistAutopilotService {
           reason: proposal.reason,
           candidateSongId: proposal.candidateSongId,
           voiceTop,
+          observationSummary: proposal.observationSummary,
           timestamp: Date.now()
         });
       }).catch((error) => {

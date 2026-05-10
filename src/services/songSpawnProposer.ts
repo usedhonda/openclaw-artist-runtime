@@ -1,7 +1,7 @@
 import { createHash } from "node:crypto";
 import { readdir, readFile } from "node:fs/promises";
 import { join } from "node:path";
-import type { AiReviewProvider, CommissionBrief, SongState, SpawnProposal } from "../types.js";
+import type { AiReviewProvider, CommissionBrief, ObservationSummary, SongState, SpawnProposal } from "../types.js";
 import { callAiProvider, isAiNotConfiguredResponse } from "./aiProviderClient.js";
 import { composeArtistFallback } from "./artistVoiceComposer.js";
 import { listSongStates } from "./artistState.js";
@@ -11,6 +11,9 @@ import { secretLikePattern } from "./personaMigrator.js";
 import { readBudgetState } from "./sunoBudgetLedger.js";
 import { validateAgainstVoiceContract } from "./voiceContractValidator.js";
 import { isVoiceFingerprintReady, parseVoiceFingerprint, type VoiceFingerprintBundle } from "./voiceFingerprintParser.js";
+import { readObservationsReport } from "./xObservationCollector.js";
+
+const FULL_TWEET_URL_PATTERN = /^https:\/\/(?:twitter|x)\.com\/[^/\s]+\/status\/\d+/i;
 
 export interface ProposeSpawnOptions {
   aiReviewProvider?: AiReviewProvider;
@@ -27,11 +30,40 @@ function shortHash(value: string): string {
   return createHash("sha256").update(value).digest("hex").slice(0, 6);
 }
 
-async function latestObservation(root: string): Promise<string> {
+interface LatestObservationData {
+  raw: string;
+  summary?: ObservationSummary;
+}
+
+async function latestObservationData(root: string): Promise<LatestObservationData> {
   const dir = join(root, "observations");
   const entries = await readdir(dir).catch(() => []);
   const latest = entries.filter((entry) => entry.endsWith(".md")).sort().at(-1);
-  return latest ? readFile(join(dir, latest), "utf8").catch(() => "") : "";
+  if (!latest) return { raw: "" };
+  const raw = await readFile(join(dir, latest), "utf8").catch(() => "");
+  if (!raw) return { raw: "" };
+  const dateStr = latest.replace(/\.md$/, "");
+  const report = await readObservationsReport(root, dateStr).catch(() => null);
+  if (!report || report.entries.length === 0) {
+    return { raw };
+  }
+  const sorted = [...report.entries].sort((a, b) => (b.motifScore ?? 0) - (a.motifScore ?? 0));
+  for (const entry of sorted) {
+    if (!entry.url || !FULL_TWEET_URL_PATTERN.test(entry.url)) continue;
+    if (!entry.author || entry.author === "_") continue;
+    const quote = (entry.text ?? "").trim();
+    if (!quote) continue;
+    if (secretLikePattern.test(quote)) continue;
+    return {
+      raw,
+      summary: {
+        quote: quote.slice(0, 240),
+        author: entry.author,
+        url: entry.url
+      }
+    };
+  }
+  return { raw };
 }
 
 function hasRestMood(heartbeat: string, soulMd: string): boolean {
@@ -335,18 +367,20 @@ function composeReasonInArtistVoice(args: {
 
 export async function proposeSpawn(root: string, options: ProposeSpawnOptions = {}): Promise<SpawnProposal | null> {
   const now = options.now ?? new Date();
-  const [artistMd, soulMd, identityMd, innerMd, producerMd, heartbeat, observation, songs, budget, recentThemes] = await Promise.all([
+  const [artistMd, soulMd, identityMd, innerMd, producerMd, heartbeat, obsData, songs, budget, recentThemes] = await Promise.all([
     readFile(join(root, "ARTIST.md"), "utf8").catch(() => ""),
     readFile(join(root, "SOUL.md"), "utf8").catch(() => ""),
     readFile(join(root, "IDENTITY.md"), "utf8").catch(() => ""),
     readFile(join(root, "INNER.md"), "utf8").catch(() => ""),
     readFile(join(root, "PRODUCER.md"), "utf8").catch(() => ""),
     readFile(join(root, "runtime", "heartbeat-state.json"), "utf8").catch(() => ""),
-    latestObservation(root),
+    latestObservationData(root),
     listSongStates(root).catch(() => []),
     readBudgetState(root, now),
     recentSpawnThemes(root, now)
   ]);
+  const observation = obsData.raw;
+  const observationSummary = obsData.summary;
   const budgetRemaining = budget.limit - budget.used;
   if (budgetRemaining <= 1 || hasRestMood(heartbeat, soulMd) || recentCompletedTooClose(songs, now) || observation.trim().length < 12) {
     return null;
@@ -409,6 +443,7 @@ export async function proposeSpawn(root: string, options: ProposeSpawnOptions = 
     spawn: true,
     brief: parsed.brief,
     reason: parsed.reason,
-    candidateSongId: parsed.brief.songId
+    candidateSongId: parsed.brief.songId,
+    observationSummary
   } : null;
 }

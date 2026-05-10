@@ -87,7 +87,7 @@ describe("telegram notifier service wireup", () => {
     });
 
     await vi.waitFor(() => expect(fetchImpl).toHaveBeenCalledWith(expect.stringContaining("/sendMessage"), expect.any(Object)));
-    expect(JSON.parse(String((fetchImpl.mock.calls[0][1] as RequestInit).body)).text).toContain("ゆずる、次の曲の火種を見た。");
+    expect(JSON.parse(String((fetchImpl.mock.calls[0][1] as RequestInit).body)).text).toContain("境界の音");
     await vi.waitFor(() => expect(fetchImpl).toHaveBeenCalledWith(expect.stringContaining("/editMessageReplyMarkup"), expect.any(Object)));
   });
 

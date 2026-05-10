@@ -22,7 +22,7 @@ export type RuntimeEvent =
   | { type: "song_songbook_written"; songId: string; timestamp: number }
   | { type: "song_publish_skipped"; songId: string; timestamp: number }
   | ({ type: "artist_pulse_drafted"; timestamp: number } & DailyVoiceDraft)
-  | { type: "song_spawn_proposed"; brief: CommissionBrief; reason: string; candidateSongId: string; voiceTop?: string; timestamp: number }
+  | { type: "song_spawn_proposed"; brief: CommissionBrief; reason: string; candidateSongId: string; voiceTop?: string; observationSummary?: ObservationSummary; timestamp: number }
   | { type: "observation_collected"; topMotifMatch?: string; topScore?: number; entryCount: number; timestamp: number }
   | { type: "artist_presence"; trigger: "observation_high_score" | "producer_silent_after_take"; text: string; songId?: string; timestamp: number }
   | { type: "error"; source: string; reason: string; songId?: string; timestamp: number };
