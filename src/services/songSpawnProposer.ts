@@ -82,18 +82,108 @@ function titleFromSeed(seed: string): string {
   return first.replace(/^#+\s*/, "").slice(0, 32) || "静かな夜の勘定書";
 }
 
-function buildBrief(context: { observation: string; soulMd: string; budgetRemaining: number; now: Date }): CommissionBrief {
+type PitchField = "lyricsTheme" | "styleNotes" | "reason";
+
+interface PitchDensityContext {
+  observation: string;
+  artistMd: string;
+  soulMd: string;
+  fingerprint: VoiceFingerprintBundle;
+}
+
+const honestThinMarkerPattern = /まだ|言葉になってない|輪郭しか|仮で|これから/;
+const fillerPattern = /(.{6,})\1{2,}|いい感じ|うまく/;
+const machineVoicePattern = /(?:ARTIST\.md|SOUL\.md|INNER\.md|PRODUCER\.md|IDENTITY\.md|themes:|geo:|vocab:|sound:|motif anchor:|\bparse\b|\bbuild\b|\bfield\b|\bconfig\b|\bruntime\b|\bmock\b)|TBD|未定|未記入|todo|fixme|none|n\/a|基礎人格|基礎トーン|に基づき|を変換|を生成/i;
+
+function charLength(value: string): number {
+  return Array.from(value).length;
+}
+
+function firstLine(value: string, fallback: string): string {
+  return value.split(/\r?\n/).map((line) => line.trim()).find(Boolean)?.replace(/^-\s*(?:text|quote):\s*/i, "").replace(/^["']|["']$/g, "") ?? fallback;
+}
+
+function firstPhrase(values: string[], fallback: string): string {
+  return values.find((value) => value.trim().length > 0)?.split(/[\/|,、]/)[0]?.trim() || fallback;
+}
+
+function hasCoreTheme(motifs: ReturnType<typeof extractPersonaMotifs>): boolean {
+  return motifs.themes.length + motifs.vocabulary.length + motifs.geographies.length + motifs.sound.length > 0;
+}
+
+function isThinPitchContext(context: PitchDensityContext): boolean {
+  const motifs = extractPersonaMotifs([context.artistMd, context.soulMd].join("\n"));
+  return context.observation.trim().length < 40 || !hasCoreTheme(motifs) || !isVoiceFingerprintReady(context.fingerprint).ok;
+}
+
+function pitchSlots(context: PitchDensityContext): { theme: string; place: string; object: string; sound: string; callname: string; observation: string } {
+  const motifs = extractPersonaMotifs([context.artistMd, context.soulMd].join("\n"));
+  return {
+    theme: firstPhrase(motifs.themes, firstPhrase(motifs.vocabulary, "街の違和感")),
+    place: firstPhrase(motifs.geographies, "街"),
+    object: firstPhrase(motifs.vocabulary, firstPhrase(motifs.themes, "ざらつき")),
+    sound: firstPhrase(motifs.sound, "低いベース"),
+    callname: context.fingerprint.producerCallname ?? "ゆずるさん",
+    observation: firstLine(context.observation, "観察の切れ端")
+  };
+}
+
+function fallbackPitchLine(field: PitchField, context: PitchDensityContext, thin = isThinPitchContext(context)): string {
+  const slots = pitchSlots(context);
+  if (thin) {
+    if (field === "lyricsTheme") return `まだ言葉になってない。${slots.object}の輪郭だけ、仮で短いフックに捕まえる。`;
+    if (field === "styleNotes") return `まだ輪郭しかない。${slots.sound}と削いだドラムだけ、仮で暗く置く。`;
+    return `${slots.callname}、まだ輪郭しかない。${slots.theme}だけ仮で捕まえて、これから詰めるな。`;
+  }
+  if (field === "lyricsTheme") {
+    return `${slots.place}で見た${slots.object}を、${slots.theme}の曲にする。ずっと抱えてた違和感を、フックでは逃がさない。夜の景色として、言い切らずに最後まで残す。`;
+  }
+  if (field === "styleNotes") {
+    return `${slots.sound}と削いだドラムで、${slots.place}の夜を前に出す。感傷を抜いたヴォーカル、少し冷たい余白も残して、音の骨だけ光らせる。`;
+  }
+  return `${slots.callname}、${slots.place}で見た${slots.object}がずっと残ってる。${slots.theme}として切る、捨てずに持ってた違和感をそのまま置いて、低い音に委ねたいな。`;
+}
+
+function validPitchField(value: string, thin: boolean): boolean {
+  const length = charLength(value);
+  const min = thin ? 30 : 60;
+  const max = thin ? 60 : 120;
+  return length >= min && length <= max && (!thin || honestThinMarkerPattern.test(value));
+}
+
+function normalizePitchField(field: PitchField, value: string | undefined, context: PitchDensityContext): string {
+  const thin = isThinPitchContext(context);
+  const clean = (value ?? "").replace(/\s+/g, " ").trim();
+  if (
+    !clean ||
+    secretLikePattern.test(clean) ||
+    machineVoicePattern.test(clean) ||
+    fillerPattern.test(clean) ||
+    !validPitchField(clean, thin)
+  ) {
+    return fallbackPitchLine(field, context, thin);
+  }
+  return clean;
+}
+
+function buildBrief(context: { observation: string; artistMd: string; soulMd: string; fingerprint: VoiceFingerprintBundle; budgetRemaining: number; now: Date }): CommissionBrief {
   const seed = context.observation || context.soulMd || "観察が薄い夜に、街の温度だけ残っている。";
   const title = titleFromSeed(seed);
   const songId = `spawn_${shortHash(`${seed}:${context.now.toISOString()}`)}`;
+  const densityContext = {
+    observation: context.observation,
+    artistMd: context.artistMd,
+    soulMd: context.soulMd,
+    fingerprint: context.fingerprint
+  };
   return {
     songId,
     title,
     brief: seed.slice(0, 280),
-    lyricsTheme: seed.split(/\r?\n/).find(Boolean)?.slice(0, 160) ?? title,
+    lyricsTheme: normalizePitchField("lyricsTheme", undefined, densityContext),
     mood: "observational, slight sarcasm, late-night urban pressure",
     tempo: "artist decides",
-    styleNotes: "thick bass, restrained drums, unsentimental vocal delivery",
+    styleNotes: normalizePitchField("styleNotes", undefined, densityContext),
     duration: "artist decides",
     sourceText: "autopilot song spawn",
     createdAt: context.now.toISOString()
@@ -199,23 +289,23 @@ function parseDirective(raw: string, key: string): string | undefined {
   return line?.slice(line.indexOf(":") + 1).trim();
 }
 
-function briefFromAi(raw: string, fallback: CommissionBrief, now: Date): { brief: CommissionBrief; reason: string; spawn: boolean } {
+function briefFromAi(raw: string, fallback: CommissionBrief, now: Date, context: PitchDensityContext): { brief: CommissionBrief; reason: string; spawn: boolean } {
   const spawnValue = parseDirective(raw, "spawn")?.toLowerCase();
   const spawn = !spawnValue || /^(yes|true|1|go|進める|作る)/i.test(spawnValue);
   const title = parseDirective(raw, "title") || fallback.title;
   const brief = parseDirective(raw, "brief") || fallback.brief;
   return {
     spawn,
-    reason: parseDirective(raw, "reason") || "AI judged the observations and budget as suitable for a next song.",
+    reason: normalizePitchField("reason", parseDirective(raw, "reason"), context),
     brief: {
       ...fallback,
       title,
       brief,
-      lyricsTheme: parseDirective(raw, "lyricsTheme") || parseDirective(raw, "lyrics") || brief,
+      lyricsTheme: normalizePitchField("lyricsTheme", parseDirective(raw, "lyricsTheme") || parseDirective(raw, "lyrics"), context),
       mood: parseDirective(raw, "mood") || fallback.mood,
       tempo: parseDirective(raw, "tempo") || fallback.tempo,
       duration: parseDirective(raw, "duration") || fallback.duration,
-      styleNotes: parseDirective(raw, "style") || fallback.styleNotes,
+      styleNotes: normalizePitchField("styleNotes", parseDirective(raw, "style"), context),
       createdAt: now.toISOString()
     }
   };
@@ -227,14 +317,20 @@ function composeReasonInArtistVoice(args: {
   fingerprint: VoiceFingerprintBundle;
   observation: string;
 }): string {
-  const motifs = extractPersonaMotifs([args.artistMd, args.soulMd].join("\n"));
-  return composeArtistFallback({
+  const context = {
+    observation: args.observation,
+    artistMd: args.artistMd,
+    soulMd: args.soulMd,
+    fingerprint: args.fingerprint
+  };
+  const composed = composeArtistFallback({
     userMessage: args.observation.slice(0, 200),
-    motifs,
+    motifs: extractPersonaMotifs([args.artistMd, args.soulMd].join("\n")),
     userIntent: "propose",
     voiceFingerprint: args.fingerprint,
     lastEndings: []
   });
+  return normalizePitchField("reason", composed, context);
 }
 
 export async function proposeSpawn(root: string, options: ProposeSpawnOptions = {}): Promise<SpawnProposal | null> {
@@ -259,7 +355,8 @@ export async function proposeSpawn(root: string, options: ProposeSpawnOptions = 
   assertSafe("input", inputContext);
 
   const fingerprint = parseVoiceFingerprint(soulMd);
-  const fallback = buildBrief({ observation, soulMd, budgetRemaining, now });
+  const pitchContext = { observation, artistMd, soulMd, fingerprint };
+  const fallback = buildBrief({ observation, artistMd, soulMd, fingerprint, budgetRemaining, now });
   const provider = options.aiReviewProvider ?? "mock";
   const mockReason = composeReasonInArtistVoice({ artistMd, soulMd, fingerprint, observation });
   const raw = provider === "mock"
@@ -287,8 +384,8 @@ export async function proposeSpawn(root: string, options: ProposeSpawnOptions = 
       recentThemes,
       fingerprint
     }), { provider });
-  assertSafe("ai_response", raw);
-  const parsed = briefFromAi(isAiNotConfiguredResponse(raw) ? "" : raw, fallback, now);
+  const safeRaw = isAiNotConfiguredResponse(raw) || secretLikePattern.test(raw) ? "" : raw;
+  const parsed = briefFromAi(safeRaw, fallback, now, pitchContext);
   if (isSimilarTheme(parsed.brief.title, recentThemes)) {
     return null;
   }
@@ -303,6 +400,9 @@ export async function proposeSpawn(root: string, options: ProposeSpawnOptions = 
       parsed.reason = composeReasonInArtistVoice({ artistMd, soulMd, fingerprint, observation });
     }
   }
+  parsed.brief.lyricsTheme = normalizePitchField("lyricsTheme", parsed.brief.lyricsTheme, pitchContext);
+  parsed.brief.styleNotes = normalizePitchField("styleNotes", parsed.brief.styleNotes, pitchContext);
+  parsed.reason = normalizePitchField("reason", parsed.reason, pitchContext);
   const finalText = JSON.stringify(parsed.brief) + parsed.reason;
   assertSafe("final", finalText);
   return parsed.spawn ? {
