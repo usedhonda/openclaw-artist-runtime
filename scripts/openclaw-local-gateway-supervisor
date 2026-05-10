@@ -13,17 +13,57 @@ set +u
 set +o pipefail
 
 supervisor_log="${OPENCLAW_LOCAL_LOGS}/gateway.supervisor.log"
+watchdog_log="${OPENCLAW_LOCAL_LOGS}/telegram-watchdog.log"
+watchdog_flag="${OPENCLAW_LOCAL_WORKSPACE}/runtime/telegram-watchdog-fired-at.txt"
 mkdir -p "${OPENCLAW_LOCAL_LOGS}"
 
 restart_delay_seconds="${OPENCLAW_LOCAL_GATEWAY_RESTART_DELAY:-3}"
+watchdog_interval="${OPENCLAW_TELEGRAM_WATCHDOG_INTERVAL:-30}"
+watchdog_tail_lines="${OPENCLAW_TELEGRAM_WATCHDOG_TAIL_LINES:-300}"
+watchdog_threshold="${OPENCLAW_TELEGRAM_WATCHDOG_THRESHOLD:-10}"
+watchdog_grace_seconds="${OPENCLAW_TELEGRAM_WATCHDOG_GRACE_SECONDS:-90}"
 child=""
+watchdog_pid=""
 
 log_line() {
   printf '[supervisor %s] %s\n' "$(date '+%Y-%m-%dT%H:%M:%S')" "$1" >>"${supervisor_log}"
 }
 
+watchdog_log_line() {
+  printf '[watchdog %s] %s\n' "$(date '+%Y-%m-%dT%H:%M:%S')" "$1" >>"${watchdog_log}"
+}
+
+watchdog_loop() {
+  local target_pid="$1"
+  watchdog_log_line "started target_pid=${target_pid} interval=${watchdog_interval}s tail=${watchdog_tail_lines} threshold=${watchdog_threshold} grace=${watchdog_grace_seconds}s"
+
+  sleep "${watchdog_grace_seconds}"
+
+  while kill -0 "${target_pid}" 2>/dev/null; do
+    sleep "${watchdog_interval}"
+    if [[ ! -f "${OPENCLAW_LOCAL_GATEWAY_LOG}" ]]; then
+      continue
+    fi
+    local recent_count
+    recent_count=$(tail -"${watchdog_tail_lines}" "${OPENCLAW_LOCAL_GATEWAY_LOG}" 2>/dev/null \
+      | grep -cE 'telegram/network.*(ENETUNREACH|UND_ERR_CONNECT_TIMEOUT)' 2>/dev/null)
+    recent_count="${recent_count:-0}"
+    if [[ "${recent_count}" -ge "${watchdog_threshold}" ]]; then
+      watchdog_log_line "telegram polling stuck (errors=${recent_count} in last ${watchdog_tail_lines} lines), killing child pid=${target_pid}"
+      mkdir -p "$(dirname "${watchdog_flag}")"
+      date +%s >"${watchdog_flag}"
+      kill -TERM "${target_pid}" 2>/dev/null
+      return
+    fi
+  done
+  watchdog_log_line "target_pid=${target_pid} exited; watchdog stopping"
+}
+
 handle_term() {
   log_line "received signal; shutting down"
+  if [[ -n "${watchdog_pid}" ]]; then
+    kill "${watchdog_pid}" 2>/dev/null
+  fi
   if [[ -n "${child}" ]]; then
     kill "${child}" 2>/dev/null
   fi
@@ -43,8 +83,18 @@ while true; do
   child=$!
   log_line "spawned gateway pid=${child}"
 
+  watchdog_loop "${child}" &
+  watchdog_pid=$!
+
   wait "${child}"
   rc=$?
+
+  if [[ -n "${watchdog_pid}" ]]; then
+    kill "${watchdog_pid}" 2>/dev/null
+    wait "${watchdog_pid}" 2>/dev/null
+    watchdog_pid=""
+  fi
+
   log_line "gateway exited pid=${child} rc=${rc}; restart in ${restart_delay_seconds}s"
   child=""
   sleep "${restart_delay_seconds}"

@@ -1,3 +1,5 @@
+import { readFile, unlink } from "node:fs/promises";
+import { join } from "node:path";
 import { safeRegisterService } from "../pluginApi.js";
 import type { ArtistRuntimeConfig } from "../types.js";
 import { ArtistAutopilotService } from "./autopilotService.js";
@@ -10,6 +12,53 @@ import { getTelegramOwnerUserIds } from "./telegramAuth.js";
 import { TelegramNotifier } from "./telegramNotifier.js";
 
 let telegramNotifierUnsubscribers: Array<() => void> = [];
+
+const SILENCE_RECOVERY_WINDOW_MS = 10 * 60 * 1000;
+const SILENCE_RECOVERY_DELAY_MS = 8000;
+const SILENCE_RECOVERY_MESSAGE =
+  "御大、 さっき Telegram の通信が詰まって沈黙してた。 もし button 押してたら反応なかったはず。 今復活したから、 もう一回押してくれる？";
+
+export async function readSilenceFlag(workspaceRoot: string): Promise<{ path: string; firedAtMs: number } | null> {
+  const path = join(workspaceRoot, "runtime", "telegram-watchdog-fired-at.txt");
+  try {
+    const raw = await readFile(path, "utf8");
+    const parsed = Number.parseInt(raw.trim(), 10);
+    if (!Number.isFinite(parsed)) return null;
+    return { path, firedAtMs: parsed * 1000 };
+  } catch {
+    return null;
+  }
+}
+
+export async function maybeSendSilenceRecoveryNotice(
+  token: string,
+  chatIds: ReadonlyArray<string | number>,
+  workspaceRoot: string
+): Promise<void> {
+  const flag = await readSilenceFlag(workspaceRoot);
+  if (!flag) return;
+  const ageMs = Date.now() - flag.firedAtMs;
+  if (ageMs < 0 || ageMs > SILENCE_RECOVERY_WINDOW_MS) {
+    await unlink(flag.path).catch(() => undefined);
+    return;
+  }
+  let allDelivered = true;
+  for (const chatId of chatIds) {
+    try {
+      const response = await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ chat_id: chatId, text: SILENCE_RECOVERY_MESSAGE })
+      });
+      if (!response.ok) allDelivered = false;
+    } catch {
+      allDelivered = false;
+    }
+  }
+  if (allDelivered) {
+    await unlink(flag.path).catch(() => undefined);
+  }
+}
 
 export async function startTelegramNotifierFromEnv(env: NodeJS.ProcessEnv = process.env): Promise<{ started: number; reason?: string }> {
   if (!isTelegramNotifierEnabled(env)) {
@@ -32,6 +81,9 @@ export async function startTelegramNotifierFromEnv(env: NodeJS.ProcessEnv = proc
     workspaceRoot: config.artist.workspaceRoot,
     aiReviewProvider: config.aiReview.provider
   }).subscribe(getRuntimeEventBus()));
+  setTimeout(() => {
+    void maybeSendSilenceRecoveryNotice(token, ownerIds, config.artist.workspaceRoot);
+  }, SILENCE_RECOVERY_DELAY_MS).unref();
   return { started: telegramNotifierUnsubscribers.length };
 }
 
