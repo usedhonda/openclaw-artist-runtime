@@ -188,18 +188,18 @@ function fallbackPitchLine(field: PitchField, context: PitchDensityContext, thin
     return `${slots.callname}、まだ輪郭しかない。${slots.theme}だけ仮で捕まえて、これから詰めるな。`;
   }
   if (field === "lyricsTheme") {
-    return `${slots.place}で見た${slots.object}を、${slots.theme}の曲にする。ずっと抱えてた違和感を、フックでは逃がさない。夜の景色として、言い切らずに最後まで残す。`;
+    return `${slots.theme}を${slots.place}の手触りで切る。サビは短く繰り返したくなる 1 行、ヴァースで景色を出して${slots.object}を最後に置く。言い切らずに残る違和感を、短いフックへ畳んで、最後の余白で刺す。`;
   }
   if (field === "styleNotes") {
-    return `${slots.sound}と削いだドラムで、${slots.place}の夜を前に出す。感傷を抜いたヴォーカル、少し冷たい余白も残して、音の骨だけ光らせる。`;
+    return `${slots.sound}の骨格で組む。ベースは下の音域でだけ動かして、ドラムはハイハットを抑えて空気を作る。ヴォーカルは楽器の間に沈めて、余白を多く残し必要な音だけ立てる。`;
   }
-  return `${slots.callname}、${slots.place}で見た${slots.object}がずっと残ってる。${slots.theme}として切る、捨てずに持ってた違和感をそのまま置いて、低い音に委ねたいな。`;
+  return `${slots.callname}、${slots.place}で見た${slots.object}がずっと残ってる。${slots.theme}として切る、捨てずに持ってた違和感をそのまま置いて、低い音と短いフックに委ねたい。怖さは残るけど、逃がさないな。`;
 }
 
 function validPitchField(value: string, thin: boolean): boolean {
   const length = charLength(value);
-  const min = thin ? 30 : 60;
-  const max = thin ? 60 : 120;
+  const min = thin ? 30 : 80;
+  const max = thin ? 60 : 220;
   return length >= min && length <= max && (!thin || honestThinMarkerPattern.test(value));
 }
 
@@ -321,11 +321,11 @@ function buildPrompt(context: {
     "spawn: <yes/no>",
     "title: <artistic title>",
     "brief: <280 chars 以内、 楽曲の中身要約>",
-    "lyricsTheme: <一行 theme>",
+    "lyricsTheme: <2-4 文、 日本語、 sub 構造込み。最低 2 文。例: \"六本木で見た経営者を社会風刺として切る。サビは短く 1 行のリフレインだけ、ヴァースで景色を出してサビでそれを 1 行に畳む。\">",
     "mood: <english spec keywords e.g. 'tense, late-night, urban pressure'>",
     "tempo: <'artist decides' or '142 BPM'>",
     "duration: <'2:45' 等>",
-    "style: <english spec keywords>",
+    "style: <english spec keywords + instrumentation roles. 最低 3 要素。例: \"thick bass on low register, restrained hi-hats, vocals nestled between instruments, sparse arrangement, breathing space\">",
     "reason: <**日本語のみ**、 artist 一人称口語、 producer に話しかける 1 行 (e.g. \"" + (context.fingerprint.producerCallname ?? "ゆずる") + "、 〜の街を切るやつ、 刺さる\")>",
     "",
     ...buildVoiceContractLines(context.fingerprint),
