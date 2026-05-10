@@ -377,6 +377,7 @@ function composeReasonInArtistVoice(args: {
   soulMd: string;
   fingerprint: VoiceFingerprintBundle;
   observation: string;
+  brief?: CommissionBrief;
 }): string {
   const context = {
     observation: args.observation,
@@ -384,6 +385,10 @@ function composeReasonInArtistVoice(args: {
     soulMd: args.soulMd,
     fingerprint: args.fingerprint
   };
+  if (args.brief) {
+    const briefAnchored = composeReasonFromBrief(args.brief, args.fingerprint, context);
+    if (briefAnchored) return briefAnchored;
+  }
   const composed = composeArtistFallback({
     userMessage: args.observation.slice(0, 200),
     motifs: extractPersonaMotifs([args.artistMd, args.soulMd].join("\n")),
@@ -392,6 +397,31 @@ function composeReasonInArtistVoice(args: {
     lastEndings: []
   });
   return normalizePitchField("reason", composed, context);
+}
+
+function composeReasonFromBrief(
+  brief: CommissionBrief,
+  fingerprint: VoiceFingerprintBundle,
+  context: PitchDensityContext
+): string | undefined {
+  const callname = fingerprint.producerCallname ?? "ゆずるさん";
+  const title = brief.title?.trim();
+  const briefSummary = (brief.brief ?? "").replace(/[。.]+\s*$/u, "").trim().slice(0, 90);
+  if (!title || !briefSummary) return undefined;
+  const slots = pitchSlots(context);
+  const candidates = [
+    `${callname}、 「${title}」 を書きたいんだ。 ${briefSummary}、 これを${slots.sound}と短いフックに委ねたい。 怖さは残るけど、 逃がさないな。`,
+    `${callname}、 「${title}」 で 1 曲、 やらせてくれ。 ${briefSummary}、 そのまま置いて言い切らずに残す。 ${slots.sound}と余白で刺すな。`
+  ];
+  for (const candidate of candidates) {
+    const cleaned = candidate.replace(/\s+/g, " ").trim();
+    if (charLength(cleaned) < 80 || charLength(cleaned) > 220) continue;
+    if (secretLikePattern.test(cleaned)) continue;
+    if (machineVoicePattern.test(cleaned)) continue;
+    if (fillerPattern.test(cleaned)) continue;
+    return cleaned;
+  }
+  return undefined;
 }
 
 export async function proposeSpawn(root: string, options: ProposeSpawnOptions = {}): Promise<SpawnProposal | null> {
@@ -421,7 +451,7 @@ export async function proposeSpawn(root: string, options: ProposeSpawnOptions = 
   const pitchContext = { observation, artistMd, soulMd, fingerprint };
   const fallback = buildBrief({ observation, artistMd, soulMd, fingerprint, budgetRemaining, now });
   const provider = options.aiReviewProvider ?? "mock";
-  const mockReason = composeReasonInArtistVoice({ artistMd, soulMd, fingerprint, observation });
+  const mockReason = composeReasonInArtistVoice({ artistMd, soulMd, fingerprint, observation, brief: fallback });
   const raw = provider === "mock"
     ? [
       "spawn: yes",
@@ -460,12 +490,24 @@ export async function proposeSpawn(root: string, options: ProposeSpawnOptions = 
       lastEndings: []
     });
     if (!validation.ok) {
-      parsed.reason = composeReasonInArtistVoice({ artistMd, soulMd, fingerprint, observation });
+      parsed.reason = composeReasonInArtistVoice({ artistMd, soulMd, fingerprint, observation, brief: parsed.brief });
     }
   }
   parsed.brief.lyricsTheme = normalizePitchField("lyricsTheme", parsed.brief.lyricsTheme, pitchContext);
   parsed.brief.styleNotes = normalizePitchField("styleNotes", parsed.brief.styleNotes, pitchContext);
   parsed.reason = normalizePitchField("reason", parsed.reason, pitchContext);
+  // v10.25: brief-anchored reason guarantee. If reason fell back to motif-only
+  // (no brief title reference), force a brief-anchored line so the spawn voice
+  // does not leak previous song context. Skip when context is thin -- thin
+  // path keeps short honest markers per validPitchField contract.
+  if (
+    !isThinPitchContext(pitchContext) &&
+    parsed.brief.title &&
+    !parsed.reason.includes(parsed.brief.title)
+  ) {
+    const briefAnchored = composeReasonFromBrief(parsed.brief, fingerprint, pitchContext);
+    if (briefAnchored) parsed.reason = briefAnchored;
+  }
   const finalText = JSON.stringify(parsed.brief) + parsed.reason;
   assertSafe("final", finalText);
   return parsed.spawn ? {

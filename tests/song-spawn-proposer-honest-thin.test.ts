@@ -99,6 +99,32 @@ describe("song spawn proposer pitch density and honest-thin contract", () => {
     expect(proposal!.brief.lyricsTheme).toMatch(/サビ|ヴァース|フック/);
     expect(proposal!.brief.styleNotes).toMatch(/bass|drum|hi.?hat|vocals?|sparse|breathing/i);
     expect(proposal!.reason).not.toMatch(honestMarker);
+    // v10.25: reason must be anchored to brief.title (not generic observation-only)
+    expect(proposal!.reason).toContain(proposal!.brief.title);
+  });
+
+  it("rejects voice-fingerprint-violating AI reason and replaces with brief-anchored fallback (v10.25)", async () => {
+    callAiProviderMock.mockResolvedValue([
+      "spawn: yes",
+      "title: Neon Exit Strategy",
+      "brief: 渋谷の再開発を、 逃げ場を失った若者と均質化した夜の景色で切る一曲",
+      "lyricsTheme: 渋谷の再開発を街の匂いから切る。 サビは「出口だけ光ってる」 のリフレイン、 ヴァースで工事壁、 終電後の空白を積む。 文化が便利さに買われる瞬間。",
+      "style: fast live jazz drums, thick electric bass upfront, dusty Rhodes stabs, restrained hi-hats, vocals nestled between instruments, sparse arrangement",
+      "mood: tense, late-night, urban decay, dry satire",
+      "tempo: 146 BPM",
+      "duration: 2:52",
+      "reason: 了解しました。 ご確認ください。 申し訳ございません。"
+    ].join("\n"));
+    const proposal = await proposeSpawn(await completeWorkspace(), {
+      aiReviewProvider: "openai-codex",
+      now: new Date("2026-05-10T00:00:00.000Z")
+    });
+    expect(proposal).not.toBeNull();
+    expect(proposal!.brief.title).toBe("Neon Exit Strategy");
+    // Reason must be brief-anchored, not the previous song's leak.
+    expect(proposal!.reason).toContain("Neon Exit Strategy");
+    expect(proposal!.reason).not.toContain("六本木");
+    expect(proposal!.reason).not.toMatch(/了解しました|ご確認ください|申し訳ございません/);
   });
 
   it("uses short honest markers when the observation source is too thin", async () => {
