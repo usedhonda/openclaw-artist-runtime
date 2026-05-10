@@ -98,7 +98,7 @@ describe("song spawn proposal pitch density contract", () => {
     });
 
     expect(charLength(voice)).toBeGreaterThanOrEqual(380);
-    expect(charLength(voice)).toBeLessThanOrEqual(700);
+    expect(charLength(voice)).toBeLessThanOrEqual(900);
     expect(paragraphs(voice).length).toBeGreaterThanOrEqual(6);
     expect(voice).toContain("@city_note");
     expect(voice).toMatch(/https:\/\/x\.com\/city_note\/status\/\d+/);

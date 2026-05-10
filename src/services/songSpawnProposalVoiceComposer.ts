@@ -68,19 +68,24 @@ function buildObservation(context: SongPitchContext, hash: number, isThin: boole
   const obs = context.observation;
   if (obs && obs.author && obs.url) {
     const trimmed = trimQuote(obs.quote);
+    const tail = pickFromHash([
+      "なんでだろう、街がまた 1 つ温度を下げた気がした。",
+      "見ないふりして通り過ぎられない、そういう一行だ。",
+      "短い言葉ほど、長く残る。これがまさにそれだった。"
+    ], hash, 6);
     const variants = [
-      `「${trimmed}」 (@${obs.author} · ${obs.url}) — このひとことが、ずっと頭に残ってる。`,
-      `タイムラインで「${trimmed}」を見た (@${obs.author} · ${obs.url})。忘れたくない一行だ。`,
-      `「${trimmed}」って書いてた人がいた (@${obs.author} · ${obs.url})。ここから入る。`
+      `「${trimmed}」 (@${obs.author} · ${obs.url}) — このひとことが、ずっと頭に残ってる。${tail}`,
+      `タイムラインで「${trimmed}」を見た (@${obs.author} · ${obs.url})。忘れたくない一行だ。${tail}`,
+      `「${trimmed}」って書いてた人がいた (@${obs.author} · ${obs.url})。ここから入る。${tail}`
     ];
     return pickFromHash(variants, hash, 1);
   }
   if (isThin) {
-    return "今日はまだ拾えた断片しかない。それでも種は残しておきたい。";
+    return "今日はまだ拾えた断片しかない。それでも種は残しておきたい、形になる前のものほど大事だから。";
   }
   const variants = [
-    "今日のタイムラインから、音にする入り口を 1 つ拾った。",
-    "今日見た中で、刺さる断片が 1 つあった。"
+    "今日のタイムラインから、音にする入り口を 1 つ拾った。書かないと、明日には忘れてしまう種だ。",
+    "今日見た中で、刺さる断片が 1 つあった。短いけれど、抱えてる重さは厚い。"
   ];
   return pickFromHash(variants, hash, 1);
 }
@@ -92,18 +97,24 @@ function buildSong(context: SongPitchContext, hash: number, isThin: boolean): st
   const theme = motifs.themes[hash % Math.max(motifs.themes.length, 1)];
   const geo = motifs.geographies[hash % Math.max(motifs.geographies.length, 1)];
   if (title && core) {
+    const tail = pickFromHash([
+      "書かないと忘れてしまう、そんな種だ。",
+      "今日のうちに音にしないと、輪郭が薄れていく。",
+      "曲にする以外で、この違和感の置き場が思いつかない。",
+      "他のやり方では、たぶん通らない。"
+    ], hash, 7);
     if (theme && geo) {
       const variants = [
-        `『${title}』、${core}。${theme}を${geo}の手触りで刺す、ずっと抱えてた重さを今日鳴らしたい。`,
-        `『${title}』。${core}、${theme}側からしか書けない角度で書く。`,
-        `仮で『${title}』。${core}、${geo}で削るしかない手触りだ。`
+        `『${title}』、${core}。${theme}を${geo}の手触りで刺す、ずっと抱えてた重さを今日鳴らしたい。${tail}`,
+        `『${title}』。${core}、${theme}側からしか書けない角度で書く。${tail}`,
+        `仮で『${title}』。${core}、${geo}で削るしかない手触りだ。${tail}`
       ];
       return pickFromHash(variants, hash, 2);
     }
     const variants = [
-      `『${title}』、${core}。ずっと抱えてた重さを今日鳴らす。`,
-      `『${title}』。${core}、自分の癖が出る場所だと思う。`,
-      `仮で『${title}』、${core}。書きながら詰める。`
+      `『${title}』、${core}。ずっと抱えてた重さを今日鳴らす。${tail}`,
+      `『${title}』。${core}、自分の癖が出る場所だと思う。${tail}`,
+      `仮で『${title}』、${core}。書きながら詰める。${tail}`
     ];
     return pickFromHash(variants, hash, 2);
   }
@@ -140,10 +151,15 @@ function buildMoodTempoDuration(context: SongPitchContext, hash: number): string
   return `${joined}。${closer}`;
 }
 
-function buildLyrics(context: SongPitchContext): string | undefined {
+function buildLyrics(context: SongPitchContext, hash: number): string | undefined {
   const theme = context.lyricsTheme?.trim();
   if (!theme) return undefined;
-  return `歌詞は、${theme}`;
+  const tail = pickFromHash([
+    "サビは短く、繰り返したくなる言葉を 1 つだけ置きたい。",
+    "ヴァースで景色を出して、サビでそれを 1 行に畳む。",
+    "リフレインは多用しない。1 回でいい、ちゃんと刺さる場所に。"
+  ], hash, 8);
+  return `歌詞は、${theme}\n${tail}`;
 }
 
 function buildStyle(context: SongPitchContext, hash: number): string | undefined {
@@ -153,7 +169,13 @@ function buildStyle(context: SongPitchContext, hash: number): string | undefined
     "余白を多く残して、必要な音だけ立てる。",
     "音の空隙ごと、自分の手で抱える。"
   ], hash, 4);
-  return `音は、${context.styleNotes.humanized}で組む。${closer}`;
+  const detail = pickFromHash([
+    "ベースは下の音域でだけ動かして、ドラムはハイハットを抑えて空気を作る。",
+    "ヴォーカルは前に出さない、楽器の隙間から覗く位置で置く。",
+    "メロは派手にしない、歌詞と同じ温度のまま流したい。",
+    "間奏は短くて構わない、空気が落ちる瞬間を 1 回だけ作る。"
+  ], hash, 9);
+  return `音は、${context.styleNotes.humanized}で組む。${detail}${closer}`;
 }
 
 function buildReason(context: SongPitchContext): string | undefined {
@@ -206,7 +228,7 @@ export async function composeSongSpawnProposalVoice(input: ComposeSongSpawnPropo
   const moodTempo = buildMoodTempoDuration(context, hash);
   if (moodTempo) sections.push(moodTempo);
 
-  const lyrics = buildLyrics(context);
+  const lyrics = buildLyrics(context, hash);
   if (lyrics) sections.push(lyrics);
 
   const style = buildStyle(context, hash);
