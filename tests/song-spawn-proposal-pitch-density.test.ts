@@ -61,11 +61,11 @@ const COMPLETE_BRIEF = {
   songId: "song-test",
   title: "経営者の灯",
   brief: "六本木で見た経営者の言葉、街の温度",
-  lyricsTheme: "六本木で見た経営者の言葉を、社会風刺の曲にする。ずっと抱えてた違和感を、フックでは逃がさない。夜の景色として、言い切らずに最後まで残す。",
+  lyricsTheme: "皮肉を六本木の手触りで切る。サビは短く繰り返したくなる 1 行、ヴァースで景色を出して経営者を最後に置く。言い切らずに残る違和感を、短いフックへ畳んで、最後の余白で刺す。",
   mood: "tense, observant",
   tempo: "94 bpm",
   duration: "3:30",
-  styleNotes: "thick bass, restrained drums",
+  styleNotes: "hip-hop の骨格で組む。ベースは下の音域でだけ動かして、ドラムはハイハットを抑えて空気を作る。ヴォーカルは楽器の間に沈めて、余白を多く残し必要な音だけ立てる。",
   sourceText: "test",
   createdAt: new Date().toISOString()
 };
@@ -87,7 +87,7 @@ function paragraphs(text: string): string[] {
 }
 
 describe("song spawn proposal pitch density contract", () => {
-  it("complete brief produces 6+ paragraphs in 380-650 chars with observation source attribution", async () => {
+  it("complete brief produces 6+ paragraphs in 380-900 chars with observation source attribution", async () => {
     const root = await setupWorkspace();
     const voice = await composeSongSpawnProposalVoice({
       workspaceRoot: root,
@@ -103,6 +103,55 @@ describe("song spawn proposal pitch density contract", () => {
     expect(voice).toContain("@city_note");
     expect(voice).toMatch(/https:\/\/x\.com\/city_note\/status\/\d+/);
     expect(voice).toContain("再開発で小さい店がまた消えた");
+  });
+
+  it("instrumentation roles in brief.styleNotes appear in voice (not from composer tail)", async () => {
+    const root = await setupWorkspace();
+    const voice = await composeSongSpawnProposalVoice({
+      workspaceRoot: root,
+      songId: "song-test-style-roles",
+      brief: COMPLETE_BRIEF,
+      reason: COMPLETE_REASON,
+      observation: COMPLETE_OBSERVATION
+    });
+
+    expect(voice).toMatch(/ベース.*下の音域|低音域/);
+    expect(voice).toMatch(/ドラム.*ハイハット|削いだドラム/);
+    expect(voice).toMatch(/ヴォーカル|余白/);
+  });
+
+  it("lyrics theme from brief flows into voice as written", async () => {
+    const root = await setupWorkspace();
+    const voice = await composeSongSpawnProposalVoice({
+      workspaceRoot: root,
+      songId: "song-test-lyrics-flow",
+      brief: COMPLETE_BRIEF,
+      reason: COMPLETE_REASON,
+      observation: COMPLETE_OBSERVATION
+    });
+
+    expect(voice).toContain("サビは短く繰り返したくなる");
+    expect(voice).toContain("ヴァースで景色を出して");
+  });
+
+  it("composer no longer emits deterministic detail tails (tail content must come from brief)", async () => {
+    const root = await setupWorkspace();
+    const voice = await composeSongSpawnProposalVoice({
+      workspaceRoot: root,
+      songId: "song-test-no-tails",
+      brief: {
+        ...COMPLETE_BRIEF,
+        lyricsTheme: "夜の街を切る、 短いフックで景色を畳む。 1 文で言い切らない、 違和感を残して終える。",
+        styleNotes: "lo-fi の骨格で組む。"
+      },
+      reason: COMPLETE_REASON,
+      observation: COMPLETE_OBSERVATION
+    });
+
+    expect(voice).not.toContain("1 回でいい、ちゃんと刺さる場所に");
+    expect(voice).not.toContain("ベースは下の音域でだけ動かして、ドラムはハイハットを抑えて空気を作る");
+    expect(voice).not.toContain("曲にする以外で、この違和感の置き場が思いつかない");
+    expect(voice).not.toContain("短い言葉ほど、長く残る。これがまさにそれだった");
   });
 
   it("thin context produces shorter voice with honest marker, no fake source", async () => {

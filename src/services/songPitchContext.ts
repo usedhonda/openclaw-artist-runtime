@@ -105,16 +105,60 @@ export function humanizeDuration(raw: string | undefined): string {
   return `${clean}くらい`;
 }
 
+const JAPANESE_CHAR = /[぀-ヿ一-鿿]/;
+
+const STYLE_TOKEN_RULES: { pattern: RegExp; phrase: string }[] = [
+  { pattern: /hip.?hop|rap/i, phrase: "hip-hop の骨格" },
+  { pattern: /nu.?jazz|jazz/i, phrase: "nu-jazz の輪郭" },
+  { pattern: /synth|electronic|808/i, phrase: "電子の骨組み" },
+  { pattern: /lo.?fi|cassette|tape/i, phrase: "lo-fi の質感" },
+  { pattern: /thick bass on low|low\s*register|sub\s*bass/i, phrase: "ベースは低音域だけで動かす" },
+  { pattern: /thick bass|deep bass|heavy bass|低音/i, phrase: "厚い低音" },
+  { pattern: /restrained hi.?hat|controlled hi.?hat|抑.*ハイハット/i, phrase: "ドラムはハイハットを抑える" },
+  { pattern: /restrained drum|controlled drum|tight drum|削いだ/i, phrase: "削いだドラム" },
+  { pattern: /vocals?\s*nestled|vocals?\s*tucked|vocals?\s*between|楽器の隙間/i, phrase: "ヴォーカルは楽器の隙間から覗く位置" },
+  { pattern: /unsentimental|dry vocals?|sober vocals?|感傷を抜/i, phrase: "感傷を抜いたヴォーカル" },
+  { pattern: /sparse arrangement|sparse mix|余白/i, phrase: "余白を多く残したアレンジ" },
+  { pattern: /breathing space|negative space|空隙|空気/i, phrase: "音の空隙を残す" },
+  { pattern: /reverb\s*tail|空間の残響|長い残響/i, phrase: "残響は長くせず短く切る" }
+];
+
+function looksLikeJapaneseSentence(value: string): boolean {
+  if (!JAPANESE_CHAR.test(value)) return false;
+  if (charCount(value) < 24) return false;
+  return /[。.!?！？]/.test(value);
+}
+
+function charCount(value: string): number {
+  return Array.from(value).length;
+}
+
 export function humanizeStyle(raw: string | undefined): string | undefined {
-  const clean = (raw ?? "").toLowerCase().trim();
+  const clean = (raw ?? "").trim();
   if (!clean) return undefined;
-  if (/thick bass|deep bass|低音/.test(clean)) return "厚い低音";
-  if (/restrained drum|controlled drum|抑制/.test(clean)) return "削いだドラム";
-  if (/unsentimental|dry|sober/.test(clean)) return "感傷を抜いたヴォーカル";
-  if (/nu.?jazz|jazz/.test(clean)) return "nu-jazz の輪郭";
-  if (/hip.?hop|rap/.test(clean)) return "hip-hop の骨格";
-  if (/synth|electronic/.test(clean)) return "電子の骨組み";
-  return undefined;
+  if (looksLikeJapaneseSentence(clean)) return clean;
+  const lower = clean.toLowerCase();
+  const matched: string[] = [];
+  for (const rule of STYLE_TOKEN_RULES) {
+    if (rule.pattern.test(lower) && !matched.includes(rule.phrase)) {
+      matched.push(rule.phrase);
+    }
+  }
+  if (matched.length === 0) return undefined;
+  const head = matched[0];
+  const rest = matched.slice(1, 4);
+  if (rest.length === 0) return `${head}で組む。`;
+  if (rest.length === 1) return `${head}で組む。${rest[0]}。`;
+  return `${head}で組む。${rest[0]}、${rest[1]}${rest[2] ? `、${rest[2]}` : ""}。`;
+}
+
+export function humanizeLyricsTheme(raw: string | undefined): string | undefined {
+  const clean = (raw ?? "").trim();
+  if (!clean) return undefined;
+  if (isPlaceholder(clean)) return undefined;
+  if (charCount(clean) < 24) return undefined;
+  if (!JAPANESE_CHAR.test(clean)) return undefined;
+  return clean;
 }
 
 interface BriefSlots {
@@ -193,6 +237,7 @@ export async function buildSongPitchContext(input: BuildSongPitchContextInput): 
   const tempoHum = humanizeTempo(slots.tempo);
   const durationHum = humanizeDuration(slots.duration);
   const styleHum = humanizeStyle(slots.styleNotes);
+  const lyricsThemeHum = humanizeLyricsTheme(slots.lyricsTheme);
   const reasonClean = input.reason && !secretLikePattern.test(input.reason) ? input.reason.trim() : undefined;
 
   const filled = new Set<SectionKey>();
@@ -207,7 +252,7 @@ export async function buildSongPitchContext(input: BuildSongPitchContextInput): 
   if (moodHum || tempoHum || durationHum) {
     filled.add("moodTempoDuration");
   }
-  if (slots.lyricsTheme) {
+  if (lyricsThemeHum) {
     filled.add("lyricsTheme");
   }
   if (styleHum) {
@@ -223,7 +268,7 @@ export async function buildSongPitchContext(input: BuildSongPitchContextInput): 
     tempo: slots.tempo && tempoHum ? { raw: slots.tempo, humanized: tempoHum } : undefined,
     duration: slots.duration && durationHum ? { raw: slots.duration, humanized: durationHum } : undefined,
     styleNotes: styleHum ? { raw: slots.styleNotes ?? "", humanized: styleHum } : undefined,
-    lyricsTheme: slots.lyricsTheme,
+    lyricsTheme: lyricsThemeHum,
     reason: reasonClean,
     motifs,
     fingerprint,
