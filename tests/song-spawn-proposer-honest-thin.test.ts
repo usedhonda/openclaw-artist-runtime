@@ -28,7 +28,7 @@ function len(value: string): number {
 function expectComplete(value: string): void {
   expect(len(value)).toBeGreaterThanOrEqual(80);
   expect(len(value)).toBeLessThanOrEqual(220);
-  expect(value).toMatch(/[。?]$/);
+  expect(value).toMatch(/[。.?]$/);
   expect(value).not.toMatch(fillerPattern);
 }
 
@@ -97,7 +97,7 @@ describe("song spawn proposer pitch density and honest-thin contract", () => {
     expectComplete(proposal!.brief.styleNotes);
     expectComplete(proposal!.reason);
     expect(proposal!.brief.lyricsTheme).toMatch(/サビ|ヴァース|フック/);
-    expect(proposal!.brief.styleNotes).toMatch(/ベース|ドラム|ヴォーカル|余白/);
+    expect(proposal!.brief.styleNotes).toMatch(/bass|drum|hi.?hat|vocals?|sparse|breathing/i);
     expect(proposal!.reason).not.toMatch(honestMarker);
   });
 
@@ -147,6 +147,6 @@ describe("song spawn proposer pitch density and honest-thin contract", () => {
     expectComplete(proposal!.brief.styleNotes);
     expectComplete(proposal!.reason);
     expect(proposal!.brief.lyricsTheme).toMatch(/サビ|ヴァース|フック/);
-    expect(proposal!.brief.styleNotes).toMatch(/ベース|ドラム|ヴォーカル|余白/);
+    expect(proposal!.brief.styleNotes).toMatch(/bass|drum|hi.?hat|vocals?|sparse|breathing/i);
   });
 });

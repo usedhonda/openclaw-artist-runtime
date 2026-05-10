@@ -184,14 +184,14 @@ function fallbackPitchLine(field: PitchField, context: PitchDensityContext, thin
   const slots = pitchSlots(context);
   if (thin) {
     if (field === "lyricsTheme") return `まだ言葉になってない。${slots.object}の輪郭だけ、仮で短いフックに捕まえる。`;
-    if (field === "styleNotes") return `まだ輪郭しかない。${slots.sound}と削いだドラムだけ、仮で暗く置く。`;
+    if (field === "styleNotes") return `まだ輪郭しかない。仮で sparse arrangement, low bass だけ置く。`;
     return `${slots.callname}、まだ輪郭しかない。${slots.theme}だけ仮で捕まえて、これから詰めるな。`;
   }
   if (field === "lyricsTheme") {
     return `${slots.theme}を${slots.place}の手触りで切る。サビは短く繰り返したくなる 1 行、ヴァースで景色を出して${slots.object}を最後に置く。言い切らずに残る違和感を、短いフックへ畳んで、最後の余白で刺す。`;
   }
   if (field === "styleNotes") {
-    return `${slots.sound}の骨格で組む。ベースは下の音域でだけ動かして、ドラムはハイハットを抑えて空気を作る。ヴォーカルは楽器の間に沈めて、余白を多く残し必要な音だけ立てる。`;
+    return `${slots.sound} frame, thick bass on low register, restrained hi-hats, vocals nestled between instruments, sparse arrangement, breathing space, unsentimental dry vocals.`;
   }
   return `${slots.callname}、${slots.place}で見た${slots.object}がずっと残ってる。${slots.theme}として切る、捨てずに持ってた違和感をそのまま置いて、低い音と短いフックに委ねたい。怖さは残るけど、逃がさないな。`;
 }

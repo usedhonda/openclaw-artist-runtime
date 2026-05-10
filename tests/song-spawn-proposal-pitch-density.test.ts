@@ -65,7 +65,7 @@ const COMPLETE_BRIEF = {
   mood: "tense, observant",
   tempo: "94 bpm",
   duration: "3:30",
-  styleNotes: "hip-hop の骨格で組む。ベースは下の音域でだけ動かして、ドラムはハイハットを抑えて空気を作る。ヴォーカルは楽器の間に沈めて、余白を多く残し必要な音だけ立てる。",
+  styleNotes: "hip-hop frame, thick bass on low register, restrained hi-hats, vocals nestled between instruments, sparse arrangement, breathing space, unsentimental dry vocals.",
   sourceText: "test",
   createdAt: new Date().toISOString()
 };
@@ -105,7 +105,7 @@ describe("song spawn proposal pitch density contract", () => {
     expect(voice).toContain("再開発で小さい店がまた消えた");
   });
 
-  it("instrumentation roles in brief.styleNotes appear in voice (not from composer tail)", async () => {
+  it("instrumentation roles in brief.styleNotes appear in voice via humanizeStyle (english brief -> japanese voice)", async () => {
     const root = await setupWorkspace();
     const voice = await composeSongSpawnProposalVoice({
       workspaceRoot: root,
@@ -115,9 +115,10 @@ describe("song spawn proposal pitch density contract", () => {
       observation: COMPLETE_OBSERVATION
     });
 
-    expect(voice).toMatch(/ベース.*下の音域|低音域/);
-    expect(voice).toMatch(/ドラム.*ハイハット|削いだドラム/);
-    expect(voice).toMatch(/ヴォーカル|余白/);
+    expect(voice).toMatch(/ベース.*低音域|低音域/);
+    expect(voice).toMatch(/ドラム.*ハイハット|ハイハットを抑/);
+    expect(voice).toMatch(/ヴォーカル.*楽器の隙間|楽器の隙間/);
+    expect(voice).not.toMatch(/thick bass|restrained hi-hats|sparse arrangement/);
   });
 
   it("lyrics theme from brief flows into voice as written", async () => {
