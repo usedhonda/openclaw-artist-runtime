@@ -109,9 +109,29 @@ async function recentSpawnThemes(root: string, now: Date): Promise<string[]> {
   return [...seen].slice(-12);
 }
 
-function titleFromSeed(seed: string): string {
-  const first = seed.split(/\r?\n/).map((line) => line.trim()).find(Boolean) ?? "静かな夜の勘定書";
-  return first.replace(/^#+\s*/, "").slice(0, 32) || "静かな夜の勘定書";
+function titleFromSeed(seed: string, motifs?: ReturnType<typeof extractPersonaMotifs>): string {
+  const lines = seed.split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
+  const skipPrefixes = [/^#\s*X Observations/i, /^Query:/i, /^Motifs:/i, /^Source:/i, /^- text:/i, /^- author:/i, /^- url:/i, /^- postedAt:/i, /^author:/i, /^url:/i, /^postedAt:/i, /^motifMatch:/i, /^motifScore:/i];
+  const meaningful = lines.find((line) => {
+    const stripped = line.replace(/^#+\s*/, "");
+    if (!stripped) return false;
+    return !skipPrefixes.some((re) => re.test(line));
+  });
+  if (meaningful) {
+    const cleaned = meaningful
+      .replace(/^- text:\s*/i, "")
+      .replace(/^["「『]+|["」』]+$/g, "")
+      .replace(/^#+\s*/, "")
+      .slice(0, 32);
+    if (cleaned) return cleaned;
+  }
+  if (motifs) {
+    const themeWord = motifs.themes[0]?.split(/[\/|,、]/)[0]?.trim();
+    const geoWord = motifs.geographies[0]?.split(/[\/|,、]/)[0]?.trim();
+    if (themeWord && geoWord) return `${geoWord}の${themeWord}`.slice(0, 32);
+    if (themeWord) return themeWord.slice(0, 32);
+  }
+  return "静かな夜の勘定書";
 }
 
 type PitchField = "lyricsTheme" | "styleNotes" | "reason";
@@ -200,7 +220,8 @@ function normalizePitchField(field: PitchField, value: string | undefined, conte
 
 function buildBrief(context: { observation: string; artistMd: string; soulMd: string; fingerprint: VoiceFingerprintBundle; budgetRemaining: number; now: Date }): CommissionBrief {
   const seed = context.observation || context.soulMd || "観察が薄い夜に、街の温度だけ残っている。";
-  const title = titleFromSeed(seed);
+  const titleMotifs = extractPersonaMotifs([context.artistMd, context.soulMd].join("\n"));
+  const title = titleFromSeed(seed, titleMotifs);
   const songId = `spawn_${shortHash(`${seed}:${context.now.toISOString()}`)}`;
   const densityContext = {
     observation: context.observation,
