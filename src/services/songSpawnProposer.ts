@@ -110,6 +110,17 @@ async function recentSpawnThemes(root: string, now: Date): Promise<string[]> {
 }
 
 function titleFromSeed(seed: string, motifs?: ReturnType<typeof extractPersonaMotifs>): string {
+  // v10.26: motif-anchored title takes priority. The observation slice was
+  // producing raw text fragments like "六本木の古いビルの影で、 経営者が若者の声を看板"
+  // -- not a song title. Motif pair (geo + theme) yields short, song-like names
+  // ("六本木の社会風刺", "渋谷の皮肉"). Fall back to observation only when
+  // motifs are sparse.
+  if (motifs) {
+    const themeWord = motifs.themes[0]?.split(/[\/|,、]/)[0]?.trim();
+    const geoWord = motifs.geographies[0]?.split(/[\/|,、]/)[0]?.trim();
+    if (themeWord && geoWord) return `${geoWord}の${themeWord}`.slice(0, 32);
+    if (themeWord) return themeWord.slice(0, 32);
+  }
   const lines = seed.split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
   const skipPrefixes = [/^#\s*X Observations/i, /^Query:/i, /^Motifs:/i, /^Source:/i, /^- text:/i, /^- author:/i, /^- url:/i, /^- postedAt:/i, /^author:/i, /^url:/i, /^postedAt:/i, /^motifMatch:/i, /^motifScore:/i];
   const meaningful = lines.find((line) => {
@@ -122,14 +133,8 @@ function titleFromSeed(seed: string, motifs?: ReturnType<typeof extractPersonaMo
       .replace(/^- text:\s*/i, "")
       .replace(/^["「『]+|["」』]+$/g, "")
       .replace(/^#+\s*/, "")
-      .slice(0, 32);
+      .slice(0, 24);
     if (cleaned) return cleaned;
-  }
-  if (motifs) {
-    const themeWord = motifs.themes[0]?.split(/[\/|,、]/)[0]?.trim();
-    const geoWord = motifs.geographies[0]?.split(/[\/|,、]/)[0]?.trim();
-    if (themeWord && geoWord) return `${geoWord}の${themeWord}`.slice(0, 32);
-    if (themeWord) return themeWord.slice(0, 32);
   }
   return "静かな夜の勘定書";
 }

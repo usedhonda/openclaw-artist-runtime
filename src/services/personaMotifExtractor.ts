@@ -127,9 +127,9 @@ const soundSeeds = [
   "中音域",
   "囁き",
   "叫び",
-  "Brooklyn",
-  "NY underground",
-  "Manhattan",
+  "Brooklyn beat",
+  "NY underground rap",
+  "Manhattan jazz",
   "ジャズ",
   "ヒップホップ"
 ];
