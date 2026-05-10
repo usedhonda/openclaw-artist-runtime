@@ -127,12 +127,42 @@ interface BriefSlots {
   lyricsTheme?: string;
 }
 
+const HEADER_LINE_PATTERNS = [
+  /^#\s*X Observations/i,
+  /^Query:/i,
+  /^Motifs:/i,
+  /^Source:/i,
+  /^- text:/i,
+  /^- author:/i,
+  /^- url:/i,
+  /^- postedAt:/i,
+  /^author:/i,
+  /^url:/i,
+  /^postedAt:/i,
+  /^motifMatch:/i,
+  /^motifScore:/i
+];
+
+function extractCoreTheme(briefText: string | undefined): string | undefined {
+  if (!briefText) return undefined;
+  const lines = briefText.split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
+  for (const line of lines) {
+    if (HEADER_LINE_PATTERNS.some((re) => re.test(line))) continue;
+    const cleaned = line
+      .replace(/^- text:\s*/i, "")
+      .replace(/^["「『]+|["」』]+$/g, "")
+      .replace(/^#+\s*/, "")
+      .trim();
+    if (cleaned && !isPlaceholder(cleaned)) return cleaned.slice(0, 140);
+  }
+  return undefined;
+}
+
 function readBriefSlots(brief: CommissionBrief | undefined): BriefSlots {
   if (!brief) return {};
-  const coreCandidate = (brief.brief ?? "").split(/\r?\n/).map((line) => line.trim()).find(Boolean);
   return {
     title: isPlaceholder(brief.title) ? undefined : brief.title.trim(),
-    coreTheme: isPlaceholder(coreCandidate) ? undefined : coreCandidate?.slice(0, 140),
+    coreTheme: extractCoreTheme(brief.brief),
     mood: isPlaceholder(brief.mood) ? undefined : brief.mood,
     tempo: isPlaceholder(brief.tempo) ? undefined : brief.tempo,
     duration: isPlaceholder(brief.duration) ? undefined : brief.duration,

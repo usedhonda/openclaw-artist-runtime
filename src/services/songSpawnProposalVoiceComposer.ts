@@ -28,18 +28,40 @@ function trimQuote(raw: string): string {
 
 function buildOpening(context: SongPitchContext, hash: number): string {
   const callname = context.fingerprint?.producerCallname?.trim();
-  const variants = callname
-    ? [
-      `${callname}、次の曲の話、ちょっと聴いてほしい。`,
-      `${callname}、新しい一曲、頭の中で組み始めた。`,
-      `${callname}、今日はこの曲を提案させて。`
-    ]
-    : [
-      "次の曲の話、ちょっと聴いてほしい。",
-      "新しい一曲、頭の中で組み始めた。",
-      "今日はこの曲を提案させて。"
-    ];
-  return pickFromHash(variants, hash, 0);
+  const title = context.title;
+  const core = context.coreTheme?.replace(/[。.、,!?！？]+$/u, "").trim();
+  const motifs = context.motifs;
+  const theme = motifs.themes[hash % Math.max(motifs.themes.length, 1)]?.split(/[\/|,、]/)[0]?.trim();
+  const geo = motifs.geographies[hash % Math.max(motifs.geographies.length, 1)]?.split(/[\/|,、]/)[0]?.trim();
+
+  const candidates: string[] = [];
+  if (title && core) {
+    candidates.push(`『${title}』のことで、ちょっと聴いてほしい。`);
+    candidates.push(`次に『${title}』を書く、${core}の話だ。`);
+  } else if (title) {
+    candidates.push(`『${title}』、頭の中で組み始めてる。`);
+    candidates.push(`仮で『${title}』って呼んでる、聴いてくれ。`);
+  }
+  if (core) {
+    candidates.push(`${core}を音にしたい、今日それが頭から離れない。`);
+    candidates.push(`${core}が引っかかってる、形にする時だ。`);
+  }
+  if (theme && geo) {
+    candidates.push(`${geo}で見た${theme}を、次の一曲に置きたい。`);
+  } else if (theme) {
+    candidates.push(`${theme}の側から、次の曲を切るつもりだ。`);
+  }
+  if (callname) {
+    candidates.push(`${callname}、新しい一曲、組み始めた。聴いてくれ。`);
+    candidates.push(`${callname}、今日はこの曲を提案させて。`);
+  } else {
+    candidates.push("次の曲、組み始めた。聴いてほしい。");
+    candidates.push("新しい一曲、頭の中で動き出した。");
+  }
+  if (candidates.length === 0) {
+    return callname ? `${callname}、次の曲の話、聴いてほしい。` : "次の曲の話、聴いてほしい。";
+  }
+  return pickFromHash(candidates, hash, 0);
 }
 
 function buildObservation(context: SongPitchContext, hash: number, isThin: boolean): string {
@@ -47,18 +69,18 @@ function buildObservation(context: SongPitchContext, hash: number, isThin: boole
   if (obs && obs.author && obs.url) {
     const trimmed = trimQuote(obs.quote);
     const variants = [
-      `「${trimmed}」 (@${obs.author} · ${obs.url}) が観察ログに残ってる。これが入り口だな。`,
-      `観察で「${trimmed}」を拾った (@${obs.author} · ${obs.url})。忘れたくない一行。`,
-      `タイムラインで「${trimmed}」が刺さってる (@${obs.author} · ${obs.url})。ここから始める。`
+      `「${trimmed}」 (@${obs.author} · ${obs.url}) — このひとことが、ずっと頭に残ってる。`,
+      `タイムラインで「${trimmed}」を見た (@${obs.author} · ${obs.url})。忘れたくない一行だ。`,
+      `「${trimmed}」って書いてた人がいた (@${obs.author} · ${obs.url})。ここから入る。`
     ];
     return pickFromHash(variants, hash, 1);
   }
   if (isThin) {
-    return "観察はまだ薄い、断片しか拾えてない。それでも種は今日のうちに残しておきたい。";
+    return "今日はまだ拾えた断片しかない。それでも種は残しておきたい。";
   }
   const variants = [
-    "観察ログから音にする入り口を、今日 1 つ拾った。",
-    "今日の観察に、刺さる断片が 1 つあったわ。"
+    "今日のタイムラインから、音にする入り口を 1 つ拾った。",
+    "今日見た中で、刺さる断片が 1 つあった。"
   ];
   return pickFromHash(variants, hash, 1);
 }
@@ -72,19 +94,24 @@ function buildSong(context: SongPitchContext, hash: number, isThin: boolean): st
   if (title && core) {
     if (theme && geo) {
       const variants = [
-        `『${title}』って呼んでる。${core}の話だ。${theme}の角度から${geo}で削る、ずっと抱えてた重さを今日鳴らしたい。`,
-        `『${title}』。${core}を${theme}側から刺す、${geo}の手触りで一本通すつもり。`,
-        `仮で『${title}』。${core}を、${geo}の${theme}として書く、自分の癖が出る場所だと思う。`
+        `『${title}』、${core}。${theme}を${geo}の手触りで刺す、ずっと抱えてた重さを今日鳴らしたい。`,
+        `『${title}』。${core}、${theme}側からしか書けない角度で書く。`,
+        `仮で『${title}』。${core}、${geo}で削るしかない手触りだ。`
       ];
       return pickFromHash(variants, hash, 2);
     }
-    return `『${title}』、${core}の話だ。ずっと抱えてた重さを今日鳴らす。`;
+    const variants = [
+      `『${title}』、${core}。ずっと抱えてた重さを今日鳴らす。`,
+      `『${title}』。${core}、自分の癖が出る場所だと思う。`,
+      `仮で『${title}』、${core}。書きながら詰める。`
+    ];
+    return pickFromHash(variants, hash, 2);
   }
   if (core) {
     if (theme) {
-      return `この曲は${core}の話だ。${theme}側から削る、自分の癖が出る場所だと思う。`;
+      return `${core}、${theme}側から削る、自分の癖が出る場所だと思う。`;
     }
-    return `この曲は${core}の話だ。自分の癖が出る場所だと思う。`;
+    return `${core}、今日それを音にする。自分の癖が出る場所だ。`;
   }
   if (title) {
     return `『${title}』っていう仮タイトルで動かす。中身はこれから組む。`;
@@ -194,5 +221,5 @@ export async function composeSongSpawnProposalVoice(input: ComposeSongSpawnPropo
 
   const filtered = applyForbiddenFilter(sections, context);
   if (filtered.length < 3) return FALLBACK_VOICE;
-  return filtered.join("\n");
+  return filtered.join("\n\n");
 }

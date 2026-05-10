@@ -222,6 +222,14 @@ function buildBrief(context: { observation: string; artistMd: string; soulMd: st
   const seed = context.observation || context.soulMd || "観察が薄い夜に、街の温度だけ残っている。";
   const titleMotifs = extractPersonaMotifs([context.artistMd, context.soulMd].join("\n"));
   const title = titleFromSeed(seed, titleMotifs);
+  const themeWord = titleMotifs.themes[0]?.split(/[\/|,、]/)[0]?.trim();
+  const placeWord = titleMotifs.geographies[0]?.split(/[\/|,、]/)[0]?.trim();
+  const objectWord = titleMotifs.vocabulary[0]?.split(/[\/|,、]/)[0]?.trim();
+  const briefSentence = themeWord && placeWord
+    ? `${placeWord}で見た${objectWord ?? "違和感"}を、${themeWord}として切る一曲`
+    : themeWord
+      ? `${themeWord}を音にする一曲`
+      : seed.slice(0, 280);
   const songId = `spawn_${shortHash(`${seed}:${context.now.toISOString()}`)}`;
   const densityContext = {
     observation: context.observation,
@@ -232,7 +240,7 @@ function buildBrief(context: { observation: string; artistMd: string; soulMd: st
   return {
     songId,
     title,
-    brief: seed.slice(0, 280),
+    brief: briefSentence,
     lyricsTheme: normalizePitchField("lyricsTheme", undefined, densityContext),
     mood: "observational, slight sarcasm, late-night urban pressure",
     tempo: "artist decides",

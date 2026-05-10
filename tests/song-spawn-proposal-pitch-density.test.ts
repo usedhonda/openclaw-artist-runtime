@@ -147,6 +147,7 @@ describe("song spawn proposal pitch density contract", () => {
     expect(voice).not.toMatch(/基礎人格|基礎トーン|基礎理性|基礎商業/);
     expect(voice).not.toMatch(/に基づき|を反映し|を変換|を生成/);
     expect(voice).not.toMatch(/artist\s*一人称/);
+    expect(voice).not.toMatch(/観察ログ/);
   });
 
   it("short URL only observation is discarded from voice", async () => {
