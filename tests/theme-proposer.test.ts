@@ -2,7 +2,20 @@ import { mkdtempSync } from "node:fs";
 import { mkdir, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
+
+const { callAiProviderMock } = vi.hoisted(() => ({
+  callAiProviderMock: vi.fn()
+}));
+
+vi.mock("../src/services/aiProviderClient", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../src/services/aiProviderClient")>();
+  return {
+    ...actual,
+    callAiProvider: callAiProviderMock
+  };
+});
+
 import { proposeTheme } from "../src/services/themeProposer";
 
 async function workspace(): Promise<string> {
@@ -16,6 +29,10 @@ async function workspace(): Promise<string> {
 }
 
 describe("theme proposer", () => {
+  beforeEach(() => {
+    callAiProviderMock.mockReset();
+  });
+
   it("returns a motif-anchored mock theme", async () => {
     const root = await workspace();
     const proposal = await proposeTheme(root, { observations: "- people arguing under neon" });
@@ -33,6 +50,7 @@ describe("theme proposer", () => {
   });
 
   it("falls back to motif-anchored theme when configured AI provider is not available", async () => {
+    callAiProviderMock.mockResolvedValue("AI provider 'openai-codex' is not configured. No external model call was made.");
     const root = await workspace();
     const proposal = await proposeTheme(root, {
       observations: "- people arguing under neon",

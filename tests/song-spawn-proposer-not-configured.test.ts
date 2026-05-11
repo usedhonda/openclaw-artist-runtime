@@ -2,7 +2,20 @@ import { mkdtempSync } from "node:fs";
 import { mkdir, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
+
+const { callAiProviderMock } = vi.hoisted(() => ({
+  callAiProviderMock: vi.fn()
+}));
+
+vi.mock("../src/services/aiProviderClient", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../src/services/aiProviderClient")>();
+  return {
+    ...actual,
+    callAiProvider: callAiProviderMock
+  };
+});
+
 import { proposeSpawn } from "../src/services/songSpawnProposer";
 
 async function workspace(): Promise<string> {
@@ -17,6 +30,11 @@ async function workspace(): Promise<string> {
 }
 
 describe("song spawn proposer not-configured fallback", () => {
+  beforeEach(() => {
+    callAiProviderMock.mockReset();
+    callAiProviderMock.mockResolvedValue("AI provider 'openai-codex' is not configured. No external model call was made.");
+  });
+
   it("does not let AI provider error text become the spawned brief", async () => {
     const proposal = await proposeSpawn(await workspace(), {
       aiReviewProvider: "openai-codex",

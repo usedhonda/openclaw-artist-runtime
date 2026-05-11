@@ -404,6 +404,13 @@ function composeReasonInArtistVoice(args: {
   return normalizePitchField("reason", composed, context);
 }
 
+function firstJapaneseSound(context: PitchDensityContext, fallback: string): string {
+  const motifs = extractPersonaMotifs([context.artistMd, context.soulMd].join("\n"));
+  const japaneseOnly = /^[^\x00-\x7F]+$/;
+  const found = motifs.sound.find((s) => japaneseOnly.test(s.trim()));
+  return found?.split(/[\/|,、]/)[0]?.trim() || fallback;
+}
+
 function composeReasonFromBrief(
   brief: CommissionBrief,
   fingerprint: VoiceFingerprintBundle,
@@ -413,10 +420,10 @@ function composeReasonFromBrief(
   const title = brief.title?.trim();
   const briefSummary = (brief.brief ?? "").replace(/[。.]+\s*$/u, "").trim().slice(0, 90);
   if (!title || !briefSummary) return undefined;
-  const slots = pitchSlots(context);
+  const sound = firstJapaneseSound(context, "低い音");
   const candidates = [
-    `${callname}、 「${title}」 を書きたいんだ。 ${briefSummary}、 これを${slots.sound}と短いフックに委ねたい。 怖さは残るけど、 逃がさないな。`,
-    `${callname}、 「${title}」 で 1 曲、 やらせてくれ。 ${briefSummary}、 そのまま置いて言い切らずに残す。 ${slots.sound}と余白で刺すな。`
+    `${callname}、 「${title}」 を書きたいんだ。 ${briefSummary}、 これを${sound}と短いフックに委ねたい。 怖さは残るけど、 逃がさないな。`,
+    `${callname}、 「${title}」 で 1 曲、 やらせてくれ。 ${briefSummary}、 そのまま置いて言い切らずに残す。 ${sound}と余白で刺すな。`
   ];
   for (const candidate of candidates) {
     const cleaned = candidate.replace(/\s+/g, " ").trim();
