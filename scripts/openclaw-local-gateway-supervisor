@@ -45,8 +45,13 @@ watchdog_loop() {
       continue
     fi
     local recent_count
+    # v10.26.2: match the log format actually emitted by the gateway. The
+    # Telegram polling client logs prefixed lines like `[telegram] fetch
+    # fallback ... codes=ENETUNREACH` and bare `Error: connect ENETUNREACH ...`
+    # rows. The previous `telegram/network` prefix never matched, so the
+    # watchdog stayed silent while polling died.
     recent_count=$(tail -"${watchdog_tail_lines}" "${OPENCLAW_LOCAL_GATEWAY_LOG}" 2>/dev/null \
-      | grep -cE 'telegram/network.*(ENETUNREACH|UND_ERR_CONNECT_TIMEOUT)' 2>/dev/null)
+      | grep -cE '(\[telegram\].*(ENETUNREACH|UND_ERR_CONNECT_TIMEOUT)|Error: connect ENETUNREACH|Error: connect UND_ERR_CONNECT_TIMEOUT)' 2>/dev/null)
     recent_count="${recent_count:-0}"
     if [[ "${recent_count}" -ge "${watchdog_threshold}" ]]; then
       watchdog_log_line "telegram polling stuck (errors=${recent_count} in last ${watchdog_tail_lines} lines), killing child pid=${target_pid}"
