@@ -50,6 +50,18 @@ if [[ -n "${TELEGRAM_OWNER_USER_IDS:-}" ]]; then
   export TELEGRAM_OWNER_USER_IDS
 fi
 
+# v10.27 LIVE flip (master GO 2026-05-11). Switches Suno from mock to real
+# CDP-attached Playwright. Requires Chrome running with
+# --remote-debugging-port=9222 (see scripts/start-chrome-cdp.sh). Revert
+# by deleting this block when returning to dry-run.
+export OPENCLAW_SUNO_LIVE=on
+export OPENCLAW_SUNO_USE_CDP=on
+export OPENCLAW_SUNO_CDP_ENDPOINT="${OPENCLAW_SUNO_CDP_ENDPOINT:-http://127.0.0.1:9222}"
+export OPENCLAW_AUTOPILOT_DRYRUN_OVERRIDE=off
+
+# v10.28-C: dashboard base URL for Telegram body Resources section.
+export OPENCLAW_DASHBOARD_BASE_URL="${OPENCLAW_DASHBOARD_BASE_URL:-http://127.0.0.1:${openclaw_local_gateway_port}}"
+
 if [[ "${1:-}" == "print" ]]; then
   telegram_token_status=""
   if [[ -n "${TELEGRAM_BOT_TOKEN:-}" ]]; then
