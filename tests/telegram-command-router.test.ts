@@ -55,11 +55,30 @@ describe("telegram command router", () => {
     await ensureSongState(root, "song-001", "Ash Road");
     await ensureSongState(root, "song-002", "Cold Relay");
 
-    const result = await routeTelegramCommand({ ...baseInput, text: "/songs", workspaceRoot: root });
+    const result = await routeTelegramCommand({ ...baseInput, text: "/songs", workspaceRoot: root, dashboardBaseUrl: "http://127.0.0.1:8787" });
 
     expect(result.kind).toBe("songs");
     expect(result.responseText).toContain("song-001");
     expect(result.responseText).toContain("Cold Relay");
+    expect(result.responseText).toContain("path: songs/song-001/");
+    expect(result.responseText).toContain("http://127.0.0.1:8787/ui/#song=song-001");
+  });
+
+  it("routes /timeline to recent lifecycle rows with dashboard links", async () => {
+    const root = makeRoot();
+    await ensureSongState(root, "song-001", "Ash Road");
+    await updateSongState(root, "song-001", { status: "suno_running", reason: "test" });
+    await ensureSongState(root, "song-002", "Cold Relay");
+    await updateSongState(root, "song-002", { status: "published", reason: "test" });
+
+    const result = await routeTelegramCommand({ ...baseInput, text: "/timeline", workspaceRoot: root, dashboardBaseUrl: "http://127.0.0.1:8787" });
+
+    expect(result.kind).toBe("timeline");
+    expect(result.responseText).toContain("🎬 Timeline (recent 10 songs)");
+    expect(result.responseText).toContain("▶ song-001 | suno_generation | \"Ash Road\"");
+    expect(result.responseText).toContain("  song-002 | completed | \"Cold Relay\"");
+    expect(result.responseText).toContain("path: songs/song-001/");
+    expect(result.responseText).toContain("http://127.0.0.1:8787/ui/#song=song-001");
   });
 
   it("shows a song detail summary", async () => {
@@ -78,12 +97,15 @@ describe("telegram command router", () => {
       }
     });
 
-    const result = await routeTelegramCommand({ ...baseInput, text: "/song song-001", workspaceRoot: root });
+    const result = await routeTelegramCommand({ ...baseInput, text: "/song song-001", workspaceRoot: root, dashboardBaseUrl: "http://127.0.0.1:8787" });
 
     expect(result.kind).toBe("song");
     expect(result.responseText).toContain("take-a");
     expect(result.responseText).toContain("Imported assets: 1");
     expect(result.responseText).toContain("A cold wire hymn");
+    expect(result.responseText).toContain("brief path: songs/song-001/brief.md");
+    expect(result.responseText).toContain("lyrics path: songs/song-001/LYRICS.md");
+    expect(result.responseText).toContain("http://127.0.0.1:8787/ui/#song=song-001");
   });
 
   it("queues /regen as a dry-run inbox request", async () => {

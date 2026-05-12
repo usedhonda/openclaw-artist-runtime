@@ -18,7 +18,7 @@ import { resolveCallbackAction } from "../services/callbackActionRegistry.js";
 import { handleProposalResponse, listPendingProposalDetails, listPendingProposals } from "../services/conversationalSession.js";
 import { buildPlatformStats, readDistributionEvents } from "../services/distributionLedgerReader.js";
 import { getRuntimeEventBus } from "../services/runtimeEventBus.js";
-import { readRuntimeEvents } from "../services/runtimeEventsLedger.js";
+import { readRuntimeEvents, readSongEventsAsc } from "../services/runtimeEventsLedger.js";
 import { getSongPromptLedgerPath } from "../services/promptLedger.js";
 import { isDebugCallbackDispatchEnabled, mergeResolvedConfig, patchResolvedConfig, readConfigOverrides, resolveRuntimeConfig, resolveSunoDailyBudget, writeRuntimeSafetyOverrides, type RuntimeSafetyOverridesPatch } from "../services/runtimeConfig.js";
 import { publishSocialAction, readLatestSocialAction } from "../services/socialPublishing.js";
@@ -39,7 +39,7 @@ import { buildSongbookLookup, syncSongbookFromITunes } from "../services/songboo
 import { readTakeHistory, selectTake } from "../services/takeSelection.js";
 import { routeTelegramCallback } from "../services/telegramCallbackHandler.js";
 import type { TelegramClient } from "../services/telegramClient.js";
-import { registerRuntimeEventStreamRoute } from "./runtimeEventStream.js";
+import { serializeRuntimeEventForSse, registerRuntimeEventStreamRoute } from "./runtimeEventStream.js";
 import type {
   ArtistRuntimeConfig,
   DistributionSummary,
@@ -492,6 +492,18 @@ export async function buildSongDetailResponse(songId: string, config?: Partial<A
 export async function buildSongLedgerResponse(songId: string, config?: Partial<ArtistRuntimeConfig>) {
   const mergedConfig = await resolveRuntimeConfig(config);
   return readJsonlEntries<PromptLedgerEntry>(join(mergedConfig.artist.workspaceRoot, "songs", songId, "prompts", "prompt-ledger.jsonl"));
+}
+
+export async function buildSongEventsResponse(songId: string, config?: Partial<ArtistRuntimeConfig>, limit = 200) {
+  const mergedConfig = await resolveRuntimeConfig(config);
+  const safeLimit = Number.isFinite(limit) ? Math.max(0, Math.min(1000, Math.floor(limit))) : 200;
+  const events = await readSongEventsAsc(mergedConfig.artist.workspaceRoot, songId, safeLimit);
+  return {
+    events: events
+      .map((event) => serializeRuntimeEventForSse(event))
+      .filter((event): event is string => typeof event === "string")
+      .map((event) => JSON.parse(event) as unknown)
+  };
 }
 
 export async function buildPromptLedgerResponse(songId?: string, config?: Partial<ArtistRuntimeConfig>) {
@@ -1259,6 +1271,10 @@ export function registerRoutes(api: unknown): void {
         }
         if (segments.length === 2 && segments[1] === "ledger") {
           return buildSongLedgerResponse(segments[0] ?? "song-001", config);
+        }
+        if (segments.length === 2 && segments[1] === "events") {
+          const limit = typeof payload.limit === "number" ? payload.limit : Number.parseInt(String(payload.limit ?? "200"), 10);
+          return buildSongEventsResponse(segments[0] ?? "song-001", config, limit);
         }
       }
 

@@ -1,6 +1,7 @@
 import { appendFile, mkdir, readFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import type { AiReviewProvider, AutopilotStatus } from "../types.js";
+import { stageFromSong } from "./autopilotService.js";
 import { AutopilotControlService } from "./autopilotControlService.js";
 import { formatDebugAiReviewResult, reviewSongDebugMaterial } from "./debugAiReviewService.js";
 import { auditPersonaCompleteness, formatPersonaAuditReport, type PersonaFieldAudit } from "./personaFieldAuditor.js";
@@ -21,6 +22,7 @@ export type TelegramCommandKind =
   | "status"
   | "songs"
   | "song"
+  | "timeline"
   | "regen"
   | "review"
   | "pause"
@@ -38,6 +40,7 @@ export interface TelegramRouteInput {
   workspaceRoot?: string;
   autopilotStatus?: AutopilotStatus;
   aiReviewProvider?: AiReviewProvider;
+  dashboardBaseUrl?: string;
 }
 
 export interface TelegramRouteResult {
@@ -77,6 +80,7 @@ function helpInfo(): string {
   return [
     "Available commands:",
     "/status - show autopilot status",
+    "/timeline - show song lifecycle timeline",
     "/songs - list recent songs",
     "/song <songId> - show song detail",
     "/song create [hint] - ask the artist to make a song",
@@ -90,6 +94,56 @@ function helpInfo(): string {
     "/resume - resume autopilot",
     "/help - show this help"
   ].join("\n");
+}
+
+function dashboardSongLink(input: TelegramRouteInput, songId: string): string | undefined {
+  const baseUrl = input.dashboardBaseUrl?.replace(/\/+$/, "");
+  return baseUrl ? `↗ ${baseUrl}/ui/#song=${songId}` : undefined;
+}
+
+function songResourceLines(input: TelegramRouteInput, songId: string): string[] {
+  return [
+    `path: songs/${songId}/`,
+    dashboardSongLink(input, songId)
+  ].filter((line): line is string => Boolean(line));
+}
+
+function formatUpdatedAt(value?: string, now = Date.now()): string {
+  if (!value) return "unknown";
+  const time = new Date(value).getTime();
+  if (!Number.isFinite(time)) return value;
+  const diffMinutes = Math.max(0, Math.round((now - time) / 60_000));
+  if (diffMinutes < 1) return "just now";
+  if (diffMinutes < 60) return `${diffMinutes}分前`;
+  const diffHours = Math.round(diffMinutes / 60);
+  if (diffHours < 24) return `${diffHours}時間前`;
+  return `${Math.round(diffHours / 24)}日前`;
+}
+
+function isSongActive(status: string): boolean {
+  return !["published", "archived", "failed"].includes(status);
+}
+
+async function formatTimelineInfo(input: TelegramRouteInput): Promise<string> {
+  if (!input.workspaceRoot) {
+    return "Timeline unavailable: workspace root missing.";
+  }
+  const songs = await listRecentSongs(input.workspaceRoot, 10);
+  if (songs.length === 0) {
+    return "No songs yet.";
+  }
+  const lines = ["🎬 Timeline (recent 10 songs)", ""];
+  for (const song of songs) {
+    const stage = stageFromSong({ status: song.status } as Parameters<typeof stageFromSong>[0]);
+    const prefix = isSongActive(song.status) ? "▶" : " ";
+    lines.push(`${prefix} ${song.songId} | ${stage} | "${song.title}"`);
+    lines.push(`  更新: ${formatUpdatedAt(song.updatedAt)}`);
+    lines.push(`  path: songs/${song.songId}/`);
+    const link = dashboardSongLink(input, song.songId);
+    if (link) lines.push(`  ${link}`);
+    lines.push("");
+  }
+  return lines.join("\n").trimEnd();
 }
 
 export async function routeTelegramCommand(input: TelegramRouteInput): Promise<TelegramRouteResult> {
@@ -255,6 +309,15 @@ export async function routeTelegramCommand(input: TelegramRouteInput): Promise<T
     };
   }
 
+  if (command === "/timeline") {
+    const info = await formatTimelineInfo(input);
+    return {
+      kind: "timeline",
+      responseText: await voiceCommand("songs", info, input),
+      shouldStoreFreeText: false
+    };
+  }
+
   if (command === "/songs") {
     if (!input.workspaceRoot) {
       return { kind: "songs", responseText: await voiceCommand("error", "Song list unavailable: workspace root missing.", input, "songs unavailable"), shouldStoreFreeText: false };
@@ -262,7 +325,10 @@ export async function routeTelegramCommand(input: TelegramRouteInput): Promise<T
     const songs = await listRecentSongs(input.workspaceRoot, 10);
     const info = songs.length === 0
       ? "No songs yet."
-      : songs.map((song) => `${song.songId} | ${song.status} | ${song.title}`).join("\n");
+      : songs.map((song) => [
+        `${song.songId} | ${song.status} | ${song.title}`,
+        ...songResourceLines(input, song.songId).map((line) => `  ${line}`)
+      ].join("\n")).join("\n");
     return {
       kind: "songs",
       responseText: await voiceCommand("songs", info, input),
@@ -323,7 +389,10 @@ export async function routeTelegramCommand(input: TelegramRouteInput): Promise<T
       `${song.songId} | ${song.status} | ${song.title}`,
       song.selectedTakeId ? `Selected take: ${song.selectedTakeId}` : undefined,
       `Imported assets: ${song.importedPaths.length}`,
-      song.brief ? `Brief: ${song.brief.slice(0, 240)}` : undefined
+      song.brief ? `Brief: ${song.brief.slice(0, 240)}` : undefined,
+      `brief path: songs/${song.songId}/brief.md`,
+      `lyrics path: songs/${song.songId}/LYRICS.md`,
+      dashboardSongLink(input, song.songId)
     ].filter(Boolean).join("\n");
     return {
       kind: "song",

@@ -20,6 +20,7 @@ export interface TelegramBotWorkerOptions {
   fetchImpl?: TelegramFetch;
   getAutopilotStatus?: () => Promise<AutopilotStatus>;
   aiReviewProvider?: AiReviewProvider;
+  dashboardBaseUrl?: string;
 }
 
 export interface TelegramPollResult {
@@ -208,7 +209,8 @@ export class TelegramBotWorker {
           chatId: message.chat.id,
           workspaceRoot: this.options.root,
           autopilotStatus: await this.options.getAutopilotStatus?.(),
-          aiReviewProvider: this.options.aiReviewProvider
+          aiReviewProvider: this.options.aiReviewProvider,
+          dashboardBaseUrl: this.options.dashboardBaseUrl ?? (process.env.OPENCLAW_DASHBOARD_BASE_URL?.trim() || undefined)
         });
     if (route.shouldStoreFreeText) {
       await storeTelegramInbox(this.options.root, {

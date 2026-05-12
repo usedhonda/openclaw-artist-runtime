@@ -22,3 +22,19 @@ export async function readRuntimeEvents(root: string, limit = 20): Promise<Runti
     .sort((left, right) => right.timestamp - left.timestamp)
     .slice(0, limit);
 }
+
+function eventSongId(event: RuntimeEvent): string | undefined {
+  return "songId" in event && typeof event.songId === "string" ? event.songId : undefined;
+}
+
+export async function readSongEventsAsc(root: string, songId: string, limit = 200): Promise<RuntimeEvent[]> {
+  try {
+    const events = await readRuntimeEvents(root, Number.MAX_SAFE_INTEGER);
+    return events
+      .filter((event) => eventSongId(event) === songId)
+      .sort((left, right) => left.timestamp - right.timestamp)
+      .slice(-Math.max(0, limit));
+  } catch {
+    return [];
+  }
+}

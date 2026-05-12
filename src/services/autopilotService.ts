@@ -178,7 +178,7 @@ function nextActionForStage(stage: AutopilotStage): string {
   }
 }
 
-function stageFromSong(song?: SongState): AutopilotStage {
+export function stageFromSong(song?: SongState): AutopilotStage {
   if (!song) {
     return "planning";
   }
