@@ -115,7 +115,7 @@ describe("v10.28-C Phase A: Resources section injection", () => {
     expect(body).not.toContain("songs/song-x1/lyrics/lyrics.v1.md");
     expect(body).toContain("songs/song-x1/suno/style.md");
     expect(body).toContain("songs/song-x1/song.md");
-    expect(body).toContain("🔗 Dashboard: https://example.test/plugins/artist-runtime/ui/#song=song-x1");
+    expect(body).toContain("🔗 Dashboard: https://example.test/plugins/artist-runtime#song=song-x1");
   });
 
   it("emits song.md + suno/runs.jsonl + latest lyrics for song_take_completed", async () => {
@@ -134,7 +134,7 @@ describe("v10.28-C Phase A: Resources section injection", () => {
     expect(body).toContain("songs/song-x1/song.md");
     expect(body).toContain("songs/song-x1/suno/runs.jsonl");
     expect(body).toContain("songs/song-x1/lyrics/lyrics.v3.md");
-    expect(body).toContain("🔗 Dashboard: https://example.test/plugins/artist-runtime/ui/#song=song-x1");
+    expect(body).toContain("🔗 Dashboard: https://example.test/plugins/artist-runtime#song=song-x1");
   });
 
   it("drops the local-path line entirely when no resource files exist but keeps the dashboard link", async () => {
@@ -147,7 +147,7 @@ describe("v10.28-C Phase A: Resources section injection", () => {
     });
 
     expect(body).not.toContain("📂 Local:");
-    expect(body).toContain("🔗 Dashboard: https://example.test/plugins/artist-runtime/ui/#song=spawn_a1");
+    expect(body).toContain("🔗 Dashboard: https://example.test/plugins/artist-runtime#song=spawn_a1");
   });
 
   it("emits dashboard root only for events without a songId (artist_pulse_drafted)", async () => {
@@ -160,7 +160,7 @@ describe("v10.28-C Phase A: Resources section injection", () => {
     });
 
     expect(body).not.toContain("📂 Local:");
-    expect(body).toContain("🔗 Dashboard: https://example.test/plugins/artist-runtime/ui/");
+    expect(body).toContain("🔗 Dashboard: https://example.test/plugins/artist-runtime");
     expect(body).not.toMatch(/Dashboard:.*#song=/);
   });
 
@@ -209,7 +209,7 @@ describe("v10.28-C Phase A: Resources section injection", () => {
       dashboardBaseUrl: "https://example.test/////"
     });
 
-    expect(body).toContain("https://example.test/plugins/artist-runtime/ui/#song=spawn_a2");
+    expect(body).toContain("https://example.test/plugins/artist-runtime#song=spawn_a2");
     expect(body).not.toContain("test/////");
   });
 });

@@ -98,7 +98,7 @@ function helpInfo(): string {
 
 function dashboardSongLink(input: TelegramRouteInput, songId: string): string | undefined {
   const baseUrl = input.dashboardBaseUrl?.replace(/\/+$/, "");
-  return baseUrl ? `↗ ${baseUrl}/ui/#song=${songId}` : undefined;
+  return baseUrl ? `↗ ${baseUrl}/plugins/artist-runtime#song=${songId}` : undefined;
 }
 
 function songResourceLines(input: TelegramRouteInput, songId: string): string[] {

@@ -61,7 +61,7 @@ describe("telegram command router", () => {
     expect(result.responseText).toContain("song-001");
     expect(result.responseText).toContain("Cold Relay");
     expect(result.responseText).toContain("path: songs/song-001/");
-    expect(result.responseText).toContain("http://127.0.0.1:8787/ui/#song=song-001");
+    expect(result.responseText).toContain("http://127.0.0.1:8787/plugins/artist-runtime#song=song-001");
   });
 
   it("routes /timeline to recent lifecycle rows with dashboard links", async () => {
@@ -78,7 +78,7 @@ describe("telegram command router", () => {
     expect(result.responseText).toContain("▶ song-001 | suno_generation | \"Ash Road\"");
     expect(result.responseText).toContain("  song-002 | completed | \"Cold Relay\"");
     expect(result.responseText).toContain("path: songs/song-001/");
-    expect(result.responseText).toContain("http://127.0.0.1:8787/ui/#song=song-001");
+    expect(result.responseText).toContain("http://127.0.0.1:8787/plugins/artist-runtime#song=song-001");
   });
 
   it("shows a song detail summary", async () => {
@@ -105,7 +105,7 @@ describe("telegram command router", () => {
     expect(result.responseText).toContain("A cold wire hymn");
     expect(result.responseText).toContain("brief path: songs/song-001/brief.md");
     expect(result.responseText).toContain("lyrics path: songs/song-001/LYRICS.md");
-    expect(result.responseText).toContain("http://127.0.0.1:8787/ui/#song=song-001");
+    expect(result.responseText).toContain("http://127.0.0.1:8787/plugins/artist-runtime#song=song-001");
   });
 
   it("queues /regen as a dry-run inbox request", async () => {

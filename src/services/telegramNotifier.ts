@@ -786,8 +786,8 @@ export async function enrichWithResources(
   if (options.dashboardBaseUrl) {
     const baseUrl = options.dashboardBaseUrl.replace(/\/+$/, "");
     const url = songId
-      ? `${baseUrl}/plugins/artist-runtime/ui/#song=${encodeURIComponent(songId)}`
-      : `${baseUrl}/plugins/artist-runtime/ui/`;
+      ? `${baseUrl}/plugins/artist-runtime#song=${encodeURIComponent(songId)}`
+      : `${baseUrl}/plugins/artist-runtime`;
     if (!secretLikePattern.test(url)) {
       lines.push(`🔗 Dashboard: ${url}`);
     }
