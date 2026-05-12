@@ -71,9 +71,9 @@ describe("telegram song completion SONGBOOK callbacks", () => {
     const markupPayload = JSON.parse(String((markupCall?.[1] as RequestInit).body)) as { reply_markup: { inline_keyboard: Array<Array<{ text: string; callback_data: string }>> } };
     const buttons = markupPayload.reply_markup.inline_keyboard.flat();
     expect(buttons).toEqual([
-      { text: "本に書く", callback_data: `cb:${write?.callbackId}` },
-      { text: "寝かす", callback_data: `cb:${skip?.callbackId}` },
-      { text: "X に出す準備", callback_data: `cb:${xPrepare?.callbackId}` }
+      { text: "SONGBOOK.md に追記", callback_data: `cb:${write?.callbackId}` },
+      { text: "保留", callback_data: `cb:${skip?.callbackId}` },
+      { text: "X 草案を作る", callback_data: `cb:${xPrepare?.callbackId}` }
     ]);
     expect(buttons.map((button) => button.text).join(" ")).not.toMatch(/Instagram|TikTok|IG/i);
 

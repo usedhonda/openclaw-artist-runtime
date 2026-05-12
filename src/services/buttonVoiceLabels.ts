@@ -1,36 +1,42 @@
+// Inline button labels for Telegram notifications.
+//
+// Public-plugin policy (v10.27): labels are plain JA action verbs paired
+// with the concrete target (file name / module). No artist voice / persona
+// here — voice belongs in the message body. Third-party plugin users must
+// be able to read a label and immediately know which action runs.
 export const buttonVoiceLabels = {
   songCompletion: {
-    write: "本に書く",
-    later: "寝かす",
-    xPrepare: "X に出す準備"
+    write: "SONGBOOK.md に追記",
+    later: "保留",
+    xPrepare: "X 草案を作る"
   },
   distribution: {
-    apply: "反映する",
-    later: "あとで"
+    apply: "配信記録に反映",
+    later: "保留"
   },
   dailyVoice: {
-    publish: "これで出す",
-    edit: "直す",
-    cancel: "やめる"
+    publish: "投稿",
+    edit: "編集",
+    cancel: "キャンセル"
   },
   songSpawn: {
-    inject: "これで作る",
-    skip: "今は要らない",
-    edit: "直してから"
+    inject: "採用",
+    skip: "スキップ",
+    edit: "編集"
   },
   promptPackReady: {
-    go: "Suno 行く",
-    edit: "歌詞、 直す",
-    skip: "あとで"
+    go: "Suno 生成へ",
+    edit: "lyrics-suno.md を編集",
+    skip: "保留"
   },
   planningSkeleton: {
-    apply: "いいね、 進めて",
-    skip: "やめとく",
+    apply: "進める",
+    skip: "中止",
     edit: "書き直す"
   },
   takeSelect: {
-    accept: "これで決まり",
-    regenerate: "もう一回",
-    skip: "あとで"
+    accept: "採用",
+    regenerate: "再生成",
+    skip: "保留"
   }
 } as const;
