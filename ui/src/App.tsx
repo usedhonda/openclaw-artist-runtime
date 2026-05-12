@@ -15,6 +15,7 @@ import { SunoDailyBudgetDetailCard, type SunoBudgetDetail } from "./components/S
 import { BirdCallLedgerCard, type BirdLedgerDetail } from "./components/BirdCallLedgerCard";
 import { DistributionDetectionCard, type DistributionDetectionDetail } from "./components/DistributionDetectionCard";
 import { RuntimeActionMirrorCard, type RuntimeActionMirrorEvent } from "./components/RuntimeActionMirrorCard";
+import { SongLifecycleTimelineCard } from "./components/SongLifecycleTimelineCard";
 import { RuntimeSongbookCard, type SongbookLookupResult } from "./components/RuntimeSongbookCard";
 import { deriveConnectionState } from "../../src/services/connectionState";
 import { defaultDistributionEventsFilter, type DistributionEventsFilterState } from "../../src/services/distributionEventsFilter";
@@ -1405,6 +1406,10 @@ export function App() {
     />
   );
 
+  const songLifecycleTimelinePanel = (
+    <SongLifecycleTimelineCard />
+  );
+
   const manualSongCreatePanel = (
     <ManualSongCreateCard
       busy={busy !== null}
@@ -1700,11 +1705,11 @@ export function App() {
         ))}
       </nav>
 
-      {activeView === "dashboard" ? <section className="two-column">{cockpitStrip}{manualSongCreatePanel}{runtimeActionMirrorPanel}{pendingApprovalsPanel}{lastCyclePanel}{setupPanel}{alertsPanel}{currentSongPanel}{distributionWorkerPanel}{observabilityPanel}{recentXResultPanel}</section> : null}
+      {activeView === "dashboard" ? <section className="two-column">{cockpitStrip}{manualSongCreatePanel}{runtimeActionMirrorPanel}{songLifecycleTimelinePanel}{pendingApprovalsPanel}{lastCyclePanel}{setupPanel}{alertsPanel}{currentSongPanel}{distributionWorkerPanel}{observabilityPanel}{recentXResultPanel}</section> : null}
       {activeView === "setup" ? <section className="two-column">{setupPanel}{sunoPanel}{platformsPanel}{configPanel}</section> : null}
       {activeView === "music" ? <section className="two-column">{sunoBudgetDetailPanel}{sunoPanel}{currentSongPanel}{recentXResultPanel}</section> : null}
       {activeView === "platforms" ? <section className="two-column">{birdLedgerPanel}{distributionDetectionPanel}{runtimeActionMirrorPanel}{platformsPanel}{distributionWorkerPanel}{observabilityPanel}{replySimulationPanel}</section> : null}
-      {activeView === "songs" ? <section className="two-column">{songChangeSetPanel}{runtimeSongbookPanel}{runtimeActionMirrorPanel}{songsPanel}{currentSongPanel}</section> : null}
+      {activeView === "songs" ? <section className="two-column">{songChangeSetPanel}{runtimeSongbookPanel}{runtimeActionMirrorPanel}{songLifecycleTimelinePanel}{songsPanel}{currentSongPanel}</section> : null}
       {activeView === "prompt-ledger" ? <section className="two-column">{songsPanel}{promptLedgerPanel}</section> : null}
       {activeView === "alerts" ? <section className="two-column">{alertsPanel}{auditPanel}</section> : null}
       {activeView === "artist-mind" ? <section className="single-column">{personaChangeSetPanel}{artistMindPanel}</section> : null}
