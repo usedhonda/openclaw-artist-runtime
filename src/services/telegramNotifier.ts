@@ -13,6 +13,8 @@ import { composeVoiceTopOnly, isUnsafeCommandVoiceTopForTest } from "./commandVo
 import { composePlanningSkeletonVoice } from "./planningSkeletonVoiceComposer.js";
 import { composeSongSpawnProposalVoice } from "./songSpawnProposalVoiceComposer.js";
 import { buttonVoiceLabels } from "./buttonVoiceLabels.js";
+import { access, readdir } from "node:fs/promises";
+import { join } from "node:path";
 
 export interface TelegramNotifierOptions {
   token: string;
@@ -20,6 +22,7 @@ export interface TelegramNotifierOptions {
   workspaceRoot?: string;
   aiReviewProvider?: AiReviewProvider;
   fetchImpl?: TelegramFetch;
+  dashboardBaseUrl?: string;
 }
 
 const TELEGRAM_SILENT_EVENT_TYPES: ReadonlySet<RuntimeEvent["type"]> = new Set([
@@ -54,7 +57,8 @@ export class TelegramNotifier {
     if (isTelegramSilentEvent(event)) return;
     const text = await formatRuntimeEvent(event, {
       workspaceRoot: this.options.workspaceRoot,
-      aiReviewProvider: this.options.aiReviewProvider
+      aiReviewProvider: this.options.aiReviewProvider,
+      dashboardBaseUrl: this.options.dashboardBaseUrl
     });
     const sent = await this.client.sendMessage(this.options.chatId, text);
     if (event.type === "song_take_completed") {
@@ -650,11 +654,155 @@ function stripHtmlComments(text: string): string {
     .trim();
 }
 
+const RESOURCE_TARGETED_EVENT_TYPES: ReadonlySet<RuntimeEvent["type"]> = new Set([
+  "prompt_pack_ready",
+  "song_take_completed",
+  "song_spawn_proposed",
+  "planning_skeleton_incomplete",
+  "take_select_pending",
+  "artist_pulse_drafted",
+  "distribution_change_detected"
+]);
+
+function extractResourceSongId(event: RuntimeEvent): string | undefined {
+  switch (event.type) {
+    case "song_spawn_proposed":
+      return event.candidateSongId;
+    case "artist_pulse_drafted":
+      return undefined;
+    case "prompt_pack_ready":
+    case "song_take_completed":
+    case "take_select_pending":
+    case "planning_skeleton_incomplete":
+    case "distribution_change_detected":
+      return event.songId;
+    default:
+      return undefined;
+  }
+}
+
+async function findLatestLyricsRelativePath(workspaceRoot: string, songId: string): Promise<string | undefined> {
+  const dir = `songs/${songId}/lyrics`;
+  const entries = await readdir(join(workspaceRoot, dir), { withFileTypes: true }).catch(() => []);
+  const latest = entries
+    .filter((entry) => entry.isFile())
+    .map((entry) => {
+      const version = entry.name.match(/^lyrics\.v(\d+)\.md$/)?.[1];
+      return version ? { name: entry.name, version: Number.parseInt(version, 10) } : undefined;
+    })
+    .filter((entry): entry is { name: string; version: number } => entry !== undefined)
+    .sort((left, right) => right.version - left.version)
+    .at(0);
+  return latest ? `${dir}/${latest.name}` : undefined;
+}
+
+async function filterExistingResourcePaths(workspaceRoot: string, paths: string[]): Promise<string[]> {
+  const results: string[] = [];
+  for (const relative of paths) {
+    try {
+      await access(join(workspaceRoot, relative));
+      results.push(relative);
+    } catch {
+      // missing file: silently drop
+    }
+  }
+  return results;
+}
+
+async function resolveResourcePathsForEvent(
+  event: RuntimeEvent,
+  workspaceRoot: string,
+  songId: string
+): Promise<string[]> {
+  const songDir = `songs/${songId}`;
+  let candidates: Array<string | undefined> = [];
+  switch (event.type) {
+    case "prompt_pack_ready": {
+      const lyricsPath = await findLatestLyricsRelativePath(workspaceRoot, songId);
+      candidates = [
+        `${songDir}/brief.md`,
+        lyricsPath,
+        `${songDir}/suno/style.md`,
+        `${songDir}/song.md`
+      ];
+      break;
+    }
+    case "planning_skeleton_incomplete": {
+      const lyricsPath = await findLatestLyricsRelativePath(workspaceRoot, songId);
+      candidates = [
+        `${songDir}/brief.md`,
+        lyricsPath,
+        `${songDir}/song.md`
+      ];
+      break;
+    }
+    case "song_take_completed":
+    case "take_select_pending": {
+      const lyricsPath = await findLatestLyricsRelativePath(workspaceRoot, songId);
+      candidates = [
+        `${songDir}/song.md`,
+        `${songDir}/suno/runs.jsonl`,
+        lyricsPath
+      ];
+      break;
+    }
+    case "song_spawn_proposed":
+      candidates = [`${songDir}/brief.md`];
+      break;
+    case "distribution_change_detected":
+      candidates = [
+        `${songDir}/social/social-publish.jsonl`,
+        `${songDir}/song.md`
+      ];
+      break;
+    default:
+      return [];
+  }
+  const concrete = candidates.filter((p): p is string => Boolean(p));
+  return filterExistingResourcePaths(workspaceRoot, concrete);
+}
+
+export async function enrichWithResources(
+  event: RuntimeEvent,
+  options: Pick<TelegramNotifierOptions, "workspaceRoot" | "dashboardBaseUrl">,
+  body: string
+): Promise<string> {
+  if (!RESOURCE_TARGETED_EVENT_TYPES.has(event.type)) return body;
+
+  const songId = extractResourceSongId(event);
+  const lines: string[] = [];
+
+  if (options.workspaceRoot && songId) {
+    const paths = await resolveResourcePathsForEvent(event, options.workspaceRoot, songId).catch(() => []);
+    const safe = paths.filter((relative) => !secretLikePattern.test(relative));
+    if (safe.length > 0) {
+      lines.push("📂 Local:");
+      for (const relative of safe) {
+        lines.push(`  ${relative}`);
+      }
+    }
+  }
+
+  if (options.dashboardBaseUrl) {
+    const baseUrl = options.dashboardBaseUrl.replace(/\/+$/, "");
+    const url = songId
+      ? `${baseUrl}/plugins/artist-runtime/ui/#song=${encodeURIComponent(songId)}`
+      : `${baseUrl}/plugins/artist-runtime/ui/`;
+    if (!secretLikePattern.test(url)) {
+      lines.push(`🔗 Dashboard: ${url}`);
+    }
+  }
+
+  if (lines.length === 0) return body;
+  return `${body}\n\n─────\n${lines.join("\n")}`;
+}
+
 export async function formatRuntimeEvent(
   event: RuntimeEvent,
-  options: Pick<TelegramNotifierOptions, "workspaceRoot" | "aiReviewProvider"> = {}
+  options: Pick<TelegramNotifierOptions, "workspaceRoot" | "aiReviewProvider" | "dashboardBaseUrl"> = {}
 ): Promise<string> {
-  return stripHtmlComments(await formatRuntimeEventRaw(event, options));
+  const body = stripHtmlComments(await formatRuntimeEventRaw(event, options));
+  return enrichWithResources(event, options, body);
 }
 
 async function formatRuntimeEventRaw(

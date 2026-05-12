@@ -75,11 +75,13 @@ export async function startTelegramNotifierFromEnv(env: NodeJS.ProcessEnv = proc
   }
   const workspaceRoot = env.OPENCLAW_LOCAL_WORKSPACE?.trim() || resolveDefaultWorkspaceRoot();
   const config = await resolveRuntimeConfig({ artist: { workspaceRoot } } as Partial<ArtistRuntimeConfig>, workspaceRoot);
+  const dashboardBaseUrl = env.OPENCLAW_DASHBOARD_BASE_URL?.trim() || undefined;
   telegramNotifierUnsubscribers = ownerIds.map((chatId) => new TelegramNotifier({
     token,
     chatId: Number.isFinite(Number(chatId)) ? Number(chatId) : chatId,
     workspaceRoot: config.artist.workspaceRoot,
-    aiReviewProvider: config.aiReview.provider
+    aiReviewProvider: config.aiReview.provider,
+    dashboardBaseUrl
   }).subscribe(getRuntimeEventBus()));
   setTimeout(() => {
     void maybeSendSilenceRecoveryNotice(token, ownerIds, config.artist.workspaceRoot);
