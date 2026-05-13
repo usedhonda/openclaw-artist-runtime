@@ -118,6 +118,18 @@ async function fetchJson<T>(path: string): Promise<T> {
   return response.json() as Promise<T>;
 }
 
+async function postJson<T>(path: string, body?: unknown): Promise<T> {
+  const response = await fetch(`${apiBase}${path}`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body ?? {})
+  });
+  if (!response.ok) {
+    throw new Error(`${path} -> ${response.status}`);
+  }
+  return response.json() as Promise<T>;
+}
+
 function parseRuntimeEvent(data: string): RuntimeEvent | undefined {
   try {
     const parsed = JSON.parse(data) as RuntimeEvent;
@@ -179,6 +191,23 @@ export function SongDetailCard(props: SongDetailCardProps) {
   const [events, setEvents] = useState<RuntimeEvent[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [sunoHandoffBusy, setSunoHandoffBusy] = useState(false);
+  const [sunoHandoffError, setSunoHandoffError] = useState<string | null>(null);
+  const [sunoHandoffResult, setSunoHandoffResult] = useState<string | null>(null);
+
+  const completeSunoHandoff = async () => {
+    setSunoHandoffBusy(true);
+    setSunoHandoffError(null);
+    setSunoHandoffResult(null);
+    try {
+      const res = await postJson<{ state?: string; connected?: boolean }>("/suno/handoff/complete");
+      setSunoHandoffResult(`state=${res.state ?? "-"} · connected=${res.connected ? "true" : "false"}`);
+    } catch (err) {
+      setSunoHandoffError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setSunoHandoffBusy(false);
+    }
+  };
 
   useEffect(() => {
     let cancelled = false;
@@ -272,6 +301,23 @@ export function SongDetailCard(props: SongDetailCardProps) {
             <div><dt>Updated</dt><dd>{formatTimestamp(song.updatedAt)}</dd></div>
             <div><dt>Degraded</dt><dd>{song.degradedLyrics ? "yes" : "no"}</dd></div>
           </dl>
+
+          <div className="item song-detail-suno-handoff">
+            <div className="muted">Suno worker</div>
+            <button
+              type="button"
+              className="link-button"
+              disabled={sunoHandoffBusy}
+              onClick={() => void completeSunoHandoff()}
+            >
+              Suno ログイン済を記録
+            </button>
+            <div className="muted">
+              scripts/openclaw-suno-login.mjs で sign in した後に押す
+            </div>
+            {sunoHandoffResult ? <div className="muted">{sunoHandoffResult}</div> : null}
+            {sunoHandoffError ? <div className="muted">error: {sunoHandoffError}</div> : null}
+          </div>
 
           {song.lastReason ? (
             <div className="item song-detail-reason">

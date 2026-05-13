@@ -1539,6 +1539,13 @@ export function registerRoutes(api: unknown): void {
         if (segments.length === 1 && segments[0] === "reconnect") {
           return new SunoBrowserWorker(config.artist.workspaceRoot, { config }).reconnect();
         }
+        if (segments.length === 2 && segments[0] === "handoff" && segments[1] === "complete") {
+          // Plan v10.33 Phase 4.5: 御大が `scripts/openclaw-suno-login.mjs` で artist 専用
+          // user data dir に sign in した後、 worker state を "connected" に確定するための
+          // 手動 signal endpoint。 driver.probe() は発火しない (御大の手動操作で sign in
+          // 完了が保証される)。
+          return new SunoBrowserWorker(config.artist.workspaceRoot, { config }).completeManualLoginHandoff();
+        }
         if (segments.length === 2 && segments[0] === "generate") {
           return generateSunoRun({
             workspaceRoot: config.artist.workspaceRoot,

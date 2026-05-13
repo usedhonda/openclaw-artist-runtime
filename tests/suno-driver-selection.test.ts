@@ -1,5 +1,4 @@
-import { mkdtempSync, readFileSync, writeFileSync } from "node:fs";
-import { mkdir } from "node:fs/promises";
+import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -164,27 +163,9 @@ describe("Suno driver selection", () => {
     expect(globalThis.fetch).not.toHaveBeenCalled();
   });
 
-  it("selects live Playwright driver from env and copies the operator Chrome profile", async () => {
-    const root = mkdtempSync(join(tmpdir(), "artist-runtime-suno-driver-env-live-"));
-    const source = join(root, "Chrome", "Default");
-    const dest = join(root, "dedicated-suno-profile");
-    await mkdir(source, { recursive: true });
-    writeFileSync(join(source, "Cookies"), "operator-cookie-state", "utf8");
-    process.env.OPENCLAW_SUNO_LIVE = "on";
-    process.env.OPENCLAW_SUNO_CHROME_PROFILE_SOURCE = source;
-    process.env.OPENCLAW_SUNO_CHROME_PROFILE_DEST = dest;
-    const { context } = createProbeContext();
-    launchPersistentContextMock.mockResolvedValue(context);
+  // Plan v10.33: profile copy 路線を deprecate (`project_plan_v9_24b_profile_copy_dead_end`)。
+  // 御大主 Chrome からの copy ではなく `.openclaw-browser-profiles/suno` に
+  // `scripts/openclaw-suno-login.mjs` で手動 sign in する運用に移行した。
+  // 旧 "copies the operator Chrome profile" test はこの commit で削除。
 
-    const worker = new SunoBrowserWorker(root);
-    await worker.start();
-
-    expect(launchPersistentContextMock).toHaveBeenCalledWith(dest, {
-      headless: false,
-      channel: "chrome",
-      args: ["--disable-blink-features=AutomationControlled"],
-      ignoreDefaultArgs: ["--enable-automation"]
-    });
-    expect(readFileSync(join(dest, "Default", "Cookies"), "utf8")).toBe("operator-cookie-state");
-  });
 });

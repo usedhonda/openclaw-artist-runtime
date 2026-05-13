@@ -137,10 +137,6 @@ export function sunoCdpEndpoint(env: NodeJS.ProcessEnv = process.env): string {
   return env.OPENCLAW_SUNO_CDP_ENDPOINT?.trim() || "http://127.0.0.1:9222";
 }
 
-export function sunoChromeProfileSource(env: NodeJS.ProcessEnv = process.env): string {
-  return env.OPENCLAW_SUNO_CHROME_PROFILE_SOURCE?.trim() || "/Users/usedhonda/Library/Application Support/Google/Chrome/Default";
-}
-
 export function sunoChromeProfileDest(env: NodeJS.ProcessEnv = process.env): string {
   return env.OPENCLAW_SUNO_CHROME_PROFILE_DEST?.trim() || ".openclaw-browser-profiles/suno";
 }

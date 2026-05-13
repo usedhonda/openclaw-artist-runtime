@@ -696,6 +696,20 @@ export function App() {
     }
   };
 
+  const completeSunoHandoff = async () => {
+    setBusy("suno-handoff-complete");
+    try {
+      await apiPost("/suno/handoff/complete");
+      await refresh(selectedSongId);
+    } catch (caughtError) {
+      const message = caughtError instanceof Error ? caughtError.message : String(caughtError);
+      setError(message);
+      showErrorToast("runtime", "suno_handoff_complete_failed", message);
+    } finally {
+      setBusy(null);
+    }
+  };
+
   const runManualSongCreate = async <T,>(path: string, body?: unknown): Promise<T> => {
     setBusy("manual-song-create");
     try {
@@ -1487,6 +1501,35 @@ export function App() {
     </article>
   );
 
+  const sunoWorkerHandoffPanel = (
+    <article className="panel">
+      <div className="section-title">Suno worker</div>
+      <div className="list">
+        <div className="item">
+          <strong>state: {status?.sunoWorker.state ?? "-"}</strong>
+          <div className="muted">
+            {status?.sunoWorker.connected ? "connected" : "disconnected"}
+            {status?.sunoWorker.disconnectedReason ? ` · ${status.sunoWorker.disconnectedReason}` : ""}
+            {status?.sunoWorker.pendingAction ? ` · ${status.sunoWorker.pendingAction}` : ""}
+          </div>
+        </div>
+        <div className="item">
+          <button
+            type="button"
+            className="link-button"
+            disabled={busy !== null}
+            onClick={() => void completeSunoHandoff()}
+          >
+            Suno ログイン済を記録
+          </button>
+          <div className="muted">
+            scripts/openclaw-suno-login.mjs で sign in した後に押す
+          </div>
+        </div>
+      </div>
+    </article>
+  );
+
   const currentSongPanel = (
     <article className="panel">
       <div className="section-title">Current Song</div>
@@ -1680,9 +1723,9 @@ export function App() {
         <section className="single-column song-page-shell">{songDetailPanel}</section>
       ) : (
         <>
-          {activeView === "dashboard" ? <section className="two-column">{cockpitStrip}{manualSongCreatePanel}{runtimeActionMirrorPanel}{songLifecycleTimelinePanel}{pendingApprovalsPanel}{lastCyclePanel}{setupPanel}{alertsPanel}{currentSongPanel}{distributionWorkerPanel}{observabilityPanel}{recentXResultPanel}</section> : null}
+          {activeView === "dashboard" ? <section className="two-column">{cockpitStrip}{sunoWorkerHandoffPanel}{manualSongCreatePanel}{runtimeActionMirrorPanel}{songLifecycleTimelinePanel}{pendingApprovalsPanel}{lastCyclePanel}{setupPanel}{alertsPanel}{currentSongPanel}{distributionWorkerPanel}{observabilityPanel}{recentXResultPanel}</section> : null}
           {activeView === "setup" ? <section className="two-column">{setupPanel}{sunoPanel}{platformsPanel}{configPanel}</section> : null}
-          {activeView === "music" ? <section className="two-column">{sunoBudgetDetailPanel}{sunoPanel}{currentSongPanel}{recentXResultPanel}</section> : null}
+          {activeView === "music" ? <section className="two-column">{sunoWorkerHandoffPanel}{sunoBudgetDetailPanel}{sunoPanel}{currentSongPanel}{recentXResultPanel}</section> : null}
           {activeView === "platforms" ? <section className="two-column">{birdLedgerPanel}{distributionDetectionPanel}{runtimeActionMirrorPanel}{platformsPanel}{distributionWorkerPanel}{observabilityPanel}{replySimulationPanel}</section> : null}
           {activeView === "songs" ? <section className="two-column">{songChangeSetPanel}{runtimeSongbookPanel}{runtimeActionMirrorPanel}{songLifecycleTimelinePanel}{songsPanel}{currentSongPanel}</section> : null}
           {activeView === "prompt-ledger" ? <section className="two-column">{songsPanel}{promptLedgerPanel}</section> : null}

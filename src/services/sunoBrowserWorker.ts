@@ -16,8 +16,7 @@ import type {
 } from "../types.js";
 import { DEFAULT_SUNO_PROFILE_PATH, PlaywrightSunoDriver } from "./sunoPlaywrightDriver.js";
 import { DEFAULT_SUNO_PROFILE_STALE_DAYS, detectStaleProfile } from "./sunoProfileLifecycle.js";
-import { ensureSunoChromeProfileCopy } from "./sunoChromeProfileCopy.js";
-import { isSunoCdpEnabled, isSunoLiveDisabled, isSunoLiveEnabled, sunoChromeProfileDest, sunoChromeProfileSource } from "./runtimeConfig.js";
+import { isSunoLiveDisabled, isSunoLiveEnabled, sunoChromeProfileDest } from "./runtimeConfig.js";
 
 type SunoWorkerProbeState = Extract<
   SunoWorkerState,
@@ -258,26 +257,13 @@ export class SunoBrowserWorker {
     return undefined;
   }
 
-  private shouldPrepareCopiedProfile(): boolean {
-    if (isSunoCdpEnabled()) {
-      return false;
-    }
-    if (this.options.profilePath) {
-      return false;
-    }
-    return !isSunoLiveDisabled() && (isSunoLiveEnabled() || this.options.driverMode === "playwright" || this.options.config?.music?.suno?.driver === "playwright");
-  }
-
   private async prepareCopiedProfile(): Promise<void> {
-    if (!this.shouldPrepareCopiedProfile()) {
-      return;
-    }
-    const result = await ensureSunoChromeProfileCopy(sunoChromeProfileSource(), this.profilePath());
-    if (result.status === "source_missing") {
-      console.warn("[artist-runtime] Suno Chrome profile source missing; continuing with dedicated profile");
-    } else if (result.failed.length > 0) {
-      console.warn(`[artist-runtime] Suno Chrome profile copy skipped ${result.failed.length} item(s)`);
-    }
+    // Plan v10.33: profile copy 路線を deprecate。
+    // Plan v9.24b で Cookies+IndexedDB+SW+encryption key の transplant が architecturally
+    // 不可と確定 (memory `project_plan_v9_24b_profile_copy_dead_end`)。
+    // Suno worker は artist 専用 user data dir (`.openclaw-browser-profiles/suno`) を
+    // `scripts/openclaw-suno-login.mjs` 経由の 1 回手動 sign in で初期化する運用に切替。
+    return;
   }
 
   async start(options: StartOptions = {}): Promise<SunoWorkerStatus> {
