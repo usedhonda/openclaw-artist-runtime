@@ -106,6 +106,14 @@ export function isDebugCallbackDispatchEnabled(env: NodeJS.ProcessEnv = process.
   return env.OPENCLAW_DEBUG_CALLBACK_DISPATCH?.trim().toLowerCase() === "on";
 }
 
+export function getPollingWatchdogMinutes(env: NodeJS.ProcessEnv = process.env): number {
+  const parsed = Number.parseInt(env.OPENCLAW_POLLING_WATCHDOG_MINUTES ?? "", 10);
+  if (!Number.isFinite(parsed)) {
+    return 10;
+  }
+  return Math.max(0, parsed);
+}
+
 export function isSunoLiveEnabled(env: NodeJS.ProcessEnv = process.env): boolean {
   const live = env.OPENCLAW_SUNO_LIVE?.trim().toLowerCase();
   const driver = env.OPENCLAW_SUNO_DRIVER?.trim().toLowerCase();

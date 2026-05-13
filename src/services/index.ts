@@ -4,6 +4,7 @@ import { safeRegisterService } from "../pluginApi.js";
 import type { ArtistRuntimeConfig } from "../types.js";
 import { ArtistAutopilotService } from "./autopilotService.js";
 import { getAutopilotTicker } from "./autopilotTicker.js";
+import { startCallbackPollingWatchdog } from "./callbackPollingWatchdog.js";
 import { getRuntimeEventBus } from "./runtimeEventBus.js";
 import { isTelegramNotifierEnabled, resolveDefaultWorkspaceRoot, resolveRuntimeConfig } from "./runtimeConfig.js";
 import { SocialDistributionWorker } from "./socialDistributionWorker.js";
@@ -12,6 +13,7 @@ import { getTelegramOwnerUserIds } from "./telegramAuth.js";
 import { TelegramNotifier } from "./telegramNotifier.js";
 
 let telegramNotifierUnsubscribers: Array<() => void> = [];
+let stopCallbackWatchdog: (() => void) | null = null;
 
 const SILENCE_RECOVERY_WINDOW_MS = 10 * 60 * 1000;
 const SILENCE_RECOVERY_DELAY_MS = 8000;
@@ -123,6 +125,22 @@ export function registerServices(api: unknown): void {
       start: () => startTelegramNotifierFromEnv(),
       stop: () => {
         stopTelegramNotifierSubscriptions();
+      }
+    })
+  });
+
+  safeRegisterService(api, {
+    name: "callbackPollingWatchdog",
+    create: () => ({
+      start: () => {
+        if (!stopCallbackWatchdog) {
+          stopCallbackWatchdog = startCallbackPollingWatchdog();
+        }
+        return { started: 1 };
+      },
+      stop: () => {
+        stopCallbackWatchdog?.();
+        stopCallbackWatchdog = null;
       }
     })
   });
