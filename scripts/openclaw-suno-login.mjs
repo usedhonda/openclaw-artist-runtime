@@ -7,6 +7,10 @@ import { resolve } from "node:path";
 
 const DEFAULT_SUNO_PROFILE_PATH = ".openclaw-browser-profiles/suno";
 const SUNO_CREATE_URL = "https://suno.com/create";
+const SUNO_BROWSER_ARGS = [
+  "--disable-blink-features=AutomationControlled",
+  "--password-store=basic"
+];
 
 const profilePath = resolve(process.argv[2] ?? DEFAULT_SUNO_PROFILE_PATH);
 
@@ -17,10 +21,11 @@ async function main() {
 
   await mkdir(profilePath, { recursive: true });
 
+  const executablePath = process.env.OPENCLAW_SUNO_CHROME_EXECUTABLE?.trim();
   const context = await chromium.launchPersistentContext(profilePath, {
     headless: false,
-    channel: "chrome",
-    args: ["--disable-blink-features=AutomationControlled"],
+    ...(executablePath ? { executablePath } : { channel: "chrome" }),
+    args: SUNO_BROWSER_ARGS,
     ignoreDefaultArgs: ["--enable-automation"]
   });
   const page = context.pages()[0] ?? await context.newPage();

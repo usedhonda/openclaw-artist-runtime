@@ -141,6 +141,17 @@ export function sunoChromeProfileDest(env: NodeJS.ProcessEnv = process.env): str
   return env.OPENCLAW_SUNO_CHROME_PROFILE_DEST?.trim() || ".openclaw-browser-profiles/suno";
 }
 
+export function sunoChromeExecutablePath(env: NodeJS.ProcessEnv = process.env): string | undefined {
+  return env.OPENCLAW_SUNO_CHROME_EXECUTABLE?.trim() || undefined;
+}
+
+export function sunoBrowserArgs(): string[] {
+  return [
+    "--disable-blink-features=AutomationControlled",
+    "--password-store=basic"
+  ];
+}
+
 export function applyRuntimeEnvOverrides(config: ArtistRuntimeConfig, env: NodeJS.ProcessEnv = process.env): ArtistRuntimeConfig {
   const next: ArtistRuntimeConfig = {
     ...config,

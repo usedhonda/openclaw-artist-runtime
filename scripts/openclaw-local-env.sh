@@ -50,12 +50,10 @@ if [[ -n "${TELEGRAM_OWNER_USER_IDS:-}" ]]; then
   export TELEGRAM_OWNER_USER_IDS
 fi
 
-# v10.27 LIVE flip (master GO 2026-05-11). Switches Suno from mock to real
-# CDP-attached Playwright. Requires Chrome running with
-# --remote-debugging-port=9222 (see scripts/start-chrome-cdp.sh). Revert
-# by deleting this block when returning to dry-run.
+# v10.34 Layer 1 live lane. Uses system Chrome.app with an isolated
+# user-data-dir and password-store=basic by default. CDP attach remains an
+# emergency opt-in via OPENCLAW_SUNO_USE_CDP=on.
 export OPENCLAW_SUNO_LIVE=on
-export OPENCLAW_SUNO_USE_CDP=on
 export OPENCLAW_SUNO_CDP_ENDPOINT="${OPENCLAW_SUNO_CDP_ENDPOINT:-http://127.0.0.1:9222}"
 export OPENCLAW_AUTOPILOT_DRYRUN_OVERRIDE=off
 

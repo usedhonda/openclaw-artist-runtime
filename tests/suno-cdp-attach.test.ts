@@ -158,7 +158,7 @@ describe("Suno CDP attach", () => {
     expect(launchPersistentContextMock).toHaveBeenCalledWith(".openclaw-browser-profiles/suno", {
       headless: false,
       channel: "chrome",
-      args: ["--disable-blink-features=AutomationControlled"],
+      args: ["--disable-blink-features=AutomationControlled", "--password-store=basic"],
       ignoreDefaultArgs: ["--enable-automation"]
     });
     expect(context.close).toHaveBeenCalledTimes(1);

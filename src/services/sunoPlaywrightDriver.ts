@@ -11,7 +11,7 @@ import type {
 import type { SunoBrowserDriver, SunoBrowserDriverProbe } from "./sunoBrowserWorker.js";
 import type { BrowserContext, Locator, Page } from "playwright";
 import { captureSunoFailure, resolveSunoFailureLogsDir } from "./sunoFailureSnapshot.js";
-import { isSunoCdpEnabled, sunoCdpEndpoint } from "./runtimeConfig.js";
+import { isSunoCdpEnabled, sunoBrowserArgs, sunoCdpEndpoint, sunoChromeExecutablePath } from "./runtimeConfig.js";
 import { extractLyricsBody } from "./lyricsExtraction.js";
 
 export const DEFAULT_SUNO_PROFILE_PATH = ".openclaw-browser-profiles/suno";
@@ -306,10 +306,11 @@ export class PlaywrightSunoDriver implements SunoBrowserDriver {
     const stealth = (await import("puppeteer-extra-plugin-stealth")).default;
     chromium.use(stealth());
     await mkdir(this.profilePath, { recursive: true });
+    const executablePath = sunoChromeExecutablePath();
     const context = await chromium.launchPersistentContext(this.profilePath, {
       headless: false,
-      channel: "chrome",
-      args: ["--disable-blink-features=AutomationControlled"],
+      ...(executablePath ? { executablePath } : { channel: "chrome" as const }),
+      args: sunoBrowserArgs(),
       ignoreDefaultArgs: ["--enable-automation"]
     });
     const preferredPage = await this.resolvePreferredSunoPage(context);

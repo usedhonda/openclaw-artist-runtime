@@ -128,7 +128,7 @@ describe("Suno driver selection", () => {
     expect(launchPersistentContextMock).toHaveBeenCalledWith(".openclaw-browser-profiles/suno", {
       headless: false,
       channel: "chrome",
-      args: ["--disable-blink-features=AutomationControlled"],
+      args: ["--disable-blink-features=AutomationControlled", "--password-store=basic"],
       ignoreDefaultArgs: ["--enable-automation"]
     });
     expect(chromiumMock.use).toHaveBeenCalledWith(stealthResult);
