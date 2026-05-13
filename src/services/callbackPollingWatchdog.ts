@@ -1,6 +1,5 @@
-import { readCallbackActionEntries, resolveCallbackAction, markCallbackResolved, type CallbackActionEntry } from "./callbackActionRegistry.js";
-import { getPollingWatchdogMinutes, resolveDefaultWorkspaceRoot } from "./runtimeConfig.js";
-import { routeTelegramCallback } from "./telegramCallbackHandler.js";
+import { hasCallbackReprompted, readCallbackActionEntries, resolveCallbackAction, markCallbackResolved, markCallbackReprompted, type CallbackActionEntry } from "./callbackActionRegistry.js";
+import { getPollingWatchdogMinutes, isPollingWatchdogRepromptOnceEnabled, resolveDefaultWorkspaceRoot } from "./runtimeConfig.js";
 import { TelegramClient, type TelegramSendMessageOptions } from "./telegramClient.js";
 import type { TelegramReplyMarkup } from "../types.js";
 
@@ -10,6 +9,7 @@ export interface CallbackPollingWatchdogResult {
   enabled: boolean;
   scanned: number;
   recovered: number;
+  reprompted: number;
   expired: number;
   skipped: number;
 }
@@ -38,11 +38,44 @@ function latestEntries(entries: CallbackActionEntry[]): CallbackActionEntry[] {
   return [...entries.reduce((map, entry) => map.set(entry.callbackId, entry), new Map<string, CallbackActionEntry>()).values()];
 }
 
+function actionLabel(action: string): string {
+  const labels: Record<string, string> = {
+    daily_voice_publish: "daily voice 投稿",
+    daily_voice_edit: "daily voice 修正",
+    daily_voice_cancel: "daily voice 取り消し",
+    song_spawn_inject: "曲案の採用",
+    song_spawn_skip: "曲案の見送り",
+    song_spawn_edit: "曲案の修正",
+    prompt_pack_go: "Suno に進める",
+    prompt_pack_edit: "歌詞修正",
+    prompt_pack_skip: "後で確認",
+    planning_skeleton_apply: "骨組みを反映",
+    planning_skeleton_skip: "骨組みを見送り",
+    planning_skeleton_edit: "骨組みを修正",
+    take_select_accept: "take 採用",
+    take_select_regenerate: "take 再生成",
+    take_select_skip: "take 見送り",
+    x_publish_prepare: "X 投稿準備",
+    x_publish_confirm: "X 投稿",
+    x_publish_cancel: "X 投稿取り消し"
+  };
+  return labels[action] ?? action.replace(/_/g, " ");
+}
+
+function hasResolvedSongSibling(entries: CallbackActionEntry[], entry: CallbackActionEntry): boolean {
+  if (!entry.songId) return false;
+  return entries.some((candidate) =>
+    candidate.callbackId !== entry.callbackId
+    && candidate.songId === entry.songId
+    && (candidate.status === "applied" || candidate.status === "discarded" || candidate.status === "updated")
+  );
+}
+
 export async function runCallbackPollingWatchdogOnce(options: CallbackPollingWatchdogOptions = {}): Promise<CallbackPollingWatchdogResult> {
   const env = options.env ?? process.env;
   const staleMinutes = getPollingWatchdogMinutes(env);
   if (staleMinutes <= 0) {
-    return { enabled: false, scanned: 0, recovered: 0, expired: 0, skipped: 0 };
+    return { enabled: false, scanned: 0, recovered: 0, reprompted: 0, expired: 0, skipped: 0 };
   }
 
   const root = options.root ?? env.OPENCLAW_LOCAL_WORKSPACE?.trim() ?? resolveDefaultWorkspaceRoot();
@@ -54,6 +87,7 @@ export async function runCallbackPollingWatchdogOnce(options: CallbackPollingWat
     enabled: true,
     scanned: entries.length,
     recovered: 0,
+    reprompted: 0,
     expired: 0,
     skipped: 0
   };
@@ -70,6 +104,11 @@ export async function runCallbackPollingWatchdogOnce(options: CallbackPollingWat
         reason: "polling_watchdog_expired",
         now
       });
+      await markCallbackReprompted(root, latest.callbackId, {
+        now,
+        actor: "watchdog_expire",
+        reason: "polling_watchdog_expired"
+      });
       result.expired += 1;
       continue;
     }
@@ -77,24 +116,18 @@ export async function runCallbackPollingWatchdogOnce(options: CallbackPollingWat
       result.skipped += 1;
       continue;
     }
-
-    const routed = await routeTelegramCallback({
-      root,
-      client,
-      callbackQueryId: `watchdog:${latest.callbackId}`,
-      data: `cb:${latest.callbackId}`,
-      fromUserId: latest.userId,
-      chatId: latest.chatId,
-      messageId: latest.messageId,
-      now,
-      actor: "watchdog_recovery",
-      auditReason: "polling_watchdog_recovery"
-    });
-    if (routed.processed && routed.result !== "duplicate" && routed.result !== "ignored") {
-      result.recovered += 1;
-    } else {
+    if (hasResolvedSongSibling(entries, latest) || await hasCallbackReprompted(root, latest.callbackId) || !isPollingWatchdogRepromptOnceEnabled(env)) {
       result.skipped += 1;
+      continue;
     }
+
+    await client.sendMessage(latest.chatId, `⏰ 押し忘れの確認: ${actionLabel(latest.action)}`);
+    await markCallbackReprompted(root, latest.callbackId, {
+      now,
+      actor: "watchdog_reprompt",
+      reason: "polling_watchdog_reprompt"
+    });
+    result.reprompted += 1;
   }
 
   return result;

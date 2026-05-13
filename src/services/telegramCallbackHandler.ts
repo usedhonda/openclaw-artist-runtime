@@ -26,14 +26,14 @@ export interface TelegramCallbackContext {
   chatId?: number;
   messageId?: number;
   now?: number;
-  actor?: "telegram_callback" | "internal_recovery" | "watchdog_recovery";
+  actor?: "telegram_callback" | "internal_recovery" | "watchdog_recovery" | "watchdog_reprompt" | "watchdog_expire";
   auditReason?: string;
   xPublishSpawnImpl?: XPublishActionInput["spawnImpl"];
 }
 
 export interface TelegramCallbackResult {
   processed: boolean;
-  result: "ignored" | "expired" | "unauthorized" | "duplicate" | "failed" | "applied" | "discarded" | "updated";
+  result: "ignored" | "expired" | "unauthorized" | "duplicate" | "failed" | "applied" | "discarded" | "updated" | "blocked";
   reason?: string;
   callbackId?: string;
 }
@@ -141,6 +141,14 @@ function xPreviewText(draftText: string, draftHash: string, draftCharCount: numb
   ].join("\n");
 }
 
+function isWatchdogActor(actor: TelegramCallbackContext["actor"]): boolean {
+  return actor === "watchdog_recovery" || actor === "watchdog_reprompt" || actor === "watchdog_expire";
+}
+
+function isExternalPublishCallbackAction(action: string): boolean {
+  return action === "daily_voice_publish" || action === "x_publish_confirm";
+}
+
 async function finish(
   ctx: TelegramCallbackContext,
   callbackId: string | undefined,
@@ -185,6 +193,11 @@ export async function routeTelegramCallback(ctx: TelegramCallbackContext): Promi
     await markCallbackResolved(ctx.root, callbackId, { status: "duplicate", reason: `already_${entry.status}`, now });
     await appendCallbackAudit(ctx.root, auditBase(ctx, callbackId, entry, "duplicate", `already_${entry.status}`));
     return { processed: true, result: "duplicate", reason: `already_${entry.status}`, callbackId };
+  }
+  if (isWatchdogActor(ctx.actor) && isExternalPublishCallbackAction(entry.action)) {
+    await ctx.client.answerCallbackQuery(ctx.callbackQueryId, { text: "Blocked" }).catch(() => undefined);
+    await appendCallbackAudit(ctx.root, auditBase(ctx, callbackId, entry, "blocked", "external_publish_actor_guard"));
+    return { processed: true, result: "blocked", reason: "external_publish_actor_guard", callbackId };
   }
 
   if (entry.action === "proposal_yes" || entry.action === "proposal_no" || entry.action === "dist_apply" || entry.action === "dist_skip") {
@@ -283,6 +296,7 @@ export async function routeTelegramCallback(ctx: TelegramCallbackContext): Promi
       root: ctx.root,
       songId: "",
       action: "daily_voice_publish",
+      actor: ctx.actor,
       entry,
       spawnImpl: ctx.xPublishSpawnImpl
     });
@@ -510,7 +524,7 @@ export async function routeTelegramCallback(ctx: TelegramCallbackContext): Promi
     }
     await ctx.client.answerCallbackQuery(ctx.callbackQueryId, { text: "OK" });
     if (entry.action === "x_publish_cancel") {
-      const cancelled = await executeXPublishAction({ root: ctx.root, songId: entry.songId ?? "", action: "x_publish_cancel" });
+      const cancelled = await executeXPublishAction({ root: ctx.root, songId: entry.songId ?? "", action: "x_publish_cancel", actor: ctx.actor });
       await markCallbackResolved(ctx.root, callbackId, { status: "discarded", reason: cancelled.status, now });
       await appendCallbackAudit(ctx.root, auditBase(ctx, callbackId, entry, "discarded", cancelled.status));
       await ctx.client.editMessageText(entry.chatId, entry.messageId, "X投稿は取り消した。", { replyMarkup: { inline_keyboard: [] } }).catch(() => undefined);
@@ -522,6 +536,7 @@ export async function routeTelegramCallback(ctx: TelegramCallbackContext): Promi
         root: ctx.root,
         songId: entry.songId ?? "",
         action: "x_publish_prepare",
+        actor: ctx.actor,
         songState: song,
         sunoUrl: entry.draftUrl
       });
@@ -575,6 +590,7 @@ export async function routeTelegramCallback(ctx: TelegramCallbackContext): Promi
       root: ctx.root,
       songId: entry.songId ?? "",
       action: "x_publish_confirm",
+      actor: ctx.actor,
       entry,
       spawnImpl: ctx.xPublishSpawnImpl
     });

@@ -28,6 +28,7 @@ export interface XPublishActionInput {
   root: string;
   songId: string;
   action: XPublishAction;
+  actor?: string;
   songState?: SongState;
   sunoUrl?: string;
   entry?: Pick<CallbackActionEntry, "draftText" | "draftHash" | "draftUrl">;
@@ -43,6 +44,12 @@ const maxTweetLength = 280;
 const defaultTimeoutMs = 10_000;
 
 export { parseTweetUrl } from "./birdRunner.js";
+
+export function assertNotWatchdogActor(actor?: string): void {
+  if (actor === "watchdog_recovery" || actor === "watchdog_reprompt" || actor === "watchdog_expire") {
+    throw new Error("external_publish_actor_guard");
+  }
+}
 
 export function normalizeXPostText(value: string): string {
   return value.replace(/\r\n?/g, "\n").trim();
@@ -181,6 +188,7 @@ async function publishWithBird(action: XPublishAction, text: string, spawnImpl: 
 }
 
 export async function executeXPublishAction(input: XPublishActionInput): Promise<XPublishActionResult> {
+  assertNotWatchdogActor(input.actor);
   if (input.action === "x_publish_cancel") {
     return { action: input.action, status: "cancelled" };
   }

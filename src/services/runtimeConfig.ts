@@ -114,6 +114,10 @@ export function getPollingWatchdogMinutes(env: NodeJS.ProcessEnv = process.env):
   return Math.max(0, parsed);
 }
 
+export function isPollingWatchdogRepromptOnceEnabled(env: NodeJS.ProcessEnv = process.env): boolean {
+  return env.OPENCLAW_POLLING_WATCHDOG_REPROMPT_ONCE?.trim().toLowerCase() !== "off";
+}
+
 export function isSunoLiveEnabled(env: NodeJS.ProcessEnv = process.env): boolean {
   const live = env.OPENCLAW_SUNO_LIVE?.trim().toLowerCase();
   const driver = env.OPENCLAW_SUNO_DRIVER?.trim().toLowerCase();

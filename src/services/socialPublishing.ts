@@ -24,6 +24,7 @@ export interface SocialActionInput {
   action?: "publish" | "reply";
   targetId?: string;
   targetUrl?: string;
+  actor?: string;
 }
 
 function getConnector(platform: SocialPlatform): SocialConnector {
@@ -74,6 +75,9 @@ export async function readLatestSocialAction(root: string, songId: string): Prom
 }
 
 export async function publishSocialAction(input: SocialActionInput): Promise<{ result: SocialPublishResult; entry: SocialPublishLedgerEntry }> {
+  if (input.actor === "watchdog_recovery" || input.actor === "watchdog_reprompt" || input.actor === "watchdog_expire") {
+    throw new Error("external_publish_actor_guard");
+  }
   const action = input.action ?? "publish";
   const config = applyConfigDefaults(input.config);
   const effectiveDryRun = resolvePlatformSocialDryRun(config, input.platform);

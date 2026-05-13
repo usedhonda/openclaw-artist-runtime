@@ -67,10 +67,20 @@ export interface MarkCallbackResolvedInput {
   now?: number;
 }
 
+export interface MarkCallbackRepromptedInput {
+  now?: number;
+  actor?: "watchdog_reprompt" | "watchdog_expire";
+  reason?: string;
+}
+
 const defaultTtlMs = 24 * 60 * 60 * 1000;
 
 export function callbackActionLedgerPath(root: string): string {
   return join(root, "runtime", "callback-actions.jsonl");
+}
+
+function callbackAuditPath(root: string): string {
+  return join(root, "runtime", "callback-audit.jsonl");
 }
 
 export function defaultCallbackActionExpiresAt(now = Date.now()): number {
@@ -152,4 +162,56 @@ export async function markCallbackResolved(root: string, callbackId: string, inp
     resolvedAt: input.now ?? Date.now(),
     resolveReason: input.reason
   });
+}
+
+async function appendCallbackAuditMarker(
+  root: string,
+  entry: CallbackActionEntry,
+  input: Required<MarkCallbackRepromptedInput>
+): Promise<void> {
+  const path = callbackAuditPath(root);
+  await mkdir(dirname(path), { recursive: true });
+  await appendFile(path, `${JSON.stringify({
+    timestamp: input.now,
+    callbackId: entry.callbackId,
+    action: entry.action,
+    proposalId: entry.proposalId,
+    songId: entry.songId,
+    platform: entry.platform,
+    result: input.actor === "watchdog_expire" ? "expired" : "reprompted",
+    reason: input.reason,
+    actor: input.actor
+  })}\n`, "utf8");
+}
+
+export async function markCallbackReprompted(
+  root: string,
+  callbackId: string,
+  input: MarkCallbackRepromptedInput = {}
+): Promise<CallbackActionEntry | undefined> {
+  const current = await resolveCallbackAction(root, callbackId);
+  if (!current) {
+    return undefined;
+  }
+  await appendCallbackAuditMarker(root, current, {
+    now: input.now ?? Date.now(),
+    actor: input.actor ?? "watchdog_reprompt",
+    reason: input.reason ?? "polling_watchdog_reprompt"
+  });
+  return current;
+}
+
+export async function hasCallbackReprompted(root: string, callbackId: string): Promise<boolean> {
+  const contents = await readFile(callbackAuditPath(root), "utf8").catch(() => "");
+  return contents
+    .split("\n")
+    .filter(Boolean)
+    .some((line) => {
+      try {
+        const entry = JSON.parse(line) as { callbackId?: string; reason?: string };
+        return entry.callbackId === callbackId && entry.reason === "polling_watchdog_reprompt";
+      } catch {
+        return false;
+      }
+    });
 }
