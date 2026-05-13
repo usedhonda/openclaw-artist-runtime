@@ -42,6 +42,7 @@ export class AutopilotTicker {
       return;
     }
     const intervalMs = this.resolveIntervalMs();
+    void this.tick();
     intervalHandle = setInterval(() => {
       void this.tick();
     }, intervalMs);

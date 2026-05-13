@@ -14,6 +14,8 @@ import { TelegramNotifier } from "./telegramNotifier.js";
 
 let telegramNotifierUnsubscribers: Array<() => void> = [];
 let stopCallbackWatchdog: (() => void) | null = null;
+let stopAutopilotTicker: (() => void) | null = null;
+let resolvedConfigCache: ArtistRuntimeConfig | null = null;
 
 const SILENCE_RECOVERY_WINDOW_MS = 10 * 60 * 1000;
 const SILENCE_RECOVERY_DELAY_MS = 8000;
@@ -116,7 +118,23 @@ export function registerServices(api: unknown): void {
 
   safeRegisterService(api, {
     name: "autopilotTicker",
-    create: () => getAutopilotTicker()
+    create: () => ({
+      start: async () => {
+        if (stopAutopilotTicker) {
+          return { started: 0, reason: "already_started" };
+        }
+        resolvedConfigCache = await resolveRuntimeConfig();
+        const ticker = getAutopilotTicker({ getConfig: () => resolvedConfigCache ?? undefined });
+        ticker.start();
+        stopAutopilotTicker = () => ticker.stop();
+        return { started: 1 };
+      },
+      stop: () => {
+        stopAutopilotTicker?.();
+        stopAutopilotTicker = null;
+        resolvedConfigCache = null;
+      }
+    })
   });
 
   safeRegisterService(api, {
