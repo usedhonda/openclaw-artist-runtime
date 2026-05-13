@@ -109,7 +109,7 @@ export function isDebugCallbackDispatchEnabled(env: NodeJS.ProcessEnv = process.
 export function getPollingWatchdogMinutes(env: NodeJS.ProcessEnv = process.env): number {
   const parsed = Number.parseInt(env.OPENCLAW_POLLING_WATCHDOG_MINUTES ?? "", 10);
   if (!Number.isFinite(parsed)) {
-    return 10;
+    return 0;
   }
   return Math.max(0, parsed);
 }

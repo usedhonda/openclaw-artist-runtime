@@ -63,8 +63,10 @@ export OPENCLAW_DASHBOARD_BASE_URL="${OPENCLAW_DASHBOARD_BASE_URL:-http://127.0.
 # v10.30 polling watchdog after forward-fix (commits c8a8fbd + 5989af1).
 # Watchdog now scoped to expire + 1 reprompt + audit-only, redispatch removed,
 # watchdog actor blocked from external publish at registry + routing layers.
-# Set to 0 to disable entirely; 10 keeps the reprompt-only safety net live.
-export OPENCLAW_POLLING_WATCHDOG_MINUTES=10
+# Default off after real Telegram noise: reprompt-only still surfaced stale
+# button choices as chat spam. Set a positive value only during supervised
+# recovery drills.
+export OPENCLAW_POLLING_WATCHDOG_MINUTES="${OPENCLAW_POLLING_WATCHDOG_MINUTES:-0}"
 export OPENCLAW_POLLING_WATCHDOG_REPROMPT_ONCE=on
 
 if [[ "${1:-}" == "print" ]]; then

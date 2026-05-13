@@ -47,6 +47,20 @@ async function seedPending(now = 0, extra: { expiresAt?: number } = {}): Promise
 }
 
 describe("polling callback watchdog", () => {
+  it("defaults to disabled unless explicitly enabled", async () => {
+    const { root, callbackId } = await seedPending(0);
+
+    const result = await runCallbackPollingWatchdogOnce({
+      root,
+      env: {} as NodeJS.ProcessEnv,
+      now: 60 * 60 * 1000,
+      client: watchdogClient()
+    });
+
+    expect(result).toMatchObject({ enabled: false, recovered: 0, reprompted: 0, expired: 0 });
+    await expect(resolveCallbackAction(root, callbackId)).resolves.toMatchObject({ status: "pending" });
+  });
+
   it("reprompts stale pending callbacks without dispatching state mutations", async () => {
     const { root, callbackId } = await seedPending(0);
     const client = watchdogClient();
