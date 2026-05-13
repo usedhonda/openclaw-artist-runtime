@@ -47,21 +47,22 @@ async function seedPending(now = 0, extra: { expiresAt?: number } = {}): Promise
 }
 
 describe("polling callback watchdog", () => {
-  it("re-dispatches stale pending callbacks through the watchdog actor", async () => {
+  it("reprompts stale pending callbacks without dispatching state mutations", async () => {
     const { root, callbackId } = await seedPending(0);
+    const client = watchdogClient();
 
     const result = await runCallbackPollingWatchdogOnce({
       root,
       env: staleEnv,
       now: 11 * 60 * 1000,
-      client: watchdogClient()
+      client
     });
 
-    expect(result).toMatchObject({ enabled: true, recovered: 1, expired: 0 });
-    expect(await readAutopilotRunState(root)).toMatchObject({ stage: "suno_generation", suspendedAt: null });
+    expect(result).toMatchObject({ enabled: true, recovered: 0, reprompted: 1, expired: 0 });
+    expect(await readAutopilotRunState(root)).toMatchObject({ stage: "prompt_pack", suspendedAt: "prompt_pack_ready" });
+    expect(client.sendMessage).toHaveBeenCalledWith(123, "⏰ 押し忘れの確認: Suno に進める");
     await expect(resolveCallbackAction(root, callbackId)).resolves.toMatchObject({
-      status: "applied",
-      resolveReason: "prompt_pack_go"
+      status: "pending"
     });
     const audit = (await readFile(join(root, "runtime", "callback-audit.jsonl"), "utf8"))
       .trim()
@@ -70,9 +71,9 @@ describe("polling callback watchdog", () => {
     expect(audit.at(-1)).toMatchObject({
       callbackId,
       action: "prompt_pack_go",
-      actor: "watchdog_recovery",
-      reason: "polling_watchdog_recovery",
-      result: "applied"
+      actor: "watchdog_reprompt",
+      reason: "polling_watchdog_reprompt",
+      result: "reprompted"
     });
   });
 
