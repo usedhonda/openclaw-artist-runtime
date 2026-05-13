@@ -15,8 +15,10 @@ import { SunoDailyBudgetDetailCard, type SunoBudgetDetail } from "./components/S
 import { BirdCallLedgerCard, type BirdLedgerDetail } from "./components/BirdCallLedgerCard";
 import { DistributionDetectionCard, type DistributionDetectionDetail } from "./components/DistributionDetectionCard";
 import { RuntimeActionMirrorCard, type RuntimeActionMirrorEvent } from "./components/RuntimeActionMirrorCard";
+import { SongDetailCard } from "./components/SongDetailCard";
 import { SongLifecycleTimelineCard } from "./components/SongLifecycleTimelineCard";
 import { RuntimeSongbookCard, type SongbookLookupResult } from "./components/RuntimeSongbookCard";
+import { useHashRoute } from "./hooks/useHashRoute";
 import { deriveConnectionState } from "../../src/services/connectionState";
 import { defaultDistributionEventsFilter, type DistributionEventsFilterState } from "../../src/services/distributionEventsFilter";
 import { dismissErrorToast, expireErrorToasts, pushErrorToast, type ErrorToast, type ErrorToastSource } from "../../src/services/errorToastQueue";
@@ -558,6 +560,7 @@ export function App() {
   const [promptLedgerEntries, setPromptLedgerEntries] = useState<PromptLedgerEntry[]>([]);
   const [recovery, setRecovery] = useState<RecoveryResponse | null>(null);
   const [selectedSongId, setSelectedSongId] = useState<string | null>(null);
+  const { selectedSongId: hashSongId, clearSong: clearHashSong } = useHashRoute();
   const [activeView, setActiveView] = useState<ConsoleView>("dashboard");
   const [proposals, setProposals] = useState<ProposalDetail[]>([]);
   const [songbookLookup, setSongbookLookup] = useState<SongbookLookupResult | null>(null);
@@ -1410,6 +1413,10 @@ export function App() {
     <SongLifecycleTimelineCard />
   );
 
+  const songDetailPanel = hashSongId ? (
+    <SongDetailCard key={hashSongId} songId={hashSongId} onBack={clearHashSong} />
+  ) : null;
+
   const manualSongCreatePanel = (
     <ManualSongCreateCard
       busy={busy !== null}
@@ -1705,11 +1712,11 @@ export function App() {
         ))}
       </nav>
 
-      {activeView === "dashboard" ? <section className="two-column">{cockpitStrip}{manualSongCreatePanel}{runtimeActionMirrorPanel}{songLifecycleTimelinePanel}{pendingApprovalsPanel}{lastCyclePanel}{setupPanel}{alertsPanel}{currentSongPanel}{distributionWorkerPanel}{observabilityPanel}{recentXResultPanel}</section> : null}
+      {activeView === "dashboard" ? <section className="two-column">{songDetailPanel}{cockpitStrip}{manualSongCreatePanel}{runtimeActionMirrorPanel}{songLifecycleTimelinePanel}{pendingApprovalsPanel}{lastCyclePanel}{setupPanel}{alertsPanel}{currentSongPanel}{distributionWorkerPanel}{observabilityPanel}{recentXResultPanel}</section> : null}
       {activeView === "setup" ? <section className="two-column">{setupPanel}{sunoPanel}{platformsPanel}{configPanel}</section> : null}
       {activeView === "music" ? <section className="two-column">{sunoBudgetDetailPanel}{sunoPanel}{currentSongPanel}{recentXResultPanel}</section> : null}
       {activeView === "platforms" ? <section className="two-column">{birdLedgerPanel}{distributionDetectionPanel}{runtimeActionMirrorPanel}{platformsPanel}{distributionWorkerPanel}{observabilityPanel}{replySimulationPanel}</section> : null}
-      {activeView === "songs" ? <section className="two-column">{songChangeSetPanel}{runtimeSongbookPanel}{runtimeActionMirrorPanel}{songLifecycleTimelinePanel}{songsPanel}{currentSongPanel}</section> : null}
+      {activeView === "songs" ? <section className="two-column">{songDetailPanel}{songChangeSetPanel}{runtimeSongbookPanel}{runtimeActionMirrorPanel}{songLifecycleTimelinePanel}{songsPanel}{currentSongPanel}</section> : null}
       {activeView === "prompt-ledger" ? <section className="two-column">{songsPanel}{promptLedgerPanel}</section> : null}
       {activeView === "alerts" ? <section className="two-column">{alertsPanel}{auditPanel}</section> : null}
       {activeView === "artist-mind" ? <section className="single-column">{personaChangeSetPanel}{artistMindPanel}</section> : null}

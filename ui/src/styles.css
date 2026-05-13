@@ -978,3 +978,125 @@ textarea {
     flex: 1;
   }
 }
+
+.song-detail-card {
+  grid-column: 1 / -1;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  border: 1px solid var(--accent, #4f8af8);
+}
+
+.song-detail-header {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.song-detail-back {
+  align-self: flex-start;
+  background: transparent;
+  border: 1px solid var(--border, #2a2f3a);
+  color: var(--text-primary, #e7ecf3);
+  padding: 4px 10px;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 13px;
+}
+
+.song-detail-back:hover {
+  background: var(--bg-elev, #1c2230);
+}
+
+.song-detail-title-row {
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.song-detail-title-row strong {
+  font-size: 18px;
+}
+
+.song-detail-status {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+  gap: 8px 16px;
+  margin: 0;
+}
+
+.song-detail-status > div {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.song-detail-status dt {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--text-muted, #9aa3b3);
+}
+
+.song-detail-status dd {
+  margin: 0;
+  font-size: 14px;
+}
+
+.song-detail-reason {
+  border-left: 3px solid var(--accent, #4f8af8);
+  padding-left: 10px;
+}
+
+.song-detail-resources {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.song-detail-resources ul {
+  margin: 0;
+  padding-left: 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.song-detail-resources code {
+  font-size: 12px;
+  word-break: break-all;
+}
+
+.song-detail-events ul {
+  margin: 0;
+  padding-left: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  max-height: 320px;
+  overflow-y: auto;
+}
+
+.song-detail-events li {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  font-size: 12px;
+  border-bottom: 1px dashed var(--border, #2a2f3a);
+  padding: 4px 0;
+}
+
+.song-detail-event-time {
+  color: var(--text-muted, #9aa3b3);
+  min-width: 130px;
+}
+
+.song-detail-event-type {
+  font-weight: 600;
+}
+
+.song-detail-meta {
+  font-size: 12px;
+}
