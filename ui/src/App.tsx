@@ -560,7 +560,7 @@ export function App() {
   const [promptLedgerEntries, setPromptLedgerEntries] = useState<PromptLedgerEntry[]>([]);
   const [recovery, setRecovery] = useState<RecoveryResponse | null>(null);
   const [selectedSongId, setSelectedSongId] = useState<string | null>(null);
-  const { selectedSongId: hashSongId, clearSong: clearHashSong } = useHashRoute();
+  const { selectedSongId: hashSongId, clearSong: clearHashSong, selectSong: selectHashSong } = useHashRoute();
   const [activeView, setActiveView] = useState<ConsoleView>("dashboard");
   const [proposals, setProposals] = useState<ProposalDetail[]>([]);
   const [songbookLookup, setSongbookLookup] = useState<SongbookLookupResult | null>(null);
@@ -1497,52 +1497,13 @@ export function App() {
             <div className="muted">{detail.song.songId} · {detail.song.status}</div>
           </div>
           <div className="item">
-            <div className="eyebrow">Brief</div>
-            <div className="muted">{excerpt(detail.brief)}</div>
-          </div>
-          <div className="item">
-            <div className="eyebrow">Prompt Ledger</div>
-            <strong>{detail.promptLedger.length} entries</strong>
-          </div>
-          <div className="item">
-            <div className="eyebrow">Suno Runs</div>
-            <strong>{detail.sunoRuns.length}</strong>
-            <div className="muted">{detail.sunoRuns.slice(0, 3).map((run) => `${run.runId}:${run.status}`).join(" · ") || "none"}</div>
-          </div>
-          <div className="item">
-            <div className="eyebrow">Imported Assets</div>
-            <strong>{currentImportedAssets(status, sunoStatus).length}</strong>
-            <div className="muted">
-              {status?.recentSong?.songId ?? detail.song.songId} · last run {status?.lastSunoRun?.runId ?? "none"}
-            </div>
-            <div className="muted">
-              {currentImportedAssets(status, sunoStatus).length
-                ? currentImportedAssets(status, sunoStatus)
-                  .slice(0, 3)
-                  .map((asset) => `${asset.title ?? asset.path.split("/").at(-1) ?? asset.path}:${asset.format}`)
-                  .join(" · ")
-                : "No imported assets yet"}
-            </div>
-          </div>
-          <div className="item">
-            <div className="eyebrow">Latest Prompt Pack</div>
-            <strong>{detail.latestPromptPack ? `v${detail.latestPromptPack.version}` : "none"}</strong>
-            <div className="muted">take selections {detail.takeSelections.length}</div>
-          </div>
-          <div className="item">
-            <div className="eyebrow">Selected Take</div>
-            <strong>{detail.selectedTake?.selectedTakeId ?? "none"}</strong>
-            <div className="muted">{detail.takeHistory?.slice(0, 3).map((take) => `${take.selectedTakeId} · ${take.reason}`).join(" · ") || "no take history"}</div>
-          </div>
-          <div className="item">
-            <div className="eyebrow">Social Assets</div>
-            <strong>{detail.socialAssets?.length ?? 0}</strong>
-            <div className="muted">{detail.socialAssets?.map((asset) => `${asset.platform}:${asset.postType}`).join(" · ") || "none yet"}</div>
-          </div>
-          <div className="item">
-            <div className="eyebrow">Last Social Action</div>
-            <strong>{detail.lastSocialAction ? `${detail.lastSocialAction.platform}:${detail.lastSocialAction.action}` : "none"}</strong>
-            <div className="muted">{detail.lastSocialAction?.url ?? (detail.lastSocialAction?.accepted ? "accepted without URL" : "no publish yet")}</div>
+            <button
+              type="button"
+              className="link-button"
+              onClick={() => selectHashSong(detail.song.songId)}
+            >
+              → この曲のページを開く
+            </button>
           </div>
         </div>
       ) : <div className="item muted">No current song.</div>}
@@ -1699,29 +1660,38 @@ export function App() {
         />
       </section>
 
-      <nav className="view-tabs" aria-label="Producer Console pages">
+      <nav className={`view-tabs${hashSongId ? " is-secondary" : ""}`} aria-label="Producer Console pages">
         {consoleViews.map((view) => (
           <button
             key={view.id}
             className={`tab-button${activeView === view.id ? " is-active" : ""}`}
             disabled={busy !== null && activeView !== view.id}
-            onClick={() => setActiveView(view.id)}
+            onClick={() => {
+              if (hashSongId) clearHashSong();
+              setActiveView(view.id);
+            }}
           >
             {view.label}
           </button>
         ))}
       </nav>
 
-      {activeView === "dashboard" ? <section className="two-column">{songDetailPanel}{cockpitStrip}{manualSongCreatePanel}{runtimeActionMirrorPanel}{songLifecycleTimelinePanel}{pendingApprovalsPanel}{lastCyclePanel}{setupPanel}{alertsPanel}{currentSongPanel}{distributionWorkerPanel}{observabilityPanel}{recentXResultPanel}</section> : null}
-      {activeView === "setup" ? <section className="two-column">{setupPanel}{sunoPanel}{platformsPanel}{configPanel}</section> : null}
-      {activeView === "music" ? <section className="two-column">{sunoBudgetDetailPanel}{sunoPanel}{currentSongPanel}{recentXResultPanel}</section> : null}
-      {activeView === "platforms" ? <section className="two-column">{birdLedgerPanel}{distributionDetectionPanel}{runtimeActionMirrorPanel}{platformsPanel}{distributionWorkerPanel}{observabilityPanel}{replySimulationPanel}</section> : null}
-      {activeView === "songs" ? <section className="two-column">{songDetailPanel}{songChangeSetPanel}{runtimeSongbookPanel}{runtimeActionMirrorPanel}{songLifecycleTimelinePanel}{songsPanel}{currentSongPanel}</section> : null}
-      {activeView === "prompt-ledger" ? <section className="two-column">{songsPanel}{promptLedgerPanel}</section> : null}
-      {activeView === "alerts" ? <section className="two-column">{alertsPanel}{auditPanel}</section> : null}
-      {activeView === "artist-mind" ? <section className="single-column">{personaChangeSetPanel}{artistMindPanel}</section> : null}
-      {activeView === "settings" ? <section className="two-column">{runtimeOverridesPanel}{configPanel}{setupPanel}</section> : null}
-      {activeView === "recovery" ? <section className="two-column">{recoveryPanel}{sunoPanel}{alertsPanel}</section> : null}
+      {hashSongId ? (
+        <section className="single-column song-page-shell">{songDetailPanel}</section>
+      ) : (
+        <>
+          {activeView === "dashboard" ? <section className="two-column">{cockpitStrip}{manualSongCreatePanel}{runtimeActionMirrorPanel}{songLifecycleTimelinePanel}{pendingApprovalsPanel}{lastCyclePanel}{setupPanel}{alertsPanel}{currentSongPanel}{distributionWorkerPanel}{observabilityPanel}{recentXResultPanel}</section> : null}
+          {activeView === "setup" ? <section className="two-column">{setupPanel}{sunoPanel}{platformsPanel}{configPanel}</section> : null}
+          {activeView === "music" ? <section className="two-column">{sunoBudgetDetailPanel}{sunoPanel}{currentSongPanel}{recentXResultPanel}</section> : null}
+          {activeView === "platforms" ? <section className="two-column">{birdLedgerPanel}{distributionDetectionPanel}{runtimeActionMirrorPanel}{platformsPanel}{distributionWorkerPanel}{observabilityPanel}{replySimulationPanel}</section> : null}
+          {activeView === "songs" ? <section className="two-column">{songChangeSetPanel}{runtimeSongbookPanel}{runtimeActionMirrorPanel}{songLifecycleTimelinePanel}{songsPanel}{currentSongPanel}</section> : null}
+          {activeView === "prompt-ledger" ? <section className="two-column">{songsPanel}{promptLedgerPanel}</section> : null}
+          {activeView === "alerts" ? <section className="two-column">{alertsPanel}{auditPanel}</section> : null}
+          {activeView === "artist-mind" ? <section className="single-column">{personaChangeSetPanel}{artistMindPanel}</section> : null}
+          {activeView === "settings" ? <section className="two-column">{runtimeOverridesPanel}{configPanel}{setupPanel}</section> : null}
+          {activeView === "recovery" ? <section className="two-column">{recoveryPanel}{sunoPanel}{alertsPanel}</section> : null}
+        </>
+      )}
 
       <section className="panel debug-panel">
         <div className="section-title">Status Debug</div>

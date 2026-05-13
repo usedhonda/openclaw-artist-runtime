@@ -463,9 +463,11 @@ export async function buildSongsResponse(config?: Partial<ArtistRuntimeConfig>) 
 export async function buildSongDetailResponse(songId: string, config?: Partial<ArtistRuntimeConfig>) {
   const mergedConfig = await resolveRuntimeConfig(config);
   const workspaceRoot = mergedConfig.artist.workspaceRoot;
-  const [state, brief, promptLedger, sunoRuns, latestSocialAction, selectedTake, socialAssets, latestPromptPack, takeHistory] = await Promise.all([
+  const [state, brief, lyrics, songMarkdown, promptLedger, sunoRuns, latestSocialAction, selectedTake, socialAssets, latestPromptPack, takeHistory] = await Promise.all([
     readSongState(workspaceRoot, songId),
     readTextOrFallback(join(workspaceRoot, "songs", songId, "brief.md"), "", "song_brief_missing", "debug"),
+    readTextOrFallback(join(workspaceRoot, "songs", songId, "suno", "lyrics-suno.md"), "", "song_lyrics_missing", "debug"),
+    readTextOrFallback(join(workspaceRoot, "songs", songId, "song.md"), "", "song_markdown_missing", "debug"),
     readJsonlEntries<PromptLedgerEntry>(join(workspaceRoot, "songs", songId, "prompts", "prompt-ledger.jsonl")),
     readAllSunoRuns(workspaceRoot, songId),
     readLatestSocialAction(workspaceRoot, songId),
@@ -478,6 +480,8 @@ export async function buildSongDetailResponse(songId: string, config?: Partial<A
   return {
     song: state,
     brief,
+    lyrics,
+    songMarkdown,
     promptLedger,
     sunoRuns,
     selectedTake,
