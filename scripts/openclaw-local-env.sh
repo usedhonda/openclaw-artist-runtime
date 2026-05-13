@@ -62,6 +62,13 @@ export OPENCLAW_AUTOPILOT_DRYRUN_OVERRIDE=off
 # v10.28-C: dashboard base URL for Telegram body Resources section.
 export OPENCLAW_DASHBOARD_BASE_URL="${OPENCLAW_DASHBOARD_BASE_URL:-http://127.0.0.1:${openclaw_local_gateway_port}}"
 
+# v10.30 polling watchdog after forward-fix (commits c8a8fbd + 5989af1).
+# Watchdog now scoped to expire + 1 reprompt + audit-only, redispatch removed,
+# watchdog actor blocked from external publish at registry + routing layers.
+# Set to 0 to disable entirely; 10 keeps the reprompt-only safety net live.
+export OPENCLAW_POLLING_WATCHDOG_MINUTES=10
+export OPENCLAW_POLLING_WATCHDOG_REPROMPT_ONCE=on
+
 if [[ "${1:-}" == "print" ]]; then
   telegram_token_status=""
   if [[ -n "${TELEGRAM_BOT_TOKEN:-}" ]]; then
