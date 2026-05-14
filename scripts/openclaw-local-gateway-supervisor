@@ -18,6 +18,7 @@ watchdog_flag="${OPENCLAW_LOCAL_WORKSPACE}/runtime/telegram-watchdog-fired-at.tx
 mkdir -p "${OPENCLAW_LOCAL_LOGS}"
 
 restart_delay_seconds="${OPENCLAW_LOCAL_GATEWAY_RESTART_DELAY:-3}"
+watchdog_enabled="${OPENCLAW_TELEGRAM_WATCHDOG_ENABLED:-0}"
 watchdog_interval="${OPENCLAW_TELEGRAM_WATCHDOG_INTERVAL:-30}"
 watchdog_tail_lines="${OPENCLAW_TELEGRAM_WATCHDOG_TAIL_LINES:-300}"
 watchdog_threshold="${OPENCLAW_TELEGRAM_WATCHDOG_THRESHOLD:-10}"
@@ -35,6 +36,11 @@ watchdog_log_line() {
 
 watchdog_loop() {
   local target_pid="$1"
+  if [[ "${watchdog_enabled}" != "1" && "${watchdog_enabled}" != "on" && "${watchdog_enabled}" != "true" ]]; then
+    watchdog_log_line "disabled for target_pid=${target_pid}; OPENCLAW_TELEGRAM_WATCHDOG_ENABLED=${watchdog_enabled}"
+    return
+  fi
+
   watchdog_log_line "started target_pid=${target_pid} interval=${watchdog_interval}s tail=${watchdog_tail_lines} threshold=${watchdog_threshold} grace=${watchdog_grace_seconds}s"
 
   sleep "${watchdog_grace_seconds}"

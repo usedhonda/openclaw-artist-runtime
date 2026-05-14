@@ -69,6 +69,11 @@ export OPENCLAW_DASHBOARD_BASE_URL="${OPENCLAW_DASHBOARD_BASE_URL:-http://127.0.
 export OPENCLAW_POLLING_WATCHDOG_MINUTES="${OPENCLAW_POLLING_WATCHDOG_MINUTES:-0}"
 export OPENCLAW_POLLING_WATCHDOG_REPROMPT_ONCE=on
 
+# Gateway supervisor Telegram-network watchdog is opt-in only. Killing and
+# restarting the whole gateway on transient Telegram reachability errors can
+# amplify load and confuse live-operation state.
+export OPENCLAW_TELEGRAM_WATCHDOG_ENABLED="${OPENCLAW_TELEGRAM_WATCHDOG_ENABLED:-0}"
+
 if [[ "${1:-}" == "print" ]]; then
   telegram_token_status=""
   if [[ -n "${TELEGRAM_BOT_TOKEN:-}" ]]; then
