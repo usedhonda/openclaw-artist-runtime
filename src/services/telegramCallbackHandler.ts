@@ -17,6 +17,8 @@ import { emitRuntimeEvent } from "./runtimeEventBus.js";
 import type { TelegramClient } from "./telegramClient.js";
 import { executeXPublishAction, type XPublishActionInput } from "./xPublishActionRegistry.js";
 
+export const STALE_CALLBACK_JA_REPLY = "このボタンはもう古い。 最新の通知から選び直して。";
+
 export interface TelegramCallbackContext {
   root: string;
   client: TelegramClient;
@@ -179,7 +181,7 @@ export async function routeTelegramCallback(ctx: TelegramCallbackContext): Promi
   const callbackId = data.slice(3);
   const entry = await resolveCallbackAction(ctx.root, callbackId);
   if (!entry) {
-    return finish(ctx, callbackId, undefined, "expired", "callback_action_not_found", "This request expired. Ask me again.", "expired");
+    return finish(ctx, callbackId, undefined, "expired", "unknown_callback_blocked", STALE_CALLBACK_JA_REPLY, "expired");
   }
   if (ctx.fromUserId !== entry.userId || ctx.chatId !== entry.chatId || ctx.messageId !== entry.messageId) {
     return finish(ctx, callbackId, entry, "unauthorized", "callback_owner_or_message_mismatch", "Not authorized", "unauthorized");

@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it, vi } from "vitest";
 import { markCallbackResolved, registerCallbackAction } from "../src/services/callbackActionRegistry";
-import { routeTelegramCallback } from "../src/services/telegramCallbackHandler";
+import { routeTelegramCallback, STALE_CALLBACK_JA_REPLY } from "../src/services/telegramCallbackHandler";
 import type { TelegramClient } from "../src/services/telegramClient";
 
 function root(): string {
@@ -120,7 +120,13 @@ describe("telegram callback handler", () => {
       fromUserId: 300,
       chatId: 100,
       messageId: 200
-    })).resolves.toMatchObject({ result: "expired", reason: "callback_action_not_found" });
+    })).resolves.toMatchObject({ result: "expired", reason: "unknown_callback_blocked" });
+    expect(client.answerCallbackQuery).toHaveBeenCalledWith("query-4", { text: STALE_CALLBACK_JA_REPLY });
+    expect((await auditLines(workspace)).at(-1)).toMatchObject({
+      callbackId: "missing",
+      result: "expired",
+      reason: "unknown_callback_blocked"
+    });
   });
 
   it("records duplicate presses without re-editing markup", async () => {

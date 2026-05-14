@@ -6,6 +6,8 @@ import { registerHooks } from "./hooks/index.js";
 import { registerServices } from "./services/index.js";
 import { registerRoutes } from "./routes/index.js";
 import { registerCommands } from "./commands/index.js";
+import { safeRegisterInteractiveHandler } from "./pluginApi.js";
+import { handleTelegramInteractiveCallback } from "./services/telegramInteractiveCallbackGuard.js";
 
 interface PluginCommandSpecLike {
   name?: string;
@@ -48,6 +50,11 @@ export default definePluginEntry({
     registerServices(api);
     registerRoutes(api);
     registerCommands(api);
+    safeRegisterInteractiveHandler(api, {
+      channel: "telegram",
+      namespace: "cb",
+      handler: (ctx) => handleTelegramInteractiveCallback(ctx as Parameters<typeof handleTelegramInteractiveCallback>[0])
+    });
     logTelegramCommandSpecs(api);
   }
 });

@@ -38,11 +38,18 @@ export interface RouteRegistration {
   contentType?: string;
 }
 
+export interface InteractiveHandlerRegistration {
+  channel: string;
+  namespace: string;
+  handler: UnknownHandler;
+}
+
 export interface PluginApiLike {
   registerTool?: (tool: ToolRegistration, opts?: { name?: string; names?: string[]; optional?: boolean }) => void;
   registerHook?: (events: string | string[], handler: UnknownHandler, opts?: { name?: string; description?: string; register?: boolean }) => void;
   registerService?: (service: { id?: string; name?: string; start?: UnknownHandler; stop?: UnknownHandler }) => void;
   registerCommand?: (command: CommandRegistration) => void;
+  registerInteractiveHandler?: (registration: InteractiveHandlerRegistration) => void;
   getPluginCommandSpecs?: (provider?: string) => Array<{ name: string; description?: string; acceptsArgs?: boolean }>;
   registerHttpRoute?: (route: {
     path: string;
@@ -226,6 +233,10 @@ export function safeRegisterCommand(
     registerCommand(command);
   }
   onResult?.(ok, command.name);
+}
+
+export function safeRegisterInteractiveHandler(api: unknown, registration: InteractiveHandlerRegistration): void {
+  asPluginApi(api).registerInteractiveHandler?.(registration);
 }
 
 export function safeRegisterRoute(api: unknown, route: RouteRegistration): void {
