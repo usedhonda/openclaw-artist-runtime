@@ -138,10 +138,11 @@ describe("PlaywrightSunoDriver fill assertions", () => {
     expect(library.bringToFront).not.toHaveBeenCalled();
     expect(suno.bringToFront).not.toHaveBeenCalled();
     expect(first.bringToFront).not.toHaveBeenCalled();
-    expect(create.goto).toHaveBeenNthCalledWith(1, SUNO_LIBRARY_URL, {
+    expect(create.goto).toHaveBeenCalledWith(SUNO_CREATE_URL, {
       waitUntil: "domcontentloaded",
       timeout: 20_000
     });
+    expect(create.goto).not.toHaveBeenCalledWith(SUNO_LIBRARY_URL, expect.anything());
   });
 
   it("falls back through library, any suno.com, then first page when selecting a tab", async () => {

@@ -28,7 +28,6 @@ export const PLAYWRIGHT_POLL_INTERVAL_MS = 3_000;
 export const PLAYWRIGHT_POLL_TIMEOUT_MS = 10 * 60 * 1_000;
 export const PLAYWRIGHT_CREATE_CARD_TIMEOUT_MS = 3 * 60 * 1_000;
 export const PLAYWRIGHT_CREATE_CARD_REASON = "submitted_via_create_card";
-export const PLAYWRIGHT_LIBRARY_DIFF_REASON = "submitted_via_library_diff";
 export const PLAYWRIGHT_CREATE_TIMEOUT_REASON = "playwright_create_timeout";
 export const PLAYWRIGHT_CREATE_NETWORK_REASON = "playwright_create_network_error";
 export const PLAYWRIGHT_CREATE_DOM_MISSING_REASON = "playwright_create_dom_missing";
@@ -120,7 +119,6 @@ export class PlaywrightSunoDriver implements SunoBrowserDriver {
       opened = await this.openContext();
 
       page = opened.preferredPage;
-      const baselineUrls = new Set(await this.readSongUrls(page));
       await page.goto(SUNO_CREATE_URL, {
         waitUntil: "domcontentloaded",
         timeout: 20_000
@@ -133,6 +131,7 @@ export class PlaywrightSunoDriver implements SunoBrowserDriver {
       const exclude = this.readPayloadText(payload.excludeStyles);
       const instrumental = Boolean(payload.instrumental);
       const title = this.readPayloadText(payload.songName);
+      const baselineCreateUrls = new Set(await this.readCreateCardSongUrls(page));
 
       await this.fillCreateForm(page, { lyrics, style, exclude, instrumental, title });
 
@@ -146,14 +145,14 @@ export class PlaywrightSunoDriver implements SunoBrowserDriver {
         };
       }
 
-      await page.locator('button[aria-label="Create song"]').click();
+      await page.locator('button[aria-label="Create song"]').click({ timeout: 10_000 });
       await page.waitForLoadState("domcontentloaded").catch(() => undefined);
-      const generated = await this.pollForGeneratedSongs(page, baselineUrls, title);
+      const generated = await this.pollForGeneratedSongs(page, baselineCreateUrls, title);
       if (generated.urls.length > 0) {
         return {
           accepted: true,
           runId,
-          reason: generated.reason ?? PLAYWRIGHT_LIBRARY_DIFF_REASON,
+          reason: generated.reason ?? PLAYWRIGHT_CREATE_CARD_REASON,
           urls: generated.urls,
           dryRun: request.dryRun
         };
@@ -542,46 +541,19 @@ export class PlaywrightSunoDriver implements SunoBrowserDriver {
     );
   }
 
-  private async readSongUrls(page: Page): Promise<string[]> {
-    await page.goto(SUNO_LIBRARY_URL, {
-      waitUntil: "domcontentloaded",
-      timeout: 20_000
-    });
-    await page.waitForLoadState("domcontentloaded").catch(() => undefined);
-    return page.evaluate(() =>
-      Array.from(document.querySelectorAll("a[href*='/song/']"))
-        .map((element) => (element as HTMLAnchorElement).href)
-        .filter((href) => href.startsWith("https://suno.com/song/"))
-    );
-  }
-
   private async pollForGeneratedSongs(
     page: Page,
     baselineUrls: Set<string>,
     expectedTitle?: string
   ): Promise<{ urls: string[]; reason?: string }> {
-    const totalAttempts = Math.max(1, Math.ceil(this.polling.timeoutMs / this.polling.intervalMs));
-    const createCardAttempts = Math.min(
-      totalAttempts,
-      Math.max(
-        1,
-        Math.ceil((this.polling.createCardTimeoutMs ?? PLAYWRIGHT_CREATE_CARD_TIMEOUT_MS) / this.polling.intervalMs)
-      )
+    const createCardAttempts = Math.max(
+      1,
+      Math.ceil((this.polling.createCardTimeoutMs ?? PLAYWRIGHT_CREATE_CARD_TIMEOUT_MS) / this.polling.intervalMs)
     );
 
     const createCardUrls = await this.pollCreateCards(page, baselineUrls, createCardAttempts, expectedTitle);
     if (createCardUrls.length > 0) {
       return { urls: createCardUrls, reason: PLAYWRIGHT_CREATE_CARD_REASON };
-    }
-
-    const remainingAttempts = totalAttempts - createCardAttempts;
-    if (remainingAttempts <= 0) {
-      return { urls: [] };
-    }
-
-    const libraryUrls = await this.pollLibraryDiff(page, baselineUrls, remainingAttempts);
-    if (libraryUrls.length > 0) {
-      return { urls: libraryUrls, reason: PLAYWRIGHT_LIBRARY_DIFF_REASON };
     }
 
     return { urls: [] };
@@ -611,20 +583,6 @@ export class PlaywrightSunoDriver implements SunoBrowserDriver {
     for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
       const createCardUrls = await this.readCreateCardSongUrls(page, expectedTitle);
       const newUrls = createCardUrls.filter((url) => !baselineUrls.has(url));
-      if (newUrls.length > 0) {
-        return newUrls;
-      }
-      if (attempt < maxAttempts - 1) {
-        await sleep(this.polling.intervalMs);
-      }
-    }
-    return [];
-  }
-
-  private async pollLibraryDiff(page: Page, baselineUrls: Set<string>, maxAttempts: number): Promise<string[]> {
-    for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
-      const currentUrls = await this.readSongUrls(page);
-      const newUrls = currentUrls.filter((url) => !baselineUrls.has(url));
       if (newUrls.length > 0) {
         return newUrls;
       }

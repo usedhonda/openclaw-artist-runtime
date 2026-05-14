@@ -18,7 +18,10 @@ vi.mock("puppeteer-extra-plugin-stealth", () => ({ default: stealthPluginMock })
 
 function pageMock() {
   const selectors: string[] = [];
-  const snapshots = [["https://suno.com/song/existing", "https://suno.com/song/new-title-match"]];
+  const snapshots = [
+    ["https://suno.com/song/existing"],
+    ["https://suno.com/song/existing", "https://suno.com/song/new-title-match"]
+  ];
   return {
     selectors,
     goto: vi.fn(async () => undefined),

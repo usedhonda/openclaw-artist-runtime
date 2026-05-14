@@ -131,14 +131,11 @@ describe("Suno CDP attach", () => {
     expect(launchPersistentContextMock).not.toHaveBeenCalled();
     expect(playwrightExtraChromiumMock.use).not.toHaveBeenCalled();
     expect(context.close).not.toHaveBeenCalled();
-    expect(page.goto).toHaveBeenNthCalledWith(1, SUNO_LIBRARY_URL, {
+    expect(page.goto).toHaveBeenNthCalledWith(1, SUNO_CREATE_URL, {
       waitUntil: "domcontentloaded",
       timeout: 20_000
     });
-    expect(page.goto).toHaveBeenNthCalledWith(2, SUNO_CREATE_URL, {
-      waitUntil: "domcontentloaded",
-      timeout: 20_000
-    });
+    expect(page.goto).not.toHaveBeenCalledWith(SUNO_LIBRARY_URL, expect.anything());
   });
 
   it("keeps the persistent profile path when CDP attach is disabled", async () => {
