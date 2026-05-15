@@ -65,9 +65,10 @@ function parseField(raw: string, field: string): string {
 }
 
 function mockStructuredDraft(title: string, briefText: string): string {
-  const source = briefText.match(/## Observation source[\s\S]*?Extract:\n([\s\S]*)/i)?.[1]?.split(/\r?\n/).find((line) => line.trim())?.trim()
+  const rawSource = briefText.match(/## Observation source[\s\S]*?Extract:\n([\s\S]*)/i)?.[1]?.split(/\r?\n/).find((line) => line.trim())?.trim()
     ?? briefText.split(/\r?\n/).find((line) => line.trim() && !line.startsWith("#"))?.trim()
     ?? "街のノイズがまだ消えない。";
+  const source = rawSource.replace(/^-\s*text:\s*"?(.+?)"?\s*$/i, "$1");
   return [
     "{",
     `  "title": "${title.split(/\s+/).slice(0, 4).join(" ") || "Night Ledger"}",`,

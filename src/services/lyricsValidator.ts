@@ -25,7 +25,7 @@ export interface LyricsValidationResult {
 export const commandLeakPatterns = [
   /\b(write|generate|make|create|sing|produce|arrange|use|add|remove|ensure|must|should)\b.*\b(lyrics?|song|chorus|verse|style|vocal|prompt|section)\b/i,
   /\b(internal\s+rhyme|multisyllabic|on-beat|off-beat|assonance|consonance|prosody|meter|syllable|perfect\s+rhyme|slant\s+rhyme)\b/i,
-  /\b(flow|rhyme|hook|verse|bridge|chorus|perfect|slant|bars|lyrics|style|aabb|abab)\b/i,
+  /\b(?:flow|rhyme|hook|verse|bridge|chorus|perfect|slant|bars|lyrics|style|aabb|abab)\b\s*(?:=|:|,|で|ごとに)/i,
   /(韻|伏線|反転型|同語|情景|台詞反転|欠落補完|母音韻|行中韻|多音節韻|クロス韻|語尾韻)/,
   /^\s*[\w -]+\s*[:：]/i,
   /\S+\s*=\s*\S+/,

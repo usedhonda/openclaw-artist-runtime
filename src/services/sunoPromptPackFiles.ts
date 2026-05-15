@@ -83,6 +83,7 @@ export async function createAndPersistSunoPromptPack(input: PersistSunoPromptPac
   const pack = useAi
     ? await createSunoPromptPackWithAi({ ...promptPackInput, aiReviewProvider: input.aiReviewProvider })
     : createSunoPromptPack(promptPackInput);
+  const lyricsText = pack.lyricsBundle?.lyricsText ?? input.lyricsText;
 
   const promptsDir = join(input.workspaceRoot, "songs", input.songId, "prompts");
   const lyricsDir = join(input.workspaceRoot, "songs", input.songId, "lyrics");
@@ -103,16 +104,16 @@ export async function createAndPersistSunoPromptPack(input: PersistSunoPromptPac
   const ledgerPath = getSongPromptLedgerPath(input.workspaceRoot, input.songId);
 
   await Promise.all([
-    writeText(lyricsVersioned, `${input.lyricsText}\n`),
-    writeText(lyricsSunoLatest, `${input.lyricsText}\n`),
+    writeText(lyricsVersioned, `${lyricsText}\n`),
+    writeText(lyricsSunoLatest, `${lyricsText}\n`),
     writeText(yamlLatest, `${pack.yamlLyrics}\n`),
     writeText(styleLatest, `${pack.style}\n`),
     writeText(excludeLatest, `${pack.exclude}\n`),
     writeJson(slidersLatest, pack.sliders),
     writeJson(payloadLatest, pack.payload),
     writeJson(validationLatest, pack.validation),
-    writeText(join(snapshotDir, "lyrics.md"), `${input.lyricsText}\n`),
-    writeText(join(snapshotDir, "lyrics-suno.md"), `${input.lyricsText}\n`),
+    writeText(join(snapshotDir, "lyrics.md"), `${lyricsText}\n`),
+    writeText(join(snapshotDir, "lyrics-suno.md"), `${lyricsText}\n`),
     writeText(join(snapshotDir, "yaml-suno.md"), `${pack.yamlLyrics}\n`),
     writeText(join(snapshotDir, "style.md"), `${pack.style}\n`),
     writeText(join(snapshotDir, "exclude.md"), `${pack.exclude}\n`),
@@ -166,7 +167,7 @@ export async function createAndPersistSunoPromptPack(input: PersistSunoPromptPac
       artistReason: input.artistReason,
       inputRefs: ["ARTIST.md", "artist/CURRENT_STATE.md", ...sourceRefs],
       outputRefs: [lyricsVersioned, lyricsSunoLatest, join(snapshotDir, "lyrics.md"), join(snapshotDir, "lyrics-suno.md")],
-      promptText: input.lyricsText,
+      promptText: lyricsText,
       promptHash: pack.promptHash,
       configSnapshot: input.configSnapshot,
       artistSnapshotHash: pack.artistSnapshotHash,

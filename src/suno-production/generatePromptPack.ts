@@ -1,5 +1,6 @@
 import { createHash } from "node:crypto";
 import { extractLyricsBody } from "../services/lyricsExtraction.js";
+import { repairCommandLeak } from "../services/lyricsRepair.js";
 import type { AiReviewProvider, CreateSunoPromptPackInput, SunoPromptPack, SunoSliders } from "../types.js";
 import { validateSunoPromptPack } from "../validators/promptPackValidator.js";
 import { buildExclude as buildExcludeV55 } from "./buildExclude.js";
@@ -30,6 +31,7 @@ function buildPayload(input: CreateSunoPromptPackInput, style: string, exclude: 
 }
 
 export function createSunoPromptPack(input: CreateSunoPromptPackInput): SunoPromptPack {
+  const lyricsText = repairCommandLeak(input.lyricsText).trim();
   const genre = `${input.artistReason} ${input.moodHint ?? ""}`;
   const styleResult = buildStyleV55({
     artistProfile: input.artistSnapshot,
@@ -46,7 +48,7 @@ export function createSunoPromptPack(input: CreateSunoPromptPackInput): SunoProm
   }).text;
   const yamlLyrics = buildYamlV55({
     title: input.songTitle,
-    lyrics: input.lyricsText,
+    lyrics: lyricsText,
     meta: {
       tempo: 124,
       key: "minor",
@@ -76,7 +78,7 @@ export function createSunoPromptPack(input: CreateSunoPromptPackInput): SunoProm
     cues: ["Intro: sparse texture before groove; Hook: widen rhythm without crowd noise"]
   });
   const sliders = buildSlidersV55({ genre, moodHint: input.moodHint });
-  const payload = buildPayload(input, style, exclude, yamlLyrics, sliders);
+  const payload = buildPayload({ ...input, lyricsText }, style, exclude, yamlLyrics, sliders);
   const payloadHash = hashText(JSON.stringify(payload));
   const promptHash = hashText(`${style}\n${exclude}\n${yamlLyrics}`);
   const artistSnapshotHash = hashText(input.artistSnapshot);
@@ -88,7 +90,7 @@ export function createSunoPromptPack(input: CreateSunoPromptPackInput): SunoProm
     songTitle: input.songTitle,
     artistReason: input.artistReason,
     lyricsBundle: {
-      lyricsText: input.lyricsText,
+      lyricsText,
       yamlLyrics,
       moodHint: input.moodHint
     },
@@ -112,6 +114,7 @@ export function createSunoPromptPack(input: CreateSunoPromptPackInput): SunoProm
 export async function createSunoPromptPackWithAi(
   input: CreateSunoPromptPackInput & { aiReviewProvider?: AiReviewProvider }
 ): Promise<SunoPromptPack> {
+  const lyricsText = repairCommandLeak(input.lyricsText).trim();
   const genre = `${input.artistReason} ${input.moodHint ?? ""}`;
   const styleResult = await synthesizeStyle({
     artistProfile: input.artistSnapshot,
@@ -127,7 +130,7 @@ export async function createSunoPromptPackWithAi(
   }, { provider: input.aiReviewProvider });
   const yamlLyrics = buildYamlV55({
     title: input.songTitle,
-    lyrics: input.lyricsText,
+    lyrics: lyricsText,
     meta: {
       tempo: 124,
       key: "minor",
@@ -157,7 +160,7 @@ export async function createSunoPromptPackWithAi(
     cues: ["Intro: sparse texture before groove; Hook: widen rhythm without crowd noise"]
   });
   const sliders = buildSlidersV55({ genre, moodHint: input.moodHint });
-  const payload = buildPayload(input, styleResult.total, excludeResult.text, yamlLyrics, sliders);
+  const payload = buildPayload({ ...input, lyricsText }, styleResult.total, excludeResult.text, yamlLyrics, sliders);
   const payloadHash = hashText(JSON.stringify(payload));
   const promptHash = hashText(`${styleResult.total}\n${excludeResult.text}\n${yamlLyrics}`);
   const artistSnapshotHash = hashText(input.artistSnapshot);
@@ -168,7 +171,7 @@ export async function createSunoPromptPackWithAi(
     songTitle: input.songTitle,
     artistReason: input.artistReason,
     lyricsBundle: {
-      lyricsText: input.lyricsText,
+      lyricsText,
       yamlLyrics,
       moodHint: input.moodHint
     },

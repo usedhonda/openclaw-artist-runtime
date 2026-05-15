@@ -5,6 +5,7 @@ import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { createSunoPromptPack } from "../src/suno-production/generatePromptPack";
 import { createAndPersistSunoPromptPack } from "../src/services/sunoPromptPackFiles";
+import { validateNoCommandLeak } from "../src/services/lyricsValidator";
 
 const lyrics = [
   "[Intro - muted street image]",
@@ -42,6 +43,39 @@ describe("Suno V5.5 prompt pack orchestration", () => {
     expect(pack.sliders.weirdness).toBeGreaterThanOrEqual(15);
     expect(pack.sliders.weirdness).toBeLessThanOrEqual(85);
     expect(pack.validation.valid).toBe(true);
+  });
+
+  it("drops songwriting meta before writing Suno UI lyrics", () => {
+    const leakedLyrics = [
+      "[Verse 1 - tight civic flow, note: AABB and internal rhyme]",
+      "誰も見ない窓にだけ信号が残る",
+      "flow = リズム + phrasing + accent + rhyme",
+      "低いベースが名前を削っていく",
+      "AABBで韻を踏む",
+      "朝の手前でまだ息を数える",
+      "",
+      "[Hook - final anchor]",
+      "街が薄くなる",
+      "拍手だけ残る"
+    ].join("\n");
+
+    const pack = createSunoPromptPack({
+      songId: "song-leak",
+      songTitle: "Leak Guard",
+      artistReason: "observation from city redevelopment",
+      lyricsText: leakedLyrics,
+      moodHint: "civic dread pulse",
+      artistSnapshot: "# ARTIST\nused::honda watches civic noise",
+      currentStateSnapshot: "# CURRENT\nobservational"
+    });
+
+    expect(String(pack.payload.lyrics)).not.toContain("flow =");
+    expect(String(pack.payload.lyrics)).not.toContain("AABB");
+    expect(String(pack.payload.lyrics)).not.toContain("internal rhyme");
+    expect(String(pack.payload.lyricsText)).not.toContain("flow =");
+    expect(String(pack.payload.lyricsText)).not.toContain("AABB");
+    expect(String(pack.yamlLyrics)).not.toContain("flow =");
+    expect(validateNoCommandLeak(String(pack.payload.lyrics))).toEqual([]);
   });
 
   it("persists style, exclude, yaml-suno, and lyrics-suno under the song Suno directory", async () => {

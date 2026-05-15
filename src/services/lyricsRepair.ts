@@ -15,6 +15,11 @@ function formatSection(tag: string, lines: string[]): string {
   return [`[${tag}]`, ...lines].join("\n");
 }
 
+function sanitizeSectionTag(tag: string): string {
+  const withoutNote = tag.replace(/\s*,?\s*note\s*[:：].*$/i, "").trim();
+  return withoutNote || "Verse - repaired section";
+}
+
 export function repairMissingMetatags(lyrics: string): string {
   const sections = parseLyricsSections(lyrics);
   if (sections.length === 0) {
@@ -69,23 +74,26 @@ export function repairLineCount(lyrics: string): string {
 }
 
 export function repairCommandLeak(lyrics: string): string {
-  return parseLyricsSections(lyrics)
+  const sections = parseLyricsSections(lyrics);
+  const needsRepair = sections.some((section) =>
+    section.lines.some(isCommandLeakLine) || /\bnote\s*[:：]/i.test(section.tag)
+  );
+  if (!needsRepair) {
+    return lyrics;
+  }
+  return sections
     .map((section) => {
       const hitCount = section.lines.filter(isCommandLeakLine).length;
       if (hitCount > 5) {
         return undefined;
       }
-      const moved: string[] = [];
       const lines = section.lines.filter((line) => {
         if (!isCommandLeakLine(line)) {
           return true;
         }
-        moved.push(line.replace(/[.[\]]/g, "").slice(0, 48));
         return false;
       });
-      const tag = moved.length > 0
-        ? `${section.tag || "Verse - repaired section"}, note: ${moved.join("; ")}`
-        : section.tag || "Verse - repaired section";
+      const tag = sanitizeSectionTag(section.tag || "Verse - repaired section");
       return formatSection(tag, lines);
     })
     .filter(Boolean)

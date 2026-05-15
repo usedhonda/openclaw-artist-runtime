@@ -39,7 +39,7 @@ describe("lyrics V5.5 repair", () => {
   it("moves command-like leakage out of lyric lines", () => {
     const repaired = repairCommandLeak(fixture("lyrics-v55-bad-command-leak.md"));
     expect(validateNoCommandLeak(repaired)).toEqual([]);
-    expect(repaired).toContain("note:");
+    expect(repaired).not.toContain("note:");
   });
 
   it("removes song-008 Japanese and technical meta leakage from lyric lines", () => {
