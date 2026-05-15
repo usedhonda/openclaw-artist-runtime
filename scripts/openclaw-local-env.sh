@@ -50,8 +50,9 @@ if [[ -n "${TELEGRAM_OWNER_USER_IDS:-}" ]]; then
   export TELEGRAM_OWNER_USER_IDS
 fi
 
-# v10.34 Layer 1 live lane. Uses system Chrome.app with an isolated
-# user-data-dir and password-store=basic by default. CDP attach remains an
+# v10.34 Layer 1 live lane. Uses an isolated bundled Chromium profile by
+# default. System Chrome channel is opt-in only because macOS can route launched
+# tabs into the operator's visible Chrome.app singleton. CDP attach remains an
 # emergency opt-in via OPENCLAW_SUNO_USE_CDP=on.
 export OPENCLAW_SUNO_LIVE=on
 export OPENCLAW_SUNO_CDP_ENDPOINT="${OPENCLAW_SUNO_CDP_ENDPOINT:-http://127.0.0.1:9222}"

@@ -108,9 +108,11 @@ case "${command}" in
     fi
     : > "${OPENCLAW_LOCAL_GATEWAY_LOG}"
     supervisor_meta_log="${OPENCLAW_LOCAL_LOGS}/gateway.supervisor.log"
-    nohup "${script_dir}/openclaw-local-gateway-supervisor" "$@" \
+    nohup perl -MPOSIX=setsid -e 'setsid() or die "setsid failed: $!"; exec @ARGV or die "exec failed: $!"' \
+      "${script_dir}/openclaw-local-gateway-supervisor" "$@" \
       >>"${supervisor_meta_log}" 2>&1 < /dev/null &
     gateway_pid=$!
+    disown "${gateway_pid}" 2>/dev/null || true
     echo "${gateway_pid}" > "${OPENCLAW_LOCAL_GATEWAY_PID}"
     for _ in $(seq 1 20); do
       if "${script_dir}/openclaw-local-http-smoke.sh" >/dev/null 2>&1; then

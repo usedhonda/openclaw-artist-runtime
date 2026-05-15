@@ -125,6 +125,34 @@ describe("status ticker and reply simulation routes", () => {
     expect(status.platforms.tiktok.effectiveDryRun).toBe(true);
   });
 
+  it("surfaces paused producer review instead of stale take-selection action", async () => {
+    const root = mkdtempSync(join(tmpdir(), "artist-runtime-status-paused-review-"));
+    await ensureArtistWorkspace(root);
+    await mkdir(join(root, "runtime"), { recursive: true });
+    await writeFile(join(root, "runtime", "autopilot-state.json"), `${JSON.stringify({
+      stage: "take_selection",
+      paused: true,
+      pausedReason: "take selected after bounded one-shot Suno create; awaiting producer review",
+      suspendedAt: "producer_review_after_take_selected",
+      retryCount: 1,
+      cycleCount: 17,
+      updatedAt: "2026-05-15T08:04:27.306Z",
+      runId: "auto_test",
+      currentSongId: "spawn_test",
+      lastSuccessfulStage: "take_selection"
+    }, null, 2)}\n`, "utf8");
+
+    const status = await buildStatusResponse({
+      artist: { workspaceRoot: root },
+      autopilot: { enabled: true, dryRun: false }
+    });
+
+    expect(status.autopilot.stage).toBe("paused");
+    expect(status.autopilot.nextAction).toBe("await_producer_review");
+    expect(status.autopilot.currentSongId).toBe("spawn_test");
+    expect(status.autopilot.pausedReason).toContain("awaiting producer review");
+  });
+
   it("surfaces armed global and X platform live-go state in /api/status", async () => {
     const root = mkdtempSync(join(tmpdir(), "artist-runtime-status-live-go-"));
     await ensureArtistWorkspace(root);

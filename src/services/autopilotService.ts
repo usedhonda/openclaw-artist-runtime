@@ -178,6 +178,16 @@ function nextActionForStage(stage: AutopilotStage): string {
   }
 }
 
+function nextActionForState(state: AutopilotRunState, stage: AutopilotStage): string {
+  if (state.paused) {
+    if (state.suspendedAt === "producer_review_after_take_selected") {
+      return "await_producer_review";
+    }
+    return "await_manual_resume";
+  }
+  return nextActionForStage(stage);
+}
+
 export function stageFromSong(song?: SongState): AutopilotStage {
   if (!song) {
     return "planning";
@@ -1032,12 +1042,12 @@ export class ArtistAutopilotService {
 
   async status(enabled = false, dryRun = true, workspaceRoot?: string): Promise<AutopilotStatus> {
     const state = workspaceRoot ? await readAutopilotRunState(workspaceRoot) : { ...defaultAutopilotRunState };
-    const stage = enabled ? state.stage : "idle";
+    const stage = enabled ? (state.paused ? "paused" : state.stage) : "idle";
     return {
       enabled,
       dryRun,
       stage,
-      nextAction: nextActionForStage(stage),
+      nextAction: enabled ? nextActionForState(state, stage) : nextActionForStage(stage),
       currentRunId: state.runId,
       currentSongId: state.currentSongId,
       lastSuccessfulStage: state.lastSuccessfulStage,

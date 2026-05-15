@@ -81,16 +81,20 @@ handle_term() {
   exit 0
 }
 trap handle_term TERM INT QUIT
+trap 'log_line "received SIGHUP; ignoring"' HUP
 
 log_line "started (pid $$)"
 
 while true; do
-  "${script_dir}/openclaw-local" gateway run \
-    --allow-unconfigured \
-    --bind loopback \
-    --auth none \
-    --port "${OPENCLAW_LOCAL_GATEWAY_PORT}" \
-    "$@" >>"${OPENCLAW_LOCAL_GATEWAY_LOG}" 2>&1 &
+  (
+    trap '' HUP
+    exec "${script_dir}/openclaw-local" gateway run \
+      --allow-unconfigured \
+      --bind loopback \
+      --auth none \
+      --port "${OPENCLAW_LOCAL_GATEWAY_PORT}" \
+      "$@"
+  ) >>"${OPENCLAW_LOCAL_GATEWAY_LOG}" 2>&1 &
   child=$!
   log_line "spawned gateway pid=${child}"
 
