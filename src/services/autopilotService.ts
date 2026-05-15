@@ -124,7 +124,12 @@ async function importPendingSunoGeneration(
     return { imported: false, reason: "suno_import_missing_run_id" };
   }
 
-  const result = await connector.importResults({ runId, urls: [] });
+  const urls = latestRun?.runId === runId ? latestRun.urls : [];
+  if (urls.length === 0) {
+    return { imported: false, reason: "waiting for Suno result import" };
+  }
+
+  const result = await connector.importResults({ runId, urls });
   if (result.urls.length === 0) {
     return { imported: false, reason: result.reason ?? "waiting for Suno result import" };
   }

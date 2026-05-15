@@ -5,6 +5,7 @@ import { describe, expect, it, vi } from "vitest";
 import { ensureArtistWorkspace } from "../src/services/artistWorkspace";
 import { ensureSongState, readSongState, updateSongState } from "../src/services/artistState";
 import { ArtistAutopilotService, writeAutopilotRunState } from "../src/services/autopilotService";
+import { importSunoResults } from "../src/services/sunoRuns";
 
 const { connectorStatus, connectorImportResults, connectorCreate } = vi.hoisted(() => ({
   connectorStatus: vi.fn(),
@@ -38,6 +39,13 @@ describe("autopilot Suno import stage", () => {
       lastSuccessfulStage: "suno_generation",
       blockedReason: "waiting for Suno result import"
     });
+    await importSunoResults({
+      workspaceRoot: root,
+      songId: "import-song",
+      runId: "run-live",
+      urls: ["https://suno.com/song/take-a", "https://suno.com/song/take-b"]
+    });
+    await updateSongState(root, "import-song", { status: "suno_running" });
     connectorStatus.mockResolvedValue({
       state: "generating",
       connected: true,
@@ -56,7 +64,10 @@ describe("autopilot Suno import stage", () => {
       config: { artist: { workspaceRoot: root }, autopilot: { enabled: true, dryRun: true }, music: { suno: { driver: "playwright" as const } } }
     });
 
-    expect(connectorImportResults).toHaveBeenCalledWith({ runId: "run-live", urls: [] });
+    expect(connectorImportResults).toHaveBeenCalledWith({
+      runId: "run-live",
+      urls: ["https://suno.com/song/take-a", "https://suno.com/song/take-b"]
+    });
     expect(connectorCreate).not.toHaveBeenCalled();
     expect(state.stage).toBe("take_selection");
     expect(await readSongState(root, "import-song")).toMatchObject({ status: "takes_imported" });
