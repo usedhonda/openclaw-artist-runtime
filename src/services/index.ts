@@ -6,6 +6,7 @@ import { ArtistAutopilotService } from "./autopilotService.js";
 import { getAutopilotTicker } from "./autopilotTicker.js";
 import { startCallbackPollingWatchdog } from "./callbackPollingWatchdog.js";
 import { getRuntimeEventBus } from "./runtimeEventBus.js";
+import { appendRuntimeEvent } from "./runtimeEventsLedger.js";
 import { isTelegramNotifierEnabled, resolveDefaultWorkspaceRoot, resolveRuntimeConfig } from "./runtimeConfig.js";
 import { SocialDistributionWorker } from "./socialDistributionWorker.js";
 import { SunoBrowserWorker } from "./sunoBrowserWorker.js";
@@ -13,6 +14,7 @@ import { getTelegramOwnerUserIds } from "./telegramAuth.js";
 import { TelegramNotifier } from "./telegramNotifier.js";
 
 let telegramNotifierUnsubscribers: Array<() => void> = [];
+let runtimeEventLedgerUnsubscriber: (() => void) | null = null;
 let stopCallbackWatchdog: (() => void) | null = null;
 let stopAutopilotTicker: (() => void) | null = null;
 let resolvedConfigCache: ArtistRuntimeConfig | null = null;
@@ -100,6 +102,24 @@ export function stopTelegramNotifierSubscriptions(): void {
   telegramNotifierUnsubscribers = [];
 }
 
+export function startRuntimeEventLedgerFromEnv(env: NodeJS.ProcessEnv = process.env): { started: number; reason?: string } {
+  if (runtimeEventLedgerUnsubscriber) {
+    return { started: 0, reason: "already_started" };
+  }
+  const workspaceRoot = env.OPENCLAW_LOCAL_WORKSPACE?.trim() || resolveDefaultWorkspaceRoot();
+  runtimeEventLedgerUnsubscriber = getRuntimeEventBus().subscribe((event) => {
+    void appendRuntimeEvent(workspaceRoot, event).catch((error) => {
+      console.warn("[artist-runtime] runtime event ledger append failed", error);
+    });
+  });
+  return { started: 1 };
+}
+
+export function stopRuntimeEventLedgerSubscription(): void {
+  runtimeEventLedgerUnsubscriber?.();
+  runtimeEventLedgerUnsubscriber = null;
+}
+
 export function registerServices(api: unknown): void {
   safeRegisterService(api, {
     name: "artistAutopilotService",
@@ -143,6 +163,16 @@ export function registerServices(api: unknown): void {
       start: () => startTelegramNotifierFromEnv(),
       stop: () => {
         stopTelegramNotifierSubscriptions();
+      }
+    })
+  });
+
+  safeRegisterService(api, {
+    name: "runtimeEventLedger",
+    create: () => ({
+      start: () => startRuntimeEventLedgerFromEnv(),
+      stop: () => {
+        stopRuntimeEventLedgerSubscription();
       }
     })
   });
