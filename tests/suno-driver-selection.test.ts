@@ -127,7 +127,6 @@ describe("Suno driver selection", () => {
     expect(started.state).toBe("login_required");
     expect(launchPersistentContextMock).toHaveBeenCalledWith(".openclaw-browser-profiles/suno", {
       headless: false,
-      channel: "chrome",
       args: ["--disable-blink-features=AutomationControlled", "--password-store=basic"],
       ignoreDefaultArgs: ["--enable-automation"]
     });

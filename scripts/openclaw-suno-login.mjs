@@ -22,9 +22,15 @@ async function main() {
   await mkdir(profilePath, { recursive: true });
 
   const executablePath = process.env.OPENCLAW_SUNO_CHROME_EXECUTABLE?.trim();
+  const channel = executablePath
+    ? undefined
+    : process.env.OPENCLAW_SUNO_BROWSER_CHANNEL?.trim().toLowerCase() === "chrome"
+      ? "chrome"
+      : undefined;
   const context = await chromium.launchPersistentContext(profilePath, {
     headless: false,
-    ...(executablePath ? { executablePath } : { channel: "chrome" }),
+    ...(executablePath ? { executablePath } : {}),
+    ...(channel ? { channel } : {}),
     args: SUNO_BROWSER_ARGS,
     ignoreDefaultArgs: ["--enable-automation"]
   });

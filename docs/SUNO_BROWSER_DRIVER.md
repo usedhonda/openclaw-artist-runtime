@@ -22,8 +22,9 @@ credit-safe rehearsals.
 - Keep the browser session on the operator machine only.
 - Expect manual login first; automated probing/generation lands in later rounds.
 - The browser lane now uses `playwright-extra` plus
-  `puppeteer-extra-plugin-stealth` and launches with `channel: "chrome"` so
-  Google OAuth is less likely to flag the session as automation.
+  `puppeteer-extra-plugin-stealth` and defaults to bundled Chromium with an
+  isolated profile. `channel: "chrome"` is opt-in only because the macOS Chrome
+  singleton can otherwise navigate the operator's visible Chrome window.
 
 ## Profile path
 
@@ -374,8 +375,7 @@ is unreadable, or repeated login probes keep failing after ordinary retry.
    `.openclaw-browser-profiles/suno.bak-YYYYMMDD-HHMMSS` instead of deleting it.
 3. Create a fresh empty `.openclaw-browser-profiles/suno/` directory.
 4. Rerun `scripts/openclaw-suno-login.sh` so the driver launches the fresh
-   persistent profile with the existing stealth-plugin + `channel: "chrome"`
-   lane.
+   persistent profile with the existing stealth-plugin + bundled Chromium lane.
 5. Complete Google OAuth manually as the operator, then close the browser.
 6. Re-run the login probe and confirm it returns `connected: true` before
    resuming normal use.

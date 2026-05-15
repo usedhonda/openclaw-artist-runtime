@@ -6,13 +6,15 @@ Plan v10.34 adopts a layered browser strategy for the Suno background worker.
 
 The default macOS path is:
 
-- system `Google Chrome.app`
+- Playwright bundled Chromium
 - an OpenClaw-owned persistent profile at `.openclaw-browser-profiles/suno`
 - `--password-store=basic`
 - `--disable-blink-features=AutomationControlled`
 
-This keeps the operator's main Chrome profile separate while preserving Chrome
-media support for Suno previews. The operator signs in once through:
+Do not default to system `Google Chrome.app`. On macOS, the Chrome app singleton
+can route a launched worker tab into the operator's already-running visible
+Chrome instance. That risks repeated Suno navigation in the operator's browser.
+The default must isolate the worker process. The operator signs in once through:
 
 ```bash
 scripts/openclaw-suno-login.sh
@@ -37,7 +39,7 @@ If Suno expires the session, run:
 scripts/openclaw-suno-login.sh
 ```
 
-Complete login in the opened Chrome window, then close the browser window. A
+Complete login in the opened browser window, then close the browser window. A
 monthly reauthentication check is recommended, and earlier reauthentication may
 be needed if Suno forces login, CAPTCHA, account checks, or policy prompts.
 
@@ -46,6 +48,10 @@ be needed if Suno forces login, CAPTCHA, account checks, or policy prompts.
 `OPENCLAW_SUNO_CHROME_EXECUTABLE` may point at a custom Chrome-compatible
 executable for operator-controlled recovery. It is not auto-detected and should
 remain unset for normal installs.
+
+`OPENCLAW_SUNO_BROWSER_CHANNEL=chrome` is an explicit opt-in escape hatch for
+machines where the operator accepts the macOS Chrome singleton risk. It is not
+the default.
 
 `OPENCLAW_SUNO_USE_CDP=on` switches to Chrome DevTools Protocol attach mode for
 emergency recovery. Use it only when the persistent profile lane cannot launch.

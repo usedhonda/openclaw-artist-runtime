@@ -145,6 +145,10 @@ export function sunoChromeExecutablePath(env: NodeJS.ProcessEnv = process.env): 
   return env.OPENCLAW_SUNO_CHROME_EXECUTABLE?.trim() || undefined;
 }
 
+export function sunoBrowserChannel(env: NodeJS.ProcessEnv = process.env): "chrome" | undefined {
+  return env.OPENCLAW_SUNO_BROWSER_CHANNEL?.trim().toLowerCase() === "chrome" ? "chrome" : undefined;
+}
+
 export function sunoBrowserArgs(): string[] {
   return [
     "--disable-blink-features=AutomationControlled",

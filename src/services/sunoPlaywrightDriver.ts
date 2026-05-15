@@ -11,7 +11,7 @@ import type {
 import type { SunoBrowserDriver, SunoBrowserDriverProbe } from "./sunoBrowserWorker.js";
 import type { BrowserContext, Locator, Page } from "playwright";
 import { captureSunoFailure, resolveSunoFailureLogsDir } from "./sunoFailureSnapshot.js";
-import { isSunoCdpEnabled, sunoBrowserArgs, sunoCdpEndpoint, sunoChromeExecutablePath } from "./runtimeConfig.js";
+import { isSunoCdpEnabled, sunoBrowserArgs, sunoBrowserChannel, sunoCdpEndpoint, sunoChromeExecutablePath } from "./runtimeConfig.js";
 import { extractLyricsBody } from "./lyricsExtraction.js";
 
 export const DEFAULT_SUNO_PROFILE_PATH = ".openclaw-browser-profiles/suno";
@@ -306,9 +306,11 @@ export class PlaywrightSunoDriver implements SunoBrowserDriver {
     chromium.use(stealth());
     await mkdir(this.profilePath, { recursive: true });
     const executablePath = sunoChromeExecutablePath();
+    const channel = executablePath ? undefined : sunoBrowserChannel();
     const context = await chromium.launchPersistentContext(this.profilePath, {
       headless: false,
-      ...(executablePath ? { executablePath } : { channel: "chrome" as const }),
+      ...(executablePath ? { executablePath } : {}),
+      ...(channel ? { channel } : {}),
       args: sunoBrowserArgs(),
       ignoreDefaultArgs: ["--enable-automation"]
     });
