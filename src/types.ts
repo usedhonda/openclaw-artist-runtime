@@ -1058,6 +1058,20 @@ export interface StatusResponse {
       createdAt: string;
     }>;
   };
+  pendingCallbacks?: {
+    count: number;
+    recent: Array<{
+      callbackId: string;
+      action: string;
+      label: string;
+      effect: string;
+      songId?: string;
+      proposalId?: string;
+      platform?: string;
+      createdAt: number;
+      expiresAt: number;
+    }>;
+  };
   platforms: Record<SocialPlatform, PlatformStatus>;
   musicSummary: MusicSummary;
   distributionSummary: DistributionSummary;

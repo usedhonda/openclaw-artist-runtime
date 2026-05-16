@@ -73,7 +73,68 @@ export interface MarkCallbackRepromptedInput {
   reason?: string;
 }
 
+export interface CallbackActionEffect {
+  action: string;
+  label: string;
+  effect: string;
+}
+
+export interface PendingCallbackSummary {
+  count: number;
+  recent: Array<{
+    callbackId: string;
+    action: string;
+    label: string;
+    effect: string;
+    songId?: string;
+    proposalId?: string;
+    platform?: string;
+    createdAt: number;
+    expiresAt: number;
+  }>;
+}
+
 const defaultTtlMs = 24 * 60 * 60 * 1000;
+
+const callbackActionEffects: Record<string, Omit<CallbackActionEffect, "action">> = {
+  proposal_yes: { label: "反映", effect: "提案された変更を workspace に反映します。" },
+  proposal_no: { label: "保留", effect: "提案を見送り、現状を変えません。" },
+  proposal_edit_open: { label: "編集", effect: "編集指示を受け付ける状態にします。" },
+  dist_apply: { label: "配信記録に反映", effect: "検出した配信 URL を song state / ledger に反映します。" },
+  dist_skip: { label: "保留", effect: "配信 URL の反映を見送ります。" },
+  song_songbook_write: { label: "SONGBOOK.md に追記", effect: "完成曲を SONGBOOK.md に記録します。" },
+  song_skip: { label: "保留", effect: "完成曲の反映を今回は見送ります。" },
+  daily_voice_publish: { label: "投稿", effect: "草案を X に投稿します。外部公開が発生します。" },
+  daily_voice_edit: { label: "編集", effect: "草案を直すための返信待ちにします。" },
+  daily_voice_cancel: { label: "キャンセル", effect: "草案投稿を破棄します。" },
+  song_spawn_inject: { label: "採用", effect: "曲案を songs/ に注入し、planning から制作を始めます。" },
+  song_spawn_skip: { label: "スキップ", effect: "この曲案を見送り、次の候補を待ちます。" },
+  song_spawn_edit: { label: "編集", effect: "曲案を採用せず、/commission で方向修正を待ちます。" },
+  prompt_pack_go: { label: "Suno 生成へ", effect: "prompt_pack の停止を解除し、次 cycle で Suno 生成へ進めます。" },
+  prompt_pack_edit: { label: "lyrics-suno.md を編集", effect: "planning に戻し、歌詞をもう一度作り直します。" },
+  prompt_pack_skip: { label: "保留", effect: "この曲を user_paused にして後で再開できる状態にします。" },
+  planning_skeleton_apply: { label: "進める", effect: "補完案を反映し、prompt_pack へ進めます。" },
+  planning_skeleton_skip: { label: "中止", effect: "補完案を見送り、今の planning 停止を解除します。" },
+  planning_skeleton_edit: { label: "書き直す", effect: "補完案を直すための編集指示待ちにします。" },
+  take_select_accept: { label: "採用", effect: "低スコアでも現在の best take を採用します。" },
+  take_select_regenerate: { label: "再生成", effect: "take を採用せず、Suno 生成をもう一度走らせる準備をします。" },
+  take_select_skip: { label: "保留", effect: "take 選別を今回は見送ります。" },
+  x_publish_prepare: { label: "X 草案を作る", effect: "投稿はせず、X 投稿の確認用草案を作ります。" },
+  x_publish_confirm: { label: "Xに投稿", effect: "確認済み草案を X に投稿します。外部公開が発生します。" },
+  x_publish_cancel: { label: "やめる", effect: "X 投稿草案を破棄します。" }
+};
+
+export function describeCallbackActionEffect(action: string): CallbackActionEffect {
+  const known = callbackActionEffects[action];
+  if (known) {
+    return { action, ...known };
+  }
+  return {
+    action,
+    label: action,
+    effect: "未分類の callback です。押す前に Producer Console / audit を確認してください。"
+  };
+}
 
 export function callbackActionLedgerPath(root: string): string {
   return join(root, "runtime", "callback-actions.jsonl");
@@ -104,6 +165,37 @@ export async function readCallbackActionEntries(root: string): Promise<CallbackA
     .split("\n")
     .filter(Boolean)
     .map((line) => JSON.parse(line) as CallbackActionEntry);
+}
+
+function latestCallbackActionEntries(entries: CallbackActionEntry[]): CallbackActionEntry[] {
+  const latest = new Map<string, CallbackActionEntry>();
+  for (const entry of entries) {
+    latest.set(entry.callbackId, entry);
+  }
+  return [...latest.values()];
+}
+
+export async function summarizePendingCallbackActions(root: string, limit = 6, now = Date.now()): Promise<PendingCallbackSummary> {
+  const pending = latestCallbackActionEntries(await readCallbackActionEntries(root))
+    .filter((entry) => entry.status === "pending" && entry.expiresAt > now)
+    .sort((left, right) => right.createdAt - left.createdAt);
+  return {
+    count: pending.length,
+    recent: pending.slice(0, limit).map((entry) => {
+      const effect = describeCallbackActionEffect(entry.action);
+      return {
+        callbackId: entry.callbackId,
+        action: entry.action,
+        label: effect.label,
+        effect: effect.effect,
+        songId: entry.songId,
+        proposalId: entry.proposalId,
+        platform: entry.platform,
+        createdAt: entry.createdAt,
+        expiresAt: entry.expiresAt
+      };
+    })
+  };
 }
 
 export async function resolveCallbackAction(root: string, callbackId: string): Promise<CallbackActionEntry | undefined> {

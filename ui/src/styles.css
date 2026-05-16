@@ -431,6 +431,35 @@ textarea {
   box-shadow: 0 0 0 5px rgba(159, 79, 45, 0.14);
 }
 
+.system-status-overview {
+  grid-column: 1 / -1;
+}
+
+.system-status-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 10px;
+  margin-bottom: 14px;
+}
+
+.system-status-item.is-ok {
+  border-left: 4px solid #1d6a45;
+}
+
+.system-status-item.needs-attention {
+  border-left: 4px solid var(--warning);
+}
+
+.system-button-effects {
+  display: grid;
+  gap: 10px;
+}
+
+.system-button-effect strong {
+  display: block;
+  margin-bottom: 4px;
+}
+
 @keyframes lifecycle-pulse {
   0%, 100% { transform: scale(1); }
   50% { transform: scale(1.18); }

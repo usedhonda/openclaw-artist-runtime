@@ -14,7 +14,7 @@ import { ArtistAutopilotService, pauseAutopilot, resumeAutopilot } from "../serv
 import { AutopilotControlService } from "../services/autopilotControlService.js";
 import { getAutopilotTicker, getAutopilotTickerIntervalMs, getLastOutcome, getLastTickAt } from "../services/autopilotTicker.js";
 import { readBirdLedgerDetail, readBirdRateLimitStatus } from "../services/birdRateLimiter.js";
-import { resolveCallbackAction } from "../services/callbackActionRegistry.js";
+import { resolveCallbackAction, summarizePendingCallbackActions } from "../services/callbackActionRegistry.js";
 import { handleProposalResponse, listPendingProposalDetails, listPendingProposals } from "../services/conversationalSession.js";
 import { buildPlatformStats, readDistributionEvents } from "../services/distributionLedgerReader.js";
 import { getRuntimeEventBus } from "../services/runtimeEventBus.js";
@@ -965,7 +965,7 @@ export async function buildStatusResponse(config?: Partial<ArtistRuntimeConfig>)
   const platforms = await buildPlatformStatuses(mergedConfig);
   const alerts = await collectAlerts(mergedConfig.artist.workspaceRoot, sunoWorker, platforms, mergedConfig);
   const sunoBudgetTracker = new SunoBudgetTracker(mergedConfig.artist.workspaceRoot);
-  const [sunoBudgetState, sunoBudgetResetHistory, sunoArtifacts, sunoDailyBudget, sunoBudgetDetail, birdRateLimit, birdLedger, distributionDetection, pendingApprovals] = await Promise.all([
+  const [sunoBudgetState, sunoBudgetResetHistory, sunoArtifacts, sunoDailyBudget, sunoBudgetDetail, birdRateLimit, birdLedger, distributionDetection, pendingApprovals, pendingCallbacks] = await Promise.all([
     sunoBudgetTracker.getState(
       mergedConfig.music.suno.dailyCreditLimit,
       mergedConfig.music.suno.monthlyCreditLimit
@@ -977,7 +977,8 @@ export async function buildStatusResponse(config?: Partial<ArtistRuntimeConfig>)
     readBirdRateLimitStatus(mergedConfig.artist.workspaceRoot),
     readBirdLedgerDetail(mergedConfig.artist.workspaceRoot),
     readDistributionDetectionState(mergedConfig.artist.workspaceRoot),
-    listPendingProposals(mergedConfig.artist.workspaceRoot)
+    listPendingProposals(mergedConfig.artist.workspaceRoot),
+    summarizePendingCallbackActions(mergedConfig.artist.workspaceRoot, 8)
   ]);
   const [musicSummary, distributionSummary] = await Promise.all([
     buildMusicSummary(mergedConfig),
@@ -1039,6 +1040,7 @@ export async function buildStatusResponse(config?: Partial<ArtistRuntimeConfig>)
       count: pendingApprovals.length,
       recent: pendingApprovals.slice(0, 3)
     },
+    pendingCallbacks,
     platforms,
     musicSummary,
     distributionSummary,

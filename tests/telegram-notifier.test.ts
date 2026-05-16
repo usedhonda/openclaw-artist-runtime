@@ -10,6 +10,15 @@ function jsonResponse(body: unknown): Response {
   } as Response;
 }
 
+const songCompletionButtonEffects = [
+  "",
+  "─────",
+  "次のボタン:",
+  "- SONGBOOK.md に追記: 完成曲を SONGBOOK.md に記録します。",
+  "- 保留: 完成曲の反映を今回は見送ります。",
+  "- X 草案を作る: 投稿はせず、X 投稿の確認用草案を作ります。"
+];
+
 describe("TelegramNotifier", () => {
   it("formats stage events for Telegram", async () => {
     await expect(formatRuntimeEvent({
@@ -39,7 +48,8 @@ describe("TelegramNotifier", () => {
       "🎯 動機: 観察 summary なし",
       "🌐 観察元: (記録なし)",
       "💬 抜粋: (記録なし)",
-      "非公開、御大のみ"
+      "非公開、御大のみ",
+      ...songCompletionButtonEffects
     ].join("\n"));
   });
 
@@ -59,7 +69,8 @@ describe("TelegramNotifier", () => {
       "🎯 動機: 観察 summary なし",
       "🌐 観察元: (記録なし)",
       "💬 抜粋: (記録なし)",
-      "非公開、御大のみ"
+      "非公開、御大のみ",
+      ...songCompletionButtonEffects
     ].join("\n"));
   });
 

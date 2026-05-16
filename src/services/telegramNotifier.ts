@@ -2,7 +2,7 @@ import type { RuntimeEvent, RuntimeEventBus } from "./runtimeEventBus.js";
 import { TelegramClient, type TelegramFetch } from "./telegramClient.js";
 import { generateArtistResponse, readArtistVoiceContext } from "./artistVoiceResponder.js";
 import type { AiReviewProvider } from "../types.js";
-import { registerCallbackAction } from "./callbackActionRegistry.js";
+import { describeCallbackActionEffect, registerCallbackAction } from "./callbackActionRegistry.js";
 import { appendConversationTurn } from "./conversationalSession.js";
 import { proposalForDetection } from "./songDistributionPoller.js";
 import { isInlineButtonsEnabled, isXInlineButtonEnabled } from "./runtimeConfig.js";
@@ -797,11 +797,48 @@ export async function enrichWithResources(
   return `${body}\n\n─────\n${lines.join("\n")}`;
 }
 
+function callbackActionsForRuntimeEvent(event: RuntimeEvent): string[] {
+  switch (event.type) {
+    case "song_take_completed":
+      return [
+        "song_songbook_write",
+        "song_skip",
+        ...(isXInlineButtonEnabled() ? ["x_publish_prepare"] : [])
+      ];
+    case "distribution_change_detected":
+      return ["dist_apply", "dist_skip"];
+    case "artist_pulse_drafted":
+      return ["daily_voice_publish", "daily_voice_edit", "daily_voice_cancel"];
+    case "song_spawn_proposed":
+      return ["song_spawn_inject", "song_spawn_skip", "song_spawn_edit"];
+    case "prompt_pack_ready":
+      return ["prompt_pack_go", "prompt_pack_edit", "prompt_pack_skip"];
+    case "planning_skeleton_incomplete":
+      return ["planning_skeleton_apply", "planning_skeleton_skip", "planning_skeleton_edit"];
+    case "take_select_low_score":
+      return ["take_select_accept", "take_select_regenerate", "take_select_skip"];
+    default:
+      return [];
+  }
+}
+
+function appendButtonEffectSection(event: RuntimeEvent, body: string): string {
+  const actions = callbackActionsForRuntimeEvent(event);
+  if (actions.length === 0) {
+    return body;
+  }
+  const lines = actions.map((action) => {
+    const effect = describeCallbackActionEffect(action);
+    return `- ${effect.label}: ${effect.effect}`;
+  });
+  return `${body}\n\n─────\n次のボタン:\n${lines.join("\n")}`;
+}
+
 export async function formatRuntimeEvent(
   event: RuntimeEvent,
   options: Pick<TelegramNotifierOptions, "workspaceRoot" | "aiReviewProvider" | "dashboardBaseUrl"> = {}
 ): Promise<string> {
-  const body = stripHtmlComments(await formatRuntimeEventRaw(event, options));
+  const body = appendButtonEffectSection(event, stripHtmlComments(await formatRuntimeEventRaw(event, options)));
   return enrichWithResources(event, options, body);
 }
 

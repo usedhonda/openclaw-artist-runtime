@@ -17,6 +17,7 @@ import { DistributionDetectionCard, type DistributionDetectionDetail } from "./c
 import { RuntimeActionMirrorCard, type RuntimeActionMirrorEvent } from "./components/RuntimeActionMirrorCard";
 import { SongDetailCard } from "./components/SongDetailCard";
 import { SongLifecycleTimelineCard } from "./components/SongLifecycleTimelineCard";
+import { SystemStatusOverview } from "./components/SystemStatusOverview";
 import { RuntimeSongbookCard, type SongbookLookupResult } from "./components/RuntimeSongbookCard";
 import { useHashRoute } from "./hooks/useHashRoute";
 import { deriveConnectionState } from "../../src/services/connectionState";
@@ -145,6 +146,20 @@ type StatusResponse = {
       summary: string;
       fieldCount: number;
       createdAt: string;
+    }>;
+  };
+  pendingCallbacks?: {
+    count: number;
+    recent: Array<{
+      callbackId: string;
+      action: string;
+      label: string;
+      effect: string;
+      songId?: string;
+      proposalId?: string;
+      platform?: string;
+      createdAt: number;
+      expiresAt: number;
     }>;
   };
   musicSummary: {
@@ -1427,6 +1442,10 @@ export function App() {
     <SongLifecycleTimelineCard />
   );
 
+  const systemStatusOverviewPanel = (
+    <SystemStatusOverview status={status} />
+  );
+
   const songDetailPanel = hashSongId ? (
     <SongDetailCard key={hashSongId} songId={hashSongId} onBack={clearHashSong} />
   ) : null;
@@ -1723,7 +1742,7 @@ export function App() {
         <section className="single-column song-page-shell">{songDetailPanel}</section>
       ) : (
         <>
-          {activeView === "dashboard" ? <section className="two-column">{cockpitStrip}{sunoWorkerHandoffPanel}{manualSongCreatePanel}{runtimeActionMirrorPanel}{songLifecycleTimelinePanel}{pendingApprovalsPanel}{lastCyclePanel}{setupPanel}{alertsPanel}{currentSongPanel}{distributionWorkerPanel}{observabilityPanel}{recentXResultPanel}</section> : null}
+          {activeView === "dashboard" ? <section className="two-column">{cockpitStrip}{systemStatusOverviewPanel}{sunoWorkerHandoffPanel}{manualSongCreatePanel}{runtimeActionMirrorPanel}{songLifecycleTimelinePanel}{pendingApprovalsPanel}{lastCyclePanel}{setupPanel}{alertsPanel}{currentSongPanel}{distributionWorkerPanel}{observabilityPanel}{recentXResultPanel}</section> : null}
           {activeView === "setup" ? <section className="two-column">{setupPanel}{sunoPanel}{platformsPanel}{configPanel}</section> : null}
           {activeView === "music" ? <section className="two-column">{sunoWorkerHandoffPanel}{sunoBudgetDetailPanel}{sunoPanel}{currentSongPanel}{recentXResultPanel}</section> : null}
           {activeView === "platforms" ? <section className="two-column">{birdLedgerPanel}{distributionDetectionPanel}{runtimeActionMirrorPanel}{platformsPanel}{distributionWorkerPanel}{observabilityPanel}{replySimulationPanel}</section> : null}
