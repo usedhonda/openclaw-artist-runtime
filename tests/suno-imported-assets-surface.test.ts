@@ -102,6 +102,54 @@ describe("suno imported asset status surface", () => {
     expect(importedAssetsPlaceholder(sunoStatus.lastImportOutcome)).toBeNull();
   });
 
+  it("prefers direct recovery import truth over a stale worker failure for the same run", async () => {
+    const prepared = await prepareImportedAssetWorkspace([
+      "https://suno.com/song/recovered-track"
+    ]);
+
+    let sunoStatus = await buildSunoStatusResponse({ artist: { workspaceRoot: prepared.root } });
+    expect(sunoStatus.worker.lastImportOutcome).toMatchObject({
+      runId: prepared.runId,
+      reason: "Suno results imported",
+      failedUrls: []
+    });
+
+    const worker = new SunoBrowserWorker(prepared.root);
+    await worker.setState("connected");
+    await worker.importRun(prepared.runId, prepared.urls, {
+      driver: {
+        probe: async () => ({ state: "connected" }),
+        importResults: async () => ({
+          accepted: false,
+          runId: prepared.runId,
+          urls: [],
+          paths: [],
+          metadata: [],
+          importedAt: "2026-04-22T00:01:00.000Z",
+          reason: "playwright_import_no_urls"
+        })
+      }
+    });
+
+    const status = await buildStatusResponse({ artist: { workspaceRoot: prepared.root } });
+    sunoStatus = await buildSunoStatusResponse({ artist: { workspaceRoot: prepared.root } });
+
+    expect(status.recentSong?.lastImportOutcome).toMatchObject({
+      runId: prepared.runId,
+      reason: "Suno results imported"
+    });
+    expect(status.sunoWorker.lastImportOutcome).toMatchObject({
+      runId: prepared.runId,
+      reason: "Suno results imported",
+      failedUrls: []
+    });
+    expect(sunoStatus.lastImportOutcome).toMatchObject({
+      runId: prepared.runId,
+      reason: "Suno results imported",
+      failedUrls: []
+    });
+  });
+
   it("keeps imported asset UI on placeholder when no paths are available", async () => {
     const prepared = await prepareImportedAssetWorkspace([]);
     const worker = new SunoBrowserWorker(prepared.root);

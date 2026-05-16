@@ -20,6 +20,7 @@ import {
   SunoBudgetTracker
 } from "./sunoBudget.js";
 import { emitRuntimeEvent } from "./runtimeEventBus.js";
+import { SunoBrowserWorker } from "./sunoBrowserWorker.js";
 
 export interface GenerateSunoRunInput {
   workspaceRoot: string;
@@ -307,22 +308,25 @@ export async function importSunoResults(input: ImportSunoResultsInput): Promise<
   );
 
   await appendJsonl(getRunsPath(input.workspaceRoot, input.songId), importedRecord);
+  const lastImportOutcome = {
+    runId: input.runId,
+    urlCount: input.urls.length,
+    pathCount: input.resultRefs?.length ?? 0,
+    paths: input.resultRefs ?? [],
+    failedUrls: [],
+    reason: "Suno results imported",
+    at: importedAt,
+    dryRun: config.autopilot.dryRun
+  };
+
   await updateSongState(input.workspaceRoot, input.songId, {
     status: "takes_imported",
     reason: "Suno results imported",
     selectedTakeId: input.selectedTakeId,
     appendPublicLinks: input.urls,
-    lastImportOutcome: {
-      runId: input.runId,
-      urlCount: input.urls.length,
-      pathCount: input.resultRefs?.length ?? 0,
-      paths: input.resultRefs ?? [],
-      failedUrls: [],
-      reason: "Suno results imported",
-      at: importedAt,
-      dryRun: config.autopilot.dryRun
-    }
+    lastImportOutcome
   });
+  await new SunoBrowserWorker(input.workspaceRoot).supersedeImportOutcome(lastImportOutcome);
   emitRuntimeEvent({
     type: "take_imported",
     songId: input.songId,

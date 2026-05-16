@@ -33,7 +33,7 @@ import { SunoBudgetTracker } from "../services/sunoBudget.js";
 import { readBudgetDetail as readSunoDailyBudgetDetail, readBudgetState as readSunoDailyBudgetState } from "../services/sunoBudgetLedger.js";
 import { readLatestPromptPackMetadata } from "../services/sunoPromptPackFiles.js";
 import { buildSunoArtifactIndex, generateSunoRun, readAllSunoRuns, readLatestSunoRun } from "../services/sunoRuns.js";
-import { SunoBrowserWorker } from "../services/sunoBrowserWorker.js";
+import { SunoBrowserWorker, workerImportOutcomeFromSong } from "../services/sunoBrowserWorker.js";
 import { createSongIdea } from "../services/songIdeation.js";
 import { buildSongbookLookup, syncSongbookFromITunes } from "../services/songbookSyncer.js";
 import { readTakeHistory, selectTake } from "../services/takeSelection.js";
@@ -50,10 +50,12 @@ import type {
   SetupReadiness,
   SocialPlatform,
   SocialPublishLedgerEntry,
+  SongState,
   StatusResponse,
   StatusExportResponse,
   ObservabilityExportWindow,
   SunoStatusResponse,
+  SunoWorkerStatus,
   SunoRunRecord,
   SunoDiagnosticsExportResponse,
   SunoDiagnosticsImportOutcome
@@ -315,6 +317,74 @@ async function buildWorkspaceSummaries(workspaceRoot: string): Promise<Pick<Stat
     recentSong,
     lastSunoRun: await readLatestSunoRun(workspaceRoot, recentSong.songId),
     lastSocialAction: await readLatestSocialAction(workspaceRoot, recentSong.songId)
+  };
+}
+
+function importOutcomeTime(outcome?: { at: string }): number {
+  if (!outcome?.at) {
+    return 0;
+  }
+  const parsed = Date.parse(outcome.at);
+  return Number.isFinite(parsed) ? parsed : 0;
+}
+
+function workerImportOutcomeFromRecentSong(song?: SongState): SunoWorkerStatus["lastImportOutcome"] {
+  const outcome = song?.lastImportOutcome;
+  if (!outcome) {
+    return undefined;
+  }
+  return workerImportOutcomeFromSong(outcome);
+}
+
+function hasImportedAssetEvidence(outcome: SunoWorkerStatus["lastImportOutcome"]): boolean {
+  return Boolean(
+    outcome
+    && (
+      outcome.urlCount > 0
+      || (outcome.pathCount ?? 0) > 0
+      || (outcome.paths?.length ?? 0) > 0
+      || (outcome.metadata?.length ?? 0) > 0
+    )
+  );
+}
+
+function isFailureImportOutcome(outcome: SunoWorkerStatus["lastImportOutcome"]): boolean {
+  if (!outcome) {
+    return false;
+  }
+  const reason = (outcome.reason ?? "").toLowerCase();
+  return Boolean(
+    outcome.failedUrls?.length
+    || reason.includes("no_urls")
+    || reason.includes("failed")
+    || reason.includes("error")
+    || reason.includes("not_ready")
+    || reason.includes("missing")
+  );
+}
+
+function withRecentSongImportOutcome(worker: SunoWorkerStatus, recentSong?: SongState): SunoWorkerStatus {
+  const recentOutcome = workerImportOutcomeFromRecentSong(recentSong);
+  if (!recentOutcome) {
+    return worker;
+  }
+
+  const workerOutcome = worker.lastImportOutcome;
+  const recentHasImportEvidence = hasImportedAssetEvidence(recentOutcome);
+  const shouldSupersede = recentHasImportEvidence
+    && (
+      !workerOutcome
+      || isFailureImportOutcome(workerOutcome)
+      || (!hasImportedAssetEvidence(workerOutcome) && importOutcomeTime(recentOutcome) >= importOutcomeTime(workerOutcome))
+    );
+  if (!shouldSupersede) {
+    return worker;
+  }
+
+  return {
+    ...worker,
+    lastImportOutcome: recentOutcome,
+    lastImportedRunId: recentOutcome.runId
   };
 }
 
@@ -828,7 +898,10 @@ export async function buildSunoStatusResponse(config?: Partial<ArtistRuntimeConf
   const mergedConfig = await resolveRuntimeConfig(config);
   const workspaceRoot = mergedConfig.artist.workspaceRoot;
   const recentSong = (await listSongStates(workspaceRoot))[0];
-  const worker = await new BrowserWorkerSunoConnector(workspaceRoot, { config: mergedConfig }).status();
+  const worker = withRecentSongImportOutcome(
+    await new BrowserWorkerSunoConnector(workspaceRoot, { config: mergedConfig }).status(),
+    recentSong
+  );
   const latestPromptPack = recentSong ? await readLatestPromptPackMetadata(workspaceRoot, recentSong.songId) : undefined;
   return {
     worker,
@@ -885,9 +958,10 @@ export async function buildStatusResponse(config?: Partial<ArtistRuntimeConfig>)
     mergedConfig.autopilot.dryRun,
     mergedConfig.artist.workspaceRoot
   );
-  const sunoWorker = await new BrowserWorkerSunoConnector(mergedConfig.artist.workspaceRoot, { config: mergedConfig }).status();
+  const rawSunoWorker = await new BrowserWorkerSunoConnector(mergedConfig.artist.workspaceRoot, { config: mergedConfig }).status();
   const distributionWorker = await new SocialDistributionWorker().status(mergedConfig);
   const workspaceStatus = await buildWorkspaceSummaries(mergedConfig.artist.workspaceRoot);
+  const sunoWorker = withRecentSongImportOutcome(rawSunoWorker, workspaceStatus.recentSong);
   const platforms = await buildPlatformStatuses(mergedConfig);
   const alerts = await collectAlerts(mergedConfig.artist.workspaceRoot, sunoWorker, platforms, mergedConfig);
   const sunoBudgetTracker = new SunoBudgetTracker(mergedConfig.artist.workspaceRoot);

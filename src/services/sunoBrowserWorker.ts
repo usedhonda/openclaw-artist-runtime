@@ -11,6 +11,7 @@ import type {
   SunoLoginHandoff,
   SunoDriverMode,
   SunoSubmitMode,
+  SongStateImportOutcome,
   SunoWorkerState,
   SunoWorkerStatus
 } from "../types.js";
@@ -124,6 +125,19 @@ function inferFailedImportUrls(requestedUrls: string[], result: SunoImportResult
       url,
       reason: classifyImportFailure(result.reason)
     }));
+}
+
+export function workerImportOutcomeFromSong(outcome: SongStateImportOutcome): SunoWorkerStatus["lastImportOutcome"] {
+  return {
+    runId: outcome.runId,
+    urlCount: outcome.urlCount,
+    pathCount: outcome.pathCount,
+    paths: outcome.paths,
+    failedUrls: outcome.failedUrls,
+    reason: outcome.reason,
+    at: outcome.at,
+    dryRun: outcome.dryRun
+  };
 }
 
 export class SunoBrowserWorker {
@@ -322,6 +336,16 @@ export class SunoBrowserWorker {
       next.failureCount = (current.failureCount ?? 0) + 1;
     }
     return this.writeState(next);
+  }
+
+  async supersedeImportOutcome(outcome: SongStateImportOutcome): Promise<SunoWorkerStatus> {
+    const current = await this.readState();
+    return this.writeState({
+      ...current,
+      lastImportOutcome: workerImportOutcomeFromSong(outcome),
+      lastImportedRunId: outcome.runId,
+      lastTransitionAt: now()
+    });
   }
 
   async pause(reason = "paused by operator"): Promise<SunoWorkerStatus> {
