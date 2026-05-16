@@ -114,6 +114,14 @@ export function getPollingWatchdogMinutes(env: NodeJS.ProcessEnv = process.env):
   return Math.max(0, parsed);
 }
 
+export function getStaleQueueCleanupHours(env: NodeJS.ProcessEnv = process.env): number {
+  const parsed = Number.parseInt(env.OPENCLAW_STALE_QUEUE_CLEANUP_HOURS ?? "", 10);
+  if (!Number.isFinite(parsed)) {
+    return 168;
+  }
+  return Math.max(0, parsed);
+}
+
 export function isPollingWatchdogRepromptOnceEnabled(env: NodeJS.ProcessEnv = process.env): boolean {
   return env.OPENCLAW_POLLING_WATCHDOG_REPROMPT_ONCE?.trim().toLowerCase() !== "off";
 }

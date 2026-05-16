@@ -28,13 +28,14 @@ import { collectObservations, type XObservationContext } from "./xObservationCol
 import { proposeTheme } from "./themeProposer.js";
 import { pollSongDistribution } from "./songDistributionPoller.js";
 import { cleanupExpiredCallbacks } from "./callbackLedgerMaintenance.js";
-import { applyRuntimeEnvOverrides, getArtistPulseIntervalHours, getSongSpawnIntervalHours, isArtistPulseConfigured, isSongbookAutoSyncEnabled, isSongSpawnConfigured } from "./runtimeConfig.js";
+import { applyRuntimeEnvOverrides, getArtistPulseIntervalHours, getSongSpawnIntervalHours, getStaleQueueCleanupHours, isArtistPulseConfigured, isSongbookAutoSyncEnabled, isSongSpawnConfigured } from "./runtimeConfig.js";
 import { proposeSpawn } from "./songSpawnProposer.js";
 import { shouldSpawn } from "./songSpawnRateLimiter.js";
 import { validatePlanningFiles } from "./planningSkeletonValidator.js";
 import { applyChangeSet } from "./changeSetApplier.js";
 import { syncSongbookFromITunes } from "./songbookSyncer.js";
 import { composeVoiceTopOnly } from "./commandVoiceWrapper.js";
+import { runStaleQueueMaintenance, suppressRestartStaleError } from "./staleQueueMaintenance.js";
 
 export function isPublishBlockedByDryRun(
   result: Pick<SocialPublishResult, "accepted" | "dryRun">,
@@ -606,6 +607,33 @@ export class ArtistAutopilotService {
         lastRunAt: nowIso()
       });
     }
+    await runStaleQueueMaintenance(input.workspaceRoot, {
+      ttlHours: getStaleQueueCleanupHours(process.env)
+    }).then((result) => {
+      for (const entry of result.cleaned) {
+        emitRuntimeEvent({
+          type: "error",
+          source: "stale_queue_cleanup",
+          reason: entry.reason,
+          songId: entry.songId,
+          timestamp: Date.now()
+        });
+      }
+      for (const issue of result.inconsistencies) {
+        const reason = `${issue.reason}:${issue.callbackId}:${issue.songId}`;
+        console.warn(`[artist-runtime] ${reason}`);
+        emitRuntimeEvent({
+          type: "error",
+          source: "callback_ledger_consistency",
+          reason,
+          songId: issue.songId,
+          timestamp: Date.now()
+        });
+      }
+    }).catch((error) => {
+      const reason = error instanceof Error ? error.message : String(error);
+      console.warn(`[artist-runtime] stale queue maintenance failed: ${reason}`);
+    });
     await resetIfNewDay(input.workspaceRoot);
     await pollSongDistribution(input.workspaceRoot).catch((error) => {
       emitRuntimeEvent({
@@ -627,12 +655,32 @@ export class ArtistAutopilotService {
     }
 
     const song = await currentSong(input.workspaceRoot, existing.currentSongId);
+    const suppressedRestartStaleError = await suppressRestartStaleError(
+      input.workspaceRoot,
+      existing.currentSongId,
+      song,
+      existing.blockedReason,
+      existing.lastError
+    );
+    const stateBeforeStage = suppressedRestartStaleError
+      ? { ...existing, blockedReason: undefined, lastError: undefined, retryCount: 0 }
+      : existing;
+    if (suppressedRestartStaleError) {
+      console.warn(`[artist-runtime] ${suppressedRestartStaleError}`);
+      emitRuntimeEvent({
+        type: "error",
+        source: "autopilot_restart_stale_error",
+        reason: suppressedRestartStaleError,
+        songId: existing.currentSongId,
+        timestamp: Date.now()
+      });
+    }
     const stage = stageFromSong(song);
     const runId = !song && existing.lastSuccessfulStage === "completed"
       ? `auto_${Date.now().toString(36)}`
-      : existing.runId ?? `auto_${Date.now().toString(36)}`;
+      : stateBeforeStage.runId ?? `auto_${Date.now().toString(36)}`;
     const baseState: AutopilotRunState = {
-      ...existing,
+      ...stateBeforeStage,
       runId,
       currentSongId: song?.songId,
       stage,
@@ -676,7 +724,7 @@ export class ArtistAutopilotService {
       return writeCompletedStage(input.workspaceRoot, existing, baseState, song.songId, existing.blockedReason);
     }
 
-    const hasUnresolvedBlock = Boolean(existing.blockedReason || existing.lastError);
+    const hasUnresolvedBlock = Boolean(stateBeforeStage.blockedReason || stateBeforeStage.lastError);
     if (
       existing.runId === runId
       && existing.lastSuccessfulStage === stage
