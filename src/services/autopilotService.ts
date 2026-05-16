@@ -113,18 +113,30 @@ async function importPendingSunoGeneration(
   config: ArtistRuntimeConfig
 ): Promise<{ imported: true } | { imported: false; reason?: string } | undefined> {
   const connector = new BrowserWorkerSunoConnector(root, { config });
+  const latestRun = await readLatestSunoRun(root, songId);
   const workerStatus = await connector.status().catch(() => undefined);
-  if (workerStatus?.state !== "generating") {
+  const hasAcceptedRun = latestRun?.status === "accepted";
+  if (!hasAcceptedRun && workerStatus?.state !== "generating") {
     return undefined;
   }
 
-  const latestRun = await readLatestSunoRun(root, songId);
-  const runId = workerStatus.currentRunId ?? latestRun?.runId;
+  const runId = workerStatus?.currentRunId ?? latestRun?.runId;
   if (!runId) {
     return { imported: false, reason: "suno_import_missing_run_id" };
   }
 
   const urls = latestRun?.runId === runId ? latestRun.urls : [];
+  if (hasAcceptedRun) {
+    const reason = `suno_lifecycle_contract_pending_import:${runId}`;
+    console.error(`[artist-runtime] ${reason}`);
+    emitRuntimeEvent({
+      type: "error",
+      source: "suno_lifecycle_contract",
+      reason,
+      songId,
+      timestamp: Date.now()
+    });
+  }
   if (urls.length === 0) {
     return { imported: false, reason: "waiting for Suno result import" };
   }
