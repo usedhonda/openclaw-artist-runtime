@@ -1376,17 +1376,24 @@ export function registerRoutes(api: unknown): void {
             reason: typeof payload.reason === "string" ? payload.reason : undefined
           });
         }
-        if (segments.length === 2 && (segments[1] === "songbook-write" || segments[1] === "songbook-skip")) {
+        if (segments.length === 2 && (segments[1] === "songbook-write" || segments[1] === "songbook-skip" || segments[1] === "archive" || segments[1] === "discard")) {
           if (payloadContainsSecretLikeText(payload, ["reason", "note"])) {
             return {
               error: "secret_like_payload_rejected",
               statusCode: 400
             };
           }
+          const action = segments[1] === "songbook-write"
+            ? "song_songbook_write"
+            : segments[1] === "songbook-skip"
+              ? "song_skip"
+              : segments[1] === "archive"
+                ? "song_archive"
+                : "song_discard";
           return handleSongPublishActionRequest({
             root: config.artist.workspaceRoot,
             songId: segments[0] ?? (typeof payload.songId === "string" ? payload.songId : "song-001"),
-            action: segments[1] === "songbook-write" ? "song_songbook_write" : "song_skip",
+            action,
             actor: { kind: "ui_api" }
           });
         }

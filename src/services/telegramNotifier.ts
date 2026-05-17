@@ -90,6 +90,22 @@ export class TelegramNotifier {
     }
     const actions = [
       registerCallbackAction(this.options.workspaceRoot, {
+        action: "song_archive",
+        songId: event.songId,
+        selectedTakeId: event.selectedTakeId,
+        chatId: this.options.chatId,
+        messageId,
+        userId: this.options.chatId
+      }),
+      registerCallbackAction(this.options.workspaceRoot, {
+        action: "song_discard",
+        songId: event.songId,
+        selectedTakeId: event.selectedTakeId,
+        chatId: this.options.chatId,
+        messageId,
+        userId: this.options.chatId
+      }),
+      registerCallbackAction(this.options.workspaceRoot, {
         action: "song_songbook_write",
         songId: event.songId,
         chatId: this.options.chatId,
@@ -112,8 +128,10 @@ export class TelegramNotifier {
         userId: this.options.chatId
       })] : [])
     ];
-    const [write, skip, xPrepare] = await Promise.all(actions);
+    const [archive, discard, write, skip, xPrepare] = await Promise.all(actions);
     const buttons = [
+      { text: buttonVoiceLabels.songCompletion.archive, callback_data: `cb:${archive.callbackId}` },
+      { text: buttonVoiceLabels.songCompletion.discard, callback_data: `cb:${discard.callbackId}` },
       { text: buttonVoiceLabels.songCompletion.write, callback_data: `cb:${write.callbackId}` },
       { text: buttonVoiceLabels.songCompletion.later, callback_data: `cb:${skip.callbackId}` },
       ...(xPrepare ? [{ text: buttonVoiceLabels.songCompletion.xPrepare, callback_data: `cb:${xPrepare.callbackId}` }] : [])
@@ -801,6 +819,8 @@ function callbackActionsForRuntimeEvent(event: RuntimeEvent): string[] {
   switch (event.type) {
     case "song_take_completed":
       return [
+        "song_archive",
+        "song_discard",
         "song_songbook_write",
         "song_skip",
         ...(isXInlineButtonEnabled() ? ["x_publish_prepare"] : [])

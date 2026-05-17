@@ -8,6 +8,8 @@ export const buttonVoiceLabels = {
   songCompletion: {
     write: "SONGBOOK.md に追記",
     later: "保留",
+    archive: "採用して保留する",
+    discard: "破棄する (brief 残す)",
     xPrepare: "X 草案を作る"
   },
   distribution: {

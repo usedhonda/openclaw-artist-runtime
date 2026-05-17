@@ -113,6 +113,30 @@ describe("songs route songbook action mirror", () => {
     expect(readFileSync(join(root, "artist", "SONGBOOK.md"), "utf8")).toBe(beforeSongbook);
   });
 
+  it("archives and discards producer review songs through the shared route", async () => {
+    const archiveRoot = await prepareWorkspace();
+    const handler = registerSongsHandler();
+
+    const archiveResponse = await invoke(handler, "POST", "/plugins/artist-runtime/api/songs/where-it-played/archive", archiveRoot);
+    expect(archiveResponse.json()).toMatchObject({
+      action: "song_archive",
+      status: "applied",
+      song: { status: "archived", selectedTakeId: "take-1" }
+    });
+    expect((await readSongState(archiveRoot, "where-it-played")).status).toBe("archived");
+
+    const discardRoot = await prepareWorkspace();
+    const discardResponse = await invoke(handler, "POST", "/plugins/artist-runtime/api/songs/where-it-played/discard", discardRoot);
+    expect(discardResponse.json()).toMatchObject({
+      action: "song_discard",
+      status: "discarded",
+      song: { status: "discarded" }
+    });
+    const discarded = await readSongState(discardRoot, "where-it-played");
+    expect(discarded.status).toBe("discarded");
+    expect(discarded.selectedTakeId).toBeUndefined();
+  });
+
   it("rejects secret-like free text payloads on the UI mirror route", async () => {
     const root = await prepareWorkspace();
     const handler = registerSongsHandler();

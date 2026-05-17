@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import { Breadcrumb } from "./Breadcrumb";
 
 const apiBase = "/plugins/artist-runtime/api";
@@ -95,6 +95,12 @@ type SongDetailResponse = {
   latestPromptPack?: { version?: number | string } | null;
 };
 
+type SongReviewActionResponse = {
+  status?: string;
+  message?: string;
+  song?: SongState;
+};
+
 type RuntimeEvent = {
   type: string;
   songId?: string;
@@ -185,6 +191,31 @@ export interface SongDetailCardProps {
   eventStreamUrl?: string;
 }
 
+export function ProducerReviewButtons(props: {
+  disabled?: boolean;
+  onArchive: () => void;
+  onDiscard: () => void;
+}) {
+  return (
+    <div className="inline-actions song-detail-review-actions">
+      <button
+        type="button"
+        disabled={props.disabled}
+        onClick={props.onArchive}
+      >
+        採用して保留する
+      </button>
+      <button
+        type="button"
+        disabled={props.disabled}
+        onClick={props.onDiscard}
+      >
+        破棄する (brief 残す)
+      </button>
+    </div>
+  );
+}
+
 export function SongDetailCard(props: SongDetailCardProps) {
   const { songId, onBack } = props;
   const [detail, setDetail] = useState<SongDetailResponse | null>(null);
@@ -194,6 +225,9 @@ export function SongDetailCard(props: SongDetailCardProps) {
   const [sunoHandoffBusy, setSunoHandoffBusy] = useState(false);
   const [sunoHandoffError, setSunoHandoffError] = useState<string | null>(null);
   const [sunoHandoffResult, setSunoHandoffResult] = useState<string | null>(null);
+  const [reviewBusy, setReviewBusy] = useState<"archive" | "discard" | null>(null);
+  const [reviewResult, setReviewResult] = useState<string | null>(null);
+  const [reviewError, setReviewError] = useState<string | null>(null);
 
   const completeSunoHandoff = async () => {
     setSunoHandoffBusy(true);
@@ -206,6 +240,30 @@ export function SongDetailCard(props: SongDetailCardProps) {
       setSunoHandoffError(err instanceof Error ? err.message : String(err));
     } finally {
       setSunoHandoffBusy(false);
+    }
+  };
+
+  const reloadDetail = async () => {
+    const [detailRes, eventsRes] = await Promise.all([
+      fetchJson<SongDetailResponse>(`/songs/${encodeURIComponent(songId)}`),
+      fetchJson<SongEventsResponse>(`/songs/${encodeURIComponent(songId)}/events?limit=200`).catch(() => ({ events: [] }))
+    ]);
+    setDetail(detailRes);
+    setEvents([...(eventsRes.events ?? [])].sort((a, b) => (b.timestamp ?? 0) - (a.timestamp ?? 0)));
+  };
+
+  const runProducerReviewAction = async (action: "archive" | "discard") => {
+    setReviewBusy(action);
+    setReviewError(null);
+    setReviewResult(null);
+    try {
+      const res = await postJson<SongReviewActionResponse>(`/songs/${encodeURIComponent(songId)}/${action}`);
+      setReviewResult(res.message ?? `status=${res.song?.status ?? res.status ?? "-"}`);
+      await reloadDetail();
+    } catch (err) {
+      setReviewError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setReviewBusy(null);
     }
   };
 
@@ -268,6 +326,7 @@ export function SongDetailCard(props: SongDetailCardProps) {
   const promptLedger = detail?.promptLedger ?? [];
   const socialAssets = detail?.socialAssets ?? [];
   const lastSocialAction = detail?.lastSocialAction ?? null;
+  const canReviewSelectedTake = song?.status === "take_selected";
 
   return (
     <article className="panel song-detail-card">
@@ -385,13 +444,24 @@ export function SongDetailCard(props: SongDetailCardProps) {
           <details className="song-detail-section" open>
             <summary><strong>Selected take</strong></summary>
             {selectedTake ? (
-              <dl className="song-detail-status">
-                <div><dt>Take ID</dt><dd>{selectedTake.selectedTakeId ?? "-"}</dd></div>
-                <div><dt>Run</dt><dd>{selectedTake.runId ?? "-"}</dd></div>
-                <div><dt>Reason</dt><dd>{selectedTake.reason ?? "-"}</dd></div>
-                <div><dt>Picked at</dt><dd>{formatTimestamp(selectedTake.timestamp)}</dd></div>
-                {selectedTake.url ? <div><dt>URL</dt><dd><a href={selectedTake.url} target="_blank" rel="noreferrer">{selectedTake.url}</a></dd></div> : null}
-              </dl>
+              <>
+                <dl className="song-detail-status">
+                  <div><dt>Take ID</dt><dd>{selectedTake.selectedTakeId ?? "-"}</dd></div>
+                  <div><dt>Run</dt><dd>{selectedTake.runId ?? "-"}</dd></div>
+                  <div><dt>Reason</dt><dd>{selectedTake.reason ?? "-"}</dd></div>
+                  <div><dt>Picked at</dt><dd>{formatTimestamp(selectedTake.timestamp)}</dd></div>
+                  {selectedTake.url ? <div><dt>URL</dt><dd><a href={selectedTake.url} target="_blank" rel="noreferrer">{selectedTake.url}</a></dd></div> : null}
+                </dl>
+                {canReviewSelectedTake ? (
+                  <ProducerReviewButtons
+                    disabled={reviewBusy !== null}
+                    onArchive={() => void runProducerReviewAction("archive")}
+                    onDiscard={() => void runProducerReviewAction("discard")}
+                  />
+                ) : null}
+                {reviewResult ? <div className="muted">{reviewResult}</div> : null}
+                {reviewError ? <div className="muted">error: {reviewError}</div> : null}
+              </>
             ) : (
               <div className="item muted">No take selected yet.</div>
             )}

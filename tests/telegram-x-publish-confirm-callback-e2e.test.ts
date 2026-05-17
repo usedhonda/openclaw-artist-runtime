@@ -204,7 +204,7 @@ describe("telegram X publish callbacks", () => {
       urls: ["https://suno.example/take-1"],
       timestamp: Date.now()
     });
-    expect((await readCallbackActionEntries(root)).map((entry) => entry.action).sort()).toEqual(["song_skip", "song_songbook_write"].sort());
+    expect((await readCallbackActionEntries(root)).map((entry) => entry.action).sort()).toEqual(["song_archive", "song_discard", "song_skip", "song_songbook_write"].sort());
     const markupCall = fetchImpl.mock.calls.find((call) => String(call[0]).includes("/editMessageReplyMarkup"));
     expect(String((markupCall?.[1] as RequestInit).body)).not.toContain("X 投稿準備");
   });
