@@ -226,6 +226,7 @@ export function stageFromSong(song?: SongState): AutopilotStage {
     case "published":
       return "completed";
     case "archived":
+    case "discarded":
     case "failed":
       return "failed_closed";
     default:
@@ -236,10 +237,10 @@ export function stageFromSong(song?: SongState): AutopilotStage {
 async function currentSong(root: string, preferredSongId?: string): Promise<SongState | undefined> {
   const songs = await listSongStates(root);
   const preferred = preferredSongId ? songs.find((song) => song.songId === preferredSongId) : undefined;
-  if (preferred && !["scheduled", "published", "archived", "failed"].includes(preferred.status)) {
+  if (preferred && !["scheduled", "published", "archived", "discarded", "failed"].includes(preferred.status)) {
     return preferred;
   }
-  return songs.find((song) => song.status !== "scheduled" && song.status !== "published" && song.status !== "archived" && song.status !== "failed");
+  return songs.find((song) => song.status !== "scheduled" && song.status !== "published" && song.status !== "archived" && song.status !== "discarded" && song.status !== "failed");
 }
 
 async function ensureLyrics(root: string, song: SongState, config?: Partial<ArtistRuntimeConfig>): Promise<SongState> {

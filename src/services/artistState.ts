@@ -28,7 +28,9 @@ export interface SongStatePatch {
   briefPath?: string;
   lyricsVersion?: number;
   selectedTakeId?: string;
+  clearSelectedTake?: boolean;
   appendPublicLinks?: string[];
+  replacePublicLinks?: string[];
   runCountDelta?: number;
   lastImportOutcome?: SongStateImportOutcome;
   degradedLyrics?: boolean;
@@ -65,6 +67,7 @@ function normalizeSongStatus(value?: string): SongStatus {
     case "scheduled":
     case "published":
     case "archived":
+    case "discarded":
     case "failed":
       return value;
     case "drafting":
@@ -309,8 +312,8 @@ export async function updateSongState(root: string, songId: string, patch: SongS
     updatedAt: nowIso(),
     briefPath: patch.briefPath ?? current.briefPath,
     lyricsVersion: patch.lyricsVersion ?? current.lyricsVersion,
-    selectedTakeId: patch.selectedTakeId ?? current.selectedTakeId,
-    publicLinks: Array.from(publicLinks),
+    selectedTakeId: patch.clearSelectedTake ? undefined : patch.selectedTakeId ?? current.selectedTakeId,
+    publicLinks: patch.replacePublicLinks ? patch.replacePublicLinks.filter(Boolean) : Array.from(publicLinks),
     runCount: Math.max(0, current.runCount + (patch.runCountDelta ?? 0)),
     lastReason: patch.reason ?? current.lastReason,
     lastImportOutcome: patch.lastImportOutcome ?? current.lastImportOutcome,

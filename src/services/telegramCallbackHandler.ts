@@ -245,7 +245,7 @@ export async function routeTelegramCallback(ctx: TelegramCallbackContext): Promi
     return { processed: true, result: "updated", reason: proposalResult.status, callbackId };
   }
 
-  if (entry.action === "song_songbook_write" || entry.action === "song_skip") {
+  if (entry.action === "song_songbook_write" || entry.action === "song_skip" || entry.action === "song_archive" || entry.action === "song_discard") {
     await ctx.client.answerCallbackQuery(ctx.callbackQueryId, { text: "OK" });
     try {
       const actionResult = await handleSongPublishActionRequest({

@@ -61,7 +61,9 @@ describe("song publish action registry", () => {
     expect(readFileSync(join(root, "artist", "SONGBOOK.md"), "utf8")).toBe(beforeSongbook);
     expect(listSongPublishActions().map((definition) => definition.action)).toEqual([
       "song_songbook_write",
-      "song_skip"
+      "song_skip",
+      "song_archive",
+      "song_discard"
     ]);
     expect(listSongPublishActions().map((definition) => definition.action).join(" ")).not.toMatch(/x|instagram|tiktok|publish/i);
   });

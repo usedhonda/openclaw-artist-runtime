@@ -5,7 +5,7 @@ import { listSongStates, readSongState, updateSongState } from "./artistState.js
 import { readCallbackActionEntries, type CallbackActionEntry } from "./callbackActionRegistry.js";
 
 const staleQueueStatuses = new Set<SongStatus>(["brief", "lyrics", "suno_prompt_pack"]);
-const terminalSongStatuses = new Set<SongStatus>(["scheduled", "published", "archived", "failed"]);
+const terminalSongStatuses = new Set<SongStatus>(["scheduled", "published", "archived", "discarded", "failed"]);
 
 export interface StaleQueueMaintenanceOptions {
   now?: Date;

@@ -903,6 +903,10 @@ async function formatRuntimeEventRaw(
       return artistReport(event, `SONGBOOK updated: ${event.songId} is now marked published.`, options);
     case "song_publish_skipped":
       return artistReport(event, `Song completion skipped for now: ${event.songId}.`, options);
+    case "song_archived":
+      return artistReport(event, `Song archived for producer hold: ${event.songId}${event.selectedTakeId ? ` take=${event.selectedTakeId}` : ""}.`, options);
+    case "song_discarded":
+      return artistReport(event, `Song discarded after producer review: ${event.songId}${event.previousSelectedTakeId ? ` previous_take=${event.previousSelectedTakeId}` : ""}.`, options);
     case "artist_pulse_drafted":
       return [
         dailyVoiceTitle(event.voiceKind),

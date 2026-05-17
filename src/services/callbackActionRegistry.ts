@@ -104,6 +104,8 @@ const callbackActionEffects: Record<string, Omit<CallbackActionEffect, "action">
   dist_skip: { label: "保留", effect: "配信 URL の反映を見送ります。" },
   song_songbook_write: { label: "SONGBOOK.md に追記", effect: "完成曲を SONGBOOK.md に記録します。" },
   song_skip: { label: "保留", effect: "完成曲の反映を今回は見送ります。" },
+  song_archive: { label: "採用して保留する", effect: "曲を採用して保留、SNS には出さない。" },
+  song_discard: { label: "破棄する", effect: "曲を破棄、brief は reuse のため残す。" },
   daily_voice_publish: { label: "投稿", effect: "草案を X に投稿します。外部公開が発生します。" },
   daily_voice_edit: { label: "編集", effect: "草案を直すための返信待ちにします。" },
   daily_voice_cancel: { label: "キャンセル", effect: "草案投稿を破棄します。" },

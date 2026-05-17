@@ -6,7 +6,7 @@ import { emitRuntimeEvent } from "./runtimeEventBus.js";
 import { readResolvedConfig } from "./runtimeConfig.js";
 import type { SongState } from "../types.js";
 
-export type SongPublishAction = "song_songbook_write" | "song_skip";
+export type SongPublishAction = "song_songbook_write" | "song_skip" | "song_archive" | "song_discard";
 
 export interface SongPublishActionDefinition {
   action: SongPublishAction;
@@ -44,7 +44,9 @@ export interface SongPublishActionResult {
 export function listSongPublishActions(): SongPublishActionDefinition[] {
   return [
     { action: "song_songbook_write", label: "SONGBOOK 反映", publishSideEffect: false },
-    { action: "song_skip", label: "後で", publishSideEffect: false }
+    { action: "song_skip", label: "後で", publishSideEffect: false },
+    { action: "song_archive", label: "採用して保留する", publishSideEffect: false },
+    { action: "song_discard", label: "破棄する", publishSideEffect: false }
   ];
 }
 
@@ -59,19 +61,60 @@ async function readSafety(root: string): Promise<SongPublishActionResult["safety
 export async function runSongPublishAction(action: SongPublishAction, context: SongPublishActionContext): Promise<SongPublishActionResult> {
   const now = context.now ?? Date.now();
   const safety = await readSafety(context.root);
+  const currentSong = await readSongState(context.root, context.songId);
   if (action === "song_skip") {
     emitRuntimeEvent({ type: "song_publish_skipped", songId: context.songId, timestamp: now });
     return {
       action,
       status: "discarded",
       message: "⏸ 後で確認。SONGBOOK は変更していません。",
-      song: await readSongState(context.root, context.songId),
+      song: currentSong,
+      safety
+    };
+  }
+
+  if (action === "song_archive" || action === "song_discard") {
+    if (currentSong.status !== "take_selected") {
+      throw new Error(`invalid_song_review_transition:${currentSong.status}`);
+    }
+    if (action === "song_archive") {
+      const song = await updateSongState(context.root, context.songId, {
+        status: "archived",
+        reason: "producer archived selected take without publishing"
+      });
+      emitRuntimeEvent({ type: "song_archived", songId: context.songId, selectedTakeId: song.selectedTakeId, timestamp: now });
+      return {
+        action,
+        status: "applied",
+        message: "採用して保留した。SNS には出していません。",
+        song,
+        safety
+      };
+    }
+    const song = await updateSongState(context.root, context.songId, {
+      status: "discarded",
+      reason: "producer discarded selected take and kept brief for reuse",
+      clearSelectedTake: true,
+      replacePublicLinks: []
+    });
+    emitRuntimeEvent({ type: "song_discarded", songId: context.songId, previousSelectedTakeId: currentSong.selectedTakeId, timestamp: now });
+    return {
+      action,
+      status: "discarded",
+      message: "破棄した。brief は reuse のため残しています。",
+      song,
       safety
     };
   }
 
   if (action !== "song_songbook_write") {
     throw new Error(`unsupported_song_publish_action:${action satisfies never}`);
+  }
+  if (currentSong.status === "archived" || currentSong.status === "discarded") {
+    throw new Error(`song_publish_state_guard:${currentSong.status}`);
+  }
+  if (currentSong.status !== "take_selected" && currentSong.status !== "social_assets" && currentSong.status !== "scheduled") {
+    throw new Error(`invalid_song_publish_transition:${currentSong.status}`);
   }
 
   const backups = await ensureBackupChangeSet([

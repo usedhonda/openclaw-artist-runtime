@@ -21,6 +21,8 @@ export type RuntimeEvent =
   | { type: "planning_skeleton_incomplete"; songId: string; missing: string[]; proposal: ChangeSetProposal; timestamp: number }
   | { type: "song_songbook_written"; songId: string; timestamp: number }
   | { type: "song_publish_skipped"; songId: string; timestamp: number }
+  | { type: "song_archived"; songId: string; selectedTakeId?: string; timestamp: number }
+  | { type: "song_discarded"; songId: string; previousSelectedTakeId?: string; timestamp: number }
   | ({ type: "artist_pulse_drafted"; timestamp: number } & DailyVoiceDraft)
   | { type: "song_spawn_proposed"; brief: CommissionBrief; reason: string; candidateSongId: string; voiceTop?: string; observationSummary?: ObservationSummary; timestamp: number }
   | { type: "observation_collected"; topMotifMatch?: string; topScore?: number; entryCount: number; timestamp: number }
