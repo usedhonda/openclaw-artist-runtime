@@ -6,6 +6,7 @@ import { TikTokConnector } from "../connectors/social/tiktokConnector.js";
 import { XBirdConnector } from "../connectors/social/xBirdConnector.js";
 import { BrowserWorkerSunoConnector } from "../connectors/suno/browserWorkerConnector.js";
 import { safeRegisterRoute } from "../pluginApi.js";
+import { startRuntimeEventLedgerFromEnv, startTelegramNotifierFromEnv } from "../services/index.js";
 import { acknowledgeAlert } from "../services/alertAcks.js";
 import { collectAlerts } from "../services/alerts.js";
 import { appendAuditLog, createAuditEvent } from "../services/auditLog.js";
@@ -14,13 +15,13 @@ import { ArtistAutopilotService, pauseAutopilot, resumeAutopilot } from "../serv
 import { AutopilotControlService } from "../services/autopilotControlService.js";
 import { getAutopilotTicker, getAutopilotTickerIntervalMs, getLastOutcome, getLastTickAt } from "../services/autopilotTicker.js";
 import { readBirdLedgerDetail, readBirdRateLimitStatus } from "../services/birdRateLimiter.js";
-import { resolveCallbackAction, summarizePendingCallbackActions } from "../services/callbackActionRegistry.js";
+import { appendCallbackAuditEvent, resolveCallbackAction, summarizePendingCallbackActions } from "../services/callbackActionRegistry.js";
 import { handleProposalResponse, listPendingProposalDetails, listPendingProposals } from "../services/conversationalSession.js";
 import { buildPlatformStats, readDistributionEvents } from "../services/distributionLedgerReader.js";
-import { getRuntimeEventBus } from "../services/runtimeEventBus.js";
+import { emitRuntimeEvent, getRuntimeEventBus } from "../services/runtimeEventBus.js";
 import { readRuntimeEvents, readSongEventsAsc } from "../services/runtimeEventsLedger.js";
 import { getSongPromptLedgerPath } from "../services/promptLedger.js";
-import { isDebugCallbackDispatchEnabled, mergeResolvedConfig, patchResolvedConfig, readConfigOverrides, resolveRuntimeConfig, resolveSunoDailyBudget, writeRuntimeSafetyOverrides, type RuntimeSafetyOverridesPatch } from "../services/runtimeConfig.js";
+import { isDebugCallbackDispatchEnabled, isDebugNotifyReviewEnabled, mergeResolvedConfig, patchResolvedConfig, readConfigOverrides, resolveRuntimeConfig, resolveSunoDailyBudget, writeRuntimeSafetyOverrides, type RuntimeSafetyOverridesPatch } from "../services/runtimeConfig.js";
 import { publishSocialAction, readLatestSocialAction } from "../services/socialPublishing.js";
 import { SocialDistributionWorker } from "../services/socialDistributionWorker.js";
 import { buildEffectiveDryRunMap, resolvePlatformSocialDryRun } from "../services/socialDryRunResolver.js";
@@ -1153,6 +1154,58 @@ export async function buildInternalCallbackDispatchResponse(
   return { dispatched: true, callbackId, action: entry.action, result: result.result, reason: result.reason, statusCode: 200 };
 }
 
+export interface NotifyReviewResponse {
+  notified: boolean;
+  songId?: string;
+  selectedTakeId?: string;
+  eventType?: "song_take_completed";
+  reason?: string;
+  statusCode: number;
+}
+
+export async function buildNotifyReviewResponse(
+  input: unknown,
+  songId: string,
+  env: NodeJS.ProcessEnv = process.env
+): Promise<NotifyReviewResponse> {
+  const payload = payloadRecord(input);
+  if (!isDebugNotifyReviewEnabled(env)) {
+    return { notified: false, songId, reason: "debug_notify_review_disabled", statusCode: 403 };
+  }
+  const config = await resolveRuntimeConfig(payload.config as Partial<ArtistRuntimeConfig> | undefined);
+  const song = await readSongState(config.artist.workspaceRoot, songId).catch(() => undefined);
+  if (!song || song.status !== "take_selected") {
+    return { notified: false, songId, reason: "song_not_in_take_selected", statusCode: 400 };
+  }
+  const now = Date.now();
+  await startTelegramNotifierFromEnv(env);
+  startRuntimeEventLedgerFromEnv(env);
+  emitRuntimeEvent({
+    type: "song_take_completed",
+    songId,
+    selectedTakeId: song.selectedTakeId,
+    urls: song.publicLinks,
+    actor: "manual_notify_retrigger",
+    timestamp: now
+  });
+  await appendCallbackAuditEvent(config.artist.workspaceRoot, {
+    timestamp: now,
+    action: "notify_review_retriggered",
+    songId,
+    result: "notified",
+    reason: "notify_review_retriggered",
+    actor: "manual_notify_retrigger"
+  });
+  return {
+    notified: true,
+    songId,
+    selectedTakeId: song.selectedTakeId,
+    eventType: "song_take_completed",
+    reason: "notify_review_retriggered",
+    statusCode: 200
+  };
+}
+
 export async function buildStatusExportResponse(
   config?: Partial<ArtistRuntimeConfig>,
   window: ObservabilityExportWindow = "7d",
@@ -1375,6 +1428,9 @@ export function registerRoutes(api: unknown): void {
             selectedTakeId: typeof payload.selectedTakeId === "string" ? payload.selectedTakeId : undefined,
             reason: typeof payload.reason === "string" ? payload.reason : undefined
           });
+        }
+        if (segments.length === 2 && segments[1] === "notify-review") {
+          return buildNotifyReviewResponse(input, segments[0] ?? "song-001");
         }
         if (segments.length === 2 && (segments[1] === "songbook-write" || segments[1] === "songbook-skip" || segments[1] === "archive" || segments[1] === "discard")) {
           if (payloadContainsSecretLikeText(payload, ["reason", "note"])) {

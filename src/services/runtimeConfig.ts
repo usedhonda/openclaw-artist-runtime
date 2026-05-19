@@ -106,6 +106,10 @@ export function isDebugCallbackDispatchEnabled(env: NodeJS.ProcessEnv = process.
   return env.OPENCLAW_DEBUG_CALLBACK_DISPATCH?.trim().toLowerCase() === "on";
 }
 
+export function isDebugNotifyReviewEnabled(env: NodeJS.ProcessEnv = process.env): boolean {
+  return env.OPENCLAW_DEBUG_NOTIFY_REVIEW?.trim().toLowerCase() === "on";
+}
+
 export function getPollingWatchdogMinutes(env: NodeJS.ProcessEnv = process.env): number {
   const parsed = Number.parseInt(env.OPENCLAW_POLLING_WATCHDOG_MINUTES ?? "", 10);
   if (!Number.isFinite(parsed)) {

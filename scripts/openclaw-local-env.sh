@@ -70,6 +70,10 @@ export OPENCLAW_DASHBOARD_BASE_URL="${OPENCLAW_DASHBOARD_BASE_URL:-http://127.0.
 export OPENCLAW_POLLING_WATCHDOG_MINUTES="${OPENCLAW_POLLING_WATCHDOG_MINUTES:-0}"
 export OPENCLAW_POLLING_WATCHDOG_REPROMPT_ONCE=on
 
+# v10.37 producer-review recovery: allow local debug endpoint to re-send the
+# take_selected review notification without changing song state.
+export OPENCLAW_DEBUG_NOTIFY_REVIEW="${OPENCLAW_DEBUG_NOTIFY_REVIEW:-on}"
+
 # Gateway supervisor Telegram-network watchdog is opt-in only. Killing and
 # restarting the whole gateway on transient Telegram reachability errors can
 # amplify load and confuse live-operation state.

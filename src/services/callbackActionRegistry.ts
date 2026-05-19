@@ -295,6 +295,31 @@ export async function markCallbackReprompted(
   return current;
 }
 
+export async function appendCallbackAuditEvent(
+  root: string,
+  entry: {
+    timestamp?: number;
+    callbackId?: string;
+    action?: string;
+    songId?: string;
+    result: string;
+    reason: string;
+    actor: string;
+  }
+): Promise<void> {
+  const path = callbackAuditPath(root);
+  await mkdir(dirname(path), { recursive: true });
+  await appendFile(path, `${JSON.stringify({
+    timestamp: entry.timestamp ?? Date.now(),
+    callbackId: entry.callbackId,
+    action: entry.action,
+    songId: entry.songId,
+    result: entry.result,
+    reason: entry.reason,
+    actor: entry.actor
+  })}\n`, "utf8");
+}
+
 export async function hasCallbackReprompted(root: string, callbackId: string): Promise<boolean> {
   const contents = await readFile(callbackAuditPath(root), "utf8").catch(() => "");
   return contents
