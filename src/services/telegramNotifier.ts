@@ -136,8 +136,13 @@ export class TelegramNotifier {
       { text: buttonVoiceLabels.songCompletion.later, callback_data: `cb:${skip.callbackId}` },
       ...(xPrepare ? [{ text: buttonVoiceLabels.songCompletion.xPrepare, callback_data: `cb:${xPrepare.callbackId}` }] : [])
     ];
+    const inlineKeyboard = [
+      buttons.slice(0, 2),
+      buttons.slice(2, 4),
+      ...(buttons[4] ? [[buttons[4]]] : [])
+    ];
     await this.client.editMessageReplyMarkup(this.options.chatId, messageId, {
-      inline_keyboard: [buttons]
+      inline_keyboard: inlineKeyboard
     });
   }
 

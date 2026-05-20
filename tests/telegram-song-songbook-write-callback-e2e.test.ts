@@ -73,6 +73,20 @@ describe("telegram song completion SONGBOOK callbacks", () => {
     expect(xPrepare).toMatchObject({ songId: "where-it-played", messageId: 77, userId: 123, draftUrl: "https://suno.example/take-1" });
     const markupCall = fetchImpl.mock.calls.find((call) => String(call[0]).includes("/editMessageReplyMarkup"));
     const markupPayload = JSON.parse(String((markupCall?.[1] as RequestInit).body)) as { reply_markup: { inline_keyboard: Array<Array<{ text: string; callback_data: string }>> } };
+    expect(markupPayload.reply_markup.inline_keyboard).toEqual([
+      [
+        { text: "採用して保留する", callback_data: `cb:${archive?.callbackId}` },
+        { text: "破棄する (brief 残す)", callback_data: `cb:${discard?.callbackId}` }
+      ],
+      [
+        { text: "SONGBOOK.md に追記", callback_data: `cb:${write?.callbackId}` },
+        { text: "保留", callback_data: `cb:${skip?.callbackId}` }
+      ],
+      [
+        { text: "X 草案を作る", callback_data: `cb:${xPrepare?.callbackId}` }
+      ]
+    ]);
+    expect(markupPayload.reply_markup.inline_keyboard.every((row) => row.length <= 2)).toBe(true);
     const buttons = markupPayload.reply_markup.inline_keyboard.flat();
     expect(buttons).toEqual([
       { text: "採用して保留する", callback_data: `cb:${archive?.callbackId}` },
