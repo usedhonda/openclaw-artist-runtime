@@ -128,21 +128,12 @@ export class TelegramNotifier {
         userId: this.options.chatId
       })] : [])
     ];
-    const [archive, discard, write, skip, xPrepare] = await Promise.all(actions);
-    const buttons = [
-      { text: buttonVoiceLabels.songCompletion.archive, callback_data: `cb:${archive.callbackId}` },
-      { text: buttonVoiceLabels.songCompletion.discard, callback_data: `cb:${discard.callbackId}` },
-      { text: buttonVoiceLabels.songCompletion.write, callback_data: `cb:${write.callbackId}` },
-      { text: buttonVoiceLabels.songCompletion.later, callback_data: `cb:${skip.callbackId}` },
-      ...(xPrepare ? [{ text: buttonVoiceLabels.songCompletion.xPrepare, callback_data: `cb:${xPrepare.callbackId}` }] : [])
-    ];
-    const inlineKeyboard = [
-      buttons.slice(0, 2),
-      buttons.slice(2, 4),
-      ...(buttons[4] ? [[buttons[4]]] : [])
-    ];
+    const [archive, discard] = await Promise.all(actions);
     await this.client.editMessageReplyMarkup(this.options.chatId, messageId, {
-      inline_keyboard: inlineKeyboard
+      inline_keyboard: [[
+        { text: buttonVoiceLabels.songCompletion.archive, callback_data: `cb:${archive.callbackId}` },
+        { text: buttonVoiceLabels.songCompletion.discard, callback_data: `cb:${discard.callbackId}` }
+      ]]
     });
   }
 
@@ -823,13 +814,7 @@ export async function enrichWithResources(
 function callbackActionsForRuntimeEvent(event: RuntimeEvent): string[] {
   switch (event.type) {
     case "song_take_completed":
-      return [
-        "song_archive",
-        "song_discard",
-        "song_songbook_write",
-        "song_skip",
-        ...(isXInlineButtonEnabled() ? ["x_publish_prepare"] : [])
-      ];
+      return ["song_archive", "song_discard"];
     case "distribution_change_detected":
       return ["dist_apply", "dist_skip"];
     case "artist_pulse_drafted":

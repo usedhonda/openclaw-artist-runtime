@@ -143,7 +143,7 @@ describe("R10 callback safety", () => {
     expect(await r10Snapshot(root)).toEqual(before);
   });
 
-  it("exposes only SONGBOOK, skip, and X prep buttons on song completion notifications", async () => {
+  it("exposes only producer review (archive/discard) buttons on song completion notifications", async () => {
     const root = await prepareRoot();
     const fetchImpl = vi.fn()
       .mockResolvedValueOnce(telegramResponse({ message_id: 55, chat: { id: 123 } }))
@@ -163,10 +163,13 @@ describe("R10 callback safety", () => {
     const markupCall = fetchImpl.mock.calls.find((call) => String(call[0]).includes("/editMessageReplyMarkup"));
     const body = JSON.parse(String((markupCall?.[1] as RequestInit).body)) as { reply_markup: unknown };
     const replyMarkup = body.reply_markup as { inline_keyboard?: Array<Array<unknown>> };
-    expect(replyMarkup.inline_keyboard?.every((row) => row.length <= 2)).toBe(true);
+    expect(replyMarkup.inline_keyboard).toHaveLength(1);
+    expect(replyMarkup.inline_keyboard?.[0]).toHaveLength(2);
     const buttonText = JSON.stringify(body.reply_markup, (_key, value) => _key === "callback_data" ? undefined : value);
-    expect(buttonText).toContain("SONGBOOK.md に追記");
-    expect(buttonText).toContain("X 草案を作る");
+    expect(buttonText).toContain("採用して次の曲へ");
+    expect(buttonText).toContain("破棄して次の曲へ");
+    expect(buttonText).not.toContain("SONGBOOK.md に追記");
+    expect(buttonText).not.toContain("X 草案を作る");
     expect(buttonText).not.toMatch(/Instagram|TikTok|IG/i);
   });
 });
