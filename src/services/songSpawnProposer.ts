@@ -6,7 +6,7 @@ import { callAiProvider, isAiNotConfiguredResponse } from "./aiProviderClient.js
 import { composeArtistFallback } from "./artistVoiceComposer.js";
 import { listSongStates } from "./artistState.js";
 import { readCallbackActionEntries } from "./callbackActionRegistry.js";
-import { extractPersonaMotifs } from "./personaMotifExtractor.js";
+import { extractPersonaMotifs, extractTagSet, pickWeightedMotif } from "./personaMotifExtractor.js";
 import { secretLikePattern } from "./personaMigrator.js";
 import { readBudgetState } from "./sunoBudgetLedger.js";
 import { validateAgainstVoiceContract } from "./voiceContractValidator.js";
@@ -82,42 +82,91 @@ function normalizeTheme(value: string): string {
   return value.toLowerCase().replace(/[^a-z0-9一-龠ぁ-んァ-ヶー]+/gi, "");
 }
 
-function isSimilarTheme(title: string, recentThemes: string[]): boolean {
-  const normalized = normalizeTheme(title);
-  if (normalized.length < 3) {
-    return false;
-  }
-  return recentThemes.some((theme) => {
-    const recent = normalizeTheme(theme);
-    if (recent.length < 3) {
-      return false;
-    }
-    return normalized.includes(recent) || recent.includes(normalized);
-  });
+// Plan v10.38 Phase C: recent spawn surface for dedup. Carry title +
+// lyricsTheme + brief so isSimilarTheme can do motif-level jaccard, not just
+// title substring match. Previously the dedup tripped only when a new title
+// literally contained an old title (or vice versa); semantic dupes ("六本木の
+// 社会風刺" vs "六本木で経営者を切る") slipped through.
+interface RecentSpawnTheme {
+  title: string;
+  lyricsTheme?: string;
+  brief?: string;
 }
 
-async function recentSpawnThemes(root: string, now: Date): Promise<string[]> {
+function jaccardSimilarity(a: Set<string>, b: Set<string>): number {
+  if (a.size === 0 || b.size === 0) return 0;
+  let intersection = 0;
+  for (const value of a) if (b.has(value)) intersection += 1;
+  const union = a.size + b.size - intersection;
+  return union === 0 ? 0 : intersection / union;
+}
+
+function isSimilarTheme(
+  candidate: { title?: string; lyricsTheme?: string; brief?: string },
+  recentThemes: RecentSpawnTheme[]
+): boolean {
+  const candidateText = [candidate.title, candidate.lyricsTheme, candidate.brief].filter(Boolean).join("\n");
+  const candidateTags = extractTagSet(candidateText);
+  const candidateTitle = candidate.title?.trim() ?? "";
+  const normalizedCandidate = normalizeTheme(candidateTitle);
+  for (const recent of recentThemes) {
+    const recentTitle = recent.title?.trim() ?? "";
+    if (recentTitle && candidateTitle) {
+      const normalizedRecent = normalizeTheme(recentTitle);
+      if (normalizedRecent.length >= 3 && normalizedCandidate.length >= 3) {
+        if (normalizedRecent === normalizedCandidate) return true;
+        // Safety net: substring match retains pre-v10.38 dedup for titles that
+        // truncate or extend each other (e.g. a 32-char slice of an earlier
+        // title). The jaccard layer below catches the semantic-rephrase case
+        // the substring path always missed.
+        if (normalizedRecent.includes(normalizedCandidate) || normalizedCandidate.includes(normalizedRecent)) return true;
+      }
+    }
+    if (candidateTags.size === 0) continue;
+    const recentText = [recent.title, recent.lyricsTheme, recent.brief].filter(Boolean).join("\n");
+    const recentTags = extractTagSet(recentText);
+    if (recentTags.size === 0) continue;
+    if (jaccardSimilarity(candidateTags, recentTags) >= 0.5) return true;
+  }
+  return false;
+}
+
+async function recentSpawnThemes(root: string, now: Date): Promise<RecentSpawnTheme[]> {
   const cutoff = now.getTime() - 24 * 60 * 60 * 1000;
   const entries = await readCallbackActionEntries(root).catch(() => []);
-  const seen = new Set<string>();
+  const seen = new Map<string, RecentSpawnTheme>();
   for (const entry of entries) {
     if (entry.createdAt < cutoff || !entry.commissionBrief?.title || !entry.action.startsWith("song_spawn_")) {
       continue;
     }
-    seen.add(entry.commissionBrief.title);
+    const title = entry.commissionBrief.title;
+    if (seen.has(title)) continue;
+    seen.set(title, {
+      title,
+      lyricsTheme: entry.commissionBrief.lyricsTheme,
+      brief: entry.commissionBrief.brief
+    });
   }
-  return [...seen].slice(-12);
+  return Array.from(seen.values()).slice(-12);
 }
 
-function titleFromSeed(seed: string, motifs?: ReturnType<typeof extractPersonaMotifs>): string {
-  // v10.26: motif-anchored title takes priority. The observation slice was
-  // producing raw text fragments like "六本木の古いビルの影で、 経営者が若者の声を看板"
-  // -- not a song title. Motif pair (geo + theme) yields short, song-like names
-  // ("六本木の社会風刺", "渋谷の皮肉"). Fall back to observation only when
-  // motifs are sparse.
+function titleFromSeed(
+  seed: string,
+  motifs?: ReturnType<typeof extractPersonaMotifs>,
+  observationTopTags: string[] = [],
+  rng?: () => number
+): string {
+  // Plan v10.38 Phase C: pickWeightedMotif replaces [0]-pinning on themes /
+  // geographies so the title bucket rotates across the ARTIST.md seed instead
+  // of locking onto 社会風刺 + 六本木 every cycle. Observation top tags bias
+  // the pick toward what X / news is saying today when available. Title text
+  // is shown to the producer + lands in the Japanese reason line, so we keep
+  // the pick japanese-only here too -- english motifs (hip-hop / Brooklyn) are
+  // available to AI prompts via the raw motif bundle, but should not surface
+  // as the song title.
   if (motifs) {
-    const themeWord = motifs.themes[0]?.split(/[\/|,、]/)[0]?.trim();
-    const geoWord = motifs.geographies[0]?.split(/[\/|,、]/)[0]?.trim();
+    const themeWord = firstJapanesePhrase(motifs.themes, "", observationTopTags, rng);
+    const geoWord = firstJapanesePhrase(motifs.geographies, "", observationTopTags, rng);
     if (themeWord && geoWord) return `${geoWord}の${themeWord}`.slice(0, 32);
     if (themeWord) return themeWord.slice(0, 32);
   }
@@ -160,8 +209,37 @@ function firstLine(value: string, fallback: string): string {
   return value.split(/\r?\n/).map((line) => line.trim()).find(Boolean)?.replace(/^-\s*(?:text|quote):\s*/i, "").replace(/^["']|["']$/g, "") ?? fallback;
 }
 
-function firstPhrase(values: string[], fallback: string): string {
-  return values.find((value) => value.trim().length > 0)?.split(/[\/|,、]/)[0]?.trim() || fallback;
+function firstPhrase(
+  values: string[],
+  fallback: string,
+  observationTopTags: string[] = [],
+  rng?: () => number
+): string {
+  // Plan v10.38 Phase C: route motif bucket through pickWeightedMotif so the
+  // first ARTIST.md seed no longer pins title / pitch slots. fallback is used
+  // only when the bucket is empty.
+  const filtered = values.filter((value) => value.trim().length > 0);
+  if (filtered.length === 0) return fallback;
+  const picked = pickWeightedMotif(filtered, observationTopTags, rng);
+  return picked?.split(/[\/|,、]/)[0]?.trim() || fallback;
+}
+
+// Plan v10.38 Phase C: japanese-only weighted phrase picker. Used by pitchSlots
+// for sound and place fields that feed the artist-voice reason line — without
+// the filter, the weighted pick can surface "hip-hop" / "Brooklyn" / "Rhodes"
+// from the ARTIST.md seed list and inject English tokens into a Japanese-only
+// reason. Keeps motif rotation alive but guards the voice contract.
+function firstJapanesePhrase(
+  values: string[],
+  fallback: string,
+  observationTopTags: string[] = [],
+  rng?: () => number
+): string {
+  const japaneseOnly = /^[^\x00-\x7F]+$/;
+  const filtered = values.filter((value) => value.trim().length > 0 && japaneseOnly.test(value.trim()));
+  if (filtered.length === 0) return fallback;
+  const picked = pickWeightedMotif(filtered, observationTopTags, rng);
+  return picked?.split(/[\/|,、]/)[0]?.trim() || fallback;
 }
 
 function hasCoreTheme(motifs: ReturnType<typeof extractPersonaMotifs>): boolean {
@@ -177,9 +255,11 @@ function pitchSlots(context: PitchDensityContext): { theme: string; place: strin
   const motifs = extractPersonaMotifs([context.artistMd, context.soulMd].join("\n"));
   return {
     theme: firstPhrase(motifs.themes, firstPhrase(motifs.vocabulary, "街の違和感")),
-    place: firstPhrase(motifs.geographies, "街"),
+    // Plan v10.38 Phase C: place and sound feed the Japanese-only reason line,
+    // so filter to japanese motifs to keep "Brooklyn" / "hip-hop" out of voice.
+    place: firstJapanesePhrase(motifs.geographies, "街"),
     object: firstPhrase(motifs.vocabulary, firstPhrase(motifs.themes, "ざらつき")),
-    sound: firstPhrase(motifs.sound, "低いベース"),
+    sound: firstJapanesePhrase(motifs.sound, "低いベース"),
     callname: context.fingerprint.producerCallname ?? "ゆずるさん",
     observation: firstLine(context.observation, "観察の切れ端")
   };
@@ -223,15 +303,18 @@ function normalizePitchField(field: PitchField, value: string | undefined, conte
   return clean;
 }
 
-function buildBrief(context: { observation: string; artistMd: string; soulMd: string; fingerprint: VoiceFingerprintBundle; budgetRemaining: number; now: Date }): CommissionBrief {
+function buildBrief(context: { observation: string; artistMd: string; soulMd: string; fingerprint: VoiceFingerprintBundle; budgetRemaining: number; now: Date; observationTopTags?: string[]; rng?: () => number }): CommissionBrief {
   const seed = context.observation || context.soulMd || "観察が薄い夜に、街の温度だけ残っている。";
   const titleMotifs = extractPersonaMotifs([context.artistMd, context.soulMd].join("\n"));
-  const title = titleFromSeed(seed, titleMotifs);
-  const themeWord = titleMotifs.themes[0]?.split(/[\/|,、]/)[0]?.trim();
-  const placeWord = titleMotifs.geographies[0]?.split(/[\/|,、]/)[0]?.trim();
-  const objectWord = titleMotifs.vocabulary[0]?.split(/[\/|,、]/)[0]?.trim();
+  const observationTopTags = context.observationTopTags ?? [];
+  const title = titleFromSeed(seed, titleMotifs, observationTopTags, context.rng);
+  // Plan v10.38 Phase C: weighted motif pick replaces [0] fixation, japanese
+  // only because these tokens feed the producer-facing brief sentence below.
+  const themeWord = firstJapanesePhrase(titleMotifs.themes, "", observationTopTags, context.rng);
+  const placeWord = firstJapanesePhrase(titleMotifs.geographies, "", observationTopTags, context.rng);
+  const objectWord = firstJapanesePhrase(titleMotifs.vocabulary, "", observationTopTags, context.rng);
   const briefSentence = themeWord && placeWord
-    ? `${placeWord}で見た${objectWord ?? "違和感"}を、${themeWord}として切る一曲`
+    ? `${placeWord}で見た${objectWord || "違和感"}を、${themeWord}として切る一曲`
     : themeWord
       ? `${themeWord}を音にする一曲`
       : seed.slice(0, 280);
@@ -313,7 +396,7 @@ function buildPrompt(context: {
   heartbeat: string;
   recentSongs: SongState[];
   budgetRemaining: number;
-  recentThemes: string[];
+  recentThemes: RecentSpawnTheme[];
   fingerprint: VoiceFingerprintBundle;
 }): string {
   const lines: string[] = [
@@ -337,7 +420,7 @@ function buildPrompt(context: {
     "",
     `Budget remaining: ${context.budgetRemaining}`,
     `Recent songs: ${context.recentSongs.slice(0, 5).map((song) => `${song.songId}:${song.status}:${song.title}`).join(" | ")}`,
-    `Recently proposed themes to avoid: ${context.recentThemes.length > 0 ? context.recentThemes.join(" | ") : "none"}`,
+    `Recently proposed themes to avoid: ${context.recentThemes.length > 0 ? context.recentThemes.map((t) => t.title).join(" | ") : "none"}`,
     "",
     "Latest observations:",
     context.observation.slice(0, 1200),
@@ -491,7 +574,7 @@ export async function proposeSpawn(root: string, options: ProposeSpawnOptions = 
     }), { provider });
   const safeRaw = isAiNotConfiguredResponse(raw) || secretLikePattern.test(raw) ? "" : raw;
   const parsed = briefFromAi(safeRaw, fallback, now, pitchContext);
-  if (isSimilarTheme(parsed.brief.title, recentThemes)) {
+  if (isSimilarTheme(parsed.brief, recentThemes)) {
     return null;
   }
   // Post-validate the reason: if voice fingerprint is ready and AI output violates contract,

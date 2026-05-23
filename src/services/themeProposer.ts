@@ -4,7 +4,7 @@ import type { AiReviewProvider } from "../types.js";
 import { callAiProvider, isAiNotConfiguredResponse } from "./aiProviderClient.js";
 import { readArtistVoiceContext } from "./artistVoiceResponder.js";
 import { secretLikePattern } from "./personaMigrator.js";
-import { extractPersonaMotifs, summarizeMotifs } from "./personaMotifExtractor.js";
+import { extractPersonaMotifs, pickWeightedMotif, summarizeMotifs, type PersonaMotifBundle } from "./personaMotifExtractor.js";
 
 export interface ThemeProposalContext {
   observations?: string;
@@ -52,15 +52,17 @@ function buildPrompt(artistMd: string, currentState: string, observations: strin
   ].join("\n");
 }
 
-function pickMotifFocus(summary: string): { theme: string; reason: string } {
-  // summary looks like: "themes: a/b/c | geo: x/y | vocab: ..."
-  const buckets = summary.split(" | ").map((seg) => seg.trim()).filter(Boolean);
-  const themesSeg = buckets.find((seg) => seg.startsWith("themes:"));
-  const geoSeg = buckets.find((seg) => seg.startsWith("geo:"));
-  const themeWords = themesSeg?.replace(/^themes:\s*/, "").split("/").map((w) => w.trim()).filter(Boolean) ?? [];
-  const geoWords = geoSeg?.replace(/^geo:\s*/, "").split("/").map((w) => w.trim()).filter(Boolean) ?? [];
-  const primary = themeWords[0];
-  const secondary = geoWords[0];
+// Plan v10.38 Phase C: motif focus picker now uses pickWeightedMotif so the
+// first ARTIST.md seed no longer wins every cycle. observationTopTags carry
+// the day's X/news motif bias when available (Phase B/E hook); without them,
+// the picker still rotates through the bundle weighted by ARTIST.md order.
+function pickMotifFocus(
+  motifs: PersonaMotifBundle,
+  observationTopTags: string[] = [],
+  rng?: () => number
+): { theme: string; reason: string } {
+  const primary = pickWeightedMotif(motifs.themes, observationTopTags, rng);
+  const secondary = pickWeightedMotif(motifs.geographies, observationTopTags, rng);
   if (primary && secondary) {
     return {
       theme: `${primary}を${secondary}の視点から切る`,
@@ -91,7 +93,7 @@ export async function proposeTheme(root: string, context: ThemeProposalContext =
   let raw: string;
   let aiNotConfigured = false;
   if (provider === "mock") {
-    const fallback = pickMotifFocus(motifSummary);
+    const fallback = pickMotifFocus(motifs);
     raw = `theme: ${fallback.theme}\nreason: ${fallback.reason}`;
   } else {
     raw = await callAiProvider(
@@ -100,7 +102,7 @@ export async function proposeTheme(root: string, context: ThemeProposalContext =
     );
     if (isAiNotConfiguredResponse(raw)) {
       aiNotConfigured = true;
-      const fallback = pickMotifFocus(motifSummary);
+      const fallback = pickMotifFocus(motifs);
       raw = `theme: ${fallback.theme}\nreason: ${fallback.reason}`;
     }
   }

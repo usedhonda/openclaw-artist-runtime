@@ -342,6 +342,62 @@ export function summarizeMotifs(motifs: PersonaMotifBundle): string {
   return parts.join(" | ");
 }
 
+// Plan v10.38 Phase C: weighted random motif picker. Breaks the historical
+// `motifs.themes[0]` / `motifs.geographies[0]` fixation that locked spawn
+// generation onto the first ARTIST.md seed (社会風刺 / 経営者 / 六本木) for every
+// song. Default weight 1, ARTIST.md order weight up to +2 (lens 60 = persona
+// strong), observation top-tag bonus +1 so the artist nudges toward what X is
+// actually saying today without abandoning the persona spine. rng is injected
+// so the test suite can lock pickWeightedMotif to deterministic outputs.
+export function pickWeightedMotif(
+  bucket: string[],
+  observationTopTags: string[] = [],
+  rng: () => number = Math.random
+): string | undefined {
+  if (bucket.length === 0) return undefined;
+  if (bucket.length === 1) return bucket[0];
+  const obsSet = new Set(observationTopTags.map((tag) => tag.trim().toLowerCase()).filter(Boolean));
+  const weights = bucket.map((entry, idx) => {
+    let weight = 1;
+    if (idx < 3) weight += 2;
+    else if (idx < 6) weight += 1;
+    if (obsSet.has(entry.trim().toLowerCase())) weight += 1;
+    return weight;
+  });
+  const total = weights.reduce((a, b) => a + b, 0);
+  const target = rng() * total;
+  let acc = 0;
+  for (let i = 0; i < bucket.length; i += 1) {
+    acc += weights[i];
+    if (target < acc) return bucket[i];
+  }
+  return bucket[bucket.length - 1];
+}
+
+// Plan v10.38 Phase C helper: extract motif-level tag set from arbitrary brief
+// text (title + brief + lyricsTheme combined), used by isSimilarTheme for
+// jaccard-based dedup that catches semantic dupes even when titles differ.
+// Bypasses extractPersonaMotifs section parsing because brief snippets are
+// naked text without ARTIST.md heading structure -- we just scan for seed
+// occurrences directly.
+export function extractTagSet(text: string): Set<string> {
+  const lower = text.toLowerCase();
+  const tags = new Set<string>();
+  for (const seed of themeSeeds) {
+    const key = seed.toLowerCase();
+    if (lower.includes(key)) tags.add(key);
+  }
+  for (const seed of geoSeeds) {
+    const key = seed.toLowerCase();
+    if (lower.includes(key)) tags.add(key);
+  }
+  for (const seed of vocabSeeds) {
+    const key = seed.toLowerCase();
+    if (lower.includes(key)) tags.add(key);
+  }
+  return tags;
+}
+
 export function topQueryKeywords(motifs: PersonaMotifBundle, limit = 5): string[] {
   // Geo and themes give the most artist-aligned signal for X queries.
   // Avoid sound (music vocabulary) and avoid bucket entirely on the way out.
