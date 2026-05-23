@@ -79,6 +79,48 @@ describe("x observation collector", () => {
     expect(await isInCooldown(root, new Date("2026-04-29T02:00:00.000Z"))).toBe(true);
   });
 
+  it("parses bird v0.8 chunk-by-record output with 50-char separator lines", async () => {
+    const root = workspace();
+    const separator = "──────────────────────────────────────────────────";
+    const chunkOutput = [
+      "@watch_a (Watch Alpha):",
+      "society satire is spiking in 六本木 tonight",
+      "https://t.co/short",
+      "date: Sat May 23 01:17:15 +0000 2026",
+      "url: https://x.com/watch_a/status/2057994231491568042",
+      separator,
+      "@watch_b (Watch Beta):",
+      "都市 再開発 white facade",
+      "PHOTO: https://pbs.twimg.com/media/example.jpg",
+      "date: Sat May 23 00:57:13 +0000 2026",
+      "url: https://x.com/watch_b/status/2057989190898573621",
+      separator,
+      "@watch_c (Watch Gamma):",
+      "経営者 が ロビイング してる話",
+      "date: Sat May 23 00:33:43 +0000 2026",
+      "url: https://x.com/watch_c/status/2057983275981996161",
+      ""
+    ].join("\n");
+    const runner = vi.fn(async () => ({ stdout: chunkOutput }));
+
+    const result = await collectObservations(root, {
+      now: new Date("2026-05-23T01:30:00.000Z"),
+      personaText: "society satire 経営者 再開発",
+      runner
+    });
+
+    expect(result.status).toBe("collected");
+    expect(runner).toHaveBeenCalledTimes(1);
+    const cache = await readTodayObservations(root, new Date("2026-05-23T01:30:00.000Z"));
+    expect(cache).toContain("society satire");
+    expect(cache).toContain("再開発");
+    expect(cache).toContain("ロビイング");
+    expect(cache).toContain("watch_a");
+    expect(cache).toContain("watch_b");
+    expect(cache).toContain("watch_c");
+    expect(cache).toContain("Sat May 23");
+  });
+
   it("skips when the rate limiter denies another call", async () => {
     const root = workspace();
     await mkdir(join(root, "runtime"), { recursive: true });

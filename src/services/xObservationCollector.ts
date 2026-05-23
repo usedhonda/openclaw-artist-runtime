@@ -88,7 +88,7 @@ function observationPath(root: string, now = new Date()): string {
 
 function defaultRunner(query?: string): () => Promise<{ stdout: string; stderr?: string }> {
   return async () => {
-    const args = query ? ["search", query, "--plain"] : ["timeline", "--plain"];
+    const args = query ? ["search", query, "--plain"] : ["home", "--plain"];
     const { execFile } = await import("node:child_process");
     return new Promise((resolve, reject) => {
       execFile("bird", args, { timeout: 30_000, maxBuffer: 512 * 1024 }, (error, stdout, stderr) => {
@@ -102,7 +102,50 @@ function defaultRunner(query?: string): () => Promise<{ stdout: string; stderr?:
   };
 }
 
-function parseBirdOutput(source: string): XObservationEntry[] {
+const recordSeparatorPattern = /\r?\n─{10,}\r?\n/;
+
+function parseBirdChunk(chunk: string): XObservationEntry {
+  const lines = chunk.split(/\r?\n/);
+  let author: string | undefined;
+  let url: string | undefined;
+  let postedAt: string | undefined;
+  const textParts: string[] = [];
+  for (const raw of lines) {
+    const line = raw.trim();
+    if (!line) continue;
+    if (!author) {
+      const head = line.match(/^@([A-Za-z0-9_]{1,20})(?:\s*\(([^)]*)\))?:\s*(.*)$/);
+      if (head) {
+        author = head[1];
+        if (head[3]) textParts.push(head[3]);
+        continue;
+      }
+    }
+    const dateMatch = line.match(/^date:\s+(.+)$/i);
+    if (dateMatch) {
+      postedAt = dateMatch[1].trim();
+      continue;
+    }
+    const urlMatch = line.match(/^url:\s+(\S+)/i);
+    if (urlMatch) {
+      url = urlMatch[1].trim();
+      continue;
+    }
+    if (/^(PHOTO|VIDEO):/i.test(line)) continue;
+    textParts.push(line);
+  }
+  if (!author) {
+    const fallbackAuthor = chunk.match(authorPattern)?.[1] ?? url?.match(/(?:twitter|x)\.com\/([^/\s]+)\/status/i)?.[1];
+    if (fallbackAuthor) author = fallbackAuthor;
+  }
+  if (!url) {
+    url = chunk.match(tweetUrlPattern)?.[0];
+  }
+  const text = textParts.join(" ").replace(/\s+/g, " ").trim();
+  return { text, author, url, postedAt };
+}
+
+function parseBirdLines(source: string): XObservationEntry[] {
   return source
     .split(/\r?\n/)
     .map((line) => line.trim())
@@ -118,6 +161,19 @@ function parseBirdOutput(source: string): XObservationEntry[] {
         .trim();
       return { text: text || line, author, url, postedAt };
     });
+}
+
+function parseBirdOutput(source: string): XObservationEntry[] {
+  const trimmed = source.trim();
+  if (!trimmed) return [];
+  if (recordSeparatorPattern.test(trimmed)) {
+    return trimmed
+      .split(recordSeparatorPattern)
+      .map((chunk) => chunk.trim())
+      .filter(Boolean)
+      .map((chunk) => parseBirdChunk(chunk));
+  }
+  return parseBirdLines(trimmed);
 }
 
 function filterObservationEntries(
