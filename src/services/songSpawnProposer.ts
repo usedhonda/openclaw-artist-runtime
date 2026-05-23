@@ -1,7 +1,7 @@
 import { createHash } from "node:crypto";
 import { readdir, readFile } from "node:fs/promises";
 import { join } from "node:path";
-import type { AiReviewProvider, CommissionBrief, ObservationSummary, SongState, SpawnProposal } from "../types.js";
+import type { AiReviewProvider, CommissionBrief, CommissionBriefSource, ObservationSummary, SongState, SpawnProposal } from "../types.js";
 import { callAiProvider, isAiNotConfiguredResponse } from "./aiProviderClient.js";
 import { composeArtistFallback } from "./artistVoiceComposer.js";
 import { listSongStates } from "./artistState.js";
@@ -513,6 +513,10 @@ function buildPrompt(context: {
     "Avoid any subject or title already listed in recently proposed themes.",
     "Never include secrets. Keep the brief lean enough for autopilot planning.",
     "",
+    // Plan v10.38 Phase F hallucination guard: the AI MUST list the
+    // observation entries it actually used. Each line carries kind, URL,
+    // optional author/source. brief / lyricsTheme that reference news or
+    // X without listing the source here are treated as fabricated.
     "出力 schema (1 行ずつ、 順序固定):",
     "spawn: <yes/no>",
     "title: <artistic title>",
@@ -523,6 +527,7 @@ function buildPrompt(context: {
     "duration: <'2:45' 等>",
     "style: <english spec keywords + instrumentation roles. 最低 3 要素。例: \"thick bass on low register, restrained hi-hats, vocals nestled between instruments, sparse arrangement, breathing space\">",
     "reason: <**日本語のみ**、 artist 一人称口語、 producer に話しかける 1 行 (e.g. \"" + (context.fingerprint.producerCallname ?? "ゆずる") + "、 〜の街を切るやつ、 刺さる\")>",
+    "sources: <Today's Topic から実際に使った観察 entry を最低 1 件、 最大 5 件、 改行区切りで列挙。 各行は `- kind:<x|news> url:<https://...> author:<@user or source label> quote:<本文を 60 字以内で抜粋>` の形式。 use していない entry は書かない、 捏造禁止>",
     "",
     ...buildVoiceContractLines(context.fingerprint),
     "",
@@ -556,6 +561,7 @@ function briefFromAi(raw: string, fallback: CommissionBrief, now: Date, context:
   const spawn = !spawnValue || /^(yes|true|1|go|進める|作る)/i.test(spawnValue);
   const title = parseDirective(raw, "title") || fallback.title;
   const brief = parseDirective(raw, "brief") || fallback.brief;
+  const sources = parseSourcesFromAi(raw);
   return {
     spawn,
     reason: normalizePitchField("reason", parseDirective(raw, "reason"), context),
@@ -568,9 +574,72 @@ function briefFromAi(raw: string, fallback: CommissionBrief, now: Date, context:
       tempo: parseDirective(raw, "tempo") || fallback.tempo,
       duration: parseDirective(raw, "duration") || fallback.duration,
       styleNotes: normalizePitchField("styleNotes", parseDirective(raw, "style"), context),
-      createdAt: now.toISOString()
+      createdAt: now.toISOString(),
+      sources: sources.length > 0 ? sources : fallback.sources
     }
   };
+}
+
+// Plan v10.38 Phase F hallucination guard parser. Reads any line starting with
+// "- kind:<x|news>" anywhere under a `sources:` block in the AI response and
+// pulls url / author / quote. URLs must match http(s); anything else is
+// rejected so the model can't smuggle in fake citations.
+function parseSourcesFromAi(raw: string): CommissionBriefSource[] {
+  const sources: CommissionBriefSource[] = [];
+  const lines = raw.split(/\r?\n/);
+  let inBlock = false;
+  for (const line of lines) {
+    const trimmed = line.trim();
+    if (/^sources:/i.test(trimmed)) {
+      inBlock = true;
+      const inline = trimmed.replace(/^sources:\s*/i, "").trim();
+      if (inline && inline.startsWith("-")) {
+        const parsed = parseSourceLine(inline);
+        if (parsed) sources.push(parsed);
+      }
+      continue;
+    }
+    if (!inBlock) continue;
+    if (/^[a-z]+:/i.test(trimmed) && !trimmed.startsWith("-")) {
+      // moved into a different schema field
+      inBlock = false;
+      continue;
+    }
+    if (trimmed.startsWith("-")) {
+      const parsed = parseSourceLine(trimmed);
+      if (parsed) sources.push(parsed);
+    }
+  }
+  return sources.slice(0, 5);
+}
+
+function parseSourceLine(line: string): CommissionBriefSource | undefined {
+  const body = line.replace(/^-\s*/, "").trim();
+  const kindMatch = body.match(/kind:\s*(x|news)/i);
+  const urlMatch = body.match(/url:\s*(https?:\/\/\S+)/i);
+  if (!kindMatch || !urlMatch) return undefined;
+  const authorMatch = body.match(/author:\s*("[^"]+"|\S+)/i);
+  const quoteMatch = body.match(/quote:\s*("([^"]+)"|(.+?))(?=\s+(?:kind|url|author):|$)/i);
+  return {
+    kind: kindMatch[1].toLowerCase() as "x" | "news",
+    url: urlMatch[1].trim(),
+    author: authorMatch?.[1]?.replace(/^["']|["']$/g, "").trim() || undefined,
+    quote: (quoteMatch?.[2] ?? quoteMatch?.[3])?.trim().slice(0, 200) || undefined
+  };
+}
+
+// Plan v10.38 Phase F: when the AI is mock / not_configured we still need to
+// stamp the brief with the excerpts it used so producer can audit the chain.
+function sourcesFromExcerpts(excerpts: ObservationExcerpt[]): CommissionBriefSource[] {
+  return excerpts
+    .filter((entry) => entry.url && /^https?:\/\//i.test(entry.url))
+    .slice(0, 3)
+    .map((entry) => ({
+      kind: entry.sourceKind,
+      url: entry.url as string,
+      author: entry.author,
+      quote: entry.text.slice(0, 200)
+    }));
 }
 
 function composeReasonInArtistVoice(args: {
@@ -671,6 +740,10 @@ export async function proposeSpawn(root: string, options: ProposeSpawnOptions = 
   const fingerprint = parseVoiceFingerprint(soulMd);
   const pitchContext = { observation, artistMd, soulMd, fingerprint };
   const fallback = buildBrief({ observation, artistMd, soulMd, fingerprint, budgetRemaining, now });
+  // Plan v10.38 Phase F hallucination guard: stamp the fallback brief with
+  // the observation entries it was actually built from so mock / not_configured
+  // paths still leave a verifiable citation trail.
+  fallback.sources = sourcesFromExcerpts(obsData.excerpts ?? []);
   const provider = options.aiReviewProvider ?? "mock";
   const mockReason = composeReasonInArtistVoice({ artistMd, soulMd, fingerprint, observation, brief: fallback });
   const raw = provider === "mock"

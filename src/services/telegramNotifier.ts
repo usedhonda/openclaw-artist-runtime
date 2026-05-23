@@ -618,6 +618,22 @@ function humanizeMood(value?: string): string {
   return "引っかかりのある";
 }
 
+// Plan v10.38 Phase F hallucination guard: render the brief.sources block as
+// a plain JA citation list so the producer can verify the AI pulled from
+// real news / X entries. Empty / missing sources return an empty string so
+// the caller can decide whether to append a divider.
+function formatBriefSources(sources?: { kind: "x" | "news"; url: string; author?: string; quote?: string }[]): string {
+  if (!sources || sources.length === 0) return "";
+  const lines = ["観察元 (この曲が引いた news / X):"];
+  for (const source of sources) {
+    const kindLabel = source.kind === "news" ? "news" : "X";
+    const author = source.author ? ` ${source.author.replace(/^@?/, source.kind === "news" ? "" : "@")}` : "";
+    const quote = source.quote ? ` 「${source.quote.replace(/\s+/g, " ").slice(0, 80)}」` : "";
+    lines.push(`- [${kindLabel}]${author}${quote}\n  ${source.url}`);
+  }
+  return lines.join("\n");
+}
+
 function formatSpawnBriefVoiceDetail(brief: Extract<RuntimeEvent, { type: "song_spawn_proposed" }>["brief"], reason: string): string {
   const cleanReason = isMachineVoiceArtifact(reason)
     ? "この切り口、ずっと抱えてた街のざらつきに近い。委ねてみたい。"
@@ -953,13 +969,17 @@ async function formatRuntimeEventRaw(
             observation: event.observationSummary
           }).catch(() => null)
         : null;
-      if (monolog) return monolog;
-      return [
+      // Plan v10.38 Phase F hallucination guard: surface the citation trail
+      // so the producer can verify what news / X entries the AI actually
+      // pulled from. plain JA, no voice decoration.
+      const sourcesBlock = formatBriefSources(event.brief.sources);
+      const body = monolog ?? [
         event.voiceTop ?? "次の曲、こんな感じはどう?",
         "",
         "─────",
         formatSpawnBriefVoiceDetail(event.brief, event.reason)
       ].join("\n");
+      return sourcesBlock ? `${body}\n\n─────\n${sourcesBlock}` : body;
     }
     case "planning_skeleton_incomplete": {
       const monolog = options.workspaceRoot

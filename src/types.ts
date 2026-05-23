@@ -295,6 +295,17 @@ export interface DailyVoiceDraft {
   createdAt: string;
 }
 
+// Plan v10.38 Phase F (hallucination guard): record the observation entries
+// the AI actually pulled from, with URL + author + short quote, so downstream
+// surfaces (Telegram, Producer Console, song page) can prove the news/X
+// claim came from a real source instead of being fabricated by the model.
+export interface CommissionBriefSource {
+  kind: "x" | "news";
+  url: string;
+  author?: string;
+  quote?: string;
+}
+
 export interface CommissionBrief {
   songId: string;
   title: string;
@@ -306,6 +317,7 @@ export interface CommissionBrief {
   duration: string;
   sourceText: string;
   createdAt: string;
+  sources?: CommissionBriefSource[];
 }
 
 export interface CommissionResult {

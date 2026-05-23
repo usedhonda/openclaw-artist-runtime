@@ -24,6 +24,14 @@ if [[ -f "${social_credentials_path}" ]]; then
   source "${social_credentials_path}"
 fi
 
+# Plan v10.38 Phase F: news RSS feeds for the news observation collector.
+# Lives in .local/ so the URL list is operator-editable without repo churn.
+news_feeds_path="${repo_root}/.local/news-feeds.env"
+if [[ -f "${news_feeds_path}" ]]; then
+  # shellcheck source=/dev/null
+  source "${news_feeds_path}"
+fi
+
 export OPENCLAW_LOCAL_ROOT="${openclaw_local_root}"
 export OPENCLAW_LOCAL_PREFIX="${openclaw_local_prefix}"
 export OPENCLAW_HOME="${openclaw_local_home}"

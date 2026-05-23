@@ -25,6 +25,7 @@ import { resetIfNewDay } from "./sunoBudgetLedger.js";
 import { reserveSunoGenerationBudget } from "./sunoBudgetGuard.js";
 import { classifySunoGenerateFailure, nextSunoRetryDecision } from "./sunoRetryHandler.js";
 import { collectObservations, type XObservationContext } from "./xObservationCollector.js";
+import { collectNewsObservations } from "./newsObservationCollector.js";
 import { proposeTheme } from "./themeProposer.js";
 import { pollSongDistribution } from "./songDistributionPoller.js";
 import { cleanupExpiredCallbacks } from "./callbackLedgerMaintenance.js";
@@ -531,6 +532,17 @@ export class ArtistAutopilotService {
       const reason = error instanceof Error ? error.message : String(error);
       emitRuntimeEvent({ type: "error", source: "x_observation", reason, timestamp: Date.now() });
       return { status: "skipped" as const, path: join(input.workspaceRoot, "observations"), observations: "", reason };
+    });
+    // Plan v10.38 Phase F: fire news observation collector in parallel with X
+    // so the spawn pool actually sees today's news. No-op when
+    // OPENCLAW_NEWS_RSS_URLS is unset (default), so existing setups keep
+    // their pre-v10.38 behavior.
+    await collectNewsObservations(input.workspaceRoot, {
+      personaText: `${artistMind.artist}\n${artistMind.socialVoice}`
+    }).catch((error) => {
+      const reason = error instanceof Error ? error.message : String(error);
+      emitRuntimeEvent({ type: "error", source: "news_observation", reason, timestamp: Date.now() });
+      return { status: "skipped" as const, path: "", entries: [], reason };
     });
     if (cycleObservation.status === "cooldown") {
       emitRuntimeEvent({
