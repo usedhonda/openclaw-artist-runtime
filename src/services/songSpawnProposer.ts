@@ -32,9 +32,19 @@ function shortHash(value: string): string {
   return createHash("sha256").update(value).digest("hex").slice(0, 6);
 }
 
+interface ObservationExcerpt {
+  text: string;
+  author?: string;
+  url?: string;
+  sourceKind: "x" | "news";
+  motifMatch?: string;
+  motifScore?: number;
+}
+
 interface LatestObservationData {
   raw: string;
   summary?: ObservationSummary;
+  excerpts?: ObservationExcerpt[];
 }
 
 async function latestObservationData(root: string): Promise<LatestObservationData> {
@@ -85,6 +95,17 @@ async function latestObservationData(root: string): Promise<LatestObservationDat
     raw = raw ? `${raw.trim()}\n\n# News Excerpts\n${newsRaw}\n` : `# News Excerpts\n${newsRaw}\n`;
   }
   const sorted = [...pool].sort((a, b) => (b.motifScore ?? 0) - (a.motifScore ?? 0));
+  // Plan v10.38 Phase E: keep top-N excerpts so buildPrompt can show them to
+  // the AI as "Today's Topic (main material)". Both X and news entries pass
+  // through here, scored by the same persona motif rubric.
+  const excerpts: ObservationExcerpt[] = sorted.slice(0, 10).map((entry) => ({
+    text: entry.text,
+    author: entry.author,
+    url: entry.url,
+    sourceKind: entry.sourceKind,
+    motifMatch: entry.motifMatch,
+    motifScore: entry.motifScore
+  }));
   for (const entry of sorted) {
     const quote = (entry.text ?? "").trim();
     if (!quote) continue;
@@ -98,7 +119,8 @@ async function latestObservationData(root: string): Promise<LatestObservationDat
           quote: quote.slice(0, 240),
           author: entry.author,
           url: entry.url
-        }
+        },
+        excerpts
       };
     }
     // news entry: accept https url and source label as author.
@@ -109,10 +131,11 @@ async function latestObservationData(root: string): Promise<LatestObservationDat
         quote: quote.slice(0, 240),
         author: entry.author ?? "news",
         url: entry.url
-      }
+      },
+      excerpts
     };
   }
-  return { raw };
+  return { raw, excerpts };
 }
 
 function hasRestMood(heartbeat: string, soulMd: string): boolean {
@@ -435,6 +458,36 @@ function buildPersonaBody(context: { artistMd: string; soulMd: string; identityM
   return out;
 }
 
+// Plan v10.38 Phase E: structured topic excerpts feed the AI alongside the
+// raw observation blob. The AI now sees today's news + X voice as a bullet
+// list of "main material", separate from the persona body that acts as the
+// 60% color lens. Without this section the AI got only ARTIST.md and a raw
+// text dump, and the spawn pipeline collapsed onto the persona seeds even
+// when the observation pool carried genuinely new material.
+function buildTopicSection(excerpts?: ObservationExcerpt[]): string[] {
+  if (!excerpts || excerpts.length === 0) {
+    return [
+      "## Today's Topic (news + X voice — MAIN MATERIAL, 40% weight):",
+      "(観察 pool が空)"
+    ];
+  }
+  const lines = [
+    "## Today's Topic (news + X voice — MAIN MATERIAL, 40% weight):",
+    "観察を主素材として歌詞に取り込む。 ARTIST.md は色付けの lens にする。"
+  ];
+  for (const entry of excerpts) {
+    const author = entry.author
+      ? entry.sourceKind === "news"
+        ? `[news:${entry.author}]`
+        : `[@${entry.author.replace(/^@/, "")}]`
+      : `[${entry.sourceKind}]`;
+    const url = entry.url ? ` (${entry.url})` : "";
+    const match = entry.motifMatch ? ` motif:${entry.motifMatch}` : "";
+    lines.push(`- ${entry.text.slice(0, 220)} ${author}${url}${match}`);
+  }
+  return lines;
+}
+
 function buildPrompt(context: {
   artistMd: string;
   soulMd: string;
@@ -447,10 +500,16 @@ function buildPrompt(context: {
   budgetRemaining: number;
   recentThemes: RecentSpawnTheme[];
   fingerprint: VoiceFingerprintBundle;
+  observationExcerpts?: ObservationExcerpt[];
 }): string {
   const lines: string[] = [
     "System: あなたは used::honda 本人。 producer に新曲を提案する artist として一人称で書く。",
     "Decision: 観察と heartbeat から、 今 新曲を始めるべきか判断する。 不十分なら spawn: no。",
+    // Plan v10.38 Phase E: explicit material policy. Observation is the trigger
+    // and main material (e.g. today's LUUP incident + the X reaction around it),
+    // ARTIST.md is the lens that colors the take (六本木 / 経営者 / hip-hop). The
+    // ratio is ~40% observation main / 60% persona lens.
+    "Material policy: 観察 (news + X) を主素材、 ARTIST.md / SOUL.md は色付けの lens として使う。 例: news で『LUUP 事故』 が出ていれば、 X 上の LUUP 反応を歌詞に取り込み、 ARTIST.md の六本木の経営者目線で切る。 lens を起点にして同じ motif を毎回繰り返さない。",
     "Avoid any subject or title already listed in recently proposed themes.",
     "Never include secrets. Keep the brief lean enough for autopilot planning.",
     "",
@@ -471,11 +530,16 @@ function buildPrompt(context: {
     `Recent songs: ${context.recentSongs.slice(0, 5).map((song) => `${song.songId}:${song.status}:${song.title}`).join(" | ")}`,
     `Recently proposed themes to avoid: ${context.recentThemes.length > 0 ? context.recentThemes.map((t) => t.title).join(" | ") : "none"}`,
     "",
-    "Latest observations:",
+    ...buildTopicSection(context.observationExcerpts),
+    "",
+    "Raw observation excerpts (context only):",
     context.observation.slice(0, 1200),
     "",
     "Heartbeat:",
     context.heartbeat.slice(0, 500),
+    "",
+    "## Artist Lens (ARTIST.md / SOUL.md persona — 60% color):",
+    "下記の persona block は歌詞の起点ではない。 観察に色を付ける lens として使い、 主題は Today's Topic から取る。",
     "",
     ...buildPersonaBody(context)
   ];
@@ -632,7 +696,8 @@ export async function proposeSpawn(root: string, options: ProposeSpawnOptions = 
       recentSongs: songs,
       budgetRemaining,
       recentThemes,
-      fingerprint
+      fingerprint,
+      observationExcerpts: obsData.excerpts
     }), { provider });
   const safeRaw = isAiNotConfiguredResponse(raw) || secretLikePattern.test(raw) ? "" : raw;
   const parsed = briefFromAi(safeRaw, fallback, now, pitchContext);

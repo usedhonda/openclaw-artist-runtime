@@ -36,19 +36,22 @@ function parseTheme(raw: string): { theme: string; reason: string } {
 function buildPrompt(artistMd: string, currentState: string, observations: string, motifSummary: string): string {
   return [
     "System: Propose one song theme for an autonomous public musical artist.",
-    "Anchor the theme to the persona motifs below. Do not propose a theme that contradicts them.",
+    // Plan v10.38 Phase E: align with songSpawnProposer's material policy.
+    // Observation (X + news) is the main material (~40%); ARTIST.md persona is
+    // the color lens (~60%). Don't restart from the persona seed every cycle.
+    "Material policy: use the observations below as the main material for the theme. Anchor the persona motifs as a lens that colors the take, not as the starting subject.",
     "Return exactly two lines: theme: <one concise theme>; reason: <why this fits>.",
     "Do not include secrets, credentials, cookies, or private config.",
     "",
-    `Persona motifs: ${motifSummary || "(none)"}`,
+    `Persona motifs (lens, 60%): ${motifSummary || "(none)"}`,
     "",
-    "ARTIST.md:",
+    "ARTIST.md (color lens — do not start from here):",
     truncate(artistMd, 2400),
     "",
     "artist/CURRENT_STATE.md:",
     truncate(currentState, 1200),
     "",
-    "X observations:",
+    "Today's observations (news + X — MAIN MATERIAL):",
     truncate(observations, 2400)
   ].join("\n");
 }
