@@ -13,6 +13,7 @@ import { readBudgetState } from "./sunoBudgetLedger.js";
 import { validateAgainstVoiceContract } from "./voiceContractValidator.js";
 import { isVoiceFingerprintReady, parseVoiceFingerprint, type VoiceFingerprintBundle } from "./voiceFingerprintParser.js";
 import { readObservationsReport } from "./xObservationCollector.js";
+import { readTodayNewsObservations } from "./newsObservationCollector.js";
 
 const FULL_TWEET_URL_PATTERN = /^https:\/\/(?:twitter|x)\.com\/[^/\s]+\/status\/\d+/i;
 
@@ -39,27 +40,74 @@ interface LatestObservationData {
 async function latestObservationData(root: string): Promise<LatestObservationData> {
   const dir = join(root, "observations");
   const entries = await readdir(dir).catch(() => []);
-  const latest = entries.filter((entry) => entry.endsWith(".md")).sort().at(-1);
-  if (!latest) return { raw: "" };
-  const raw = await readFile(join(dir, latest), "utf8").catch(() => "");
-  if (!raw) return { raw: "" };
-  const dateStr = latest.replace(/\.md$/, "");
-  const report = await readObservationsReport(root, dateStr).catch(() => null);
-  if (!report || report.entries.length === 0) {
-    return { raw };
+  // Plan v10.38 Phase B: walk X observation files in date order; the newest
+  // X-only cache still seeds the `raw` blob that feeds prompts and brief
+  // generation. News entries are merged into the scored pool below so the
+  // top-scoring entry can come from a news source even when X is thin.
+  const xFiles = entries
+    .filter((entry) => entry.endsWith(".md") && !entry.startsWith("news-"))
+    .sort();
+  const latest = xFiles.at(-1);
+  let raw = "";
+  let xReportEntries: { text: string; author?: string; url?: string; postedAt?: string; motifMatch?: string; motifScore?: number }[] = [];
+  if (latest) {
+    raw = await readFile(join(dir, latest), "utf8").catch(() => "");
+    const dateStr = latest.replace(/\.md$/, "");
+    const report = await readObservationsReport(root, dateStr).catch(() => null);
+    xReportEntries = report?.entries ?? [];
   }
-  const sorted = [...report.entries].sort((a, b) => (b.motifScore ?? 0) - (a.motifScore ?? 0));
+  // Plan v10.38 Phase B: merge today's news cache entries into the same
+  // scoring pool. News entries have URLs (RSS link) and source label; they
+  // lack X authors so they bypass the @user requirement that filters X-only.
+  const newsEntries = await readTodayNewsObservations(root).catch(() => []);
+  const newsAsObservation = newsEntries.map((entry) => ({
+    text: entry.text,
+    author: entry.source,
+    url: entry.url,
+    postedAt: entry.postedAt,
+    motifMatch: entry.motifMatch,
+    motifScore: entry.motifScore,
+    sourceKind: "news" as const
+  }));
+  const xAsObservation = xReportEntries.map((entry) => ({
+    ...entry,
+    sourceKind: "x" as const
+  }));
+  const pool = [...xAsObservation, ...newsAsObservation];
+  if (pool.length === 0 && !raw) return { raw: "" };
+  // Stitch the news block onto raw so prompt builders that read raw text see
+  // both streams even before E adds explicit excerpt sections.
+  const newsRaw = newsEntries
+    .slice(0, 12)
+    .map((entry) => `- ${entry.text}${entry.source ? ` [${entry.source}]` : ""}${entry.url ? ` ${entry.url}` : ""}`)
+    .join("\n");
+  if (newsRaw) {
+    raw = raw ? `${raw.trim()}\n\n# News Excerpts\n${newsRaw}\n` : `# News Excerpts\n${newsRaw}\n`;
+  }
+  const sorted = [...pool].sort((a, b) => (b.motifScore ?? 0) - (a.motifScore ?? 0));
   for (const entry of sorted) {
-    if (!entry.url || !FULL_TWEET_URL_PATTERN.test(entry.url)) continue;
-    if (!entry.author || entry.author === "_") continue;
     const quote = (entry.text ?? "").trim();
     if (!quote) continue;
     if (secretLikePattern.test(quote)) continue;
+    if (entry.sourceKind === "x") {
+      if (!entry.url || !FULL_TWEET_URL_PATTERN.test(entry.url)) continue;
+      if (!entry.author || entry.author === "_") continue;
+      return {
+        raw,
+        summary: {
+          quote: quote.slice(0, 240),
+          author: entry.author,
+          url: entry.url
+        }
+      };
+    }
+    // news entry: accept https url and source label as author.
+    if (!entry.url || !/^https?:\/\//i.test(entry.url)) continue;
     return {
       raw,
       summary: {
         quote: quote.slice(0, 240),
-        author: entry.author,
+        author: entry.author ?? "news",
         url: entry.url
       }
     };
