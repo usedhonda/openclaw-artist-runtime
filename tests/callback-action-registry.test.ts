@@ -3,12 +3,17 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import {
+  callbackActionTtlCategory,
   defaultCallbackActionExpiresAt,
+  isProducerDecisionAction,
   markCallbackResolved,
   readCallbackActionEntries,
   registerCallbackAction,
   resolveCallbackAction
 } from "../src/services/callbackActionRegistry";
+
+const ONE_DAY_MS = 24 * 60 * 60 * 1000;
+const THIRTY_DAYS_MS = 30 * ONE_DAY_MS;
 
 function root(): string {
   return mkdtempSync(join(tmpdir(), "artist-runtime-callback-registry-"));
@@ -68,5 +73,74 @@ describe("callback action registry", () => {
     }
 
     expect(ids.size).toBe(25);
+  });
+
+  it("uses 30-day TTL for producer-decision actions (Plan v10.39)", async () => {
+    const workspace = root();
+    const now = 1_000_000;
+
+    for (const action of ["song_archive", "song_discard", "song_spawn_inject", "song_spawn_skip"] as const) {
+      const entry = await registerCallbackAction(workspace, {
+        action,
+        chatId: 1,
+        messageId: 1,
+        userId: 1,
+        now
+      });
+      expect(entry.expiresAt - now).toBe(THIRTY_DAYS_MS);
+      expect(entry.expiresAt).toBe(defaultCallbackActionExpiresAt(now, action));
+      expect(isProducerDecisionAction(action)).toBe(true);
+      expect(callbackActionTtlCategory(action)).toBe("producer_decision");
+    }
+  });
+
+  it("keeps 24-hour TTL for working-confirmation actions", async () => {
+    const workspace = root();
+    const now = 1_000_000;
+
+    for (const action of ["proposal_yes", "prompt_pack_go", "take_select_accept", "x_publish_confirm", "daily_voice_publish"] as const) {
+      const entry = await registerCallbackAction(workspace, {
+        action,
+        chatId: 1,
+        messageId: 1,
+        userId: 1,
+        now
+      });
+      expect(entry.expiresAt - now).toBe(ONE_DAY_MS);
+      expect(isProducerDecisionAction(action)).toBe(false);
+      expect(callbackActionTtlCategory(action)).toBe("working_confirmation");
+    }
+  });
+
+  it("honors explicit expiresAt override regardless of action category", async () => {
+    const workspace = root();
+    const now = 1_000_000;
+    const override = now + 7 * ONE_DAY_MS;
+
+    const archived = await registerCallbackAction(workspace, {
+      action: "song_archive",
+      chatId: 1,
+      messageId: 1,
+      userId: 1,
+      now,
+      expiresAt: override
+    });
+    expect(archived.expiresAt).toBe(override);
+
+    const confirm = await registerCallbackAction(workspace, {
+      action: "prompt_pack_go",
+      chatId: 1,
+      messageId: 2,
+      userId: 1,
+      now,
+      expiresAt: override
+    });
+    expect(confirm.expiresAt).toBe(override);
+  });
+
+  it("treats unknown actions as working_confirmation (default 24h)", () => {
+    expect(callbackActionTtlCategory("never_seen_action")).toBe("working_confirmation");
+    expect(callbackActionTtlCategory(undefined)).toBe("working_confirmation");
+    expect(isProducerDecisionAction(undefined)).toBe(false);
   });
 });

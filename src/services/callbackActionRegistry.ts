@@ -94,7 +94,28 @@ export interface PendingCallbackSummary {
   }>;
 }
 
-const defaultTtlMs = 24 * 60 * 60 * 1000;
+const TTL_CATEGORY = {
+  producer_decision: 30 * 24 * 60 * 60 * 1000,
+  working_confirmation: 24 * 60 * 60 * 1000
+} as const;
+
+type TtlCategory = keyof typeof TTL_CATEGORY;
+
+const CALLBACK_ACTION_CATEGORY: Record<string, TtlCategory> = {
+  song_archive: "producer_decision",
+  song_discard: "producer_decision",
+  song_spawn_inject: "producer_decision",
+  song_spawn_skip: "producer_decision"
+};
+
+export function callbackActionTtlCategory(action?: string): TtlCategory {
+  if (!action) return "working_confirmation";
+  return CALLBACK_ACTION_CATEGORY[action] ?? "working_confirmation";
+}
+
+export function isProducerDecisionAction(action?: string): boolean {
+  return callbackActionTtlCategory(action) === "producer_decision";
+}
 
 const callbackActionEffects: Record<string, Omit<CallbackActionEffect, "action">> = {
   proposal_yes: { label: "反映", effect: "提案された変更を workspace に反映します。" },
@@ -146,8 +167,8 @@ function callbackAuditPath(root: string): string {
   return join(root, "runtime", "callback-audit.jsonl");
 }
 
-export function defaultCallbackActionExpiresAt(now = Date.now()): number {
-  return now + defaultTtlMs;
+export function defaultCallbackActionExpiresAt(now = Date.now(), action?: string): number {
+  return now + TTL_CATEGORY[callbackActionTtlCategory(action)];
 }
 
 function shortCallbackId(): string {
@@ -240,7 +261,7 @@ export async function registerCallbackAction(root: string, input: RegisterCallba
     messageId: input.messageId,
     userId: input.userId,
     createdAt: now,
-    expiresAt: input.expiresAt ?? defaultCallbackActionExpiresAt(now),
+    expiresAt: input.expiresAt ?? defaultCallbackActionExpiresAt(now, input.action),
     status: "pending"
   });
 }

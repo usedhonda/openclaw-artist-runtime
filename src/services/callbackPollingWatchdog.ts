@@ -1,4 +1,4 @@
-import { hasCallbackReprompted, readCallbackActionEntries, resolveCallbackAction, markCallbackResolved, markCallbackReprompted, type CallbackActionEntry } from "./callbackActionRegistry.js";
+import { hasCallbackReprompted, isProducerDecisionAction, readCallbackActionEntries, resolveCallbackAction, markCallbackResolved, markCallbackReprompted, type CallbackActionEntry } from "./callbackActionRegistry.js";
 import { getPollingWatchdogMinutes, isPollingWatchdogRepromptOnceEnabled, resolveDefaultWorkspaceRoot } from "./runtimeConfig.js";
 import { TelegramClient, type TelegramSendMessageOptions } from "./telegramClient.js";
 import type { TelegramReplyMarkup } from "../types.js";
@@ -110,6 +110,10 @@ export async function runCallbackPollingWatchdogOnce(options: CallbackPollingWat
         reason: "polling_watchdog_expired"
       });
       result.expired += 1;
+      continue;
+    }
+    if (isProducerDecisionAction(latest.action)) {
+      result.skipped += 1;
       continue;
     }
     if (now - latest.createdAt < staleMs) {

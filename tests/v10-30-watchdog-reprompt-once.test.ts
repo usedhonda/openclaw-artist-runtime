@@ -21,8 +21,7 @@ describe("v10.30 watchdog reprompt once", () => {
     const root = await mkdtemp(join(tmpdir(), "artist-runtime-watchdog-reprompt-once-"));
     await ensureArtistWorkspace(root);
     const entry = await registerCallbackAction(root, {
-      action: "song_spawn_inject",
-      proposalId: "spawn-1",
+      action: "prompt_pack_go",
       songId: "song-spawn",
       chatId: 10,
       messageId: 20,
@@ -42,7 +41,7 @@ describe("v10.30 watchdog reprompt once", () => {
     });
 
     expect(telegram.sendMessage).toHaveBeenCalledTimes(1);
-    expect(telegram.sendMessage).toHaveBeenCalledWith(10, "⏰ 押し忘れの確認: 曲案の採用");
+    expect(telegram.sendMessage).toHaveBeenCalledWith(10, "⏰ 押し忘れの確認: Suno に進める");
     await expect(resolveCallbackAction(root, entry.callbackId)).resolves.toMatchObject({ status: "pending" });
     const auditLines = (await readFile(join(root, "runtime", "callback-audit.jsonl"), "utf8")).trim().split("\n");
     expect(auditLines).toHaveLength(1);
