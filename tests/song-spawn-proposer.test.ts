@@ -4,6 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import { registerCallbackAction } from "../src/services/callbackActionRegistry";
+import { getRuntimeEventBus, type RuntimeEvent } from "../src/services/runtimeEventBus";
 import { proposeSpawn } from "../src/services/songSpawnProposer";
 
 const originalBudget = process.env.OPENCLAW_SUNO_DAILY_BUDGET;
@@ -80,5 +81,27 @@ describe("song spawn proposer", () => {
     });
 
     await expect(proposeSpawn(root, { aiReviewProvider: "mock", now: new Date("2026-04-29T01:00:00.000Z") })).resolves.toBeNull();
+  });
+
+  it("emits theme_starvation when observation pool is empty", async () => {
+    // Plan v10.38 Phase D: observation < 12 chars should surface a starvation
+    // event so the producer sees the empty pool in Telegram instead of being
+    // silently shipped a hard-coded fallback title.
+    const root = mkdtempSync(join(tmpdir(), "artist-runtime-spawn-starvation-"));
+    await mkdir(join(root, "observations"), { recursive: true });
+    await mkdir(join(root, "runtime"), { recursive: true });
+    await writeFile(join(root, "ARTIST.md"), "obsessions: 社会風刺、再開発、六本木\n", "utf8");
+    await writeFile(join(root, "SOUL.md"), "mood: observational\n", "utf8");
+    await writeFile(join(root, "observations", "2026-04-29.md"), "短\n", "utf8");
+    await writeFile(join(root, "runtime", "heartbeat-state.json"), JSON.stringify({ mood: "observational" }), "utf8");
+
+    const captured: RuntimeEvent[] = [];
+    const unsubscribe = getRuntimeEventBus().subscribe((event) => captured.push(event));
+    try {
+      await expect(proposeSpawn(root, { aiReviewProvider: "mock", now: new Date("2026-04-29T00:00:00.000Z") })).resolves.toBeNull();
+    } finally {
+      unsubscribe();
+    }
+    expect(captured.some((event) => event.type === "theme_starvation" && event.source === "observation_empty")).toBe(true);
   });
 });

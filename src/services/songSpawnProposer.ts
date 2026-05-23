@@ -8,6 +8,7 @@ import { listSongStates } from "./artistState.js";
 import { readCallbackActionEntries } from "./callbackActionRegistry.js";
 import { extractPersonaMotifs, extractTagSet, pickWeightedMotif } from "./personaMotifExtractor.js";
 import { secretLikePattern } from "./personaMigrator.js";
+import { emitRuntimeEvent } from "./runtimeEventBus.js";
 import { readBudgetState } from "./sunoBudgetLedger.js";
 import { validateAgainstVoiceContract } from "./voiceContractValidator.js";
 import { isVoiceFingerprintReady, parseVoiceFingerprint, type VoiceFingerprintBundle } from "./voiceFingerprintParser.js";
@@ -536,6 +537,19 @@ export async function proposeSpawn(root: string, options: ProposeSpawnOptions = 
   const observation = obsData.raw;
   const observationSummary = obsData.summary;
   const budgetRemaining = budget.limit - budget.used;
+  // Plan v10.38 Phase D: surface theme starvation. When the observation pool is
+  // empty or near-empty, autopilot has been silently falling back to the same
+  // hard-coded title ("静かな夜の勘定書" / "街の違和感") cycle after cycle. Emit
+  // a runtime event so the producer sees the starvation in Telegram instead of
+  // discovering it later through "another song with the same concept" pain.
+  if (observation.trim().length < 12) {
+    emitRuntimeEvent({
+      type: "theme_starvation",
+      source: "observation_empty",
+      details: `observation length=${observation.trim().length} chars (need >= 12)`,
+      timestamp: now.getTime()
+    });
+  }
   if (budgetRemaining <= 1 || hasRestMood(heartbeat, soulMd) || recentCompletedTooClose(songs, now) || observation.trim().length < 12) {
     return null;
   }

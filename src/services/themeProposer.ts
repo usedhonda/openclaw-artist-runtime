@@ -5,6 +5,7 @@ import { callAiProvider, isAiNotConfiguredResponse } from "./aiProviderClient.js
 import { readArtistVoiceContext } from "./artistVoiceResponder.js";
 import { secretLikePattern } from "./personaMigrator.js";
 import { extractPersonaMotifs, pickWeightedMotif, summarizeMotifs, type PersonaMotifBundle } from "./personaMotifExtractor.js";
+import { emitRuntimeEvent } from "./runtimeEventBus.js";
 
 export interface ThemeProposalContext {
   observations?: string;
@@ -89,6 +90,18 @@ export async function proposeTheme(root: string, context: ThemeProposalContext =
   }
   const motifs = extractPersonaMotifs(voiceContext.artistMd);
   const motifSummary = summarizeMotifs(motifs);
+  // Plan v10.38 Phase D: surface motif-bucket starvation. When ARTIST.md has
+  // no theme / geographies seeds, pickMotifFocus falls back to the hard-coded
+  // "pressure building under public noise" string -- producer needs to know
+  // their persona spec is empty, not be silently shipped that placeholder.
+  if (motifs.themes.length === 0 && motifs.geographies.length === 0) {
+    emitRuntimeEvent({
+      type: "theme_starvation",
+      source: "motif_bucket_empty",
+      details: "ARTIST.md persona motif buckets (themes + geographies) are empty",
+      timestamp: Date.now()
+    });
+  }
   const provider = context.aiReviewProvider ?? "mock";
   let raw: string;
   let aiNotConfigured = false;

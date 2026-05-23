@@ -906,6 +906,18 @@ async function formatRuntimeEventRaw(
       );
     case "bird_cooldown_triggered":
       return artistReport(event, `X observation cool-down triggered until ${event.cooldownUntil}: ${event.reason}`, options);
+    case "theme_starvation":
+      // Plan v10.38 Phase D: surface starvation so producer sees the empty
+      // observation pool / motif bucket instead of being silently shipped a
+      // hard-coded fallback title. Plain JA, no voice expansion (public plugin
+      // policy: artist voice stays on the song side, runtime alerts stay
+      // operational).
+      return [
+        event.source === "observation_empty"
+          ? "今日の観察が薄い。 spawn は保留。"
+          : "ARTIST.md の motif bucket が空。 themes/geographies を埋めて。",
+        event.details ? `詳細: ${event.details}` : undefined
+      ].filter(Boolean).join("\n");
     case "distribution_change_detected":
       return artistReport(
         event,
