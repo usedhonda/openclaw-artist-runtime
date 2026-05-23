@@ -84,13 +84,20 @@ export class TelegramClient {
   }
 
   private async call<T>(method: string, payload: Record<string, unknown>): Promise<T> {
-    const response = await this.fetchImpl(`${this.baseUrl}/${method}`, {
-      method: "POST",
-      headers: {
-        "content-type": "application/json"
-      },
-      body: JSON.stringify(payload)
-    });
+    let response: Response;
+    try {
+      response = await this.fetchImpl(`${this.baseUrl}/${method}`, {
+        method: "POST",
+        headers: {
+          "content-type": "application/json"
+        },
+        body: JSON.stringify(payload)
+      });
+    } catch (err) {
+      const cause = (err as { cause?: { code?: string; message?: string; errno?: string } }).cause;
+      console.error(`[telegram-client] fetch ${method} threw: msg=${(err as Error).message} cause_code=${cause?.code ?? "(none)"} cause_errno=${cause?.errno ?? "(none)"} cause_msg=${cause?.message ?? "(none)"}`);
+      throw err;
+    }
     if (!response.ok) {
       throw new Error(`telegram_${method}_http_${response.status}`);
     }

@@ -56,7 +56,9 @@ export class RuntimeEventBus {
     this.recentEvents.unshift(event);
     this.recentEvents.splice(50);
     for (const handler of this.handlers) {
-      void Promise.resolve(handler(event)).catch(() => undefined);
+      void Promise.resolve(handler(event)).catch((err) => {
+        console.error(`[bus.emit] handler_failed type=${event.type} err=${(err as Error)?.message ?? err}`);
+      });
     }
   }
 

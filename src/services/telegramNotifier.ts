@@ -49,7 +49,10 @@ export class TelegramNotifier {
 
   subscribe(bus: RuntimeEventBus): () => void {
     return bus.subscribe((event) => {
-      void this.notify(event).catch(() => undefined);
+      void this.notify(event).catch((err) => {
+        const songId = (event as { songId?: string }).songId ?? "(none)";
+        console.error(`[telegram-notify] failed event=${event.type} song=${songId} err=${(err as Error)?.message ?? err}`);
+      });
     });
   }
 
