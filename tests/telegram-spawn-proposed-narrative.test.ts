@@ -1,0 +1,93 @@
+import { mkdtempSync } from "node:fs";
+import { mkdir, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { describe, expect, it, vi } from "vitest";
+import { readCallbackActionEntries } from "../src/services/callbackActionRegistry";
+import { formatRuntimeEvent, TelegramNotifier } from "../src/services/telegramNotifier";
+import type { CommissionBrief } from "../src/types";
+
+function telegramResponse(result: unknown): Response {
+  return new Response(JSON.stringify({ ok: true, result }), { status: 200 });
+}
+
+async function root(): Promise<string> {
+  const workspaceRoot = mkdtempSync(join(tmpdir(), "artist-runtime-spawn-narrative-"));
+  await mkdir(join(workspaceRoot, "artist"), { recursive: true });
+  await writeFile(join(workspaceRoot, "ARTIST.md"), "Core obsessions: 社会風刺\n", "utf8");
+  await writeFile(join(workspaceRoot, "SOUL.md"), [
+    "# SOUL.md",
+    "## Producer (relationship in music-making)",
+    "### Producer call",
+    "- producer_callname: ゆずるさん",
+    "- first_person: 俺",
+    "## 文体 variation rule",
+    "### sentence_endings",
+    "- だ。"
+  ].join("\n"), "utf8");
+  return workspaceRoot;
+}
+
+function brief(): CommissionBrief {
+  return {
+    songId: "spawn_story",
+    title: "地下鉄のコピー機",
+    brief: "駅の明るさを社会風刺として見る。",
+    lyricsTheme: "地下鉄のコピー機の白さで、働く人の疲れを描く。",
+    mood: "tense",
+    tempo: "142 BPM",
+    duration: "2:45",
+    styleNotes: "thick bass, restrained hi-hats, sparse arrangement",
+    sourceText: "test",
+    createdAt: "2026-05-25T00:00:00.000Z",
+    sources: [
+      { kind: "news", url: "https://example.com/city", author: "City Desk", quote: "地下鉄のコピー機が深夜も動いている" }
+    ]
+  };
+}
+
+describe("telegram spawn proposed narrative", () => {
+  it("renders artist reflection before the cascade trace and removes the old sources block", async () => {
+    const workspaceRoot = await root();
+    const text = await formatRuntimeEvent({
+      type: "song_spawn_proposed",
+      candidateSongId: "spawn_story",
+      brief: brief(),
+      reason: "この観察から曲に入る。",
+      voiceTop: "ゆずるさん、地下鉄のコピー機で切る。",
+      timestamp: 1
+    }, { workspaceRoot });
+
+    expect(text).toContain("今日、こんな観察が引っかかった。");
+    expect(text).toContain("地下鉄のコピー機が深夜も動いている");
+    expect(text).toContain("voice: ゆずるさん、地下鉄のコピー機で切る。");
+    expect(text).toContain("行程 trace:");
+    expect(text).toContain("- 観察 source:");
+    expect(text).not.toContain("観察元 (この曲が引いた news / X)");
+    expect(text).not.toContain("- songId:");
+  });
+
+  it("attaches readable producer decision buttons without changing callback actions", async () => {
+    const workspaceRoot = await root();
+    const fetchImpl = vi.fn()
+      .mockResolvedValueOnce(telegramResponse({ message_id: 77, chat: { id: 123 } }))
+      .mockResolvedValueOnce(telegramResponse(true));
+
+    await new TelegramNotifier({ token: "token", chatId: 123, workspaceRoot, fetchImpl }).notify({
+      type: "song_spawn_proposed",
+      candidateSongId: "spawn_story",
+      brief: brief(),
+      reason: "この観察から曲に入る。",
+      voiceTop: "ゆずるさん、地下鉄のコピー機で切る。",
+      timestamp: 1
+    });
+
+    const entries = await readCallbackActionEntries(workspaceRoot);
+    const markupCall = fetchImpl.mock.calls.find((call) => String(call[0]).includes("/editMessageReplyMarkup"));
+    const markupBody = String((markupCall?.[1] as RequestInit).body);
+    expect(entries.map((entry) => entry.action).sort()).toEqual(["song_spawn_edit", "song_spawn_inject", "song_spawn_skip"].sort());
+    expect(markupBody).toContain("進める");
+    expect(markupBody).toContain("保留する");
+    expect(markupBody).toContain("修正する");
+  });
+});

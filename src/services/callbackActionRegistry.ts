@@ -105,7 +105,8 @@ const CALLBACK_ACTION_CATEGORY: Record<string, TtlCategory> = {
   song_archive: "producer_decision",
   song_discard: "producer_decision",
   song_spawn_inject: "producer_decision",
-  song_spawn_skip: "producer_decision"
+  song_spawn_skip: "producer_decision",
+  song_spawn_edit: "producer_decision"
 };
 
 export function callbackActionTtlCategory(action?: string): TtlCategory {
@@ -130,9 +131,9 @@ const callbackActionEffects: Record<string, Omit<CallbackActionEffect, "action">
   daily_voice_publish: { label: "投稿", effect: "草案を X に投稿します。外部公開が発生します。" },
   daily_voice_edit: { label: "編集", effect: "草案を直すための返信待ちにします。" },
   daily_voice_cancel: { label: "キャンセル", effect: "草案投稿を破棄します。" },
-  song_spawn_inject: { label: "採用", effect: "曲案を songs/ に注入し、planning から制作を始めます。" },
-  song_spawn_skip: { label: "スキップ", effect: "この曲案を見送り、次の候補を待ちます。" },
-  song_spawn_edit: { label: "編集", effect: "曲案を採用せず、/commission で方向修正を待ちます。" },
+  song_spawn_inject: { label: "進める", effect: "アーティストの着想で曲を作る、prompt_pack 作成に進みます。" },
+  song_spawn_skip: { label: "保留する", effect: "この着想を破棄し、次の着想を待ちます。" },
+  song_spawn_edit: { label: "修正する", effect: "commission 内容を編集します。" },
   prompt_pack_go: { label: "Suno 生成へ", effect: "prompt_pack の停止を解除し、次 cycle で Suno 生成へ進めます。" },
   prompt_pack_edit: { label: "lyrics-suno.md を編集", effect: "planning に戻し、歌詞をもう一度作り直します。" },
   prompt_pack_skip: { label: "保留", effect: "この曲を user_paused にして後で再開できる状態にします。" },

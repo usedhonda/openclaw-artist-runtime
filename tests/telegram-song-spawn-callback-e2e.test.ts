@@ -70,7 +70,7 @@ describe("telegram song spawn callback e2e", () => {
     const entries = await readCallbackActionEntries(root);
     expect(entries.map((entry) => entry.action).sort()).toEqual(["song_spawn_edit", "song_spawn_inject", "song_spawn_skip"].sort());
     const markupCall = fetchImpl.mock.calls.find((call) => String(call[0]).includes("/editMessageReplyMarkup"));
-    expect(String((markupCall?.[1] as RequestInit).body)).toContain("採用");
+    expect(String((markupCall?.[1] as RequestInit).body)).toContain("進める");
 
     const inject = entries.find((entry) => entry.action === "song_spawn_inject");
     const result = await routeTelegramCallback({
@@ -85,7 +85,7 @@ describe("telegram song spawn callback e2e", () => {
     const state = await readAutopilotRunState(root);
 
     expect(result).toMatchObject({ result: "applied", reason: "song_spawn_injected" });
-    expect(state).toMatchObject({ currentSongId: "spawn_e7c3b2", stage: "planning" });
+    expect(state).toMatchObject({ currentSongId: "spawn_e7c3b2", stage: "planning", suspendedAt: null });
     expect((await readSongState(root, "spawn_e7c3b2")).status).toBe("brief");
     expect(readFileSync(join(root, "songs", "spawn_e7c3b2", "brief.md"), "utf8")).toContain("Producer commission");
   });

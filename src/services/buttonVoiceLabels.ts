@@ -22,9 +22,9 @@ export const buttonVoiceLabels = {
     cancel: "キャンセル"
   },
   songSpawn: {
-    inject: "採用",
-    skip: "スキップ",
-    edit: "編集"
+    inject: "進める",
+    skip: "保留する",
+    edit: "修正する"
   },
   promptPackReady: {
     go: "Suno 生成へ",
