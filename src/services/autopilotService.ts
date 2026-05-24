@@ -610,7 +610,7 @@ export class ArtistAutopilotService {
         if (!proposal) {
           return;
         }
-        const voiceTop = await composeVoiceTopOnly("propose", input.workspaceRoot).catch(() => undefined);
+        const voiceTop = await composeVoiceTopOnly("propose", input.workspaceRoot, undefined, [], { runId: proposal.candidateSongId }).catch(() => undefined);
         emitRuntimeEvent({
           type: "song_spawn_proposed",
           brief: proposal.brief,
@@ -833,7 +833,7 @@ export class ArtistAutopilotService {
           if (promptReadySuspension) {
             const [summary, voiceTop] = await Promise.all([
               promptPackReadySummary(input.workspaceRoot, packedSong),
-              composeVoiceTopOnly("propose", input.workspaceRoot).catch(() => undefined)
+              composeVoiceTopOnly("propose", input.workspaceRoot, undefined, [], { runId: packedSong.songId }).catch(() => undefined)
             ]);
             emitRuntimeEvent({
               type: "prompt_pack_ready",

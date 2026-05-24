@@ -15,6 +15,8 @@ export interface CommandVoiceInput {
   workspaceRoot?: string;
   userMessage?: string;
   lastEndings?: string[];
+  runId?: string;
+  selectorSeed?: string | number;
 }
 
 const separator = "─────";
@@ -128,8 +130,19 @@ function intentFor(kind: CommandVoiceKind): UserIntent {
   return kind === "ack" ? "ack" : kind === "propose" ? "propose" : "report";
 }
 
-export async function composeVoiceTopOnly(kind: CommandVoiceKind, root?: string, userMessage?: string, lastEndings: string[] = []): Promise<string> {
-  return composeCommandVoiceTop({ kind, info: "", workspaceRoot: root, userMessage, lastEndings });
+export interface ComposeVoiceTopOnlyOptions {
+  runId?: string;
+  selectorSeed?: string | number;
+}
+
+export async function composeVoiceTopOnly(
+  kind: CommandVoiceKind,
+  root?: string,
+  userMessage?: string,
+  lastEndings: string[] = [],
+  options: ComposeVoiceTopOnlyOptions = {}
+): Promise<string> {
+  return composeCommandVoiceTop({ kind, info: "", workspaceRoot: root, userMessage, lastEndings, ...options });
 }
 
 async function composeCommandVoiceTop(input: CommandVoiceInput): Promise<string> {
@@ -146,7 +159,9 @@ async function composeCommandVoiceTop(input: CommandVoiceInput): Promise<string>
     voiceFingerprint: soulMd ? parseVoiceFingerprint(soulMd) : undefined,
     lastEndings: input.lastEndings ?? [],
     observationContext,
-    selectorSeed: observationContext ? Date.now() : undefined
+    selectorSeed: observationContext
+      ? input.selectorSeed ?? input.runId ?? Date.now()
+      : input.selectorSeed ?? input.runId
   });
   return sanitizeTop(text, input.kind);
 }
