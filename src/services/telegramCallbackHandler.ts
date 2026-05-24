@@ -337,6 +337,17 @@ export async function routeTelegramCallback(ctx: TelegramCallbackContext): Promi
       return { processed: true, result: "updated", reason: "song_spawn_edit_requested", callbackId };
     }
     if (entry.action === "song_spawn_skip") {
+      const state = await readAutopilotRunState(ctx.root);
+      if (state.suspendedAt === "spawn_proposal_ready") {
+        await writeAutopilotRunState(ctx.root, {
+          ...state,
+          stage: "planning",
+          suspendedAt: null,
+          blockedReason: undefined,
+          lastError: undefined,
+          lastRunAt: new Date(now).toISOString()
+        });
+      }
       await markSpawned(ctx.root, new Date(now));
       await markCallbackResolved(ctx.root, callbackId, { status: "discarded", reason: "song_spawn_skipped", now });
       await appendCallbackAudit(ctx.root, auditBase(ctx, callbackId, entry, "discarded", "song_spawn_skipped"));

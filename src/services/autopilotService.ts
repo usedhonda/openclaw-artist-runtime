@@ -599,6 +599,15 @@ export class ArtistAutopilotService {
         console.warn(`[artist-runtime] artist pulse failed: ${reason}`);
       });
     }
+    const existing = await readAutopilotRunState(input.workspaceRoot);
+    if (existing.suspendedAt === "spawn_proposal_ready") {
+      return writeStageState(input.workspaceRoot, existing, {
+        ...existing,
+        stage: "planning",
+        blockedReason: "spawn_proposal_ready",
+        lastRunAt: nowIso()
+      });
+    }
     if (isSongSpawnConfigured(config)) {
       await shouldSpawn(input.workspaceRoot, { minIntervalHours: getSongSpawnIntervalHours(process.env, config) }).then(async (allowed) => {
         if (!allowed) {
@@ -620,12 +629,24 @@ export class ArtistAutopilotService {
           observationSummary: proposal.observationSummary,
           timestamp: Date.now()
         });
+        await writeStageState(input.workspaceRoot, existing, {
+          ...existing,
+          currentSongId: proposal.candidateSongId,
+          stage: "planning",
+          suspendedAt: "spawn_proposal_ready",
+          blockedReason: "spawn_proposal_ready",
+          lastError: undefined,
+          lastRunAt: nowIso()
+        });
       }).catch((error) => {
         const reason = error instanceof Error ? error.message : String(error);
         console.warn(`[artist-runtime] song spawn proposal failed: ${reason}`);
       });
+      const afterSpawn = await readAutopilotRunState(input.workspaceRoot);
+      if (afterSpawn.suspendedAt === "spawn_proposal_ready") {
+        return afterSpawn;
+      }
     }
-    const existing = await readAutopilotRunState(input.workspaceRoot);
     if (!config.autopilot.enabled) {
       return writeStageState(input.workspaceRoot, existing, {
         ...existing,

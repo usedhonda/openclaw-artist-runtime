@@ -78,6 +78,7 @@ export async function injectCommissionSong(
     currentSongId: songId,
     stage: "planning",
     paused: false,
+    suspendedAt: null,
     blockedReason: undefined,
     lastError: undefined,
     lastRunAt: (options.now ?? new Date()).toISOString()
