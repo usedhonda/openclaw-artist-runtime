@@ -320,6 +320,22 @@ export interface CommissionBrief {
   sources?: CommissionBriefSource[];
 }
 
+export interface CascadeTraceSource {
+  kind?: "x" | "news" | "unknown";
+  label: string;
+  author?: string;
+  quote?: string;
+  url?: string;
+}
+
+export interface CascadeTrace {
+  observationSources: CascadeTraceSource[];
+  artistVoice: string;
+  title: string;
+  lyricsTheme: string;
+  styleLayer: string;
+}
+
 export interface CommissionResult {
   proposalId: string;
   commissionBrief: CommissionBrief;

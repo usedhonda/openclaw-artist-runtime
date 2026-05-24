@@ -35,7 +35,24 @@ describe("SongDetailCard producer review buttons", () => {
     expect(trace).not.toBeNull();
     expect(trace?.title).toBe("コピー機の夜景");
     expect(trace?.lyricsTheme).toContain("コピー機の白い光");
-    expect(trace?.style).toContain("low bass");
-    expect(trace?.observationUrl).toBe("https://x.com/office/status/12345");
+    expect(trace?.styleLayer).toContain("low bass");
+    expect(trace?.observationSources[0]?.url).toBe("https://x.com/office/status/12345");
+  });
+
+  it("prefers the normalized API cascadeTrace field when present", () => {
+    const trace = buildSongCascadeTrace({
+      cascadeTrace: {
+        observationSources: [{ label: "api", quote: "API source", url: "https://x.com/api/status/1" }],
+        artistVoice: "API voice",
+        title: "API title",
+        lyricsTheme: "API lyrics",
+        styleLayer: "API style"
+      },
+      brief: "- Lyrics theme: local"
+    }, "song-1");
+
+    expect(trace?.title).toBe("API title");
+    expect(trace?.lyricsTheme).toBe("API lyrics");
+    expect(trace?.observationSources[0]?.quote).toBe("API source");
   });
 });

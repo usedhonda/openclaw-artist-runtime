@@ -83,6 +83,7 @@ type SocialAction = {
 type SongDetailResponse = {
   song?: SongState | null;
   brief?: string;
+  cascadeTrace?: CascadeTrace | null;
   lyrics?: string;
   songMarkdown?: string;
   promptLedger?: PromptLedgerEntry[];
@@ -186,12 +187,16 @@ function asSelectedTake(value: unknown): SelectedTake | null {
 }
 
 type CascadeTrace = {
-  observationSource: string;
-  observationUrl?: string;
+  observationSources: Array<{
+    label: string;
+    author?: string;
+    quote?: string;
+    url?: string;
+  }>;
   artistVoice: string;
   title: string;
   lyricsTheme: string;
-  style: string;
+  styleLayer: string;
 };
 
 function pickBriefField(brief: string | undefined, label: string): string | undefined {
@@ -207,6 +212,7 @@ function compactTrace(value: string | undefined, fallback: string, limit = 120):
 }
 
 export function buildSongCascadeTrace(detail: SongDetailResponse | null, songId: string): CascadeTrace | null {
+  if (detail?.cascadeTrace) return detail.cascadeTrace;
   const song = detail?.song;
   if (!song && !detail?.brief) return null;
   const brief = detail?.brief ?? "";
@@ -216,12 +222,15 @@ export function buildSongCascadeTrace(detail: SongDetailResponse | null, songId:
     ?? song?.observationSummary;
   const artistVoice = song?.lastReason ?? detail?.takeHistory?.[0]?.reason ?? "(未記録)";
   return {
-    observationSource: compactTrace(quote, "未記録", 140),
-    observationUrl: url,
+    observationSources: [{
+      label: "brief source",
+      quote: compactTrace(quote, "未記録", 140),
+      url
+    }],
     artistVoice: compactTrace(artistVoice, "未記録", 110),
     title: compactTrace(song?.title, songId, 80),
     lyricsTheme: compactTrace(pickBriefField(brief, "Lyrics theme") ?? pickBriefField(brief, "Core theme"), "未記録"),
-    style: compactTrace(pickBriefField(brief, "Style notes"), "未記録")
+    styleLayer: compactTrace(pickBriefField(brief, "Style notes"), "未記録")
   };
 }
 
@@ -368,6 +377,7 @@ export function SongDetailCard(props: SongDetailCardProps) {
   const lastSocialAction = detail?.lastSocialAction ?? null;
   const canReviewSelectedTake = song?.status === "take_selected";
   const cascadeTrace = useMemo(() => buildSongCascadeTrace(detail, songId), [detail, songId]);
+  const cascadeSource = cascadeTrace?.observationSources[0];
 
   return (
     <article className="panel song-detail-card">
@@ -437,11 +447,11 @@ export function SongDetailCard(props: SongDetailCardProps) {
             <div className="item song-detail-reason">
               <div className="muted">Cascade trace</div>
               <dl className="song-detail-status">
-                <div><dt>観察 source</dt><dd>{cascadeTrace.observationUrl ? <a href={cascadeTrace.observationUrl} target="_blank" rel="noreferrer">{cascadeTrace.observationSource}</a> : cascadeTrace.observationSource}</dd></div>
+                <div><dt>観察 source</dt><dd>{cascadeSource?.url ? <a href={cascadeSource.url} target="_blank" rel="noreferrer">{cascadeSource.quote ?? cascadeSource.label}</a> : cascadeSource?.quote ?? cascadeSource?.label ?? "未記録"}</dd></div>
                 <div><dt>artist voice</dt><dd>{cascadeTrace.artistVoice}</dd></div>
                 <div><dt>title</dt><dd>{cascadeTrace.title}</dd></div>
                 <div><dt>lyrics theme</dt><dd>{cascadeTrace.lyricsTheme}</dd></div>
-                <div><dt>style layer</dt><dd>{cascadeTrace.style}</dd></div>
+                <div><dt>style layer</dt><dd>{cascadeTrace.styleLayer}</dd></div>
               </dl>
             </div>
           ) : null}

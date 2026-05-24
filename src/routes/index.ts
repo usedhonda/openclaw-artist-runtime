@@ -16,6 +16,7 @@ import { AutopilotControlService } from "../services/autopilotControlService.js"
 import { getAutopilotTicker, getAutopilotTickerIntervalMs, getLastOutcome, getLastTickAt } from "../services/autopilotTicker.js";
 import { readBirdLedgerDetail, readBirdRateLimitStatus } from "../services/birdRateLimiter.js";
 import { appendCallbackAuditEvent, resolveCallbackAction, summarizePendingCallbackActions } from "../services/callbackActionRegistry.js";
+import { buildCascadeTrace } from "../services/cascadeTrace.js";
 import { handleProposalResponse, listPendingProposalDetails, listPendingProposals } from "../services/conversationalSession.js";
 import { buildPlatformStats, readDistributionEvents } from "../services/distributionLedgerReader.js";
 import { emitRuntimeEvent, getRuntimeEventBus } from "../services/runtimeEventBus.js";
@@ -551,6 +552,13 @@ export async function buildSongDetailResponse(songId: string, config?: Partial<A
   return {
     song: state,
     brief,
+    cascadeTrace: buildCascadeTrace({
+      songId,
+      brief,
+      title: state.title,
+      artistVoice: state.lastReason ?? takeHistory[0]?.reason,
+      observationSummary: state.observationSummary
+    }),
     lyrics,
     songMarkdown,
     promptLedger,
