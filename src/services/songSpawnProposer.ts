@@ -511,6 +511,29 @@ function buildTopicSection(excerpts?: ObservationExcerpt[]): string[] {
   return lines;
 }
 
+function buildObservationCascadeSection(excerpts: ObservationExcerpt[] | undefined, seed: string): string[] {
+  if (!excerpts || excerpts.length === 0) {
+    return [
+      "## Observation Cascade (voiceTop / pitch shared single source):",
+      `seed: ${seed}`,
+      "trigger: none"
+    ];
+  }
+  const lines = [
+    "## Observation Cascade (voiceTop / pitch shared single source):",
+    `seed: ${seed}`,
+    "この block と Telegram voiceTop は同じ観察 cache から来る。trigger -> motif rank -> pitch の順で使う。"
+  ];
+  excerpts.slice(0, 5).forEach((entry, index) => {
+    const role = index === 0 ? "trigger" : `secondary-${index}`;
+    const rank = typeof entry.motifScore === "number" ? entry.motifScore : 0;
+    const motif = entry.motifMatch ?? "no motif match";
+    const source = entry.author ? `${entry.sourceKind}:${entry.author}` : entry.sourceKind;
+    lines.push(`${role}: kind=${entry.sourceKind} source=${source} motifRank=${rank} motif=${motif} quote=${entry.text.slice(0, 140)}`);
+  });
+  return lines;
+}
+
 function buildPrompt(context: {
   artistMd: string;
   soulMd: string;
@@ -524,6 +547,7 @@ function buildPrompt(context: {
   recentThemes: RecentSpawnTheme[];
   fingerprint: VoiceFingerprintBundle;
   observationExcerpts?: ObservationExcerpt[];
+  cascadeSeed: string;
 }): string {
   const lines: string[] = [
     "System: あなたは used::honda 本人。 producer に新曲を提案する artist として一人称で書く。",
@@ -559,6 +583,8 @@ function buildPrompt(context: {
     `Recently proposed themes to avoid: ${context.recentThemes.length > 0 ? context.recentThemes.map((t) => t.title).join(" | ") : "none"}`,
     "",
     ...buildTopicSection(context.observationExcerpts),
+    "",
+    ...buildObservationCascadeSection(context.observationExcerpts, context.cascadeSeed),
     "",
     "Raw observation excerpts (context only):",
     context.observation.slice(0, 1200),
@@ -795,7 +821,8 @@ export async function proposeSpawn(root: string, options: ProposeSpawnOptions = 
       budgetRemaining,
       recentThemes,
       fingerprint,
-      observationExcerpts: obsData.excerpts
+      observationExcerpts: obsData.excerpts,
+      cascadeSeed: fallback.songId
     }), { provider });
   const safeRaw = isAiNotConfiguredResponse(raw) || secretLikePattern.test(raw) ? "" : raw;
   const parsed = briefFromAi(safeRaw, fallback, now, pitchContext);
