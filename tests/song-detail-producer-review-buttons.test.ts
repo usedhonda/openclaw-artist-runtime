@@ -1,7 +1,7 @@
 import React from "../ui/node_modules/react/index.js";
 import { renderToStaticMarkup } from "../ui/node_modules/react-dom/server.node.js";
 import { describe, expect, it, vi } from "vitest";
-import { ProducerReviewButtons } from "../ui/src/components/SongDetailCard";
+import { buildSongCascadeTrace, ProducerReviewButtons } from "../ui/src/components/SongDetailCard";
 
 describe("SongDetailCard producer review buttons", () => {
   it("renders archive/discard buttons with plain JA action labels", () => {
@@ -15,5 +15,27 @@ describe("SongDetailCard producer review buttons", () => {
     expect(html).toContain("採用して次の曲へ");
     expect(html).toContain("破棄して次の曲へ");
     expect(html).not.toMatch(/publish|SNS|artist voice/i);
+  });
+
+  it("derives cascade trace fields from the song detail brief", () => {
+    const trace = buildSongCascadeTrace({
+      song: {
+        songId: "song-1",
+        title: "コピー機の夜景",
+        lastReason: "ゆずるさん、ここで切る。"
+      },
+      brief: [
+        "- Lyrics theme: コピー機の白い光を夜の孤独として切る。",
+        "- Style notes: low bass, dry drums",
+        "- Quote: 深夜のコピー機だけがまだ働いている",
+        "- URL: https://x.com/office/status/12345"
+      ].join("\n")
+    }, "song-1");
+
+    expect(trace).not.toBeNull();
+    expect(trace?.title).toBe("コピー機の夜景");
+    expect(trace?.lyricsTheme).toContain("コピー機の白い光");
+    expect(trace?.style).toContain("low bass");
+    expect(trace?.observationUrl).toBe("https://x.com/office/status/12345");
   });
 });

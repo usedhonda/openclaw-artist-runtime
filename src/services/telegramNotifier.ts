@@ -13,7 +13,7 @@ import { composeVoiceTopOnly, isUnsafeCommandVoiceTopForTest } from "./commandVo
 import { composePlanningSkeletonVoice } from "./planningSkeletonVoiceComposer.js";
 import { composeSongSpawnProposalVoice } from "./songSpawnProposalVoiceComposer.js";
 import { buttonVoiceLabels } from "./buttonVoiceLabels.js";
-import { access, readdir } from "node:fs/promises";
+import { access, readdir, readFile } from "node:fs/promises";
 import { join } from "node:path";
 
 export interface TelegramNotifierOptions {
@@ -655,6 +655,69 @@ async function readSongCompletionContext(event: Extract<RuntimeEvent, { type: "s
   };
 }
 
+interface CascadeTrace {
+  observationSource: string;
+  artistVoice: string;
+  title: string;
+  lyricsTheme: string;
+  style: string;
+}
+
+function pickBriefField(brief: string, label: string): string | undefined {
+  const escaped = label.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const match = brief.match(new RegExp(`^-\\s*${escaped}:\\s*(.+)$`, "im"));
+  return match?.[1]?.trim();
+}
+
+function compactTraceLine(value: string | undefined, fallback: string, limit = 120): string {
+  const text = (value ?? "").replace(/\s+/g, " ").trim();
+  if (!text) return fallback;
+  return text.length > limit ? `${text.slice(0, limit)}…` : text;
+}
+
+function parseBriefSource(brief: string, observationSummary?: ObservationSummary): string {
+  const sourceUrl = brief.match(/https?:\/\/\S+/)?.[0]?.replace(/[)）\]、。,]+$/g, "");
+  const quote = brief.match(/^- Quote:\s*(.+)$/im)?.[1]?.trim()
+    ?? brief.match(/^- Source quote:\s*(.+)$/im)?.[1]?.trim()
+    ?? observationSummary?.quote;
+  const author = brief.match(/^- Author:\s*(.+)$/im)?.[1]?.trim()
+    ?? observationSummary?.author;
+  if (quote || author || sourceUrl) {
+    const who = author ? `@${safeAuthor(author)}: ` : "";
+    const quoted = quote ? `「${capQuote(quote, 80)}」` : "引用なし";
+    return sourceUrl ? `${who}${quoted} ${sourceUrl}` : `${who}${quoted}`;
+  }
+  return observationSummary ? formatObservationSource(observationSummary).join(" / ") : "未記録";
+}
+
+async function buildCascadeTrace(
+  songId: string,
+  options: Pick<TelegramNotifierOptions, "workspaceRoot">,
+  input: { title: string; artistVoice: string; lyricsTheme?: string; style?: string; observationSummary?: ObservationSummary }
+): Promise<CascadeTrace> {
+  const brief = options.workspaceRoot
+    ? await readFile(join(options.workspaceRoot, "songs", songId, "brief.md"), "utf8").catch(() => "")
+    : "";
+  return {
+    observationSource: parseBriefSource(brief, input.observationSummary),
+    artistVoice: compactTraceLine(input.artistVoice.split(/\r?\n/)[0], "未記録", 100),
+    title: compactTraceLine(input.title || songId, songId, 80),
+    lyricsTheme: compactTraceLine(pickBriefField(brief, "Lyrics theme") ?? pickBriefField(brief, "Core theme") ?? input.lyricsTheme, "未記録"),
+    style: compactTraceLine(pickBriefField(brief, "Style notes") ?? input.style, "未記録")
+  };
+}
+
+function formatCascadeTrace(trace: CascadeTrace): string {
+  return [
+    "行程 trace:",
+    `- 観察 source: ${trace.observationSource}`,
+    `- artist voice: ${trace.artistVoice}`,
+    `- title: ${trace.title}`,
+    `- lyrics theme: ${trace.lyricsTheme}`,
+    `- style layer: ${trace.style}`
+  ].join("\n");
+}
+
 async function formatSongTakeCompleted(
   event: Extract<RuntimeEvent, { type: "song_take_completed" }>,
   options: Pick<TelegramNotifierOptions, "workspaceRoot" | "aiReviewProvider"> = {}
@@ -670,12 +733,21 @@ async function formatSongTakeCompleted(
     fallbackTop,
     options
   ), fallbackTop, context.observationSummary);
-  return [
+  const trace = await buildCascadeTrace(event.songId, options, {
+    title: context.title,
+    artistVoice: artistTop,
+    observationSummary: context.observationSummary
+  });
+  const lines = [
     artistTop,
     "",
     "─────",
     formatSongMetadata(context.title, take, urls, context.observationSummary)
-  ].join("\n");
+  ];
+  if (options.workspaceRoot || context.observationSummary) {
+    lines.push("", formatCascadeTrace(trace));
+  }
+  return lines.join("\n");
 }
 
 function stripHtmlComments(text: string): string {
@@ -997,15 +1069,25 @@ async function formatRuntimeEventRaw(
         `${humanizeMissingFields(event.missing)}を埋める案、出した。これで進めていい?`
       ].join("\n");
     }
-    case "prompt_pack_ready":
+    case "prompt_pack_ready": {
+      const artistVoice = event.voiceTop ?? "ゆずるさん、歌詞こんな感じ。Suno 行く?";
+      const trace = await buildCascadeTrace(event.songId, options, {
+        title: event.title,
+        artistVoice,
+        lyricsTheme: event.lyricsExcerpt.split(/\r?\n/).map((line) => line.trim()).find(Boolean),
+        style: `${event.mood}・${event.tempo}・${event.styleNotes}`
+      });
       return [
-        event.voiceTop ?? "ゆずるさん、歌詞こんな感じ。Suno 行く?",
+        artistVoice,
         "",
         "─────",
         event.lyricsExcerpt,
         "",
-        `${event.mood}・${event.tempo}・${event.styleNotes}`
+        `${event.mood}・${event.tempo}・${event.styleNotes}`,
+        "",
+        formatCascadeTrace(trace)
       ].join("\n");
+    }
     case "observation_collected":
       return `Observations collected: ${event.entryCount} entries${typeof event.topScore === "number" ? `, top score=${event.topScore}` : ""}${event.topMotifMatch ? ` (${event.topMotifMatch})` : ""}`;
     case "artist_presence":

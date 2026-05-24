@@ -1,7 +1,22 @@
-import type { PersonaMotifBundle } from "./personaMotifExtractor.js";
+import { extractTagSet, pickWeightedMotif, type PersonaMotifBundle } from "./personaMotifExtractor.js";
 import type { VoiceFingerprintBundle } from "./voiceFingerprintParser.js";
 
 export type UserIntent = "discuss" | "propose" | "report" | "ack";
+
+export interface ArtistObservationContextEntry {
+  kind: "news" | "x";
+  quote: string;
+  url?: string;
+  author?: string;
+  topic?: string;
+  motifMatch?: string;
+}
+
+export interface ArtistObservationContext {
+  trigger: ArtistObservationContextEntry;
+  secondary?: ArtistObservationContextEntry[];
+  observationTopTags?: string[];
+}
 
 export interface ComposeArtistFallbackInput {
   userMessage: string;
@@ -11,6 +26,8 @@ export interface ComposeArtistFallbackInput {
   userIntent: UserIntent;
   voiceFingerprint?: VoiceFingerprintBundle;
   lastEndings?: string[];
+  observationContext?: ArtistObservationContext;
+  selectorSeed?: string | number;
 }
 
 interface Slots {
@@ -23,6 +40,10 @@ interface Slots {
   firstPerson: string;
   signatureMove: string;
   reaction: string;
+  newsEvent: string;
+  xQuote: string;
+  newsTopic: string;
+  sound: string;
 }
 
 const fallbackLines: Record<UserIntent, string[]> = {
@@ -60,6 +81,17 @@ const templates: Record<UserIntent, string[]> = {
   ack: ["了解。", "うん。", "聞いた。", "任せて。"]
 };
 
+const observationTemplates: Partial<Record<UserIntent, string[]>> = {
+  propose: [
+    "{producer_callname}、{news_topic}のざらつきから、{theme}を{geo}で切る案がある。",
+    "さっき見た「{x_quote}」、{theme}に引っかかった。{geo}の角度で曲にしたい。",
+    "{news_event}が残ってる。{sound}の骨で、{theme}まで持っていく。",
+    "{producer_callname}、{x_quote}の温度を、短いフックにしたい。",
+    "{news_topic}を説明で終わらせず、{geo}の音に落とす。どう?",
+    "{first_person}は{news_event}を見て、{theme}の歌にできる気がしてる。"
+  ]
+};
+
 function clean(value: string | undefined, fallback: string): string {
   const text = (value ?? "").replace(/\s+/g, " ").trim();
   if (!text || /^tbd$/i.test(text)) return fallback;
@@ -75,8 +107,14 @@ function hasMotif(motifs: PersonaMotifBundle): boolean {
 }
 
 function selector(input: ComposeArtistFallbackInput, count: number): number {
-  const firstCode = input.userMessage.codePointAt(0) ?? 0;
-  return Math.abs(input.userMessage.length + firstCode + input.userIntent.length) % count;
+  if (input.selectorSeed === undefined) {
+    const firstCode = input.userMessage.codePointAt(0) ?? 0;
+    return Math.abs(input.userMessage.length + firstCode + input.userIntent.length) % count;
+  }
+  const seed = `${input.userMessage}:${input.userIntent}:${input.selectorSeed}`;
+  const firstCode = seed.codePointAt(0) ?? 0;
+  const sum = Array.from(seed).reduce((acc, ch) => acc + (ch.codePointAt(0) ?? 0), 0);
+  return Math.abs(seed.length + firstCode + input.userIntent.length + sum) % count;
 }
 
 function firstFingerprint(values: string[] | undefined, fallback: string): string {
@@ -89,10 +127,58 @@ function compactSignatureMove(value: string | undefined, fallback: string): stri
   return firstSentence.length > 28 ? `${firstSentence.slice(0, 28)}…` : firstSentence;
 }
 
+function seedRng(seed: string): () => number {
+  let hash = 2166136261;
+  for (const ch of seed) {
+    hash ^= ch.codePointAt(0) ?? 0;
+    hash = Math.imul(hash, 16777619);
+  }
+  return () => {
+    hash += 0x6D2B79F5;
+    let t = hash;
+    t = Math.imul(t ^ (t >>> 15), t | 1);
+    t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+
+function compactObservation(value: string | undefined, fallback: string): string {
+  const compact = (value ?? "")
+    .replace(/https?:\/\/\S+/g, "")
+    .replace(/\b\d{4,}\b/g, "")
+    .replace(/\s+/g, " ")
+    .replace(/^["「『]+|["」』]+$/g, "")
+    .trim();
+  return clean(compact.slice(0, 34), fallback);
+}
+
+function observationByKind(context: ArtistObservationContext | undefined, kind: "news" | "x"): ArtistObservationContextEntry | undefined {
+  if (!context) return undefined;
+  if (context.trigger.kind === kind) return context.trigger;
+  return context.secondary?.find((entry) => entry.kind === kind);
+}
+
 function slotsOf(input: ComposeArtistFallbackInput): Slots {
   const voice = input.voiceFingerprint;
-  const theme = first(input.motifs.themes, first(input.motifs.vocabulary, "その違和感"));
-  const geo = first(input.motifs.geographies, "街");
+  const observationText = [
+    input.observationContext?.trigger.quote,
+    input.observationContext?.trigger.topic,
+    input.observationContext?.trigger.motifMatch,
+    ...(input.observationContext?.secondary ?? []).flatMap((entry) => [entry.quote, entry.topic, entry.motifMatch])
+  ].filter(Boolean).join("\n");
+  const observationTopTags = input.observationContext?.observationTopTags
+    ?? Array.from(extractTagSet(observationText));
+  const rng = seedRng(`${input.userMessage}:${input.userIntent}:${input.selectorSeed ?? ""}:${observationText}`);
+  const weighted = input.observationContext !== undefined || input.selectorSeed !== undefined;
+  const theme = weighted
+    ? clean(pickWeightedMotif(input.motifs.themes, observationTopTags, rng) ?? pickWeightedMotif(input.motifs.vocabulary, observationTopTags, rng), "その違和感")
+    : first(input.motifs.themes, first(input.motifs.vocabulary, "その違和感"));
+  const geo = weighted
+    ? clean(pickWeightedMotif(input.motifs.geographies, observationTopTags, rng), "街")
+    : first(input.motifs.geographies, "街");
+  const sound = weighted
+    ? clean(pickWeightedMotif(input.motifs.sound, observationTopTags, rng), "低いベース")
+    : first(input.motifs.sound, "低いベース");
   const toneAdjective = clean(input.tone?.split(/[、,]/)[0], "短く");
   const mood = clean(input.currentMood, "いまの湿度");
   const avoidPhrase = first(input.motifs.avoid, "説明口調");
@@ -100,7 +186,23 @@ function slotsOf(input: ComposeArtistFallbackInput): Slots {
   const firstPerson = clean(voice?.firstPerson ?? undefined, "俺");
   const signatureMove = compactSignatureMove(voice?.signatureMoves[0], "少し引っかかるところから始める");
   const reaction = firstFingerprint(voice?.reactionPhrases, "うん");
-  return { theme, geo, toneAdjective, mood, avoidPhrase, producerCallname, firstPerson, signatureMove, reaction };
+  const news = observationByKind(input.observationContext, "news") ?? input.observationContext?.trigger;
+  const x = observationByKind(input.observationContext, "x") ?? input.observationContext?.trigger;
+  return {
+    theme,
+    geo,
+    toneAdjective,
+    mood,
+    avoidPhrase,
+    producerCallname,
+    firstPerson,
+    signatureMove,
+    reaction,
+    newsEvent: compactObservation(news?.quote ?? news?.topic, "今日の観察"),
+    xQuote: compactObservation(x?.quote ?? x?.topic, "あの一言"),
+    newsTopic: compactObservation(news?.topic ?? news?.motifMatch ?? news?.quote, "街の違和感"),
+    sound
+  };
 }
 
 function render(template: string, slots: Slots): string {
@@ -114,6 +216,10 @@ function render(template: string, slots: Slots): string {
     .replaceAll("{first_person}", slots.firstPerson)
     .replaceAll("{signature_move}", slots.signatureMove)
     .replaceAll("{reaction}", slots.reaction)
+    .replaceAll("{news_event}", slots.newsEvent)
+    .replaceAll("{x_quote}", slots.xQuote)
+    .replaceAll("{news_topic}", slots.newsTopic)
+    .replaceAll("{sound}", slots.sound)
     .replace(/^[、,\s]+/, "")
     .replace(/\s+/g, " ")
     .trim();
@@ -160,6 +266,7 @@ export function composeArtistFallback(input: ComposeArtistFallbackInput): string
     const lines = fallbackLines[input.userIntent];
     return selectRendered(input, lines);
   }
-  const variants = templates[input.userIntent];
+  const obsVariants = input.observationContext ? observationTemplates[input.userIntent] ?? [] : [];
+  const variants = obsVariants.length > 0 ? [...obsVariants, ...templates[input.userIntent].slice(0, 4)] : templates[input.userIntent];
   return selectRendered(input, variants);
 }

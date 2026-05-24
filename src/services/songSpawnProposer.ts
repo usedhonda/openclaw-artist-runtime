@@ -375,6 +375,29 @@ function normalizePitchField(field: PitchField, value: string | undefined, conte
   return clean;
 }
 
+export function dedupeStyleBpm(styleNotes: string, tempo: string): string {
+  const tempoBpm = tempo.match(/\b\d{2,3}\s*BPM\b/i)?.[0];
+  if (tempoBpm) {
+    return styleNotes
+      .replace(/(?:^|[、,・\s])(?:BPM:\s*\d{2,3}|\d{2,3}\s*BPM)\b/gi, "")
+      .replace(/\s*([、,・])\s*\1+/g, "$1")
+      .replace(/^[、,・\s]+|[、,・\s]+$/g, "")
+      .replace(/\s{2,}/g, " ")
+      .trim() || styleNotes;
+  }
+  let seen = false;
+  return styleNotes
+    .replace(/(?:BPM:\s*\d{2,3}|\d{2,3}\s*BPM)\b/gi, (match) => {
+      if (seen) return "";
+      seen = true;
+      return match.replace(/^BPM:\s*/i, "");
+    })
+    .replace(/\s*([、,・])\s*\1+/g, "$1")
+    .replace(/^[、,・\s]+|[、,・\s]+$/g, "")
+    .replace(/\s{2,}/g, " ")
+    .trim();
+}
+
 function buildBrief(context: { observation: string; artistMd: string; soulMd: string; fingerprint: VoiceFingerprintBundle; budgetRemaining: number; now: Date; observationTopTags?: string[]; rng?: () => number }): CommissionBrief {
   const seed = context.observation || context.soulMd || "観察が薄い夜に、街の温度だけ残っている。";
   const titleMotifs = extractPersonaMotifs([context.artistMd, context.soulMd].join("\n"));
@@ -562,6 +585,8 @@ function briefFromAi(raw: string, fallback: CommissionBrief, now: Date, context:
   const title = parseDirective(raw, "title") || fallback.title;
   const brief = parseDirective(raw, "brief") || fallback.brief;
   const sources = parseSourcesFromAi(raw);
+  const tempo = parseDirective(raw, "tempo") || fallback.tempo;
+  const styleNotes = dedupeStyleBpm(normalizePitchField("styleNotes", parseDirective(raw, "style"), context), tempo);
   return {
     spawn,
     reason: normalizePitchField("reason", parseDirective(raw, "reason"), context),
@@ -571,9 +596,9 @@ function briefFromAi(raw: string, fallback: CommissionBrief, now: Date, context:
       brief,
       lyricsTheme: normalizePitchField("lyricsTheme", parseDirective(raw, "lyricsTheme") || parseDirective(raw, "lyrics"), context),
       mood: parseDirective(raw, "mood") || fallback.mood,
-      tempo: parseDirective(raw, "tempo") || fallback.tempo,
+      tempo,
       duration: parseDirective(raw, "duration") || fallback.duration,
-      styleNotes: normalizePitchField("styleNotes", parseDirective(raw, "style"), context),
+      styleNotes,
       createdAt: now.toISOString(),
       sources: sources.length > 0 ? sources : fallback.sources
     }
@@ -789,7 +814,7 @@ export async function proposeSpawn(root: string, options: ProposeSpawnOptions = 
     }
   }
   parsed.brief.lyricsTheme = normalizePitchField("lyricsTheme", parsed.brief.lyricsTheme, pitchContext);
-  parsed.brief.styleNotes = normalizePitchField("styleNotes", parsed.brief.styleNotes, pitchContext);
+  parsed.brief.styleNotes = dedupeStyleBpm(normalizePitchField("styleNotes", parsed.brief.styleNotes, pitchContext), parsed.brief.tempo);
   parsed.reason = normalizePitchField("reason", parsed.reason, pitchContext);
   // v10.25: brief-anchored reason guarantee. If reason fell back to motif-only
   // (no brief title reference), force a brief-anchored line so the spawn voice

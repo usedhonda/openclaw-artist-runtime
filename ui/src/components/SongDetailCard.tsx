@@ -185,6 +185,46 @@ function asSelectedTake(value: unknown): SelectedTake | null {
   return value as SelectedTake;
 }
 
+type CascadeTrace = {
+  observationSource: string;
+  observationUrl?: string;
+  artistVoice: string;
+  title: string;
+  lyricsTheme: string;
+  style: string;
+};
+
+function pickBriefField(brief: string | undefined, label: string): string | undefined {
+  if (!brief) return undefined;
+  const escaped = label.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  return brief.match(new RegExp(`^-\\s*${escaped}:\\s*(.+)$`, "im"))?.[1]?.trim();
+}
+
+function compactTrace(value: string | undefined, fallback: string, limit = 120): string {
+  const text = (value ?? "").replace(/\s+/g, " ").trim();
+  if (!text) return fallback;
+  return text.length > limit ? `${text.slice(0, limit)}…` : text;
+}
+
+export function buildSongCascadeTrace(detail: SongDetailResponse | null, songId: string): CascadeTrace | null {
+  const song = detail?.song;
+  if (!song && !detail?.brief) return null;
+  const brief = detail?.brief ?? "";
+  const url = brief.match(/https?:\/\/\S+/)?.[0]?.replace(/[)）\]、。,]+$/g, "");
+  const quote = brief.match(/^- Quote:\s*(.+)$/im)?.[1]?.trim()
+    ?? brief.match(/^- Source quote:\s*(.+)$/im)?.[1]?.trim()
+    ?? song?.observationSummary;
+  const artistVoice = song?.lastReason ?? detail?.takeHistory?.[0]?.reason ?? "(未記録)";
+  return {
+    observationSource: compactTrace(quote, "未記録", 140),
+    observationUrl: url,
+    artistVoice: compactTrace(artistVoice, "未記録", 110),
+    title: compactTrace(song?.title, songId, 80),
+    lyricsTheme: compactTrace(pickBriefField(brief, "Lyrics theme") ?? pickBriefField(brief, "Core theme"), "未記録"),
+    style: compactTrace(pickBriefField(brief, "Style notes"), "未記録")
+  };
+}
+
 export interface SongDetailCardProps {
   songId: string;
   onBack: () => void;
@@ -327,6 +367,7 @@ export function SongDetailCard(props: SongDetailCardProps) {
   const socialAssets = detail?.socialAssets ?? [];
   const lastSocialAction = detail?.lastSocialAction ?? null;
   const canReviewSelectedTake = song?.status === "take_selected";
+  const cascadeTrace = useMemo(() => buildSongCascadeTrace(detail, songId), [detail, songId]);
 
   return (
     <article className="panel song-detail-card">
@@ -389,6 +430,19 @@ export function SongDetailCard(props: SongDetailCardProps) {
             <div className="item song-detail-reason">
               <div className="muted">Observation summary</div>
               <div>{song.observationSummary}</div>
+            </div>
+          ) : null}
+
+          {cascadeTrace ? (
+            <div className="item song-detail-reason">
+              <div className="muted">Cascade trace</div>
+              <dl className="song-detail-status">
+                <div><dt>観察 source</dt><dd>{cascadeTrace.observationUrl ? <a href={cascadeTrace.observationUrl} target="_blank" rel="noreferrer">{cascadeTrace.observationSource}</a> : cascadeTrace.observationSource}</dd></div>
+                <div><dt>artist voice</dt><dd>{cascadeTrace.artistVoice}</dd></div>
+                <div><dt>title</dt><dd>{cascadeTrace.title}</dd></div>
+                <div><dt>lyrics theme</dt><dd>{cascadeTrace.lyricsTheme}</dd></div>
+                <div><dt>style layer</dt><dd>{cascadeTrace.style}</dd></div>
+              </dl>
             </div>
           ) : null}
 

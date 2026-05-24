@@ -2,7 +2,7 @@ import { mkdir, writeFile } from "node:fs/promises";
 import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { composeVoiceTopOnly, isUnsafeCommandVoiceTopForTest, wrapCommandVoice } from "../src/services/commandVoiceWrapper";
 import { ensureSongState } from "../src/services/artistState";
 import { routeTelegramCommand } from "../src/services/telegramCommandRouter";
@@ -61,6 +61,9 @@ function topOf(text: string): string {
 }
 
 describe("command voice wrapper", () => {
+  afterEach(() => {
+    vi.useRealTimers();
+  });
   it("wraps deterministic info below an artist voice top", async () => {
     const root = makeRoot();
     await writeVoice(root);
@@ -164,6 +167,29 @@ describe("command voice wrapper", () => {
 
     expect(top).not.toContain("─────");
     expect(top).not.toContain("info");
+    expect(isUnsafeCommandVoiceTopForTest(top)).toBe(false);
+  });
+
+  it("feeds recent observations into propose voice tops", async () => {
+    const root = makeRoot();
+    await writeVoice(root);
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date(0));
+    await mkdir(join(root, "observations"), { recursive: true });
+    const today = new Date(Date.now() + 9 * 60 * 60 * 1000).toISOString().slice(0, 10);
+    await writeFile(join(root, "observations", `news-${today}.md`), [
+      `# News Observations ${today}`,
+      "",
+      "- text: \"コピー機の夜が若者の疲れを照らしている\"",
+      "  source: \"fixture news\"",
+      "  motifMatch: \"若者\"",
+      "  motifScore: 9"
+    ].join("\n"), "utf8");
+
+    const top = await composeVoiceTopOnly("propose", root, "propose");
+
+    expect(top).toMatch(/コピー機|若者|fixture news/);
+    expect(top).not.toBe("ゆずるさん、六本木の社会風刺を切るやつ、どう?");
     expect(isUnsafeCommandVoiceTopForTest(top)).toBe(false);
   });
 

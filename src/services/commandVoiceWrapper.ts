@@ -1,9 +1,11 @@
-import { readFile } from "node:fs/promises";
+import { readdir, readFile } from "node:fs/promises";
 import { join } from "node:path";
-import { composeArtistFallback, type UserIntent } from "./artistVoiceComposer.js";
-import { extractPersonaMotifs, type PersonaMotifBundle } from "./personaMotifExtractor.js";
+import { composeArtistFallback, type ArtistObservationContext, type ArtistObservationContextEntry, type UserIntent } from "./artistVoiceComposer.js";
+import { extractPersonaMotifs, extractTagSet, type PersonaMotifBundle } from "./personaMotifExtractor.js";
 import { parseVoiceFingerprint } from "./voiceFingerprintParser.js";
 import { secretLikePattern } from "./personaMigrator.js";
+import { readTodayNewsObservations } from "./newsObservationCollector.js";
+import { readObservationsReport } from "./xObservationCollector.js";
 
 export type CommandVoiceKind = "help" | "status" | "songs" | "song" | "observations" | "error" | "ack" | "propose";
 
@@ -62,6 +64,58 @@ async function readVoiceFiles(root: string | undefined): Promise<{ artistMd: str
   return { artistMd, soulMd, currentState };
 }
 
+async function latestXObservationDate(root: string): Promise<string | undefined> {
+  const entries = await readdir(join(root, "observations"), { withFileTypes: true }).catch(() => []);
+  return entries
+    .filter((entry) => entry.isFile())
+    .map((entry) => entry.name.match(/^(\d{4}-\d{2}-\d{2})\.md$/)?.[1])
+    .filter((date): date is string => Boolean(date))
+    .sort()
+    .at(-1);
+}
+
+async function readObservationContext(root: string | undefined): Promise<ArtistObservationContext | undefined> {
+  if (!root) return undefined;
+  const [news, todayX, latestDate] = await Promise.all([
+    readTodayNewsObservations(root).catch(() => []),
+    readObservationsReport(root).catch(() => ({ entries: [] })),
+    latestXObservationDate(root)
+  ]);
+  const latestX = todayX.entries.length > 0 || !latestDate
+    ? todayX.entries
+    : (await readObservationsReport(root, latestDate).catch(() => ({ entries: [] }))).entries;
+  const candidates: Array<ArtistObservationContextEntry & { score: number }> = [
+    ...news.map((entry) => ({
+      kind: "news" as const,
+      quote: entry.text,
+      url: entry.url,
+      author: entry.source ?? entry.author,
+      topic: entry.source ?? entry.motifMatch,
+      motifMatch: entry.motifMatch,
+      score: entry.motifScore ?? 0
+    })),
+    ...latestX.map((entry) => ({
+      kind: "x" as const,
+      quote: entry.text,
+      url: entry.url,
+      author: entry.author,
+      topic: entry.motifMatch,
+      motifMatch: entry.motifMatch,
+      score: entry.motifScore ?? 0
+    }))
+  ].filter((entry) => entry.quote.trim().length > 0);
+  candidates.sort((a, b) => b.score - a.score);
+  const trigger = candidates[0];
+  if (!trigger) return undefined;
+  const secondary = candidates.slice(1, 4).map(({ score: _score, ...entry }) => entry);
+  const tagText = candidates.map((entry) => `${entry.quote}\n${entry.topic ?? ""}\n${entry.motifMatch ?? ""}`).join("\n");
+  return {
+    trigger,
+    secondary,
+    observationTopTags: Array.from(extractTagSet(tagText))
+  };
+}
+
 function sanitizeTop(top: string, kind: CommandVoiceKind): string {
   const firstLines = top.split(/\r?\n/).map((line) => line.trim()).filter(Boolean).slice(0, 2).join("\n");
   if (!firstLines || unsafeTopPattern.test(firstLines) || secretLikePattern.test(firstLines)) {
@@ -80,6 +134,9 @@ export async function composeVoiceTopOnly(kind: CommandVoiceKind, root?: string,
 
 async function composeCommandVoiceTop(input: CommandVoiceInput): Promise<string> {
   const { artistMd, soulMd, currentState } = await readVoiceFiles(input.workspaceRoot);
+  const observationContext = input.kind === "propose"
+    ? await readObservationContext(input.workspaceRoot)
+    : undefined;
   const motifs = extractPersonaMotifs([artistMd, soulMd].join("\n"));
   const text = composeArtistFallback({
     userMessage: input.userMessage ?? input.kind,
@@ -87,7 +144,9 @@ async function composeCommandVoiceTop(input: CommandVoiceInput): Promise<string>
     currentMood: currentState.match(/Emotional weather:\s*(.+)/i)?.[1]?.trim(),
     userIntent: intentFor(input.kind),
     voiceFingerprint: soulMd ? parseVoiceFingerprint(soulMd) : undefined,
-    lastEndings: input.lastEndings ?? []
+    lastEndings: input.lastEndings ?? [],
+    observationContext,
+    selectorSeed: observationContext ? Date.now() : undefined
   });
   return sanitizeTop(text, input.kind);
 }
