@@ -583,7 +583,14 @@ export class PlaywrightSunoDriver implements SunoBrowserDriver {
     expectedTitle?: string
   ): Promise<string[]> {
     for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
-      const createCardUrls = await this.readCreateCardSongUrls(page, expectedTitle);
+      const titleMatchedUrls = expectedTitle
+        ? (await this.readCreateCardSongUrls(page, expectedTitle)).filter((url) => !baselineUrls.has(url))
+        : [];
+      if (titleMatchedUrls.length > 0) {
+        return titleMatchedUrls;
+      }
+
+      const createCardUrls = await this.readCreateCardSongUrls(page);
       const newUrls = createCardUrls.filter((url) => !baselineUrls.has(url));
       if (newUrls.length > 0) {
         return newUrls;

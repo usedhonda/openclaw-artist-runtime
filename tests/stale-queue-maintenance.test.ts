@@ -3,7 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { readSongState } from "../src/services/artistState";
-import { registerCallbackAction } from "../src/services/callbackActionRegistry";
+import { registerCallbackAction, resolveCallbackAction } from "../src/services/callbackActionRegistry";
 import {
   runStaleQueueMaintenance,
   staleQueueCleanupAuditPath,
@@ -112,10 +112,28 @@ describe("stale queue maintenance", () => {
         reason: "pending_callback_terminal_song"
       })
     ]));
+    expect(result.resolvedCallbacks).toHaveLength(2);
+    await expect(resolveCallbackAction(root, missing.callbackId)).resolves.toMatchObject({
+      status: "expired",
+      resolveReason: "stale_queue_callback_song_missing"
+    });
+    await expect(resolveCallbackAction(root, terminal.callbackId)).resolves.toMatchObject({
+      status: "expired",
+      resolveReason: "stale_queue_pending_callback_terminal_song"
+    });
     await expect(readAuditLines(root)).resolves.toEqual(expect.arrayContaining([
       expect.objectContaining({ type: "callback_ledger_inconsistency", callbackId: missing.callbackId }),
-      expect.objectContaining({ type: "callback_ledger_inconsistency", callbackId: terminal.callbackId })
+      expect.objectContaining({ type: "callback_ledger_inconsistency", callbackId: terminal.callbackId }),
+      expect.objectContaining({ type: "callback_ledger_auto_expired", callbackId: missing.callbackId }),
+      expect.objectContaining({ type: "callback_ledger_auto_expired", callbackId: terminal.callbackId })
     ]));
+
+    const secondPass = await runStaleQueueMaintenance(root, {
+      now: new Date("2026-05-16T00:01:00.000Z"),
+      ttlHours: 48
+    });
+    expect(secondPass.inconsistencies).toHaveLength(0);
+    expect(secondPass.resolvedCallbacks).toHaveLength(0);
   });
 
   it("suppresses restart stale errors when the previous current song is terminal", async () => {

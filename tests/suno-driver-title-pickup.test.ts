@@ -82,6 +82,69 @@ describe("Suno driver title-based pickup", () => {
     expect(page.selectors).toContain(
       "[data-testid=\"clip-row\"][data-clip-status=\"complete\"][aria-label=\"Watapp Groups\"] a[href*='/song/']"
     );
-    expect(page.selectors.some((selector) => selector === "a[href*='/song/']")).toBe(false);
+    expect(page.selectors).toContain("[data-testid=\"clip-row\"][data-clip-status=\"complete\"] a[href*='/song/']");
+  });
+
+  it("falls back to new completed cards when Suno changes the generated title", async () => {
+    const selectors: string[] = [];
+    const snapshotsBySelector = new Map<string, string[][]>([
+      [
+        "[data-testid=\"clip-row\"][data-clip-status=\"complete\"][aria-label=\"Mijikai Kage\"] a[href*='/song/']",
+        [[], []]
+      ],
+      [
+        "[data-testid=\"clip-row\"][data-clip-status=\"complete\"] a[href*='/song/']",
+        [["https://suno.com/song/existing"], ["https://suno.com/song/existing", "https://suno.com/song/renamed-by-suno"]]
+      ]
+    ]);
+    const page = {
+      selectors,
+      goto: vi.fn(async () => undefined),
+      waitForLoadState: vi.fn(async () => undefined),
+      screenshot: vi.fn(async () => undefined),
+      content: vi.fn(async () => "<html></html>"),
+      url: vi.fn(() => SUNO_CREATE_URL),
+      locator: vi.fn((selector: string) => {
+        selectors.push(selector);
+        return {
+          first: () => ({
+            waitFor: vi.fn(async () => undefined),
+            isVisible: vi.fn(async () => true),
+            fill: vi.fn(async () => undefined)
+          }),
+          fill: vi.fn(async () => undefined),
+          click: vi.fn(async () => undefined),
+          count: vi.fn(async () => 1),
+          getAttribute: vi.fn(async () => "false"),
+          evaluateAll: vi.fn(async () => snapshotsBySelector.get(selector)?.shift() ?? [])
+        };
+      })
+    };
+    launchPersistentContextMock.mockResolvedValue({
+      pages: vi.fn(() => [page]),
+      newPage: vi.fn(async () => page),
+      close: vi.fn(async () => undefined)
+    });
+
+    const result = await new PlaywrightSunoDriver(".profile", "live", ".", {
+      intervalMs: 1,
+      timeoutMs: 2,
+      createCardTimeoutMs: 2
+    }).create({
+      dryRun: false,
+      authority: "auto_create_and_select_take",
+      runId: "run-renamed",
+      payload: {
+        songName: "Mijikai Kage",
+        lyricsText: "plain lyric"
+      }
+    });
+
+    expect(result.reason).toBe(PLAYWRIGHT_CREATE_CARD_REASON);
+    expect(result.urls).toEqual(["https://suno.com/song/renamed-by-suno"]);
+    expect(page.selectors).toContain(
+      "[data-testid=\"clip-row\"][data-clip-status=\"complete\"][aria-label=\"Mijikai Kage\"] a[href*='/song/']"
+    );
+    expect(page.selectors).toContain("[data-testid=\"clip-row\"][data-clip-status=\"complete\"] a[href*='/song/']");
   });
 });

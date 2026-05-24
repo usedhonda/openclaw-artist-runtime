@@ -46,9 +46,11 @@ export OPENCLAW_LOCAL_GATEWAY_HTTP_URL="${openclaw_local_gateway_http_url}"
 export OPENCLAW_LOCAL_GATEWAY_WS_URL="${openclaw_local_gateway_ws_url}"
 export PATH="${OPENCLAW_LOCAL_PREFIX}/bin:${PATH}"
 
-if [[ -n "${BIRD_FIREFOX_PROFILE:-}" ]]; then
-  export OPENCLAW_X_FIREFOX_PROFILE="${BIRD_FIREFOX_PROFILE}"
-fi
+# Local incident guard: the repo-local gateway must use the artist Firefox
+# profile for Bird/X unless explicitly overridden by the operator.
+: "${BIRD_FIREFOX_PROFILE:=rlff0kyr.artist-x}"
+export BIRD_FIREFOX_PROFILE
+export OPENCLAW_X_FIREFOX_PROFILE="${BIRD_FIREFOX_PROFILE}"
 
 if [[ -n "${TELEGRAM_BOT_TOKEN:-}" ]]; then
   export TELEGRAM_BOT_TOKEN

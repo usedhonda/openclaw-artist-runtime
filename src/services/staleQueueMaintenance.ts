@@ -2,7 +2,7 @@ import { appendFile, mkdir } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import type { SongState, SongStatus } from "../types.js";
 import { listSongStates, readSongState, updateSongState } from "./artistState.js";
-import { readCallbackActionEntries, type CallbackActionEntry } from "./callbackActionRegistry.js";
+import { markCallbackResolved, readCallbackActionEntries, type CallbackActionEntry } from "./callbackActionRegistry.js";
 
 const staleQueueStatuses = new Set<SongStatus>(["brief", "lyrics", "suno_prompt_pack"]);
 const terminalSongStatuses = new Set<SongStatus>(["scheduled", "published", "archived", "discarded", "failed"]);
@@ -30,6 +30,7 @@ export interface CallbackLedgerInconsistency {
 export interface StaleQueueMaintenanceResult {
   cleaned: StaleQueueCleanupEntry[];
   inconsistencies: CallbackLedgerInconsistency[];
+  resolvedCallbacks: CallbackLedgerInconsistency[];
   suppressedRestartStaleError?: string;
 }
 
@@ -68,6 +69,14 @@ function isCallbackRelevantToSong(entry: CallbackActionEntry): boolean {
   );
 }
 
+function latestCallbackEntries(entries: CallbackActionEntry[]): CallbackActionEntry[] {
+  const latest = new Map<string, CallbackActionEntry>();
+  for (const entry of entries) {
+    latest.set(entry.callbackId, entry);
+  }
+  return [...latest.values()];
+}
+
 function isRestartSunoStaleError(blockedReason?: string | null, lastError?: string | null): boolean {
   return /(?:playwright_import_no_urls|suno_generate_retry|suno_worker_not_connected|suno_import|waiting for Suno result import|suno_lifecycle_contract)/.test(
     `${blockedReason ?? ""}\n${lastError ?? ""}`
@@ -86,13 +95,15 @@ export function detectCallbackLedgerInconsistencies(
     }
     const song = songsById.get(entry.songId);
     if (!song) {
-      issues.push({
-        callbackId: entry.callbackId,
-        action: entry.action,
-        songId: entry.songId,
-        status: entry.status,
-        reason: "callback_song_missing"
-      });
+      if (entry.status === "pending") {
+        issues.push({
+          callbackId: entry.callbackId,
+          action: entry.action,
+          songId: entry.songId,
+          status: entry.status,
+          reason: "callback_song_missing"
+        });
+      }
       continue;
     }
     if (entry.status === "pending" && terminalSongStatuses.has(song.status)) {
@@ -115,11 +126,11 @@ export async function runStaleQueueMaintenance(
   const now = options.now ?? new Date();
   const ttlHours = options.ttlHours ?? 168;
   if (ttlHours <= 0) {
-    return { cleaned: [], inconsistencies: [] };
+    return { cleaned: [], inconsistencies: [], resolvedCallbacks: [] };
   }
   const cutoffMs = now.getTime() - hoursMs(ttlHours);
   const songs = await listSongStates(root);
-  const callbacks = await readCallbackActionEntries(root).catch(() => []);
+  const callbacks = latestCallbackEntries(await readCallbackActionEntries(root).catch(() => []));
   const cleaned: StaleQueueCleanupEntry[] = [];
 
   for (const song of songs) {
@@ -147,15 +158,29 @@ export async function runStaleQueueMaintenance(
 
   const freshSongs = cleaned.length > 0 ? await listSongStates(root) : songs;
   const inconsistencies = detectCallbackLedgerInconsistencies(freshSongs, callbacks);
+  const resolvedCallbacks: CallbackLedgerInconsistency[] = [];
   for (const issue of inconsistencies) {
     await appendAudit(root, {
       timestamp: now.toISOString(),
       type: "callback_ledger_inconsistency",
       ...issue
     });
+    const resolved = await markCallbackResolved(root, issue.callbackId, {
+      status: "expired",
+      reason: `stale_queue_${issue.reason}`,
+      now: now.getTime()
+    });
+    if (resolved?.status === "expired") {
+      resolvedCallbacks.push(issue);
+      await appendAudit(root, {
+        timestamp: now.toISOString(),
+        type: "callback_ledger_auto_expired",
+        ...issue
+      });
+    }
   }
 
-  return { cleaned, inconsistencies };
+  return { cleaned, inconsistencies, resolvedCallbacks };
 }
 
 export async function suppressRestartStaleError(
