@@ -154,9 +154,9 @@ describe("voice no-machine-leak contract (v10.16)", () => {
     });
 
     expectNoMachineMarkers(text);
-    expect(text).toContain("テンポは少し遅め");
-    expect(text).toContain("緊張感のある3分");
-    expect(text).toContain("これで合ってる気がする");
+    expect(text).toContain("voice: ゆずる、再開発の街を切るやつ、刺さる");
+    expect(text).toContain("lyrics: 街が治るふりをする夜");
+    expect(text).toContain("style: dry drums");
     expect(text).toContain("委ねてみたい");
     expect(text).not.toContain("88 BPM");
     expect(text).not.toContain("tense, cynical, urgent");

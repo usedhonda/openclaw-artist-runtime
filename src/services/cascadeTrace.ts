@@ -1,4 +1,4 @@
-import type { CascadeTrace, CascadeTraceSource, ObservationSummary } from "../types.js";
+import type { CascadeTrace, CascadeTraceSource, CommissionBriefSource, ObservationSummary } from "../types.js";
 import { secretLikePattern } from "./personaMigrator.js";
 
 export interface BuildCascadeTraceInput {
@@ -9,6 +9,7 @@ export interface BuildCascadeTraceInput {
   lyricsTheme?: string;
   styleLayer?: string;
   observationSummary?: ObservationSummary;
+  commissionSources?: CommissionBriefSource[];
 }
 
 function pickBriefField(brief: string | undefined, label: string): string | undefined {
@@ -60,10 +61,22 @@ function sourceFromSummary(summary: ObservationSummary | undefined): CascadeTrac
   };
 }
 
+function sourcesFromCommission(sources: CommissionBriefSource[] | undefined): CascadeTraceSource[] {
+  if (!sources) return [];
+  return sources.slice(0, 3).map((source) => ({
+    kind: source.kind,
+    label: source.author ? `@${source.author.replace(/^@/, "")}` : source.kind,
+    author: source.author,
+    quote: safeTraceQuote(source.quote),
+    url: source.url
+  }));
+}
+
 export function buildCascadeTrace(input: BuildCascadeTraceInput): CascadeTrace {
-  const primarySource = sourceFromBrief(input.brief) ?? sourceFromSummary(input.observationSummary);
+  const commissionSources = sourcesFromCommission(input.commissionSources);
+  const primarySource = commissionSources[0] ?? sourceFromBrief(input.brief) ?? sourceFromSummary(input.observationSummary);
   return {
-    observationSources: primarySource ? [primarySource] : [],
+    observationSources: commissionSources.length > 0 ? commissionSources : primarySource ? [primarySource] : [],
     artistVoice: compactTraceLine(input.artistVoice?.split(/\r?\n/)[0], "未記録", 100),
     title: compactTraceLine(input.title || input.songId, input.songId, 80),
     lyricsTheme: compactTraceLine(

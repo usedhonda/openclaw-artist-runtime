@@ -28,12 +28,14 @@ describe("telegram spawn hybrid format", () => {
       timestamp: 1
     });
 
-    expect(text.split("\n").slice(0, 4)).toEqual([
-      "ゆずる、再開発の街を切るやつ、刺さる",
-      "",
-      "─────",
-      "『Backyard Cure』、テンポは速め、緊張感のある3分弱。これで合ってる気がする。"
+    expect(text.split("\n").slice(0, 3)).toEqual([
+      "ゆずるさん、今日は外の観察が薄い。",
+      "俺の中に残っている今の違和感だけで、まず話す。",
+      ""
     ]);
+    expect(text).toMatch(/これを読んで、俺は/);
+    expect(text).toContain("voice: ゆずる、再開発の街を切るやつ、刺さる");
+    expect(text).toContain("行程 trace:");
     expect(text).toContain("街の剥がれ方が刺さった。低い熱で行く。");
   });
 
@@ -46,11 +48,7 @@ describe("telegram spawn hybrid format", () => {
       timestamp: 1
     });
 
-    expect(text.split("\n").slice(0, 4)).toEqual([
-      "次の曲、こんな感じはどう?",
-      "",
-      "─────",
-      "『Backyard Cure』、テンポは速め、緊張感のある3分弱。これで合ってる気がする。"
-    ]);
+    expect(text).toContain("voice: ゆずるさん、次の曲の話をしたい。");
+    expect(text).toContain("行程 trace:");
   });
 });

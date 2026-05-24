@@ -42,11 +42,12 @@ describe("hybrid event info voice formatting", () => {
       timestamp: 1
     });
 
-    expect(text).not.toMatch(/- (songId|title|mood|tempo|duration|reason):/);
+    expect(text).not.toMatch(/- (songId|mood|tempo|duration|reason):/);
     expect(text).toContain("『Backyard Cure』");
-    expect(text).toContain("テンポは速め");
-    expect(text).toContain("緊張感のある3分くらい");
-    expect(text).toContain("これで合ってる気がする");
+    expect(text).toContain("voice: ゆずる、再開発の街を切るやつ、刺さる");
+    expect(text).toContain("lyrics: 街が治るふりをする夜");
+    expect(text).toContain("style: distorted bass, dry drums");
+    expect(text).toContain("行程 trace:");
     expect(text).toContain("街の剥がれ方が刺さった。低い熱で行く。");
     expect(text).not.toContain("tense, cynical, urgent");
     expect(text).not.toContain("148 BPM");
