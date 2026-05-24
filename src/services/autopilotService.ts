@@ -37,6 +37,11 @@ import { applyChangeSet } from "./changeSetApplier.js";
 import { syncSongbookFromITunes } from "./songbookSyncer.js";
 import { composeVoiceTopOnly } from "./commandVoiceWrapper.js";
 import { runStaleQueueMaintenance, suppressRestartStaleError } from "./staleQueueMaintenance.js";
+import {
+  appendTakeAttributionAudit,
+  findDryRunImportPaths,
+  findTakeAttributionCollisions
+} from "./takeAttributionGuard.js";
 
 export function isPublishBlockedByDryRun(
   result: Pick<SocialPublishResult, "accepted" | "dryRun">,
@@ -113,7 +118,7 @@ async function importPendingSunoGeneration(
   root: string,
   songId: string,
   config: ArtistRuntimeConfig
-): Promise<{ imported: true } | { imported: false; reason?: string } | undefined> {
+): Promise<{ imported: true } | { imported: false; reason?: string; pause?: true } | undefined> {
   const connector = new BrowserWorkerSunoConnector(root, { config });
   const latestRun = await readLatestSunoRun(root, songId);
   const workerStatus = await connector.status().catch(() => undefined);
@@ -146,6 +151,30 @@ async function importPendingSunoGeneration(
   const result = await connector.importResults({ runId, urls });
   if (result.urls.length === 0) {
     return { imported: false, reason: result.reason ?? "waiting for Suno result import" };
+  }
+  const dryRunPaths = findDryRunImportPaths(result.paths ?? []);
+  if (dryRunPaths.length > 0) {
+    await appendTakeAttributionAudit(root, "dryrun_take_import_blocked", { songId, runId, paths: dryRunPaths });
+    emitRuntimeEvent({
+      type: "error",
+      source: "take_attribution",
+      reason: "dryrun_take_import_blocked",
+      songId,
+      timestamp: Date.now()
+    });
+    return { imported: false, reason: "dryrun_take_import_blocked", pause: true };
+  }
+  const collisions = await findTakeAttributionCollisions(root, songId, result.urls);
+  if (collisions.length > 0) {
+    await appendTakeAttributionAudit(root, "take_attribution_collision_blocked", { songId, runId, collisions });
+    emitRuntimeEvent({
+      type: "error",
+      source: "take_attribution",
+      reason: "take_attribution_collision_blocked",
+      songId,
+      timestamp: Date.now()
+    });
+    return { imported: false, reason: "take_attribution_collision_blocked", pause: true };
   }
 
   await importSunoResults({
@@ -223,6 +252,7 @@ export function stageFromSong(song?: SongState): AutopilotStage {
     case "take_selected":
       return "asset_generation";
     case "social_assets":
+    case "publishing":
       return "publishing";
     case "published":
       return "completed";
@@ -910,7 +940,8 @@ export class ArtistAutopilotService {
             return writeStageState(input.workspaceRoot, existing, {
               ...baseState,
               currentSongId: song.songId,
-              stage: "suno_generation",
+              paused: pendingImport.pause ? true : baseState.paused,
+              stage: pendingImport.pause ? "paused" : "suno_generation",
               blockedReason: pendingImport.reason,
               lastError: pendingImport.reason,
               lastSuccessfulStage: existing.lastSuccessfulStage,

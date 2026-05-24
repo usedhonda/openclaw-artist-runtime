@@ -4,7 +4,7 @@ import { ensureBackupChangeSet } from "./personaBackup.js";
 import { readSongState, updateSongState } from "./artistState.js";
 import { emitRuntimeEvent } from "./runtimeEventBus.js";
 import { readResolvedConfig } from "./runtimeConfig.js";
-import type { SongState } from "../types.js";
+import type { SongState, SongStatus } from "../types.js";
 
 export type SongPublishAction = "song_songbook_write" | "song_skip" | "song_archive" | "song_discard";
 
@@ -33,6 +33,7 @@ export interface SongPublishActionResult {
   action: SongPublishAction;
   status: "applied" | "discarded";
   message: string;
+  reason?: string;
   song?: SongState;
   backups?: BackupChangeSet;
   safety: {
@@ -58,6 +59,14 @@ async function readSafety(root: string): Promise<SongPublishActionResult["safety
   };
 }
 
+const discardableReviewStatuses = new Set<SongStatus>(["take_selected", "social_assets", "publishing"]);
+
+function discardReasonForStatus(status: SongStatus): string {
+  return status === "take_selected"
+    ? "producer discarded selected take and kept brief for reuse"
+    : `discard_from_post_review:${status}`;
+}
+
 export async function runSongPublishAction(action: SongPublishAction, context: SongPublishActionContext): Promise<SongPublishActionResult> {
   const now = context.now ?? Date.now();
   const safety = await readSafety(context.root);
@@ -74,7 +83,7 @@ export async function runSongPublishAction(action: SongPublishAction, context: S
   }
 
   if (action === "song_archive" || action === "song_discard") {
-    if (currentSong.status !== "take_selected") {
+    if (action === "song_archive" && currentSong.status !== "take_selected") {
       throw new Error(`invalid_song_review_transition:${currentSong.status}`);
     }
     if (action === "song_archive") {
@@ -91,17 +100,22 @@ export async function runSongPublishAction(action: SongPublishAction, context: S
         safety
       };
     }
+    if (!discardableReviewStatuses.has(currentSong.status)) {
+      throw new Error(`invalid_song_review_transition:${currentSong.status}`);
+    }
+    const discardReason = discardReasonForStatus(currentSong.status);
     const song = await updateSongState(context.root, context.songId, {
       status: "discarded",
-      reason: "producer discarded selected take and kept brief for reuse",
+      reason: discardReason,
       clearSelectedTake: true,
       replacePublicLinks: []
     });
-    emitRuntimeEvent({ type: "song_discarded", songId: context.songId, previousSelectedTakeId: currentSong.selectedTakeId, timestamp: now });
+    emitRuntimeEvent({ type: "song_discarded", songId: context.songId, previousSelectedTakeId: currentSong.selectedTakeId, fromStatus: currentSong.status, reason: discardReason, timestamp: now });
     return {
       action,
       status: "discarded",
       message: "この曲を破棄しました。次の曲作りへ進みます (autopilot 再開の合図をお待ちしています)。brief は残しています。",
+      reason: discardReason,
       song,
       safety
     };

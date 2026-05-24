@@ -23,6 +23,7 @@ export const PLAYWRIGHT_DRIVER_LOGIN_REQUIRED_DETAIL =
   "Suno login required in persistent profile — run `scripts/openclaw-suno-login.sh` and complete operator login";
 export const PLAYWRIGHT_CREATE_SKIPPED_REASON = "submit_skipped";
 export const PLAYWRIGHT_LIVE_TIMEOUT_REASON = "playwright_live_timeout";
+export const PLAYWRIGHT_TITLE_REQUIRED_REASON = "playwright_title_required";
 export const PLAYWRIGHT_IMPORT_NO_URLS_REASON = "playwright_import_no_urls";
 export const PLAYWRIGHT_POLL_INTERVAL_MS = 3_000;
 export const PLAYWRIGHT_POLL_TIMEOUT_MS = 10 * 60 * 1_000;
@@ -145,6 +146,17 @@ export class PlaywrightSunoDriver implements SunoBrowserDriver {
         };
       }
 
+      if (!title) {
+        await this.captureCreateFailure(page, PLAYWRIGHT_TITLE_REQUIRED_REASON, request, runId);
+        return {
+          accepted: false,
+          runId,
+          reason: PLAYWRIGHT_TITLE_REQUIRED_REASON,
+          urls: [],
+          dryRun: request.dryRun
+        };
+      }
+
       await page.locator('button[aria-label="Create song"]').click({ timeout: 10_000 });
       await page.waitForLoadState("domcontentloaded").catch(() => undefined);
       const generated = await this.pollForGeneratedSongs(page, baselineCreateUrls, title);
@@ -209,7 +221,8 @@ export class PlaywrightSunoDriver implements SunoBrowserDriver {
       opened = await this.openContext();
 
       const page = opened.preferredPage;
-      const outputDir = join(this.workspaceRoot, "runtime", "suno", request.runId);
+      const dryRun = request.dryRun === true;
+      const outputDir = join(this.workspaceRoot, "runtime", dryRun ? "suno-dryrun" : "suno", request.runId);
       await mkdir(outputDir, { recursive: true });
 
       const successfulUrls: string[] = [];
@@ -261,7 +274,7 @@ export class PlaywrightSunoDriver implements SunoBrowserDriver {
         paths: savedPaths,
         metadata,
         reason: failures.length > 0 ? failures.join("; ") : "imported",
-        dryRun: false
+        dryRun
       };
     } catch (error) {
       if (this.isModuleNotInstalled(error)) {
@@ -582,18 +595,13 @@ export class PlaywrightSunoDriver implements SunoBrowserDriver {
     maxAttempts: number,
     expectedTitle?: string
   ): Promise<string[]> {
+    if (!expectedTitle) {
+      return [];
+    }
     for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
-      const titleMatchedUrls = expectedTitle
-        ? (await this.readCreateCardSongUrls(page, expectedTitle)).filter((url) => !baselineUrls.has(url))
-        : [];
+      const titleMatchedUrls = (await this.readCreateCardSongUrls(page, expectedTitle)).filter((url) => !baselineUrls.has(url));
       if (titleMatchedUrls.length > 0) {
         return titleMatchedUrls;
-      }
-
-      const createCardUrls = await this.readCreateCardSongUrls(page);
-      const newUrls = createCardUrls.filter((url) => !baselineUrls.has(url));
-      if (newUrls.length > 0) {
-        return newUrls;
       }
       if (attempt < maxAttempts - 1) {
         await sleep(this.polling.intervalMs);

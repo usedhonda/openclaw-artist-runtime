@@ -133,6 +133,37 @@ describe("PlaywrightSunoDriver importResults", () => {
     expect(writeFileMock).toHaveBeenCalledTimes(2);
   });
 
+  it("writes dry-run import artifacts under runtime/suno-dryrun", async () => {
+    const { context } = createContext([
+      {
+        trackId: "dryrun-song",
+        audioUrl: "https://cdn1.suno.ai/dryrun-song.mp3",
+        format: "mp3",
+        title: "Dryrun Song"
+      }
+    ]);
+    launchPersistentContextMock.mockResolvedValue(context);
+    vi.mocked(globalThis.fetch)
+      .mockResolvedValueOnce(new Response(new Uint8Array([1, 2, 3]), { status: 200 }));
+    const driver = new PlaywrightSunoDriver(".openclaw-browser-profiles/suno", "live", "/tmp/workspace");
+
+    const result = await driver.importResults({
+      runId: "run-import-dryrun",
+      urls: ["https://suno.com/song/dryrun-song"],
+      dryRun: true
+    });
+
+    expect(result).toMatchObject({
+      accepted: true,
+      dryRun: true,
+      paths: ["/tmp/workspace/runtime/suno-dryrun/run-import-dryrun/dryrun-song.mp3"]
+    });
+    expect(writeFileMock).toHaveBeenCalledWith(
+      "/tmp/workspace/runtime/suno-dryrun/run-import-dryrun/dryrun-song.mp3",
+      expect.any(Buffer)
+    );
+  });
+
   it("keeps mp3 format when the extracted asset points at an mp3 download", async () => {
     const { context } = createContext([
       {

@@ -64,6 +64,7 @@ function normalizeSongStatus(value?: string): SongStatus {
     case "takes_imported":
     case "take_selected":
     case "social_assets":
+    case "publishing":
     case "scheduled":
     case "published":
     case "archived":

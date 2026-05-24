@@ -257,10 +257,11 @@ export async function routeTelegramCallback(ctx: TelegramCallbackContext): Promi
       });
       const callbackStatus: Exclude<CallbackActionStatus, "pending"> = actionResult.status === "applied" ? "applied" : "discarded";
       const callbackResult: TelegramCallbackResult["result"] = actionResult.status === "applied" ? "applied" : "discarded";
-      await markCallbackResolved(ctx.root, callbackId, { status: callbackStatus, reason: actionResult.status, now });
-      await appendCallbackAudit(ctx.root, auditBase(ctx, callbackId, entry, callbackResult, actionResult.status));
+      const auditReason = actionResult.reason ?? actionResult.status;
+      await markCallbackResolved(ctx.root, callbackId, { status: callbackStatus, reason: auditReason, now });
+      await appendCallbackAudit(ctx.root, auditBase(ctx, callbackId, entry, callbackResult, auditReason));
       await ctx.client.editMessageText(entry.chatId, entry.messageId, actionResult.message, { replyMarkup: { inline_keyboard: [] } }).catch(() => undefined);
-      return { processed: true, result: callbackResult, reason: actionResult.status, callbackId };
+      return { processed: true, result: callbackResult, reason: auditReason, callbackId };
     } catch (error) {
       const reason = error instanceof Error ? error.message : "song_publish_action_failed";
       await markCallbackResolved(ctx.root, callbackId, { status: "failed", reason, now });

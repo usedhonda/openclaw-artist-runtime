@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
   PLAYWRIGHT_CREATE_CARD_REASON,
+  PLAYWRIGHT_LIVE_TIMEOUT_REASON,
   PlaywrightSunoDriver,
   SUNO_CREATE_URL
 } from "../src/services/sunoPlaywrightDriver";
@@ -85,7 +86,7 @@ describe("Suno driver title-based pickup", () => {
     expect(page.selectors).toContain("[data-testid=\"clip-row\"][data-clip-status=\"complete\"] a[href*='/song/']");
   });
 
-  it("falls back to new completed cards when Suno changes the generated title", async () => {
+  it("fails closed instead of falling back to unrelated completed cards when title mismatch remains", async () => {
     const selectors: string[] = [];
     const snapshotsBySelector = new Map<string, string[][]>([
       [
@@ -140,11 +141,11 @@ describe("Suno driver title-based pickup", () => {
       }
     });
 
-    expect(result.reason).toBe(PLAYWRIGHT_CREATE_CARD_REASON);
-    expect(result.urls).toEqual(["https://suno.com/song/renamed-by-suno"]);
+    expect(result.reason).toBe(PLAYWRIGHT_LIVE_TIMEOUT_REASON);
+    expect(result.urls).toEqual([]);
     expect(page.selectors).toContain(
       "[data-testid=\"clip-row\"][data-clip-status=\"complete\"][aria-label=\"Mijikai Kage\"] a[href*='/song/']"
     );
-    expect(page.selectors).toContain("[data-testid=\"clip-row\"][data-clip-status=\"complete\"] a[href*='/song/']");
+    expect(page.selectors.filter((selector) => selector === "[data-testid=\"clip-row\"][data-clip-status=\"complete\"] a[href*='/song/']")).toHaveLength(1);
   });
 });

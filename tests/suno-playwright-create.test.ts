@@ -11,6 +11,7 @@ import {
   PLAYWRIGHT_CREATE_SKIPPED_REASON,
   PLAYWRIGHT_CREATE_TIMEOUT_REASON,
   PLAYWRIGHT_LIVE_TIMEOUT_REASON,
+  PLAYWRIGHT_TITLE_REQUIRED_REASON,
   PlaywrightSunoDriver,
   SUNO_LIBRARY_URL,
   SUNO_CREATE_URL
@@ -267,6 +268,7 @@ describe("PlaywrightSunoDriver create", () => {
       authority: "auto_create_and_select_take",
       runId: "run-003",
       payload: {
+        songName: "Run 003",
         lyrics: "line one"
       }
     });
@@ -280,6 +282,33 @@ describe("PlaywrightSunoDriver create", () => {
     });
     expect(page.clicks).toContain("button[aria-label=\"Create song\"]");
     expect(page.goto).not.toHaveBeenCalledWith(SUNO_LIBRARY_URL, expect.anything());
+  });
+
+  it("fails closed before clicking Create when live mode payload has no title", async () => {
+    const { page, context } = createContext();
+    launchPersistentContextMock.mockResolvedValue(context);
+    const driver = new PlaywrightSunoDriver(".openclaw-browser-profiles/suno", "live", ".", {
+      intervalMs: 1,
+      timeoutMs: 3,
+      createCardTimeoutMs: 1
+    });
+
+    const result = await driver.create({
+      dryRun: false,
+      authority: "auto_create_and_select_take",
+      runId: "run-title-required",
+      payload: {
+        lyrics: "line one"
+      }
+    });
+
+    expect(result).toMatchObject({
+      accepted: false,
+      runId: "run-title-required",
+      reason: PLAYWRIGHT_TITLE_REQUIRED_REASON,
+      urls: []
+    });
+    expect(page.clicks).not.toContain("button[aria-label=\"Create song\"]");
   });
 
   it("returns accepted from create-card polling without library fallback", async () => {
@@ -301,6 +330,7 @@ describe("PlaywrightSunoDriver create", () => {
       authority: "auto_create_and_select_take",
       runId: "run-003b",
       payload: {
+        songName: "Run 003b",
         lyrics: "line one"
       }
     });
@@ -335,6 +365,7 @@ describe("PlaywrightSunoDriver create", () => {
       authority: "auto_create_and_select_take",
       runId: "run-003bb",
       payload: {
+        songName: "Run 003bb",
         lyrics: "line one"
       }
     });
@@ -360,12 +391,13 @@ describe("PlaywrightSunoDriver create", () => {
       authority: "auto_create_and_select_take",
       runId: "run-003bd",
       payload: {
+        songName: "Run 003bd",
         lyrics: "line one"
       }
     });
 
-    const createCardSelector = page.selectors.find((selector) => selector.includes("clip-row"));
-    expect(createCardSelector).toBe("[data-testid=\"clip-row\"][data-clip-status=\"complete\"] a[href*='/song/']");
+    const createCardSelector = page.selectors.find((selector) => selector.includes("Run 003bd"));
+    expect(createCardSelector).toBe("[data-testid=\"clip-row\"][data-clip-status=\"complete\"][aria-label=\"Run 003bd\"] a[href*='/song/']");
     expect(createCardSelector).not.toContain("generation-card");
     expect(createCardSelector).not.toContain("data-clip-status=\"generating\"");
     expect(createCardSelector?.split(", ").some((selector) => selector === "a[href*='/song/']")).toBe(false);
@@ -390,6 +422,7 @@ describe("PlaywrightSunoDriver create", () => {
       authority: "auto_create_and_select_take",
       runId: "run-003c",
       payload: {
+        songName: "Run 003c",
         lyrics: "line one"
       }
     });
@@ -417,6 +450,7 @@ describe("PlaywrightSunoDriver create", () => {
       authority: "auto_create_and_select_take",
       runId: "run-004",
       payload: {
+        songName: "Run 004",
         lyrics: "line one"
       }
     });
@@ -444,6 +478,7 @@ describe("PlaywrightSunoDriver create", () => {
       authority: "auto_create_and_select_take",
       runId: "run-004b",
       payload: {
+        songName: "Run 004b",
         lyrics: "line one"
       }
     });

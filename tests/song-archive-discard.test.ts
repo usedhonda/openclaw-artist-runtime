@@ -9,18 +9,19 @@ import { getRuntimeEventBus, type RuntimeEvent } from "../src/services/runtimeEv
 import { runSongPublishAction } from "../src/services/songPublishActionRegistry";
 import { routeTelegramCallback } from "../src/services/telegramCallbackHandler";
 import type { TelegramClient } from "../src/services/telegramClient";
+import type { SongStatus } from "../src/types";
 
 function workspace(): string {
   return mkdtempSync(join(tmpdir(), "artist-runtime-song-review-"));
 }
 
-async function prepareSong(): Promise<string> {
+async function prepareSong(status: SongStatus = "take_selected"): Promise<string> {
   const root = workspace();
   await ensureArtistWorkspace(root);
   await writeSongBrief(root, "review-song", "## Brief\n\nKeep this seed for reuse.");
   await updateSongState(root, "review-song", {
     title: "Review Song",
-    status: "take_selected",
+    status,
     selectedTakeId: "take-1",
     appendPublicLinks: ["https://suno.example/take-1"],
     reason: "test selected take"
@@ -96,6 +97,8 @@ describe("song archive/discard producer review state machine", () => {
         type: "song_discarded",
         songId: "review-song",
         previousSelectedTakeId: "take-1",
+        fromStatus: "take_selected",
+        reason: "producer discarded selected take and kept brief for reuse",
         timestamp: 3000
       }));
       await expect(runSongPublishAction("song_songbook_write", {
@@ -103,6 +106,48 @@ describe("song archive/discard producer review state machine", () => {
         songId: "review-song",
         now: 4000
       })).rejects.toThrow("song_publish_state_guard:discarded");
+    } finally {
+      unsubscribe();
+    }
+  });
+
+  it.each(["social_assets", "publishing"] as const)("discards from %s as a post-review rollback without allowing archive", async (status) => {
+    const root = await prepareSong(status);
+    const events: RuntimeEvent[] = [];
+    const unsubscribe = getRuntimeEventBus().subscribe((event) => events.push(event));
+    try {
+      await expect(runSongPublishAction("song_archive", {
+        root,
+        songId: "review-song",
+        now: 5000
+      })).rejects.toThrow(`invalid_song_review_transition:${status}`);
+
+      const result = await runSongPublishAction("song_discard", {
+        root,
+        songId: "review-song",
+        now: 6000
+      });
+
+      expect(result).toMatchObject({
+        action: "song_discard",
+        status: "discarded",
+        reason: `discard_from_post_review:${status}`
+      });
+      const song = await readSongState(root, "review-song");
+      expect(song).toMatchObject({
+        status: "discarded",
+        lastReason: `discard_from_post_review:${status}`
+      });
+      expect(song.selectedTakeId).toBeUndefined();
+      expect(song.publicLinks).toEqual([]);
+      expect(events).toContainEqual(expect.objectContaining({
+        type: "song_discarded",
+        songId: "review-song",
+        previousSelectedTakeId: "take-1",
+        fromStatus: status,
+        reason: `discard_from_post_review:${status}`,
+        timestamp: 6000
+      }));
     } finally {
       unsubscribe();
     }
