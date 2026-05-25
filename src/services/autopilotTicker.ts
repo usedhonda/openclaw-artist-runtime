@@ -30,9 +30,18 @@ const FALLBACK_INTERVAL_MS = 5 * 60 * 1000;
 
 let intervalHandle: ReturnType<typeof setInterval> | null = null;
 let running = false;
+let runningStartedAt: number | undefined;
 let singleton: AutopilotTicker | null = null;
 let lastOutcome: AutopilotTickOutcome | undefined;
 let lastTickAt: string | undefined;
+
+const FALLBACK_STALL_MS = 10 * 60 * 1000;
+
+function resolveStallMs(): number {
+  const raw = process.env.OPENCLAW_AUTOPILOT_TICK_STALL_MS;
+  const parsed = raw ? Number.parseInt(raw, 10) : Number.NaN;
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : FALLBACK_STALL_MS;
+}
 
 export class AutopilotTicker {
   constructor(private readonly options: AutopilotTickerOptions = {}) {}
@@ -79,10 +88,24 @@ export class AutopilotTicker {
       return { outcome: this.emit("skipped:hardStop"), state };
     }
     if (running) {
-      return { outcome: this.emit("skipped:concurrent"), state };
+      const startedAt = runningStartedAt;
+      const ageMs = typeof startedAt === "number" ? Date.now() - startedAt : 0;
+      if (!startedAt || ageMs < resolveStallMs()) {
+        return { outcome: this.emit("skipped:concurrent"), state };
+      }
+      running = false;
+      runningStartedAt = undefined;
+      emitRuntimeEvent({
+        type: "error",
+        source: "autopilot_ticker_stall",
+        reason: `tick_stalled:${ageMs}ms`,
+        songId: state.currentSongId,
+        timestamp: Date.now()
+      });
     }
 
     running = true;
+    runningStartedAt = Date.now();
     try {
       const nextState = await new ArtistAutopilotService().runCycle({
         workspaceRoot,
@@ -100,6 +123,7 @@ export class AutopilotTicker {
       };
     } finally {
       running = false;
+      runningStartedAt = undefined;
     }
   }
 
@@ -145,6 +169,7 @@ export function resetAutopilotTickerForTest(): void {
   }
   singleton = null;
   running = false;
+  runningStartedAt = undefined;
   lastOutcome = undefined;
   lastTickAt = undefined;
 }

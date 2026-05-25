@@ -1,7 +1,7 @@
 import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   AutopilotTicker,
   getLastOutcome,
@@ -10,6 +10,8 @@ import {
   resetAutopilotTickerForTest,
   type AutopilotTickOutcome
 } from "../src/services/autopilotTicker.js";
+import { ArtistAutopilotService } from "../src/services/autopilotService.js";
+import { getRuntimeEventBus, type RuntimeEvent } from "../src/services/runtimeEventBus.js";
 
 function makeWorkspace(state: Record<string, unknown>): string {
   const root = mkdtempSync(join(tmpdir(), "autopilot-ticker-"));
@@ -21,10 +23,13 @@ function makeWorkspace(state: Record<string, unknown>): string {
 describe("AutopilotTicker", () => {
   beforeEach(() => {
     resetAutopilotTickerForTest();
+    getRuntimeEventBus().clearForTest();
   });
 
   afterEach(() => {
     resetAutopilotTickerForTest();
+    getRuntimeEventBus().clearForTest();
+    delete process.env.OPENCLAW_AUTOPILOT_TICK_STALL_MS;
   });
 
   it("returns skipped:disabled when autopilot.enabled=false", async () => {
@@ -90,5 +95,39 @@ describe("AutopilotTicker", () => {
     const a = getAutopilotTicker();
     const b = getAutopilotTicker();
     expect(a).toBe(b);
+  });
+
+  it("recovers a stalled running flag after the watchdog window", async () => {
+    process.env.OPENCLAW_AUTOPILOT_TICK_STALL_MS = "1";
+    const root = makeWorkspace({ paused: false, stage: "idle" });
+    const events: RuntimeEvent[] = [];
+    const unsubscribe = getRuntimeEventBus().subscribe((event) => events.push(event));
+    const runCycle = vi
+      .spyOn(ArtistAutopilotService.prototype, "runCycle")
+      .mockImplementationOnce(() => new Promise(() => undefined))
+      .mockResolvedValueOnce({
+        runId: "recovered",
+        stage: "planning",
+        paused: false,
+        retryCount: 0,
+        cycleCount: 1,
+        updatedAt: new Date().toISOString()
+      });
+    const ticker = new AutopilotTicker();
+
+    void ticker.runNow({
+      artist: { workspaceRoot: root },
+      autopilot: { enabled: true, dryRun: true }
+    });
+    await new Promise((resolve) => setTimeout(resolve, 5));
+    const result = await ticker.runNow({
+      artist: { workspaceRoot: root },
+      autopilot: { enabled: true, dryRun: true }
+    });
+    unsubscribe();
+
+    expect(result.outcome).toBe("ran");
+    expect(runCycle).toHaveBeenCalledTimes(2);
+    expect(events.some((event) => event.type === "error" && event.source === "autopilot_ticker_stall")).toBe(true);
   });
 });

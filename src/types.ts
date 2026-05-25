@@ -977,6 +977,7 @@ export interface AutopilotStatus {
   nextAction: string;
   currentRunId?: string;
   currentSongId?: string;
+  suspendedAt?: AutopilotRunState["suspendedAt"];
   lastSuccessfulStage?: AutopilotStage;
   pausedReason?: string | null;
   hardStopReason?: string | null;

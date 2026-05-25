@@ -4,6 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { ensureArtistWorkspace } from "../src/services/artistWorkspace";
+import { ensureSongState, writeSongBrief } from "../src/services/artistState";
 import { ArtistAutopilotService, readAutopilotRunState, writeAutopilotRunState } from "../src/services/autopilotService";
 import { registerCallbackAction } from "../src/services/callbackActionRegistry";
 import { getRuntimeEventBus, type RuntimeEvent } from "../src/services/runtimeEventBus";
@@ -73,6 +74,7 @@ describe("spawn proposal approval gate", () => {
     }
     vi.useRealTimers();
     vi.restoreAllMocks();
+    getRuntimeEventBus().clearForTest();
   });
 
   it("suspends at spawn_proposal_ready and does not advance on the next cycle", async () => {
@@ -137,5 +139,63 @@ describe("spawn proposal approval gate", () => {
 
     expect(result).toMatchObject({ result: "applied", reason: "song_spawn_injected" });
     expect(state).toMatchObject({ currentSongId: "spawn_gate", stage: "planning", suspendedAt: null });
+  });
+
+  it("rolls an unapproved pre-prompt song back to spawn proposal gate", async () => {
+    process.env.OPENCLAW_SONG_SPAWN_ENABLED = "on";
+    const root = await seedWorkspace();
+    await ensureSongState(root, "song-026", "Matrix");
+    await writeSongBrief(root, "song-026", [
+      "# Brief for Matrix",
+      "",
+      "## Producer commission",
+      "",
+      "都市の照明を社会風刺として切る一曲。",
+      "",
+      "## Direction",
+      "",
+      "- Lyrics theme: 六本木で見たコピー機の光を短いフックにする。",
+      "- Mood: tense",
+      "- Tempo: 142 BPM",
+      "- Duration: 2:45",
+      "- Style notes: thick bass, restrained hi-hats, sparse arrangement",
+      "",
+      "## Observation source",
+      "",
+      "- Author: KingCort57",
+      "- URL: https://x.com/KingCort57/status/2058791618468089869",
+      "- Quote: Indie Pulse is growing rapidly"
+    ].join("\n"));
+    await writeAutopilotRunState(root, {
+      runId: "auto-song-026",
+      currentSongId: "song-026",
+      stage: "planning",
+      paused: false,
+      suspendedAt: "planning_skeleton_pending",
+      blockedReason: "planning_skeleton_incomplete:tempo",
+      retryCount: 0,
+      cycleCount: 0,
+      updatedAt: new Date().toISOString()
+    });
+    const events: RuntimeEvent[] = [];
+    const unsubscribe = getRuntimeEventBus().subscribe((event) => events.push(event));
+
+    const state = await new ArtistAutopilotService().runCycle({
+      workspaceRoot: root,
+      config: { artist: { workspaceRoot: root }, autopilot: { enabled: true, dryRun: true }, songSpawn: { enabled: true } }
+    });
+    unsubscribe();
+
+    expect(state).toMatchObject({
+      currentSongId: "song-026",
+      stage: "planning",
+      suspendedAt: "spawn_proposal_ready",
+      blockedReason: "spawn_proposal_ready"
+    });
+    const proposal = events.find((event): event is Extract<RuntimeEvent, { type: "song_spawn_proposed" }> => event.type === "song_spawn_proposed");
+    expect(proposal).toBeTruthy();
+    expect(proposal?.candidateSongId).toBe("song-026");
+    expect(proposal?.brief.title).toBe("Matrix");
+    expect(events.some((event) => event.type === "planning_skeleton_incomplete")).toBe(false);
   });
 });

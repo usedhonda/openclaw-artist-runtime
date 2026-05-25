@@ -32,7 +32,14 @@ export interface FailedNotifySummaryEntry {
 const CRITICAL_NOTIFY_EVENTS: ReadonlySet<RuntimeEvent["type"]> = new Set([
   "prompt_pack_ready",
   "song_spawn_proposed",
-  "song_take_completed"
+  "song_take_completed",
+  "planning_skeleton_incomplete",
+  "suno_create_failed",
+  "suno_generate_retry",
+  "suno_generate_failed",
+  "suno_hard_stop",
+  "take_selection_stalled",
+  "asset_generation_stalled"
 ]);
 
 export function failedNotifyLedgerPath(root: string): string {

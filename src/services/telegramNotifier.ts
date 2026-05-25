@@ -33,8 +33,6 @@ const TELEGRAM_SILENT_EVENT_TYPES: ReadonlySet<RuntimeEvent["type"]> = new Set([
   "autopilot_state_changed",
   "theme_generated",
   "bird_cooldown_triggered",
-  "suno_generate_retry",
-  "suno_generate_failed",
   "error"
 ]);
 
@@ -705,7 +703,13 @@ const RESOURCE_TARGETED_EVENT_TYPES: ReadonlySet<RuntimeEvent["type"]> = new Set
   "song_take_completed",
   "song_spawn_proposed",
   "planning_skeleton_incomplete",
+  "suno_create_failed",
+  "suno_generate_retry",
+  "suno_generate_failed",
+  "suno_hard_stop",
   "take_select_pending",
+  "take_selection_stalled",
+  "asset_generation_stalled",
   "artist_pulse_drafted",
   "distribution_change_detected"
 ]);
@@ -718,7 +722,13 @@ function extractResourceSongId(event: RuntimeEvent): string | undefined {
       return undefined;
     case "prompt_pack_ready":
     case "song_take_completed":
+    case "suno_create_failed":
+    case "suno_generate_retry":
+    case "suno_generate_failed":
+    case "suno_hard_stop":
     case "take_select_pending":
+    case "take_selection_stalled":
+    case "asset_generation_stalled":
     case "planning_skeleton_incomplete":
     case "distribution_change_detected":
       return event.songId;
@@ -783,6 +793,10 @@ async function resolveResourcePathsForEvent(
       break;
     }
     case "song_take_completed":
+    case "suno_create_failed":
+    case "suno_generate_retry":
+    case "suno_generate_failed":
+    case "suno_hard_stop":
     case "take_select_pending": {
       const lyricsPath = await findLatestLyricsRelativePath(workspaceRoot, songId);
       candidates = [
@@ -792,6 +806,13 @@ async function resolveResourcePathsForEvent(
       ];
       break;
     }
+    case "take_selection_stalled":
+    case "asset_generation_stalled":
+      candidates = [
+        `${songDir}/song.md`,
+        `${songDir}/brief.md`
+      ];
+      break;
     case "song_spawn_proposed":
       candidates = [`${songDir}/brief.md`];
       break;
@@ -914,9 +935,41 @@ async function formatRuntimeEventRaw(
     case "lyrics_generation_degraded":
       return artistReport(event, `Lyrics generation degraded: ${event.songId} ${event.reason}`, options);
     case "suno_generate_retry":
-      return artistReport(event, `Suno generate retry: ${event.songId} retry=${event.retryCount} ${event.reason}${event.nextRetryAt ? ` next=${event.nextRetryAt}` : ""}`, options);
+      return [
+        "Suno 生成がまだ通っていない。次の retry まで止めて待つ。",
+        "",
+        "─────",
+        `song: ${event.songId}`,
+        `retry: ${event.retryCount}`,
+        `reason: ${event.reason}`,
+        event.nextRetryAt ? `next: ${event.nextRetryAt}` : undefined
+      ].filter(Boolean).join("\n");
+    case "suno_create_failed":
+      return [
+        "Suno create が失敗した。ここで止めて、原因を残す。",
+        "",
+        "─────",
+        `song: ${event.songId}`,
+        `retry: ${event.retryCount}`,
+        `reason: ${event.reason}`
+      ].join("\n");
     case "suno_generate_failed":
-      return artistReport(event, `Suno generate failed: ${event.songId} retry=${event.retryCount} ${event.reason}`, options);
+      return [
+        "Suno 生成は失敗で止めた。勝手に進めない。",
+        "",
+        "─────",
+        `song: ${event.songId}`,
+        `retry: ${event.retryCount}`,
+        `reason: ${event.reason}`
+      ].join("\n");
+    case "suno_hard_stop":
+      return [
+        "Suno 側で hard stop。ここから先は止めている。",
+        "",
+        "─────",
+        event.songId ? `song: ${event.songId}` : undefined,
+        `reason: ${event.reason}`
+      ].filter(Boolean).join("\n");
     case "take_select_pending":
       return hybridEventReport(
         event,
@@ -924,8 +977,24 @@ async function formatRuntimeEventRaw(
         [`songId: ${event.songId}`, `reason: ${event.reason}`].join("\n"),
         options
       );
+    case "take_selection_stalled":
+      return [
+        "take 選別で止まっている。勝手に決めない。",
+        "",
+        "─────",
+        `song: ${event.songId}`,
+        `reason: ${event.reason}`
+      ].join("\n");
     case "take_select_low_score":
       return artistReport(event, `Take score is low: ${event.songId} best=${event.bestTakeId} score=${event.score}. ${event.reason}`, options);
+    case "asset_generation_stalled":
+      return [
+        "素材作りで止まった。曲本体は進めず、原因を残す。",
+        "",
+        "─────",
+        `song: ${event.songId}`,
+        `reason: ${event.reason}`
+      ].join("\n");
     case "budget_exhausted":
       return hybridEventReport(
         event,

@@ -2,7 +2,7 @@ import { readFile } from "node:fs/promises";
 import { isAbsolute, join } from "node:path";
 import { applyConfigDefaults } from "../config/schema.js";
 import { BrowserWorkerSunoConnector } from "../connectors/suno/browserWorkerConnector.js";
-import type { AutopilotRunState, AutopilotStage, AutopilotStatus, ArtistRuntimeConfig, SocialPublishLedgerEntry, SocialPublishResult, SongState } from "../types.js";
+import type { AutopilotRunState, AutopilotStage, AutopilotStatus, ArtistRuntimeConfig, CommissionBrief, CommissionBriefSource, ObservationSummary, SocialPublishLedgerEntry, SocialPublishResult, SongState } from "../types.js";
 import { composeDailyVoice } from "./artistDailyVoiceComposer.js";
 import { markPulsed, shouldPulse } from "./artistPulseRateLimiter.js";
 import { AutopilotControlService } from "./autopilotControlService.js";
@@ -29,6 +29,7 @@ import { collectNewsObservations } from "./newsObservationCollector.js";
 import { proposeTheme } from "./themeProposer.js";
 import { pollSongDistribution } from "./songDistributionPoller.js";
 import { cleanupExpiredCallbacks } from "./callbackLedgerMaintenance.js";
+import { readCallbackActionEntries } from "./callbackActionRegistry.js";
 import { applyRuntimeEnvOverrides, getArtistPulseIntervalHours, getSongSpawnIntervalHours, getStaleQueueCleanupHours, isArtistPulseConfigured, isSongbookAutoSyncEnabled, isSongSpawnConfigured } from "./runtimeConfig.js";
 import { proposeSpawn } from "./songSpawnProposer.js";
 import { shouldSpawn } from "./songSpawnRateLimiter.js";
@@ -92,6 +93,111 @@ function writeStageState(root: string, previous: AutopilotRunState, next: Autopi
 
 function isMockSunoGenerationBypass(config: ArtistRuntimeConfig): boolean {
   return config.music.suno.driver === "mock";
+}
+
+const PRODUCER_APPROVAL_REQUIRED_STATUSES = new Set<SongState["status"]>(["idea", "brief", "lyrics"]);
+
+function isPrePromptSongWithoutApprovalGate(song: SongState): boolean {
+  return PRODUCER_APPROVAL_REQUIRED_STATUSES.has(song.status);
+}
+
+async function hasProducerSpawnApproval(root: string, songId: string): Promise<boolean> {
+  const entries = await readCallbackActionEntries(root).catch(() => []);
+  return entries.some((entry) => entry.songId === songId && entry.action === "song_spawn_inject" && entry.status === "applied");
+}
+
+function firstBriefField(contents: string, labels: string[]): string | undefined {
+  for (const label of labels) {
+    const escaped = label.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    const match = contents.match(new RegExp(`^-\\s*${escaped}:\\s*(.+)$`, "im"));
+    if (match?.[1]?.trim()) return match[1].trim();
+  }
+  return undefined;
+}
+
+function firstSectionLine(contents: string, heading: string): string | undefined {
+  const lines = contents.split(/\r?\n/);
+  const start = lines.findIndex((line) => line.trim().toLowerCase() === `## ${heading}`.toLowerCase());
+  if (start < 0) return undefined;
+  for (const line of lines.slice(start + 1)) {
+    const trimmed = line.trim();
+    if (trimmed.startsWith("## ")) break;
+    if (trimmed && !trimmed.startsWith("-")) return trimmed;
+  }
+  return undefined;
+}
+
+function observationFromBrief(contents: string, song: SongState): ObservationSummary | undefined {
+  if (song.observationSummary) return song.observationSummary;
+  const url = firstBriefField(contents, ["URL", "Url", "url"]);
+  const author = firstBriefField(contents, ["Author", "author"])?.replace(/^@/, "");
+  const quote = firstBriefField(contents, ["Quote", "quote"]) ?? firstSectionLine(contents, "Observation source");
+  if (!url && !author && !quote) return undefined;
+  return { url, author, quote };
+}
+
+function sourcesFromObservation(summary?: ObservationSummary): CommissionBriefSource[] | undefined {
+  if (!summary?.url) return undefined;
+  return [{
+    kind: /^https:\/\/(?:x|twitter)\.com\//i.test(summary.url) ? "x" : "news",
+    url: summary.url,
+    author: summary.author,
+    quote: summary.quote
+  }];
+}
+
+async function commissionBriefFromExistingSong(root: string, song: SongState): Promise<{ brief: CommissionBrief; observationSummary?: ObservationSummary }> {
+  const contents = await readFile(join(root, "songs", song.songId, "brief.md"), "utf8").catch(() => "");
+  const observationSummary = observationFromBrief(contents, song);
+  const briefText = firstSectionLine(contents, "Producer commission")
+    ?? firstSectionLine(contents, "Direction")
+    ?? song.lastReason
+    ?? `${song.title}を曲にする。`;
+  const brief: CommissionBrief = {
+    songId: song.songId,
+    title: song.title || song.songId,
+    brief: briefText,
+    lyricsTheme: firstBriefField(contents, ["Lyrics theme", "lyricsTheme", "Core theme"]) ?? briefText,
+    mood: firstBriefField(contents, ["Mood", "mood"]) ?? "artist decides",
+    tempo: firstBriefField(contents, ["Tempo", "tempo"]) ?? "artist decides",
+    duration: firstBriefField(contents, ["Duration", "duration"]) ?? "artist decides",
+    styleNotes: firstBriefField(contents, ["Style notes", "style", "Style"]) ?? "artist decides",
+    sourceText: "existing song awaiting producer spawn approval",
+    createdAt: song.createdAt,
+    sources: sourcesFromObservation(observationSummary)
+  };
+  return { brief, observationSummary };
+}
+
+async function suspendForProducerSpawnApproval(
+  root: string,
+  previous: AutopilotRunState,
+  song: SongState,
+  baseState: AutopilotRunState
+): Promise<AutopilotRunState> {
+  const proposal = await commissionBriefFromExistingSong(root, song);
+  const reason = song.lastReason && song.lastReason !== "brief updated"
+    ? song.lastReason
+    : proposal.brief.brief;
+  const voiceTop = await composeVoiceTopOnly("propose", root, undefined, [], { runId: song.songId }).catch(() => undefined);
+  emitRuntimeEvent({
+    type: "song_spawn_proposed",
+    brief: proposal.brief,
+    reason,
+    candidateSongId: song.songId,
+    voiceTop,
+    observationSummary: proposal.observationSummary,
+    timestamp: Date.now()
+  });
+  return writeStageState(root, previous, {
+    ...baseState,
+    currentSongId: song.songId,
+    stage: "planning",
+    suspendedAt: "spawn_proposal_ready",
+    blockedReason: "spawn_proposal_ready",
+    lastError: undefined,
+    cycleCount: previous.cycleCount + 1
+  });
 }
 
 async function importMockSunoGeneration(root: string, songId: string, state: AutopilotRunState, config: ArtistRuntimeConfig): Promise<void> {
@@ -469,6 +575,13 @@ async function handleSunoGenerateFailure(
   reason: string
 ): Promise<AutopilotRunState> {
   const retryCount = existing.retryCount + 1;
+  emitRuntimeEvent({
+    type: "suno_create_failed",
+    songId: song.songId,
+    reason,
+    retryCount,
+    timestamp: Date.now()
+  });
   if (retryCount >= 3) {
     emitRuntimeEvent({
       type: "suno_generate_failed",
@@ -608,6 +721,23 @@ export class ArtistAutopilotService {
         lastRunAt: nowIso()
       });
     }
+    if (!input.manualSeed && isSongSpawnConfigured(config)) {
+      const pendingSong = await currentSong(input.workspaceRoot, existing.currentSongId);
+      if (
+        pendingSong
+        && isPrePromptSongWithoutApprovalGate(pendingSong)
+        && !await hasProducerSpawnApproval(input.workspaceRoot, pendingSong.songId)
+      ) {
+        const pendingRunId = existing.runId ?? `auto_${Date.now().toString(36)}`;
+        return suspendForProducerSpawnApproval(input.workspaceRoot, existing, pendingSong, {
+          ...existing,
+          runId: pendingRunId,
+          currentSongId: pendingSong.songId,
+          stage: stageFromSong(pendingSong),
+          lastRunAt: nowIso()
+        });
+      }
+    }
     if (isSongSpawnConfigured(config)) {
       await shouldSpawn(input.workspaceRoot, { minIntervalHours: getSongSpawnIntervalHours(process.env, config) }).then(async (allowed) => {
         if (!allowed) {
@@ -664,6 +794,12 @@ export class ArtistAutopilotService {
       });
     }
     if (existing.hardStopReason) {
+      emitRuntimeEvent({
+        type: "suno_hard_stop",
+        songId: existing.currentSongId,
+        reason: existing.hardStopReason,
+        timestamp: Date.now()
+      });
       return writeStageState(input.workspaceRoot, existing, {
         ...existing,
         stage: "failed_closed",
@@ -751,6 +887,16 @@ export class ArtistAutopilotService {
       lastRunAt: nowIso()
     };
 
+    if (
+      !input.manualSeed
+      && song
+      && isSongSpawnConfigured(config)
+      && isPrePromptSongWithoutApprovalGate(song)
+      && !await hasProducerSpawnApproval(input.workspaceRoot, song.songId)
+    ) {
+      return suspendForProducerSpawnApproval(input.workspaceRoot, existing, song, baseState);
+    }
+
     if (song && (existing.suspendedAt === "prompt_pack_ready" || existing.suspendedAt === "user_paused")) {
       return writeStageState(input.workspaceRoot, existing, {
         ...baseState,
@@ -800,6 +946,16 @@ export class ArtistAutopilotService {
 
     try {
       if (!song) {
+        if (!input.manualSeed && isSongSpawnConfigured(config)) {
+          return writeStageState(input.workspaceRoot, existing, {
+            ...baseState,
+            currentSongId: undefined,
+            stage: "planning",
+            blockedReason: "song_spawn_waiting_for_proposal",
+            lastError: undefined,
+            cycleCount: existing.cycleCount + 1
+          });
+        }
         const theme = await proposeTheme(input.workspaceRoot, {
           observations: cycleObservation.observations,
           aiReviewProvider: config.aiReview.provider
@@ -1027,6 +1183,12 @@ export class ArtistAutopilotService {
               reason: decision.reason,
               timestamp: Date.now()
             });
+            emitRuntimeEvent({
+              type: "take_selection_stalled",
+              songId: song.songId,
+              reason: decision.reason,
+              timestamp: Date.now()
+            });
             return writeStageState(input.workspaceRoot, existing, {
               ...baseState,
               currentSongId: song.songId,
@@ -1073,7 +1235,25 @@ export class ArtistAutopilotService {
           });
         }
         case "asset_generation": {
-          await prepareSocialAssets({ workspaceRoot: input.workspaceRoot, songId: song.songId, config });
+          try {
+            await prepareSocialAssets({ workspaceRoot: input.workspaceRoot, songId: song.songId, config });
+          } catch (error) {
+            const reason = error instanceof Error ? error.message : String(error);
+            emitRuntimeEvent({
+              type: "asset_generation_stalled",
+              songId: song.songId,
+              reason,
+              timestamp: Date.now()
+            });
+            return writeStageState(input.workspaceRoot, existing, {
+              ...baseState,
+              currentSongId: song.songId,
+              stage: "asset_generation",
+              blockedReason: `asset_generation_stalled:${reason}`,
+              lastError: reason,
+              cycleCount: existing.cycleCount + 1
+            });
+          }
           return writeStageState(input.workspaceRoot, existing, {
             ...baseState,
             currentSongId: song.songId,
@@ -1180,6 +1360,7 @@ export class ArtistAutopilotService {
       nextAction: enabled ? nextActionForState(state, stage) : nextActionForStage(stage),
       currentRunId: state.runId,
       currentSongId: state.currentSongId,
+      suspendedAt: state.suspendedAt,
       lastSuccessfulStage: state.lastSuccessfulStage,
       pausedReason: state.pausedReason,
       hardStopReason: state.hardStopReason,
