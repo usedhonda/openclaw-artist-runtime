@@ -1101,6 +1101,17 @@ export interface StatusResponse {
       expiresAt: number;
     }>;
   };
+  failedNotifications?: {
+    count: number;
+    recent: Array<{
+      notifyId: string;
+      eventType: string;
+      songId?: string;
+      errorMessage: string;
+      attempts: number;
+      failedAt: string;
+    }>;
+  };
   platforms: Record<SocialPlatform, PlatformStatus>;
   musicSummary: MusicSummary;
   distributionSummary: DistributionSummary;

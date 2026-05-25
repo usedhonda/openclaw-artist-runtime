@@ -48,6 +48,19 @@ describe("system status overview", () => {
                 expiresAt: Date.parse("2026-05-16T01:00:00.000Z")
               }
             ]
+          },
+          failedNotifications: {
+            count: 1,
+            recent: [
+              {
+                notifyId: "notify1",
+                eventType: "prompt_pack_ready",
+                songId: "spawn_c6ad5e",
+                errorMessage: "fetch failed",
+                attempts: 3,
+                failedAt: "2026-05-15T23:56:00.000Z"
+              }
+            ]
           }
         }
       })
@@ -59,6 +72,9 @@ describe("system status overview", () => {
     expect(html).toContain("connected");
     expect(html).toContain("Suno 生成へ");
     expect(html).toContain("次 cycle で Suno 生成へ進めます。");
+    expect(html).toContain("Telegram 通知失敗");
+    expect(html).toContain("prompt_pack_ready");
+    expect(html).toContain("再送");
   });
 
   it("summarizes only live pending callbacks with deterministic effects", async () => {

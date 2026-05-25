@@ -21,6 +21,7 @@ import { handleProposalResponse, listPendingProposalDetails, listPendingProposal
 import { buildPlatformStats, readDistributionEvents } from "../services/distributionLedgerReader.js";
 import { emitRuntimeEvent, getRuntimeEventBus } from "../services/runtimeEventBus.js";
 import { readRuntimeEvents, readSongEventsAsc } from "../services/runtimeEventsLedger.js";
+import { appendFailedNotifyReplayRecord, latestFailedNotifyEntry, listUnreplayedFailedNotifications, summarizeFailedNotifications } from "../services/failedNotifyLedger.js";
 import { getSongPromptLedgerPath } from "../services/promptLedger.js";
 import { isDebugCallbackDispatchEnabled, isDebugNotifyReviewEnabled, mergeResolvedConfig, patchResolvedConfig, readConfigOverrides, resolveRuntimeConfig, resolveSunoDailyBudget, writeRuntimeSafetyOverrides, type RuntimeSafetyOverridesPatch } from "../services/runtimeConfig.js";
 import { publishSocialAction, readLatestSocialAction } from "../services/socialPublishing.js";
@@ -41,6 +42,7 @@ import { buildSongbookLookup, syncSongbookFromITunes } from "../services/songboo
 import { readTakeHistory, selectTake } from "../services/takeSelection.js";
 import { routeTelegramCallback } from "../services/telegramCallbackHandler.js";
 import type { TelegramClient } from "../services/telegramClient.js";
+import { TelegramNotifier } from "../services/telegramNotifier.js";
 import { serializeRuntimeEventForSse, registerRuntimeEventStreamRoute } from "./runtimeEventStream.js";
 import type {
   ArtistRuntimeConfig,
@@ -974,7 +976,7 @@ export async function buildStatusResponse(config?: Partial<ArtistRuntimeConfig>)
   const platforms = await buildPlatformStatuses(mergedConfig);
   const alerts = await collectAlerts(mergedConfig.artist.workspaceRoot, sunoWorker, platforms, mergedConfig);
   const sunoBudgetTracker = new SunoBudgetTracker(mergedConfig.artist.workspaceRoot);
-  const [sunoBudgetState, sunoBudgetResetHistory, sunoArtifacts, sunoDailyBudget, sunoBudgetDetail, birdRateLimit, birdLedger, distributionDetection, pendingApprovals, pendingCallbacks] = await Promise.all([
+  const [sunoBudgetState, sunoBudgetResetHistory, sunoArtifacts, sunoDailyBudget, sunoBudgetDetail, birdRateLimit, birdLedger, distributionDetection, pendingApprovals, pendingCallbacks, failedNotifications] = await Promise.all([
     sunoBudgetTracker.getState(
       mergedConfig.music.suno.dailyCreditLimit,
       mergedConfig.music.suno.monthlyCreditLimit
@@ -987,7 +989,8 @@ export async function buildStatusResponse(config?: Partial<ArtistRuntimeConfig>)
     readBirdLedgerDetail(mergedConfig.artist.workspaceRoot),
     readDistributionDetectionState(mergedConfig.artist.workspaceRoot),
     listPendingProposals(mergedConfig.artist.workspaceRoot),
-    summarizePendingCallbackActions(mergedConfig.artist.workspaceRoot, 8)
+    summarizePendingCallbackActions(mergedConfig.artist.workspaceRoot, 8),
+    summarizeFailedNotifications(mergedConfig.artist.workspaceRoot, 8)
   ]);
   const [musicSummary, distributionSummary] = await Promise.all([
     buildMusicSummary(mergedConfig),
@@ -1050,6 +1053,7 @@ export async function buildStatusResponse(config?: Partial<ArtistRuntimeConfig>)
       recent: pendingApprovals.slice(0, 3)
     },
     pendingCallbacks,
+    failedNotifications,
     platforms,
     musicSummary,
     distributionSummary,
@@ -1214,6 +1218,100 @@ export async function buildNotifyReviewResponse(
   };
 }
 
+export interface FailedNotifyListResponse {
+  count: number;
+  failed: Awaited<ReturnType<typeof listUnreplayedFailedNotifications>>;
+}
+
+export async function buildFailedNotifyListResponse(input: unknown): Promise<FailedNotifyListResponse> {
+  const payload = payloadRecord(input);
+  const config = await resolveRuntimeConfig(payload.config as Partial<ArtistRuntimeConfig> | undefined);
+  const failed = await listUnreplayedFailedNotifications(config.artist.workspaceRoot, {
+    limit: payloadInteger(payload, "limit", 20),
+    since: typeof payload.since === "string" ? payload.since : undefined
+  });
+  return {
+    count: failed.length,
+    failed
+  };
+}
+
+export interface FailedNotifyReplayResponse {
+  replayed: boolean;
+  notifyId?: string;
+  eventType?: string;
+  songId?: string;
+  reason?: string;
+  error?: string;
+  statusCode: number;
+}
+
+export async function buildFailedNotifyReplayResponse(
+  input: unknown,
+  notifyId: string,
+  env: NodeJS.ProcessEnv = process.env
+): Promise<FailedNotifyReplayResponse> {
+  const payload = payloadRecord(input);
+  const config = await resolveRuntimeConfig(payload.config as Partial<ArtistRuntimeConfig> | undefined);
+  const trimmedNotifyId = notifyId.trim();
+  if (!trimmedNotifyId) {
+    return { replayed: false, error: "invalid_notify_id", statusCode: 400 };
+  }
+  const entry = await latestFailedNotifyEntry(config.artist.workspaceRoot, trimmedNotifyId);
+  if (!entry) {
+    return { replayed: false, notifyId: trimmedNotifyId, error: "failed_notify_not_found", statusCode: 404 };
+  }
+  if (entry.status === "replayed") {
+    return {
+      replayed: false,
+      notifyId: trimmedNotifyId,
+      eventType: entry.eventType,
+      songId: entry.songId,
+      reason: "failed_notify_already_replayed",
+      statusCode: 409
+    };
+  }
+  const token = env.TELEGRAM_BOT_TOKEN?.trim();
+  if (!token) {
+    return {
+      replayed: false,
+      notifyId: trimmedNotifyId,
+      eventType: entry.eventType,
+      songId: entry.songId,
+      error: "telegram_token_missing",
+      statusCode: 400
+    };
+  }
+  try {
+    await new TelegramNotifier({
+      token,
+      chatId: entry.chatId,
+      workspaceRoot: config.artist.workspaceRoot,
+      aiReviewProvider: config.aiReview.provider,
+      dashboardBaseUrl: env.OPENCLAW_DASHBOARD_BASE_URL?.trim() || undefined
+    }).notify(entry.eventPayload);
+    await appendFailedNotifyReplayRecord(config.artist.workspaceRoot, entry, { ok: true });
+    return {
+      replayed: true,
+      notifyId: trimmedNotifyId,
+      eventType: entry.eventType,
+      songId: entry.songId,
+      reason: "failed_notify_replayed",
+      statusCode: 200
+    };
+  } catch (error) {
+    await appendFailedNotifyReplayRecord(config.artist.workspaceRoot, entry, { ok: false, error });
+    return {
+      replayed: false,
+      notifyId: trimmedNotifyId,
+      eventType: entry.eventType,
+      songId: entry.songId,
+      error: (error as Error)?.message ?? String(error),
+      statusCode: 502
+    };
+  }
+}
+
 export async function buildStatusExportResponse(
   config?: Partial<ArtistRuntimeConfig>,
   window: ObservabilityExportWindow = "7d",
@@ -1270,6 +1368,29 @@ export function registerRoutes(api: unknown): void {
     method: "POST",
     path: "/plugins/artist-runtime/api/telegram/callback-dispatch",
     handler: buildInternalCallbackDispatchResponse
+  });
+
+  safeRegisterRoute(api, {
+    method: ["GET", "POST"],
+    match: "prefix",
+    path: "/plugins/artist-runtime/api/notify",
+    handler: async (input) => {
+      const payload = payloadRecord(input);
+      const method = payloadRequestMethod(payload);
+      const segments = payloadPathSegments(payload, "/plugins/artist-runtime/api/notify");
+      if (method === "GET" && segments.length === 1 && segments[0] === "failed") {
+        return buildFailedNotifyListResponse(input);
+      }
+      if (method === "POST" && segments.length === 2 && segments[0] === "replay") {
+        return buildFailedNotifyReplayResponse(input, segments[1] ?? "");
+      }
+      return {
+        error: "unknown_notify_route",
+        method,
+        requestPath: payloadRequestPath(payload, "/plugins/artist-runtime/api/notify"),
+        statusCode: 404
+      };
+    }
   });
 
   safeRegisterRoute(api, {

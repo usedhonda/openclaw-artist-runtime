@@ -12,6 +12,15 @@ type PendingCallback = {
   expiresAt: number;
 };
 
+type FailedNotification = {
+  notifyId: string;
+  eventType: string;
+  songId?: string;
+  errorMessage: string;
+  attempts: number;
+  failedAt: string;
+};
+
 type StatusShape = {
   autopilot: {
     stage: string;
@@ -36,6 +45,10 @@ type StatusShape = {
   pendingCallbacks?: {
     count: number;
     recent: PendingCallback[];
+  };
+  failedNotifications?: {
+    count: number;
+    recent: FailedNotification[];
   };
   recentSong?: {
     songId: string;
@@ -72,6 +85,9 @@ function expiresIn(callback: PendingCallback, now: number): string {
 
 export function SystemStatusOverview({ status, now = Date.now() }: SystemStatusOverviewProps) {
   const pendingCallbacks = status?.pendingCallbacks?.recent ?? [];
+  const failedNotifications = status?.failedNotifications?.recent ?? [];
+  const [replayingNotifyId, setReplayingNotifyId] = React.useState<string | null>(null);
+  const [replayMessage, setReplayMessage] = React.useState<string | null>(null);
   const currentSong = status?.recentSong ?? (status?.autopilot.currentSongId
     ? { songId: status.autopilot.currentSongId, title: status.autopilot.currentSongId, status: status.autopilot.stage }
     : undefined);
@@ -79,6 +95,23 @@ export function SystemStatusOverview({ status, now = Date.now() }: SystemStatusO
   const sunoDetail = status?.sunoWorker.hardStopReason
     ?? status?.sunoWorker.pendingAction
     ?? (status?.sunoWorker.connected ? "接続済み" : "待機中");
+  const replayNotification = async (notifyId: string) => {
+    setReplayingNotifyId(notifyId);
+    setReplayMessage(null);
+    try {
+      const response = await fetch(`/plugins/artist-runtime/api/notify/replay/${encodeURIComponent(notifyId)}`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: "{}"
+      });
+      const body = await response.json() as { replayed?: boolean; reason?: string; error?: string };
+      setReplayMessage(body.replayed ? "再送しました。" : `再送できません: ${body.reason ?? body.error ?? response.status}`);
+    } catch (error) {
+      setReplayMessage(`再送できません: ${(error as Error)?.message ?? error}`);
+    } finally {
+      setReplayingNotifyId(null);
+    }
+  };
 
   return (
     <article className="panel system-status-overview">
@@ -124,6 +157,36 @@ export function SystemStatusOverview({ status, now = Date.now() }: SystemStatusO
         {status?.pendingCallbacks && status.pendingCallbacks.count > pendingCallbacks.length ? (
           <div className="muted">ほか {status.pendingCallbacks.count - pendingCallbacks.length} 件は callback ledger に残っています。</div>
         ) : null}
+      </div>
+      <div className="system-button-effects">
+        <div className="eyebrow">Telegram 通知失敗</div>
+        {failedNotifications.length === 0 ? (
+          <div className="item muted">再送待ちの通知はありません。</div>
+        ) : (
+          <div className="list">
+            {failedNotifications.map((notification) => (
+              <div className="item system-button-effect" key={notification.notifyId}>
+                <strong>{notification.eventType}</strong>
+                <div className="muted">{notification.songId ?? "-"} · {notification.errorMessage}</div>
+                <div className="muted">{notification.attempts} attempts · {relativeMinutes(notification.failedAt, now)}</div>
+                <button
+                  className="link-button"
+                  disabled={replayingNotifyId === notification.notifyId}
+                  onClick={() => {
+                    void replayNotification(notification.notifyId);
+                  }}
+                  type="button"
+                >
+                  再送
+                </button>
+              </div>
+            ))}
+          </div>
+        )}
+        {status?.failedNotifications && status.failedNotifications.count > failedNotifications.length ? (
+          <div className="muted">ほか {status.failedNotifications.count - failedNotifications.length} 件は failed-notify ledger に残っています。</div>
+        ) : null}
+        {replayMessage ? <div className="muted">{replayMessage}</div> : null}
       </div>
     </article>
   );

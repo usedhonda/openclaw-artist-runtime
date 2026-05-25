@@ -1,5 +1,5 @@
 import type { RuntimeEvent, RuntimeEventBus } from "./runtimeEventBus.js";
-import { TelegramClient, type TelegramFetch } from "./telegramClient.js";
+import { TelegramClient, telegramAttemptsFromError, type TelegramFetch } from "./telegramClient.js";
 import { generateArtistResponse, readArtistVoiceContext } from "./artistVoiceResponder.js";
 import type { AiReviewProvider } from "../types.js";
 import { describeCallbackActionEffect, registerCallbackAction } from "./callbackActionRegistry.js";
@@ -16,6 +16,7 @@ import { access, readdir, readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { buildCascadeTrace, formatCascadeTrace } from "./cascadeTrace.js";
 import { composeArtistReflection } from "./artistReflectionComposer.js";
+import { appendFailedNotification, isCriticalNotificationEvent } from "./failedNotifyLedger.js";
 
 export interface TelegramNotifierOptions {
   token: string;
@@ -53,6 +54,16 @@ export class TelegramNotifier {
       void this.notify(event).catch((err) => {
         const songId = (event as { songId?: string }).songId ?? "(none)";
         console.error(`[telegram-notify] failed event=${event.type} song=${songId} err=${(err as Error)?.message ?? err}`);
+        if (this.options.workspaceRoot && isCriticalNotificationEvent(event)) {
+          void appendFailedNotification(this.options.workspaceRoot, {
+            event,
+            chatId: this.options.chatId,
+            error: err,
+            attempts: telegramAttemptsFromError(err)
+          }).catch((ledgerError) => {
+            console.error(`[telegram-notify] failed-notify ledger append failed event=${event.type} song=${songId} err=${(ledgerError as Error)?.message ?? ledgerError}`);
+          });
+        }
       });
     });
   }
@@ -66,7 +77,7 @@ export class TelegramNotifier {
     });
     const sent = await this.client.sendMessage(this.options.chatId, text);
     if (event.type === "song_take_completed") {
-      await this.attachSongCompletionButtons(event, sent.message_id).catch(() => undefined);
+      await this.attachSongCompletionButtons(event, sent.message_id);
     }
     if (event.type === "distribution_change_detected") {
       await this.attachDistributionButtons(event, sent.message_id, text).catch(() => undefined);
@@ -75,10 +86,10 @@ export class TelegramNotifier {
       await this.attachDailyVoiceButtons(event, sent.message_id).catch(() => undefined);
     }
     if (event.type === "song_spawn_proposed") {
-      await this.attachSongSpawnButtons(event, sent.message_id).catch(() => undefined);
+      await this.attachSongSpawnButtons(event, sent.message_id);
     }
     if (event.type === "prompt_pack_ready") {
-      await this.attachPromptPackReadyButtons(event, sent.message_id).catch(() => undefined);
+      await this.attachPromptPackReadyButtons(event, sent.message_id);
     }
     if (event.type === "planning_skeleton_incomplete") {
       await this.attachPlanningSkeletonButtons(event, sent.message_id, text).catch(() => undefined);
