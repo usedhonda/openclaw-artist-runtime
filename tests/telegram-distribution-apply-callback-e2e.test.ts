@@ -90,7 +90,8 @@ describe("telegram distribution apply callbacks", () => {
 
     expect(result).toMatchObject({ result: "applied", reason: "applied" });
     expect(readFileSync(join(root, "artist", "SONGBOOK.md"), "utf8")).toContain("https://open.spotify.com/track/abc");
-    expect(client.editMessageText).toHaveBeenCalledWith(123, 77, expect.stringContaining("Applied ✓ spotify for where-it-played"), { replyMarkup: { inline_keyboard: [] } });
+    expect(client.editMessageReplyMarkup).toHaveBeenCalledWith(123, 77, { inline_keyboard: [] });
+    expect(client.sendMessage).toHaveBeenCalledWith(123, expect.stringContaining("Applied ✓ spotify for where-it-played"), undefined);
 
     const duplicate = await routeTelegramCallback({
       root,

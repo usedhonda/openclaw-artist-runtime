@@ -105,7 +105,8 @@ describe("telegram daily voice callback e2e", () => {
     });
 
     expect(result).toMatchObject({ result: "applied", reason: "daily_voice_published" });
-    expect(client.editMessageText).toHaveBeenCalledWith(123, 77, expect.stringContaining("https://x.com/used_honda/status/1234567890"), { replyMarkup: { inline_keyboard: [] } });
+    expect(client.editMessageReplyMarkup).toHaveBeenCalledWith(123, 77, { inline_keyboard: [] });
+    expect(client.sendMessage).toHaveBeenCalledWith(123, expect.stringContaining("https://x.com/used_honda/status/1234567890"), undefined);
     const audit = readFileSync(join(root, "runtime", "callback-audit.jsonl"), "utf8");
     expect(audit).toContain("daily_voice_published");
     expect(audit).not.toContain(publish?.draftText ?? "unreachable-draft");

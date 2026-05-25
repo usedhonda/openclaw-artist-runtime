@@ -101,7 +101,8 @@ describe("telegram song completion SONGBOOK callbacks", () => {
     expect(result).toMatchObject({ result: "applied", reason: "applied" });
     expect((await readSongState(root, "where-it-played")).status).toBe("published");
     expect(readFileSync(join(root, "artist", "SONGBOOK.md"), "utf8")).toContain("| where-it-played | Where It Played | published |");
-    expect(client.editMessageText).toHaveBeenCalledWith(123, 77, expect.stringContaining("SONGBOOK 反映済"), { replyMarkup: { inline_keyboard: [] } });
+    expect(client.editMessageReplyMarkup).toHaveBeenCalledWith(123, 77, { inline_keyboard: [] });
+    expect(client.sendMessage).toHaveBeenCalledWith(123, expect.stringContaining("SONGBOOK 反映済"), undefined);
 
     const duplicate = await routeTelegramCallback({
       root,
@@ -147,6 +148,7 @@ describe("telegram song completion SONGBOOK callbacks", () => {
 
     expect(result).toMatchObject({ result: "discarded", reason: "discarded" });
     expect((await readSongState(root, "where-it-played")).status).toBe("scheduled");
-    expect(client.editMessageText).toHaveBeenCalledWith(123, 88, expect.stringContaining("後で確認"), { replyMarkup: { inline_keyboard: [] } });
+    expect(client.editMessageReplyMarkup).toHaveBeenCalledWith(123, 88, { inline_keyboard: [] });
+    expect(client.sendMessage).toHaveBeenCalledWith(123, expect.stringContaining("後で確認"), undefined);
   });
 });

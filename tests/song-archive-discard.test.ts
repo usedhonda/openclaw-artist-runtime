@@ -179,7 +179,8 @@ describe("song archive/discard producer review state machine", () => {
 
     expect(result).toMatchObject({ result: "applied", reason: "applied" });
     expect(await readSongState(root, "review-song")).toMatchObject({ status: "archived" });
-    expect(client.editMessageText).toHaveBeenCalledWith(100, 200, "この曲を採用しました。次の曲作りへ進みます (autopilot 再開の合図をお待ちしています)。SNS には出していません。", { replyMarkup: { inline_keyboard: [] } });
+    expect(client.editMessageReplyMarkup).toHaveBeenCalledWith(100, 200, { inline_keyboard: [] });
+    expect(client.sendMessage).toHaveBeenCalledWith(100, "この曲を採用しました。次の曲作りへ進みます (autopilot 再開の合図をお待ちしています)。SNS には出していません。", undefined);
     expect(describeCallbackActionEffect("song_archive")).toMatchObject({
       label: "採用して次の曲へ",
       effect: "この曲を採用し、次の曲作りへ進める (autopilot 再開待ち)。SNS には出さない。"

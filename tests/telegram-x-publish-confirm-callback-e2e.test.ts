@@ -89,7 +89,8 @@ describe("telegram X publish callbacks", () => {
       messageId: 77
     });
     expect(prepared).toMatchObject({ result: "applied", reason: "prepared" });
-    expect(client.editMessageText).toHaveBeenCalledWith(123, 77, expect.stringContaining("X post preview:"), expect.objectContaining({
+    expect(client.editMessageReplyMarkup).toHaveBeenCalledWith(123, 77, { inline_keyboard: [] });
+    expect(client.sendMessage).toHaveBeenCalledWith(123, expect.stringContaining("X post preview:"), expect.objectContaining({
       replyMarkup: expect.objectContaining({ inline_keyboard: expect.any(Array) })
     }));
 
@@ -111,7 +112,7 @@ describe("telegram X publish callbacks", () => {
     expect(published).toMatchObject({ result: "applied", reason: "published" });
     expect(readFileSync(join(root, "artist", "SONGBOOK.md"), "utf8")).toContain("https://x.com/used_honda/status/1234567890");
     expect((await readSongState(root, "where-it-played")).status).toBe("published");
-    expect(client.editMessageText).toHaveBeenLastCalledWith(123, 77, expect.stringContaining("X投稿完了"), { replyMarkup: { inline_keyboard: [] } });
+    expect(client.sendMessage).toHaveBeenLastCalledWith(123, expect.stringContaining("X投稿完了"), undefined);
 
     const duplicate = await routeTelegramCallback({
       root,

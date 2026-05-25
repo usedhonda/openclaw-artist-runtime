@@ -75,7 +75,8 @@ describe("telegram ChangeSet inline button e2e", () => {
 
     expect(result).toMatchObject({ result: "applied", reason: "applied" });
     expect(client.answerCallbackQuery).toHaveBeenCalledWith("callback-1", { text: "OK" });
-    expect(client.editMessageText).toHaveBeenCalledWith(2, 50, expect.stringContaining("Applied."), { replyMarkup: { inline_keyboard: [] } });
+    expect(client.editMessageReplyMarkup).toHaveBeenCalledWith(2, 50, { inline_keyboard: [] });
+    expect(client.sendMessage).toHaveBeenCalledWith(2, expect.stringContaining("Applied."), undefined);
     expect(applySpy).toHaveBeenCalledOnce();
 
     const second = await routeTelegramCallback({

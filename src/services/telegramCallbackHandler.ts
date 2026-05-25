@@ -151,6 +151,16 @@ function isExternalPublishCallbackAction(action: string): boolean {
   return action === "daily_voice_publish" || action === "x_publish_confirm";
 }
 
+async function clearButtonsAndReply(
+  ctx: TelegramCallbackContext,
+  entry: Pick<CallbackActionEntry, "chatId" | "messageId">,
+  message: string,
+  options: { replyMarkup?: { inline_keyboard: { text: string; callback_data: string }[][] } } = {}
+): Promise<void> {
+  await ctx.client.editMessageReplyMarkup(entry.chatId, entry.messageId, { inline_keyboard: [] }).catch(() => undefined);
+  await ctx.client.sendMessage(entry.chatId, message, options.replyMarkup ? { replyMarkup: options.replyMarkup } : undefined).catch(() => undefined);
+}
+
 async function finish(
   ctx: TelegramCallbackContext,
   callbackId: string | undefined,
@@ -226,7 +236,7 @@ export async function routeTelegramCallback(ctx: TelegramCallbackContext): Promi
     const message = entry.action.startsWith("dist_")
       ? `${proposalResult.status === "applied" ? "Applied ✓" : proposalResult.status === "discarded" ? "Skipped" : "Already resolved"}${entry.platform ? ` ${entry.platform}` : ""}${entry.songId ? ` for ${entry.songId}` : ""}. ${proposalResult.message}`
       : proposalResult.message;
-    await ctx.client.editMessageText(entry.chatId, entry.messageId, message, { replyMarkup: { inline_keyboard: [] } }).catch(() => undefined);
+    await clearButtonsAndReply(ctx, entry, message);
     return { processed: true, result: callbackResult, reason: proposalResult.status, callbackId };
   }
 
@@ -260,13 +270,13 @@ export async function routeTelegramCallback(ctx: TelegramCallbackContext): Promi
       const auditReason = actionResult.reason ?? actionResult.status;
       await markCallbackResolved(ctx.root, callbackId, { status: callbackStatus, reason: auditReason, now });
       await appendCallbackAudit(ctx.root, auditBase(ctx, callbackId, entry, callbackResult, auditReason));
-      await ctx.client.editMessageText(entry.chatId, entry.messageId, actionResult.message, { replyMarkup: { inline_keyboard: [] } }).catch(() => undefined);
+      await clearButtonsAndReply(ctx, entry, actionResult.message);
       return { processed: true, result: callbackResult, reason: auditReason, callbackId };
     } catch (error) {
       const reason = error instanceof Error ? error.message : "song_publish_action_failed";
       await markCallbackResolved(ctx.root, callbackId, { status: "failed", reason, now });
       await appendCallbackAudit(ctx.root, auditBase(ctx, callbackId, entry, "failed", reason));
-      await ctx.client.editMessageText(entry.chatId, entry.messageId, "Song action failed. Check the runtime log.", { replyMarkup: { inline_keyboard: [] } }).catch(() => undefined);
+      await clearButtonsAndReply(ctx, entry, "Song action failed. Check the runtime log.");
       return { processed: true, result: "failed", reason, callbackId };
     }
   }
@@ -282,7 +292,7 @@ export async function routeTelegramCallback(ctx: TelegramCallbackContext): Promi
         draftHash: entry.draftHash,
         draftCharCount: entry.draftCharCount
       }));
-      await ctx.client.editMessageText(entry.chatId, entry.messageId, "普段の投稿は取り消した。", { replyMarkup: { inline_keyboard: [] } }).catch(() => undefined);
+      await clearButtonsAndReply(ctx, entry, "普段の投稿は取り消した。");
       return { processed: true, result: "discarded", reason: "daily_voice_cancelled", callbackId };
     }
     if (entry.action === "daily_voice_edit") {
@@ -310,7 +320,7 @@ export async function routeTelegramCallback(ctx: TelegramCallbackContext): Promi
         draftCharCount: entry.draftCharCount,
         birdStatus: published.birdStatus
       }));
-      await ctx.client.editMessageText(entry.chatId, entry.messageId, `X投稿に失敗: ${published.reason ?? published.status}`, { replyMarkup: { inline_keyboard: [] } }).catch(() => undefined);
+      await clearButtonsAndReply(ctx, entry, `X投稿に失敗: ${published.reason ?? published.status}`);
       return { processed: true, result: "failed", reason: published.reason ?? published.status, callbackId };
     }
     await markCallbackResolved(ctx.root, callbackId, { status: "applied", reason: "daily_voice_published", now });
@@ -320,7 +330,7 @@ export async function routeTelegramCallback(ctx: TelegramCallbackContext): Promi
       tweetUrl: published.tweetUrl,
       birdStatus: published.birdStatus
     }));
-    await ctx.client.editMessageText(entry.chatId, entry.messageId, `X投稿完了。URL: ${published.tweetUrl}`, { replyMarkup: { inline_keyboard: [] } }).catch(() => undefined);
+    await clearButtonsAndReply(ctx, entry, `X投稿完了。URL: ${published.tweetUrl}`);
     return { processed: true, result: "applied", reason: "daily_voice_published", callbackId };
   }
 
@@ -351,13 +361,13 @@ export async function routeTelegramCallback(ctx: TelegramCallbackContext): Promi
       await markSpawned(ctx.root, new Date(now));
       await markCallbackResolved(ctx.root, callbackId, { status: "discarded", reason: "song_spawn_skipped", now });
       await appendCallbackAudit(ctx.root, auditBase(ctx, callbackId, entry, "discarded", "song_spawn_skipped"));
-      await ctx.client.editMessageText(entry.chatId, entry.messageId, "今は見送った。次の spawn 候補はまた間隔を置いて見る。", { replyMarkup: { inline_keyboard: [] } }).catch(() => undefined);
+      await clearButtonsAndReply(ctx, entry, "今は見送った。次の spawn 候補はまた間隔を置いて見る。");
       return { processed: true, result: "discarded", reason: "song_spawn_skipped", callbackId };
     }
     if (!entry.commissionBrief) {
       await markCallbackResolved(ctx.root, callbackId, { status: "failed", reason: "song_spawn_missing_brief", now });
       await appendCallbackAudit(ctx.root, auditBase(ctx, callbackId, entry, "failed", "song_spawn_missing_brief"));
-      await ctx.client.editMessageText(entry.chatId, entry.messageId, "spawn brief が見つからない。もう一度作り直す。", { replyMarkup: { inline_keyboard: [] } }).catch(() => undefined);
+      await clearButtonsAndReply(ctx, entry, "spawn brief が見つからない。もう一度作り直す。");
       return { processed: true, result: "failed", reason: "song_spawn_missing_brief", callbackId };
     }
     try {
@@ -365,13 +375,13 @@ export async function routeTelegramCallback(ctx: TelegramCallbackContext): Promi
       await markSpawned(ctx.root, new Date(now));
       await markCallbackResolved(ctx.root, callbackId, { status: "applied", reason: "song_spawn_injected", now });
       await appendCallbackAudit(ctx.root, auditBase(ctx, callbackId, entry, "applied", "song_spawn_injected"));
-      await ctx.client.editMessageText(entry.chatId, entry.messageId, `inject した。songId=${injected.songId}、stage=planning。autopilot cycle で進む。`, { replyMarkup: { inline_keyboard: [] } }).catch(() => undefined);
+      await clearButtonsAndReply(ctx, entry, `inject した。songId=${injected.songId}、stage=planning。autopilot cycle で進む。`);
       return { processed: true, result: "applied", reason: "song_spawn_injected", callbackId };
     } catch (error) {
       const reason = error instanceof Error ? error.message : "song_spawn_inject_failed";
       await markCallbackResolved(ctx.root, callbackId, { status: "failed", reason, now });
       await appendCallbackAudit(ctx.root, auditBase(ctx, callbackId, entry, "failed", reason));
-      await ctx.client.editMessageText(entry.chatId, entry.messageId, "spawn injection failed. Check the runtime log.", { replyMarkup: { inline_keyboard: [] } }).catch(() => undefined);
+      await clearButtonsAndReply(ctx, entry, "spawn injection failed. Check the runtime log.");
       return { processed: true, result: "failed", reason, callbackId };
     }
   }
@@ -392,7 +402,7 @@ export async function routeTelegramCallback(ctx: TelegramCallbackContext): Promi
       });
       await markCallbackResolved(ctx.root, callbackId, { status: "applied", reason: "prompt_pack_go", now });
       await appendCallbackAudit(ctx.root, auditBase(ctx, callbackId, entry, "applied", "prompt_pack_go"));
-      await ctx.client.editMessageText(entry.chatId, entry.messageId, "了解。Suno 行く。", { replyMarkup: { inline_keyboard: [] } }).catch(() => undefined);
+      await clearButtonsAndReply(ctx, entry, "了解。Suno 行く。");
       return { processed: true, result: "applied", reason: "prompt_pack_go", callbackId };
     }
     if (entry.action === "prompt_pack_edit") {
@@ -409,7 +419,7 @@ export async function routeTelegramCallback(ctx: TelegramCallbackContext): Promi
       });
       await markCallbackResolved(ctx.root, callbackId, { status: "updated", reason: "prompt_pack_edit", now });
       await appendCallbackAudit(ctx.root, auditBase(ctx, callbackId, entry, "updated", "prompt_pack_edit"));
-      await ctx.client.editMessageText(entry.chatId, entry.messageId, "歌詞、もう一回。", { replyMarkup: { inline_keyboard: [] } }).catch(() => undefined);
+      await clearButtonsAndReply(ctx, entry, "歌詞、もう一回。");
       return { processed: true, result: "updated", reason: "prompt_pack_edit", callbackId };
     }
     await writeAutopilotRunState(ctx.root, {
@@ -423,7 +433,7 @@ export async function routeTelegramCallback(ctx: TelegramCallbackContext): Promi
     });
     await markCallbackResolved(ctx.root, callbackId, { status: "discarded", reason: "prompt_pack_skip", now });
     await appendCallbackAudit(ctx.root, auditBase(ctx, callbackId, entry, "discarded", "prompt_pack_skip"));
-    await ctx.client.editMessageText(entry.chatId, entry.messageId, "了解、一旦置いとく。", { replyMarkup: { inline_keyboard: [] } }).catch(() => undefined);
+    await clearButtonsAndReply(ctx, entry, "了解、一旦置いとく。");
     return { processed: true, result: "discarded", reason: "prompt_pack_skip", callbackId };
   }
 
@@ -485,7 +495,7 @@ export async function routeTelegramCallback(ctx: TelegramCallbackContext): Promi
     const message = entry.action === "planning_skeleton_apply"
       ? `Planning補完を反映した。${entry.songId ?? ""} は prompt_pack へ進める。 ${proposalResult.message}`
       : `Planning補完は見送った。${proposalResult.message}`;
-    await ctx.client.editMessageText(entry.chatId, entry.messageId, message, { replyMarkup: { inline_keyboard: [] } }).catch(() => undefined);
+    await clearButtonsAndReply(ctx, entry, message);
     return { processed: true, result: callbackResult, reason: proposalResult.status, callbackId };
   }
 
@@ -507,7 +517,7 @@ export async function routeTelegramCallback(ctx: TelegramCallbackContext): Promi
       });
       await markCallbackResolved(ctx.root, callbackId, { status: "applied", reason: "take_selected", now });
       await appendCallbackAudit(ctx.root, auditBase(ctx, callbackId, entry, "applied", "take_selected"));
-      await ctx.client.editMessageText(entry.chatId, entry.messageId, `Take selected: ${selected.selectedTakeId}`, { replyMarkup: { inline_keyboard: [] } }).catch(() => undefined);
+      await clearButtonsAndReply(ctx, entry, `Take selected: ${selected.selectedTakeId}`);
       return { processed: true, result: "applied", reason: "take_selected", callbackId };
     }
     if (entry.action === "take_select_regenerate") {
@@ -523,12 +533,12 @@ export async function routeTelegramCallback(ctx: TelegramCallbackContext): Promi
       });
       await markCallbackResolved(ctx.root, callbackId, { status: "updated", reason: "take_select_regenerate_requested", now });
       await appendCallbackAudit(ctx.root, auditBase(ctx, callbackId, entry, "updated", "take_select_regenerate_requested"));
-      await ctx.client.editMessageText(entry.chatId, entry.messageId, "Suno regeneration queued.", { replyMarkup: { inline_keyboard: [] } }).catch(() => undefined);
+      await clearButtonsAndReply(ctx, entry, "Suno regeneration queued.");
       return { processed: true, result: "updated", reason: "take_select_regenerate_requested", callbackId };
     }
     await markCallbackResolved(ctx.root, callbackId, { status: "discarded", reason: "take_select_skipped", now });
     await appendCallbackAudit(ctx.root, auditBase(ctx, callbackId, entry, "discarded", "take_select_skipped"));
-    await ctx.client.editMessageText(entry.chatId, entry.messageId, "Take selection skipped for now.", { replyMarkup: { inline_keyboard: [] } }).catch(() => undefined);
+    await clearButtonsAndReply(ctx, entry, "Take selection skipped for now.");
     return { processed: true, result: "discarded", reason: "take_select_skipped", callbackId };
   }
 
@@ -541,7 +551,7 @@ export async function routeTelegramCallback(ctx: TelegramCallbackContext): Promi
       const cancelled = await executeXPublishAction({ root: ctx.root, songId: entry.songId ?? "", action: "x_publish_cancel", actor: ctx.actor });
       await markCallbackResolved(ctx.root, callbackId, { status: "discarded", reason: cancelled.status, now });
       await appendCallbackAudit(ctx.root, auditBase(ctx, callbackId, entry, "discarded", cancelled.status));
-      await ctx.client.editMessageText(entry.chatId, entry.messageId, "X投稿は取り消した。", { replyMarkup: { inline_keyboard: [] } }).catch(() => undefined);
+      await clearButtonsAndReply(ctx, entry, "X投稿は取り消した。");
       return { processed: true, result: "discarded", reason: cancelled.status, callbackId };
     }
     if (entry.action === "x_publish_prepare") {
@@ -557,7 +567,7 @@ export async function routeTelegramCallback(ctx: TelegramCallbackContext): Promi
       if (prepared.status !== "prepared" || !prepared.draft) {
         await markCallbackResolved(ctx.root, callbackId, { status: "failed", reason: prepared.reason ?? prepared.status, now });
         await appendCallbackAudit(ctx.root, auditBase(ctx, callbackId, entry, "failed", prepared.reason ?? prepared.status));
-        await ctx.client.editMessageText(entry.chatId, entry.messageId, `X投稿準備に失敗: ${prepared.reason ?? prepared.status}`, { replyMarkup: { inline_keyboard: [] } }).catch(() => undefined);
+        await clearButtonsAndReply(ctx, entry, `X投稿準備に失敗: ${prepared.reason ?? prepared.status}`);
         return { processed: true, result: "failed", reason: prepared.reason ?? prepared.status, callbackId };
       }
       const [confirm, cancel] = await Promise.all([
@@ -591,12 +601,12 @@ export async function routeTelegramCallback(ctx: TelegramCallbackContext): Promi
         draftHash: prepared.draft.draftHash,
         draftCharCount: prepared.draft.draftCharCount
       }));
-      await ctx.client.editMessageText(entry.chatId, entry.messageId, xPreviewText(prepared.draft.draftText, prepared.draft.draftHash, prepared.draft.draftCharCount), {
+      await clearButtonsAndReply(ctx, entry, xPreviewText(prepared.draft.draftText, prepared.draft.draftHash, prepared.draft.draftCharCount), {
         replyMarkup: { inline_keyboard: [[
           { text: "▶ Xに投稿", callback_data: `cb:${confirm.callbackId}` },
           { text: "⏸ やめる", callback_data: `cb:${cancel.callbackId}` }
         ]] }
-      }).catch(() => undefined);
+      });
       return { processed: true, result: "applied", reason: "prepared", callbackId };
     }
 
@@ -615,7 +625,7 @@ export async function routeTelegramCallback(ctx: TelegramCallbackContext): Promi
         draftCharCount: entry.draftCharCount,
         birdStatus: published.birdStatus
       }));
-      await ctx.client.editMessageText(entry.chatId, entry.messageId, `X投稿に失敗: ${published.reason ?? published.status}`, { replyMarkup: { inline_keyboard: [] } }).catch(() => undefined);
+      await clearButtonsAndReply(ctx, entry, `X投稿に失敗: ${published.reason ?? published.status}`);
       return { processed: true, result: "failed", reason: published.reason ?? published.status, callbackId };
     }
     await applyChangeSet(ctx.root, xPublishSongbookProposal(entry.songId ?? "", published.tweetUrl, now));
@@ -626,7 +636,7 @@ export async function routeTelegramCallback(ctx: TelegramCallbackContext): Promi
       tweetUrl: published.tweetUrl,
       birdStatus: published.birdStatus
     }));
-    await ctx.client.editMessageText(entry.chatId, entry.messageId, `X投稿完了。URL: ${published.tweetUrl}`, { replyMarkup: { inline_keyboard: [] } }).catch(() => undefined);
+    await clearButtonsAndReply(ctx, entry, `X投稿完了。URL: ${published.tweetUrl}`);
     return { processed: true, result: "applied", reason: "published", callbackId };
   }
 
