@@ -566,7 +566,7 @@ function buildPrompt(context: {
     // X without listing the source here are treated as fabricated.
     "出力 schema (1 行ずつ、 順序固定):",
     "spawn: <yes/no>",
-    "title: <artistic title>",
+    "title: <artistic title> (漢字 / カタカナ / 平仮名は元表記のまま。 タイトルだけは hiragana 化しない。 hiragana 化は歌詞 Suno 誤読対策に限る)",
     "brief: <280 chars 以内、 楽曲の中身要約>",
     "lyricsTheme: <2-4 文、 日本語、 sub 構造込み。最低 2 文。例: \"六本木で見た経営者を社会風刺として切る。サビは短く 1 行のリフレインだけ、ヴァースで景色を出してサビでそれを 1 行に畳む。\">",
     "mood: <english spec keywords e.g. 'tense, late-night, urban pressure'>",
