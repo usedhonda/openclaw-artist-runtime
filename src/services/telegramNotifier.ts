@@ -1030,6 +1030,17 @@ async function formatRuntimeEventRaw(
       return artistReport(event, `Song archived for producer hold: ${event.songId}${event.selectedTakeId ? ` take=${event.selectedTakeId}` : ""}.`, options);
     case "song_discarded":
       return artistReport(event, `Song discarded after producer review: ${event.songId}${event.previousSelectedTakeId ? ` previous_take=${event.previousSelectedTakeId}` : ""}.`, options);
+    case "producer_decision_reminder":
+      return [
+        "判断待ちが残っている。",
+        "",
+        "─────",
+        event.songId ? `song: ${event.songId}` : undefined,
+        `button: ${event.label}`,
+        `待ち時間: ${event.pendingHours}時間`,
+        `効果: ${event.effect}`,
+        "最新の Telegram 通知のボタンから選んで。"
+      ].filter(Boolean).join("\n");
     case "artist_pulse_drafted":
       return [
         dailyVoiceTitle(event.voiceKind),

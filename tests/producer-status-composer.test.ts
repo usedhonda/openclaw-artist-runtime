@@ -1,0 +1,86 @@
+import { mkdtemp } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { describe, expect, it } from "vitest";
+import { ensureArtistWorkspace } from "../src/services/artistWorkspace";
+import { ensureSongState, updateSongState } from "../src/services/artistState";
+import { writeAutopilotRunState } from "../src/services/autopilotService";
+import { registerCallbackAction } from "../src/services/callbackActionRegistry";
+import { composeProducerStatus } from "../src/services/producerStatusComposer";
+import { isProducerStatusIntent, routeTelegramCommand } from "../src/services/telegramCommandRouter";
+
+async function root(): Promise<string> {
+  const workspaceRoot = await mkdtemp(join(tmpdir(), "artist-runtime-producer-status-"));
+  await ensureArtistWorkspace(workspaceRoot);
+  return workspaceRoot;
+}
+
+describe("producer status composer", () => {
+  it("summarizes current song, blocked state, public url, and producer decision effects", async () => {
+    const workspaceRoot = await root();
+    const now = Date.parse("2026-05-26T00:00:00.000Z");
+    await ensureSongState(workspaceRoot, "song-026", "みじかいかげ");
+    await updateSongState(workspaceRoot, "song-026", {
+      status: "take_selected",
+      selectedTakeId: "take-1",
+      replacePublicLinks: ["https://suno.com/song/take-1"],
+      reason: "test"
+    });
+    await writeAutopilotRunState(workspaceRoot, {
+      runId: "run-status",
+      currentSongId: "song-026",
+      stage: "take_selection",
+      suspendedAt: "producer_decision",
+      blockedReason: "waiting_for_song_archive_or_discard",
+      paused: false,
+      retryCount: 0,
+      cycleCount: 1,
+      updatedAt: new Date(now).toISOString(),
+      lastRunAt: new Date(now).toISOString()
+    });
+    await registerCallbackAction(workspaceRoot, {
+      action: "song_archive",
+      songId: "song-026",
+      chatId: 1,
+      messageId: 2,
+      userId: 1,
+      now: now - 9 * 60 * 60 * 1000
+    });
+
+    const text = await composeProducerStatus(workspaceRoot, {
+      now,
+      dashboardBaseUrl: "http://127.0.0.1:8787"
+    });
+
+    expect(text).toContain("Stage: take_selection");
+    expect(text).toContain("song-026 / みじかいかげ");
+    expect(text).toContain("採用して次の曲へ");
+    expect(text).toContain("9時間前");
+    expect(text).toContain("https://suno.com/song/take-1");
+    expect(text).toContain("http://127.0.0.1:8787/plugins/artist-runtime#song=song-026");
+  });
+
+  it("routes free-text status intent before the conversational router", async () => {
+    const workspaceRoot = await root();
+    await writeAutopilotRunState(workspaceRoot, {
+      runId: "run-status",
+      stage: "planning",
+      paused: false,
+      retryCount: 0,
+      cycleCount: 1,
+      updatedAt: new Date(0).toISOString()
+    });
+
+    expect(isProducerStatusIntent("いま?")).toBe(true);
+    const result = await routeTelegramCommand({
+      text: "いま?",
+      fromUserId: 1,
+      chatId: 1,
+      workspaceRoot
+    });
+
+    expect(result.kind).toBe("status");
+    expect(result.shouldStoreFreeText).toBe(false);
+    expect(result.responseText).toContain("現在地:");
+  });
+});

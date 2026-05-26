@@ -39,7 +39,8 @@ const CRITICAL_NOTIFY_EVENTS: ReadonlySet<RuntimeEvent["type"]> = new Set([
   "suno_generate_failed",
   "suno_hard_stop",
   "take_selection_stalled",
-  "asset_generation_stalled"
+  "asset_generation_stalled",
+  "producer_decision_reminder"
 ]);
 
 export function failedNotifyLedgerPath(root: string): string {

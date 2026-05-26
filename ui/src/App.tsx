@@ -18,6 +18,7 @@ import { RuntimeActionMirrorCard, type RuntimeActionMirrorEvent } from "./compon
 import { SongDetailCard } from "./components/SongDetailCard";
 import { SongLifecycleTimelineCard } from "./components/SongLifecycleTimelineCard";
 import { SystemStatusOverview } from "./components/SystemStatusOverview";
+import { AwaitingDecisionPanel, type AwaitingDecision } from "./components/AwaitingDecisionPanel";
 import { RuntimeSongbookCard, type SongbookLookupResult } from "./components/RuntimeSongbookCard";
 import { useHashRoute } from "./hooks/useHashRoute";
 import { deriveConnectionState } from "../../src/services/connectionState";
@@ -153,6 +154,7 @@ type StatusResponse = {
     recent: Array<{
       callbackId: string;
       action: string;
+      category: "producer_decision" | "working_confirmation";
       label: string;
       effect: string;
       songId?: string;
@@ -160,6 +162,7 @@ type StatusResponse = {
       platform?: string;
       createdAt: number;
       expiresAt: number;
+      reminderSentAt?: number;
     }>;
   };
   failedNotifications?: {
@@ -230,6 +233,11 @@ type StatusResponse = {
 
 type ProposalsResponse = {
   proposals: ProposalDetail[];
+};
+
+type CallbackActionsResponse = {
+  count: number;
+  callbacks: AwaitingDecision[];
 };
 
 type ConfigOverridesResponse = {
@@ -585,6 +593,7 @@ export function App() {
   const [auditEntries, setAuditEntries] = useState<AuditEntry[]>([]);
   const [promptLedgerEntries, setPromptLedgerEntries] = useState<PromptLedgerEntry[]>([]);
   const [recovery, setRecovery] = useState<RecoveryResponse | null>(null);
+  const [awaitingDecisions, setAwaitingDecisions] = useState<CallbackActionsResponse>({ count: 0, callbacks: [] });
   const [selectedSongId, setSelectedSongId] = useState<string | null>(null);
   const { selectedSongId: hashSongId, clearSong: clearHashSong, selectSong: selectHashSong } = useHashRoute();
   const [activeView, setActiveView] = useState<ConsoleView>("dashboard");
@@ -616,7 +625,7 @@ export function App() {
     setIsRefreshing(true);
     try {
       setError(null);
-      const [nextStatus, nextSongs, nextConfig, nextConfigOverrides, nextSunoStatus, nextArtistMind, nextAuditEntries, nextRecovery, nextProposals] = await Promise.all([
+      const [nextStatus, nextSongs, nextConfig, nextConfigOverrides, nextSunoStatus, nextArtistMind, nextAuditEntries, nextRecovery, nextProposals, nextAwaitingDecisions] = await Promise.all([
         apiGet<StatusResponse>("/status"),
         apiGet<SongSummary[]>("/songs"),
         apiGet<ConfigResponse>("/config"),
@@ -625,7 +634,8 @@ export function App() {
         apiGet<ArtistMindResponse>("/artist-mind"),
         apiGet<AuditEntry[]>("/audit"),
         apiGet<RecoveryResponse>("/recovery"),
-        apiGet<ProposalsResponse>("/proposals")
+        apiGet<ProposalsResponse>("/proposals"),
+        apiGet<CallbackActionsResponse>("/callback-actions?status=pending&category=producer_decision")
       ]);
       const nextSelectedSongId = preferredSongId
         ?? selectedSongId
@@ -650,6 +660,7 @@ export function App() {
         setPromptLedgerEntries(nextPromptLedgerEntries);
         setRecovery(nextRecovery);
         setProposals(nextProposals.proposals);
+        setAwaitingDecisions(nextAwaitingDecisions);
         setSongs(nextSongs);
         setDetail(nextDetail);
         setSelectedSongId(nextSelectedSongId);
@@ -1457,6 +1468,14 @@ export function App() {
     <SystemStatusOverview status={status} />
   );
 
+  const awaitingDecisionPanel = (
+    <AwaitingDecisionPanel
+      callbacks={awaitingDecisions.callbacks}
+      count={awaitingDecisions.count}
+      now={nowMs}
+    />
+  );
+
   const songDetailPanel = hashSongId ? (
     <SongDetailCard key={hashSongId} songId={hashSongId} onBack={clearHashSong} />
   ) : null;
@@ -1753,7 +1772,7 @@ export function App() {
         <section className="single-column song-page-shell">{songDetailPanel}</section>
       ) : (
         <>
-          {activeView === "dashboard" ? <section className="two-column">{cockpitStrip}{systemStatusOverviewPanel}{sunoWorkerHandoffPanel}{manualSongCreatePanel}{runtimeActionMirrorPanel}{songLifecycleTimelinePanel}{pendingApprovalsPanel}{lastCyclePanel}{setupPanel}{alertsPanel}{currentSongPanel}{distributionWorkerPanel}{observabilityPanel}{recentXResultPanel}</section> : null}
+          {activeView === "dashboard" ? <section className="two-column">{awaitingDecisionPanel}{cockpitStrip}{systemStatusOverviewPanel}{sunoWorkerHandoffPanel}{manualSongCreatePanel}{runtimeActionMirrorPanel}{songLifecycleTimelinePanel}{pendingApprovalsPanel}{lastCyclePanel}{setupPanel}{alertsPanel}{currentSongPanel}{distributionWorkerPanel}{observabilityPanel}{recentXResultPanel}</section> : null}
           {activeView === "setup" ? <section className="two-column">{setupPanel}{sunoPanel}{platformsPanel}{configPanel}</section> : null}
           {activeView === "music" ? <section className="two-column">{sunoWorkerHandoffPanel}{sunoBudgetDetailPanel}{sunoPanel}{currentSongPanel}{recentXResultPanel}</section> : null}
           {activeView === "platforms" ? <section className="two-column">{birdLedgerPanel}{distributionDetectionPanel}{runtimeActionMirrorPanel}{platformsPanel}{distributionWorkerPanel}{observabilityPanel}{replySimulationPanel}</section> : null}

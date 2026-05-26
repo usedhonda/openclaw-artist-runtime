@@ -35,6 +35,8 @@ export interface CallbackActionEntry {
   status: CallbackActionStatus;
   resolvedAt?: number;
   resolveReason?: string;
+  reminderSentAt?: number;
+  reminderReason?: string;
 }
 
 export type PromptPackGoAction = CallbackActionEntry & { action: "prompt_pack_go"; songId: string };
@@ -84,6 +86,7 @@ export interface PendingCallbackSummary {
   recent: Array<{
     callbackId: string;
     action: string;
+    category: TtlCategory;
     label: string;
     effect: string;
     songId?: string;
@@ -91,6 +94,7 @@ export interface PendingCallbackSummary {
     platform?: string;
     createdAt: number;
     expiresAt: number;
+    reminderSentAt?: number;
   }>;
 }
 
@@ -99,7 +103,7 @@ const TTL_CATEGORY = {
   working_confirmation: 24 * 60 * 60 * 1000
 } as const;
 
-type TtlCategory = keyof typeof TTL_CATEGORY;
+export type TtlCategory = keyof typeof TTL_CATEGORY;
 
 const CALLBACK_ACTION_CATEGORY: Record<string, TtlCategory> = {
   song_archive: "producer_decision",
@@ -200,8 +204,18 @@ function latestCallbackActionEntries(entries: CallbackActionEntry[]): CallbackAc
 }
 
 export async function summarizePendingCallbackActions(root: string, limit = 6, now = Date.now()): Promise<PendingCallbackSummary> {
+  return listPendingCallbackActionSummaries(root, { limit, now });
+}
+
+export async function listPendingCallbackActionSummaries(
+  root: string,
+  options: { limit?: number; now?: number; category?: TtlCategory } = {}
+): Promise<PendingCallbackSummary> {
+  const now = options.now ?? Date.now();
+  const limit = options.limit ?? 6;
   const pending = latestCallbackActionEntries(await readCallbackActionEntries(root))
     .filter((entry) => entry.status === "pending" && entry.expiresAt > now)
+    .filter((entry) => !options.category || callbackActionTtlCategory(entry.action) === options.category)
     .sort((left, right) => right.createdAt - left.createdAt);
   return {
     count: pending.length,
@@ -210,13 +224,15 @@ export async function summarizePendingCallbackActions(root: string, limit = 6, n
       return {
         callbackId: entry.callbackId,
         action: entry.action,
+        category: callbackActionTtlCategory(entry.action),
         label: effect.label,
         effect: effect.effect,
         songId: entry.songId,
         proposalId: entry.proposalId,
         platform: entry.platform,
         createdAt: entry.createdAt,
-        expiresAt: entry.expiresAt
+        expiresAt: entry.expiresAt,
+        reminderSentAt: entry.reminderSentAt
       };
     })
   };
@@ -315,6 +331,32 @@ export async function markCallbackReprompted(
     reason: input.reason ?? "polling_watchdog_reprompt"
   });
   return current;
+}
+
+export async function markCallbackReminderSent(
+  root: string,
+  callbackId: string,
+  input: { now?: number; reason?: string } = {}
+): Promise<CallbackActionEntry | undefined> {
+  const current = await resolveCallbackAction(root, callbackId);
+  if (!current) {
+    return undefined;
+  }
+  const now = input.now ?? Date.now();
+  await appendCallbackAuditEvent(root, {
+    timestamp: now,
+    callbackId: current.callbackId,
+    action: current.action,
+    songId: current.songId,
+    result: "reminded",
+    reason: input.reason ?? "producer_decision_reminder",
+    actor: "producer_reminder"
+  });
+  return appendEntry(root, {
+    ...current,
+    reminderSentAt: now,
+    reminderReason: input.reason ?? "producer_decision_reminder"
+  });
 }
 
 export async function appendCallbackAuditEvent(

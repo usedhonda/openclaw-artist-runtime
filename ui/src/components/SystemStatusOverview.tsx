@@ -3,6 +3,7 @@ import React from "react";
 type PendingCallback = {
   callbackId: string;
   action: string;
+  category?: "producer_decision" | "working_confirmation";
   label: string;
   effect: string;
   songId?: string;
@@ -10,6 +11,7 @@ type PendingCallback = {
   platform?: string;
   createdAt: number;
   expiresAt: number;
+  reminderSentAt?: number;
 };
 
 type FailedNotification = {

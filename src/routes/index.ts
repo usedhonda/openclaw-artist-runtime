@@ -11,11 +11,11 @@ import { acknowledgeAlert } from "../services/alertAcks.js";
 import { collectAlerts } from "../services/alerts.js";
 import { appendAuditLog, createAuditEvent } from "../services/auditLog.js";
 import { listSongStates, readArtistMind, readSongState } from "../services/artistState.js";
-import { ArtistAutopilotService, pauseAutopilot, resumeAutopilot } from "../services/autopilotService.js";
+import { ArtistAutopilotService, pauseAutopilot, resumeAutopilot, stageFromSong } from "../services/autopilotService.js";
 import { AutopilotControlService } from "../services/autopilotControlService.js";
 import { getAutopilotTicker, getAutopilotTickerIntervalMs, getLastOutcome, getLastTickAt } from "../services/autopilotTicker.js";
 import { readBirdLedgerDetail, readBirdRateLimitStatus } from "../services/birdRateLimiter.js";
-import { appendCallbackAuditEvent, resolveCallbackAction, summarizePendingCallbackActions } from "../services/callbackActionRegistry.js";
+import { appendCallbackAuditEvent, listPendingCallbackActionSummaries, resolveCallbackAction, summarizePendingCallbackActions } from "../services/callbackActionRegistry.js";
 import { buildCascadeTrace } from "../services/cascadeTrace.js";
 import { handleProposalResponse, listPendingProposalDetails, listPendingProposals } from "../services/conversationalSession.js";
 import { buildPlatformStats, readDistributionEvents } from "../services/distributionLedgerReader.js";
@@ -174,6 +174,29 @@ function payloadInteger(payload: Record<string, unknown>, key: string, fallback:
   const raw = Array.isArray(value) ? value[0] : value;
   const parsed = typeof raw === "number" ? raw : typeof raw === "string" ? Number(raw) : Number.NaN;
   return Number.isFinite(parsed) ? Math.trunc(parsed) : fallback;
+}
+
+function queryValueFromPayload(payload: Record<string, unknown>, key: string, routePath: string): string | undefined {
+  const direct = payload[key];
+  if (typeof direct === "string") {
+    return direct;
+  }
+  const requestPath = payloadRequestPath(payload, routePath);
+  const queryIndex = requestPath.indexOf("?");
+  if (queryIndex < 0) {
+    return undefined;
+  }
+  return new URLSearchParams(requestPath.slice(queryIndex + 1)).get(key) ?? undefined;
+}
+
+function integerFromPayloadOrQuery(payload: Record<string, unknown>, key: string, fallback: number, routePath: string): number {
+  const direct = payloadInteger(payload, key, Number.NaN);
+  if (Number.isFinite(direct)) {
+    return direct;
+  }
+  const queryValue = queryValueFromPayload(payload, key, routePath);
+  const parsed = queryValue ? Number.parseInt(queryValue, 10) : Number.NaN;
+  return Number.isFinite(parsed) ? parsed : fallback;
 }
 
 function optionalInteger(value: unknown): number | undefined {
@@ -1312,6 +1335,52 @@ export async function buildFailedNotifyReplayResponse(
   }
 }
 
+export interface CallbackActionsResponse {
+  count: number;
+  callbacks: Array<{
+    callbackId: string;
+    action: string;
+    category: "producer_decision" | "working_confirmation";
+    label: string;
+    effect: string;
+    songId?: string;
+    songTitle?: string;
+    stage?: string;
+    proposalId?: string;
+    platform?: string;
+    createdAt: number;
+    expiresAt: number;
+    reminderSentAt?: number;
+  }>;
+}
+
+export async function buildCallbackActionsResponse(input: unknown): Promise<CallbackActionsResponse> {
+  const payload = payloadRecord(input);
+  const config = await resolveRuntimeConfig(payload.config as Partial<ArtistRuntimeConfig> | undefined);
+  const routePath = "/plugins/artist-runtime/api/callback-actions";
+  const status = queryValueFromPayload(payload, "status", routePath);
+  const category = queryValueFromPayload(payload, "category", routePath);
+  if (status && status !== "pending") {
+    return { count: 0, callbacks: [] };
+  }
+  const summary = await listPendingCallbackActionSummaries(config.artist.workspaceRoot, {
+    limit: integerFromPayloadOrQuery(payload, "limit", 20, routePath),
+    category: category === "producer_decision" ? "producer_decision" : category === "working_confirmation" ? "working_confirmation" : undefined
+  });
+  const callbacks = await Promise.all(summary.recent.map(async (callback) => {
+    const song = callback.songId ? await readSongState(config.artist.workspaceRoot, callback.songId).catch(() => undefined) : undefined;
+    return {
+      ...callback,
+      songTitle: song?.title,
+      stage: song ? stageFromSong(song) : undefined
+    };
+  }));
+  return {
+    count: summary.count,
+    callbacks
+  };
+}
+
 export async function buildStatusExportResponse(
   config?: Partial<ArtistRuntimeConfig>,
   window: ObservabilityExportWindow = "7d",
@@ -1350,6 +1419,13 @@ export function registerRoutes(api: unknown): void {
     method: "GET",
     path: "/plugins/artist-runtime/api/status",
     handler: async (input) => buildStatusResponse(payloadRecord(input).config as Partial<ArtistRuntimeConfig> | undefined)
+  });
+
+  safeRegisterRoute(api, {
+    method: "GET",
+    match: "prefix",
+    path: "/plugins/artist-runtime/api/callback-actions",
+    handler: buildCallbackActionsResponse
   });
 
   safeRegisterRoute(api, {

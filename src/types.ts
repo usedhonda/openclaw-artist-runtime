@@ -1093,6 +1093,7 @@ export interface StatusResponse {
     recent: Array<{
       callbackId: string;
       action: string;
+      category: "producer_decision" | "working_confirmation";
       label: string;
       effect: string;
       songId?: string;
@@ -1100,6 +1101,7 @@ export interface StatusResponse {
       platform?: string;
       createdAt: number;
       expiresAt: number;
+      reminderSentAt?: number;
     }>;
   };
   failedNotifications?: {

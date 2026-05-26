@@ -435,6 +435,24 @@ textarea {
   grid-column: 1 / -1;
 }
 
+.awaiting-decision-panel {
+  grid-column: 1 / -1;
+}
+
+.awaiting-decision-panel.has-waiting {
+  border-color: rgba(159, 79, 45, 0.58);
+  box-shadow: 0 12px 34px rgba(159, 79, 45, 0.14);
+}
+
+.awaiting-decision-list {
+  display: grid;
+  gap: 10px;
+}
+
+.awaiting-decision-row {
+  border-left: 3px solid var(--accent);
+}
+
 .system-status-grid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));

@@ -130,6 +130,19 @@ export function isPollingWatchdogRepromptOnceEnabled(env: NodeJS.ProcessEnv = pr
   return env.OPENCLAW_POLLING_WATCHDOG_REPROMPT_ONCE?.trim().toLowerCase() !== "off";
 }
 
+export function isProducerReminderEnabled(env: NodeJS.ProcessEnv = process.env): boolean {
+  const value = env.OPENCLAW_PRODUCER_REMINDER_ENABLED?.trim().toLowerCase();
+  return value === "on" || value === "1" || value === "true";
+}
+
+export function getProducerReminderHours(env: NodeJS.ProcessEnv = process.env): number {
+  const parsed = Number.parseFloat(env.OPENCLAW_PRODUCER_REMINDER_HOURS ?? "");
+  if (!Number.isFinite(parsed)) {
+    return 12;
+  }
+  return Math.max(0, parsed);
+}
+
 export function isSunoLiveEnabled(env: NodeJS.ProcessEnv = process.env): boolean {
   const live = env.OPENCLAW_SUNO_LIVE?.trim().toLowerCase();
   const driver = env.OPENCLAW_SUNO_DRIVER?.trim().toLowerCase();

@@ -1,7 +1,9 @@
-import { hasCallbackReprompted, isProducerDecisionAction, readCallbackActionEntries, resolveCallbackAction, markCallbackResolved, markCallbackReprompted, type CallbackActionEntry } from "./callbackActionRegistry.js";
-import { getPollingWatchdogMinutes, isPollingWatchdogRepromptOnceEnabled, resolveDefaultWorkspaceRoot } from "./runtimeConfig.js";
-import { TelegramClient, type TelegramSendMessageOptions } from "./telegramClient.js";
+import { appendFailedNotification } from "./failedNotifyLedger.js";
+import { describeCallbackActionEffect, hasCallbackReprompted, isProducerDecisionAction, markCallbackReminderSent, readCallbackActionEntries, resolveCallbackAction, markCallbackResolved, markCallbackReprompted, type CallbackActionEntry } from "./callbackActionRegistry.js";
+import { getPollingWatchdogMinutes, getProducerReminderHours, isPollingWatchdogRepromptOnceEnabled, isProducerReminderEnabled, resolveDefaultWorkspaceRoot } from "./runtimeConfig.js";
+import { TelegramClient, telegramAttemptsFromError, type TelegramSendMessageOptions } from "./telegramClient.js";
 import type { TelegramReplyMarkup } from "../types.js";
+import type { RuntimeEvent } from "./runtimeEventBus.js";
 
 const WATCHDOG_SCAN_INTERVAL_MS = 5 * 60 * 1000;
 
@@ -10,6 +12,7 @@ export interface CallbackPollingWatchdogResult {
   scanned: number;
   recovered: number;
   reprompted: number;
+  reminded: number;
   expired: number;
   skipped: number;
 }
@@ -74,8 +77,9 @@ function hasResolvedSongSibling(entries: CallbackActionEntry[], entry: CallbackA
 export async function runCallbackPollingWatchdogOnce(options: CallbackPollingWatchdogOptions = {}): Promise<CallbackPollingWatchdogResult> {
   const env = options.env ?? process.env;
   const staleMinutes = getPollingWatchdogMinutes(env);
-  if (staleMinutes <= 0) {
-    return { enabled: false, scanned: 0, recovered: 0, reprompted: 0, expired: 0, skipped: 0 };
+  const producerReminderEnabled = isProducerReminderEnabled(env);
+  if (staleMinutes <= 0 && !producerReminderEnabled) {
+    return { enabled: false, scanned: 0, recovered: 0, reprompted: 0, reminded: 0, expired: 0, skipped: 0 };
   }
 
   const root = options.root ?? env.OPENCLAW_LOCAL_WORKSPACE?.trim() ?? resolveDefaultWorkspaceRoot();
@@ -83,11 +87,13 @@ export async function runCallbackPollingWatchdogOnce(options: CallbackPollingWat
   const client = options.client ?? createRecoveryTelegramClient(env.TELEGRAM_BOT_TOKEN);
   const entries = latestEntries(await readCallbackActionEntries(root));
   const staleMs = staleMinutes * 60 * 1000;
+  const producerReminderMs = getProducerReminderHours(env) * 60 * 60 * 1000;
   const result: CallbackPollingWatchdogResult = {
     enabled: true,
     scanned: entries.length,
     recovered: 0,
     reprompted: 0,
+    reminded: 0,
     expired: 0,
     skipped: 0
   };
@@ -113,6 +119,53 @@ export async function runCallbackPollingWatchdogOnce(options: CallbackPollingWat
       continue;
     }
     if (isProducerDecisionAction(latest.action)) {
+      if (
+        producerReminderEnabled
+        && producerReminderMs > 0
+        && !latest.reminderSentAt
+        && now - latest.createdAt >= producerReminderMs
+      ) {
+        const effect = describeCallbackActionEffect(latest.action);
+        const pendingHours = Math.floor((now - latest.createdAt) / (60 * 60 * 1000));
+        const event: RuntimeEvent = {
+          type: "producer_decision_reminder",
+          callbackId: latest.callbackId,
+          action: latest.action,
+          label: effect.label,
+          effect: effect.effect,
+          songId: latest.songId,
+          pendingHours,
+          timestamp: now
+        };
+        const text = [
+          "判断待ちが残っている。",
+          "",
+          "─────",
+          latest.songId ? `song: ${latest.songId}` : undefined,
+          `button: ${effect.label}`,
+          `待ち時間: ${pendingHours}時間`,
+          `効果: ${effect.effect}`,
+          "最新の Telegram 通知のボタンから選んで。"
+        ].filter(Boolean).join("\n");
+        try {
+          await client.sendMessage(latest.chatId, text);
+          await markCallbackReminderSent(root, latest.callbackId, {
+            now,
+            reason: "producer_decision_reminder"
+          });
+          result.reminded += 1;
+        } catch (error) {
+          await appendFailedNotification(root, {
+            event,
+            chatId: latest.chatId,
+            error,
+            attempts: telegramAttemptsFromError(error),
+            now: new Date(now)
+          });
+          result.skipped += 1;
+        }
+        continue;
+      }
       result.skipped += 1;
       continue;
     }
@@ -138,7 +191,7 @@ export async function runCallbackPollingWatchdogOnce(options: CallbackPollingWat
 }
 
 export function startCallbackPollingWatchdog(env: NodeJS.ProcessEnv = process.env): () => void {
-  if (getPollingWatchdogMinutes(env) <= 0) {
+  if (getPollingWatchdogMinutes(env) <= 0 && !isProducerReminderEnabled(env)) {
     return () => undefined;
   }
   let running = false;

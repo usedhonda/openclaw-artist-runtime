@@ -16,6 +16,7 @@ import { readSoulPersonaSummary } from "./soulFileBuilder.js";
 import { isConversationalSongCreate, routeTelegramConversation, type TelegramProposalButtonsRequest } from "./telegramConversationalRouter.js";
 import { readObservationsReport, type ObservationReport } from "./xObservationCollector.js";
 import { wrapCommandVoice, type CommandVoiceKind } from "./commandVoiceWrapper.js";
+import { composeProducerStatus } from "./producerStatusComposer.js";
 
 export type TelegramCommandKind =
   | "help"
@@ -65,6 +66,12 @@ function formatStatus(status?: AutopilotStatus): string {
     status.currentSongId ? `Song: ${status.currentSongId}` : undefined,
     status.blockedReason ? `Blocked: ${status.blockedReason}` : undefined
   ].filter(Boolean).join("\n");
+}
+
+export function isProducerStatusIntent(text: string): boolean {
+  const normalized = text.trim().replace(/[？?。!！\s]/g, "").toLowerCase();
+  if (!normalized) return false;
+  return /^(いま|今|状況|状況教えて|どこ|どこまで|進捗|進捗教えて|何待ち|なに待ち|ステータス|status)$/.test(normalized);
 }
 
 async function voiceCommand(kind: CommandVoiceKind, info: string, input: TelegramRouteInput, userMessage?: string): Promise<string> {
@@ -165,6 +172,16 @@ export async function routeTelegramCommand(input: TelegramRouteInput): Promise<T
 
   const [commandRaw, ...args] = text.split(/\s+/);
   const command = commandRaw.toLowerCase();
+  if (input.workspaceRoot && (!command.startsWith("/") ? isProducerStatusIntent(text) : command === "/status")) {
+    return {
+      kind: "status",
+      responseText: await composeProducerStatus(input.workspaceRoot, {
+        dashboardBaseUrl: input.dashboardBaseUrl,
+        autopilotStatus: input.autopilotStatus
+      }),
+      shouldStoreFreeText: false
+    };
+  }
   if (input.workspaceRoot && !isLegacyWizardEnabled()) {
     if (
       command === "/talk"
