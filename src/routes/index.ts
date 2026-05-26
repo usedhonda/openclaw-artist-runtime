@@ -10,8 +10,8 @@ import { startRuntimeEventLedgerFromEnv, startTelegramNotifierFromEnv } from "..
 import { acknowledgeAlert } from "../services/alertAcks.js";
 import { collectAlerts } from "../services/alerts.js";
 import { appendAuditLog, createAuditEvent } from "../services/auditLog.js";
-import { listSongStates, readArtistMind, readSongState } from "../services/artistState.js";
-import { ArtistAutopilotService, pauseAutopilot, resumeAutopilot, stageFromSong } from "../services/autopilotService.js";
+import { listSongStates, readArtistMind, readSongState, updateSongState } from "../services/artistState.js";
+import { ArtistAutopilotService, PRODUCER_REVIEW_PAUSED_REASON, PRODUCER_REVIEW_SUSPENDED_AT, pauseAutopilot, readAutopilotRunState, resumeAutopilot, stageFromSong, writeAutopilotRunState } from "../services/autopilotService.js";
 import { AutopilotControlService } from "../services/autopilotControlService.js";
 import { getAutopilotTicker, getAutopilotTickerIntervalMs, getLastOutcome, getLastTickAt } from "../services/autopilotTicker.js";
 import { readBirdLedgerDetail, readBirdRateLimitStatus } from "../services/birdRateLimiter.js";
@@ -1195,6 +1195,7 @@ export interface NotifyReviewResponse {
   selectedTakeId?: string;
   eventType?: "song_take_completed";
   reason?: string;
+  revertedFrom?: SongState["status"];
   statusCode: number;
 }
 
@@ -1208,22 +1209,62 @@ export async function buildNotifyReviewResponse(
     return { notified: false, songId, reason: "debug_notify_review_disabled", statusCode: 403 };
   }
   const config = await resolveRuntimeConfig(payload.config as Partial<ArtistRuntimeConfig> | undefined);
-  const song = await readSongState(config.artist.workspaceRoot, songId).catch(() => undefined);
-  if (!song || song.status !== "take_selected") {
+  const root = config.artist.workspaceRoot;
+  const song = await readSongState(root, songId).catch(() => undefined);
+  if (!song) {
     return { notified: false, songId, reason: "song_not_in_take_selected", statusCode: 400 };
   }
+  const canReopenReview = song.status === "social_assets" || song.status === "publishing";
+  if (song.status !== "take_selected" && !canReopenReview) {
+    return { notified: false, songId, reason: "song_not_in_take_selected", statusCode: 400 };
+  }
+  if (!song.selectedTakeId) {
+    return { notified: false, songId, reason: "song_review_selected_take_missing", statusCode: 400 };
+  }
   const now = Date.now();
+  const revertedFrom = canReopenReview ? song.status : undefined;
+  const reviewSong = revertedFrom
+    ? await updateSongState(root, songId, {
+      status: "take_selected",
+      reason: `producer_review_reopened_from:${revertedFrom}`
+    })
+    : song;
+  const current = await readAutopilotRunState(root).catch(() => undefined);
+  if (current) {
+    await writeAutopilotRunState(root, {
+      ...current,
+      currentSongId: songId,
+      stage: "take_selection",
+      paused: true,
+      pausedReason: PRODUCER_REVIEW_PAUSED_REASON,
+      suspendedAt: PRODUCER_REVIEW_SUSPENDED_AT,
+      blockedReason: PRODUCER_REVIEW_SUSPENDED_AT,
+      lastError: undefined,
+      lastSuccessfulStage: "take_selection",
+      updatedAt: new Date(now).toISOString()
+    });
+  }
+  if (revertedFrom) {
+    await appendCallbackAuditEvent(root, {
+      timestamp: now,
+      action: "notify_review_reopened",
+      songId,
+      result: "reopened",
+      reason: `producer_review_reopened_from:${revertedFrom}`,
+      actor: "manual_notify_retrigger"
+    });
+  }
   await startTelegramNotifierFromEnv(env);
   startRuntimeEventLedgerFromEnv(env);
   emitRuntimeEvent({
     type: "song_take_completed",
     songId,
-    selectedTakeId: song.selectedTakeId,
-    urls: song.publicLinks,
+    selectedTakeId: reviewSong.selectedTakeId,
+    urls: reviewSong.publicLinks,
     actor: "manual_notify_retrigger",
     timestamp: now
   });
-  await appendCallbackAuditEvent(config.artist.workspaceRoot, {
+  await appendCallbackAuditEvent(root, {
     timestamp: now,
     action: "notify_review_retriggered",
     songId,
@@ -1234,9 +1275,10 @@ export async function buildNotifyReviewResponse(
   return {
     notified: true,
     songId,
-    selectedTakeId: song.selectedTakeId,
+    selectedTakeId: reviewSong.selectedTakeId,
     eventType: "song_take_completed",
     reason: "notify_review_retriggered",
+    revertedFrom,
     statusCode: 200
   };
 }

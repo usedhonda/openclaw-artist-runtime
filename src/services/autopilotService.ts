@@ -96,9 +96,25 @@ function isMockSunoGenerationBypass(config: ArtistRuntimeConfig): boolean {
 }
 
 const PRODUCER_APPROVAL_REQUIRED_STATUSES = new Set<SongState["status"]>(["idea", "brief", "lyrics"]);
+export const PRODUCER_REVIEW_SUSPENDED_AT = "producer_review_after_take_selected";
+export const PRODUCER_REVIEW_PAUSED_REASON = "take selected after bounded one-shot Suno create; awaiting producer review";
 
 function isPrePromptSongWithoutApprovalGate(song: SongState): boolean {
   return PRODUCER_APPROVAL_REQUIRED_STATUSES.has(song.status);
+}
+
+function producerReviewPausedState(baseState: AutopilotRunState, songId: string): AutopilotRunState {
+  return {
+    ...baseState,
+    currentSongId: songId,
+    stage: "take_selection",
+    paused: true,
+    pausedReason: PRODUCER_REVIEW_PAUSED_REASON,
+    suspendedAt: PRODUCER_REVIEW_SUSPENDED_AT,
+    blockedReason: PRODUCER_REVIEW_SUSPENDED_AT,
+    lastError: undefined,
+    lastSuccessfulStage: "take_selection"
+  };
 }
 
 async function hasProducerSpawnApproval(root: string, songId: string): Promise<boolean> {
@@ -334,7 +350,7 @@ function nextActionForStage(stage: AutopilotStage): string {
 
 function nextActionForState(state: AutopilotRunState, stage: AutopilotStage): string {
   if (state.paused) {
-    if (state.suspendedAt === "producer_review_after_take_selected") {
+    if (state.suspendedAt === PRODUCER_REVIEW_SUSPENDED_AT) {
       return "await_producer_review";
     }
     return "await_manual_resume";
@@ -887,6 +903,14 @@ export class ArtistAutopilotService {
       lastRunAt: nowIso()
     };
 
+    if (song && config.telegram.enabled && song.status === "take_selected") {
+      return writeStageState(
+        input.workspaceRoot,
+        existing,
+        producerReviewPausedState(baseState, song.songId)
+      );
+    }
+
     if (
       !input.manualSeed
       && song
@@ -1225,12 +1249,11 @@ export class ArtistAutopilotService {
             timestamp: Date.now()
           });
           return writeStageState(input.workspaceRoot, existing, {
-            ...baseState,
-            currentSongId: song.songId,
-            stage: "take_selection",
-            blockedReason: undefined,
-            lastError: undefined,
-            lastSuccessfulStage: "take_selection",
+            ...producerReviewPausedState(baseState, song.songId),
+            paused: config.telegram.enabled,
+            pausedReason: config.telegram.enabled ? PRODUCER_REVIEW_PAUSED_REASON : undefined,
+            suspendedAt: config.telegram.enabled ? PRODUCER_REVIEW_SUSPENDED_AT : undefined,
+            blockedReason: config.telegram.enabled ? PRODUCER_REVIEW_SUSPENDED_AT : undefined,
             cycleCount: existing.cycleCount + 1
           });
         }

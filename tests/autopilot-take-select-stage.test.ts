@@ -48,6 +48,37 @@ describe("autopilot take select stage", () => {
     expect(events.some((event) => event.type === "song_take_completed")).toBe(true);
   });
 
+  it("holds take_selected songs at producer review when Telegram producer-room is enabled", async () => {
+    const root = mkdtempSync(join(tmpdir(), "artist-runtime-take-review-gate-"));
+    await seed(root, "https://suno.example/good-bass-cold-hook");
+    const service = new ArtistAutopilotService();
+    const config = {
+      artist: { workspaceRoot: root },
+      autopilot: { enabled: true, dryRun: true },
+      telegram: { enabled: true, pollIntervalMs: 2000, notifyStages: true, acceptFreeText: true }
+    };
+
+    const selected = await service.runCycle({ workspaceRoot: root, config });
+    const next = await service.runCycle({ workspaceRoot: root, config });
+
+    expect(selected).toMatchObject({
+      stage: "take_selection",
+      paused: true,
+      suspendedAt: "producer_review_after_take_selected",
+      blockedReason: "producer_review_after_take_selected",
+      lastSuccessfulStage: "take_selection"
+    });
+    expect(next).toMatchObject({
+      stage: "paused",
+      paused: true,
+      blockedReason: "take selected after bounded one-shot Suno create; awaiting producer review"
+    });
+    expect(await readSongState(root, "take-song")).toMatchObject({
+      status: "take_selected",
+      selectedTakeId: "good-bass-cold-hook"
+    });
+  });
+
   it("emits low-score event and lets producer accept via callback", async () => {
     const root = mkdtempSync(join(tmpdir(), "artist-runtime-take-low-"));
     await seed(root, "https://suno.example/bad-noise");

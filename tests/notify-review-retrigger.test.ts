@@ -7,7 +7,9 @@ import { afterEach, describe, expect, it } from "vitest";
 import { registerRoutes } from "../src/routes";
 import { ensureArtistWorkspace } from "../src/services/artistWorkspace";
 import { readSongState, updateSongState } from "../src/services/artistState";
+import { readAutopilotRunState, writeAutopilotRunState } from "../src/services/autopilotService";
 import { getRuntimeEventBus, type RuntimeEvent } from "../src/services/runtimeEventBus";
+import type { SongStatus } from "../src/types";
 
 function createMockRequest(method: string, url: string, body?: string): IncomingMessage {
   const req = Readable.from(body ? [body] : []) as IncomingMessage;
@@ -55,14 +57,14 @@ function registerSongsHandler() {
   return handler;
 }
 
-async function prepareWorkspace(status: "take_selected" | "brief" = "take_selected"): Promise<string> {
+async function prepareWorkspace(status: SongStatus = "take_selected"): Promise<string> {
   const root = await mkdtemp(join(tmpdir(), "artist-runtime-notify-review-"));
   await ensureArtistWorkspace(root);
   await updateSongState(root, "song-018", {
     title: "Pika Pika Floor",
     status,
-    selectedTakeId: status === "take_selected" ? "take-1" : undefined,
-    replacePublicLinks: status === "take_selected" ? ["https://suno.com/song/take-1"] : []
+    selectedTakeId: status === "take_selected" || status === "social_assets" ? "take-1" : undefined,
+    replacePublicLinks: status === "take_selected" || status === "social_assets" ? ["https://suno.com/song/take-1"] : []
   });
   return root;
 }
@@ -161,6 +163,45 @@ describe("notify-review retrigger endpoint", () => {
       result: "notified",
       reason: "notify_review_retriggered",
       actor: "manual_notify_retrigger"
+    });
+  });
+
+  it("reopens social_assets songs back to take_selected before re-emitting review", async () => {
+    const root = await prepareWorkspace("social_assets");
+    await writeAutopilotRunState(root, {
+      stage: "publishing",
+      paused: false,
+      retryCount: 0,
+      cycleCount: 3,
+      currentSongId: "song-018",
+      lastSuccessfulStage: "asset_generation",
+      updatedAt: "2026-05-26T00:00:00.000Z"
+    });
+    const handler = registerSongsHandler();
+    process.env.OPENCLAW_DEBUG_NOTIFY_REVIEW = "on";
+
+    const response = await invoke(handler, root);
+
+    expect(response.readStatus()).toBe(200);
+    expect(response.json()).toMatchObject({
+      notified: true,
+      songId: "song-018",
+      selectedTakeId: "take-1",
+      revertedFrom: "social_assets",
+      reason: "notify_review_retriggered",
+      statusCode: 200
+    });
+    expect(await readSongState(root, "song-018")).toMatchObject({
+      status: "take_selected",
+      selectedTakeId: "take-1",
+      lastReason: "producer_review_reopened_from:social_assets"
+    });
+    expect(await readAutopilotRunState(root)).toMatchObject({
+      stage: "take_selection",
+      paused: true,
+      suspendedAt: "producer_review_after_take_selected",
+      blockedReason: "producer_review_after_take_selected",
+      lastSuccessfulStage: "take_selection"
     });
   });
 });
