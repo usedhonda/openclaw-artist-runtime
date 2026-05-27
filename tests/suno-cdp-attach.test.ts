@@ -12,7 +12,10 @@ const {
   connectOverCDPMock,
   launchPersistentContextMock,
   stealthPluginMock,
-  stealthResult
+  stealthResult,
+  binaryHealthMock,
+  reinstallChromiumMock,
+  launchFailureMock
 } = vi.hoisted(() => ({
   playwrightChromiumMock: {
     connectOverCDP: vi.fn()
@@ -24,7 +27,10 @@ const {
   connectOverCDPMock: vi.fn(),
   launchPersistentContextMock: vi.fn(),
   stealthPluginMock: vi.fn(),
-  stealthResult: { name: "stealth-plugin" }
+  stealthResult: { name: "stealth-plugin" },
+  binaryHealthMock: vi.fn(),
+  reinstallChromiumMock: vi.fn(),
+  launchFailureMock: vi.fn()
 }));
 
 playwrightChromiumMock.connectOverCDP = connectOverCDPMock;
@@ -40,6 +46,12 @@ vi.mock("playwright-extra", () => ({
 
 vi.mock("puppeteer-extra-plugin-stealth", () => ({
   default: stealthPluginMock
+}));
+
+vi.mock("../src/services/sunoBinaryHealthCheck", () => ({
+  checkSunoBrowserBinaryHealth: binaryHealthMock,
+  reinstallPlaywrightChromium: reinstallChromiumMock,
+  isSunoBrowserLaunchFailure: launchFailureMock
 }));
 
 const envKeys = [
@@ -92,9 +104,15 @@ describe("Suno CDP attach", () => {
   beforeEach(() => {
     connectOverCDPMock.mockReset();
     launchPersistentContextMock.mockReset();
+    binaryHealthMock.mockReset();
+    reinstallChromiumMock.mockReset();
+    launchFailureMock.mockReset();
     playwrightExtraChromiumMock.use.mockReset();
     stealthPluginMock.mockReset();
     stealthPluginMock.mockReturnValue(stealthResult);
+    binaryHealthMock.mockResolvedValue({ ok: true, checkedAt: "2026-05-27T00:00:00.000Z" });
+    reinstallChromiumMock.mockResolvedValue(undefined);
+    launchFailureMock.mockReturnValue(false);
   });
 
   afterEach(() => {

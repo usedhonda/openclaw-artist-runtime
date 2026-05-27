@@ -5,14 +5,17 @@ import {
   SUNO_CREATE_URL
 } from "../src/services/sunoPlaywrightDriver";
 
-const { chromiumMock, launchPersistentContextMock, stealthPluginMock, stealthResult } = vi.hoisted(() => ({
+const { chromiumMock, launchPersistentContextMock, stealthPluginMock, stealthResult, binaryHealthMock, reinstallChromiumMock, launchFailureMock } = vi.hoisted(() => ({
   chromiumMock: {
     use: vi.fn(),
     launchPersistentContext: vi.fn()
   },
   launchPersistentContextMock: vi.fn(),
   stealthPluginMock: vi.fn(),
-  stealthResult: { name: "stealth-plugin" }
+  stealthResult: { name: "stealth-plugin" },
+  binaryHealthMock: vi.fn(),
+  reinstallChromiumMock: vi.fn(),
+  launchFailureMock: vi.fn()
 }));
 
 chromiumMock.launchPersistentContext = launchPersistentContextMock;
@@ -23,6 +26,12 @@ vi.mock("playwright-extra", () => ({
 
 vi.mock("puppeteer-extra-plugin-stealth", () => ({
   default: stealthPluginMock
+}));
+
+vi.mock("../src/services/sunoBinaryHealthCheck", () => ({
+  checkSunoBrowserBinaryHealth: binaryHealthMock,
+  reinstallPlaywrightChromium: reinstallChromiumMock,
+  isSunoBrowserLaunchFailure: launchFailureMock
 }));
 
 function createPage({
@@ -54,8 +63,14 @@ describe("PlaywrightSunoDriver probe", () => {
   beforeEach(() => {
     chromiumMock.use.mockReset();
     launchPersistentContextMock.mockReset();
+    binaryHealthMock.mockReset();
+    reinstallChromiumMock.mockReset();
+    launchFailureMock.mockReset();
     stealthPluginMock.mockReset();
     stealthPluginMock.mockReturnValue(stealthResult);
+    binaryHealthMock.mockResolvedValue({ ok: true, checkedAt: "2026-05-27T00:00:00.000Z" });
+    reinstallChromiumMock.mockResolvedValue(undefined);
+    launchFailureMock.mockReturnValue(false);
   });
 
   it("returns connected when the create surface is already available", async () => {
@@ -104,6 +119,7 @@ describe("PlaywrightSunoDriver probe", () => {
 
   it("fails closed when Playwright launch raises an error", async () => {
     launchPersistentContextMock.mockRejectedValue(new Error("browser launch failed"));
+    launchFailureMock.mockReturnValue(false);
     const driver = new PlaywrightSunoDriver(".openclaw-browser-profiles/suno");
 
     const result = await driver.probe();
@@ -111,5 +127,27 @@ describe("PlaywrightSunoDriver probe", () => {
     expect(result.state).toBe("disconnected");
     expect(result.detail).toContain("browser launch failed");
     expect(chromiumMock.use).toHaveBeenCalledWith(stealthResult);
+  });
+
+  it("reinstalls Chromium and retries once on launch crash", async () => {
+    const page = createPage({
+      url: "https://suno.com/create",
+      selectorCounts: {
+        "a[href='/create']": 1
+      }
+    });
+    const context = createContext(page);
+    launchPersistentContextMock
+      .mockRejectedValueOnce(new Error("SIGABRT crashpad bootstrap_check_in"))
+      .mockResolvedValueOnce(context);
+    launchFailureMock.mockReturnValue(true);
+    const driver = new PlaywrightSunoDriver(".openclaw-browser-profiles/suno");
+
+    const result = await driver.probe();
+
+    expect(result.state).toBe("connected");
+    expect(reinstallChromiumMock).toHaveBeenCalledWith("playwright_chromium_launch_failed");
+    expect(launchPersistentContextMock).toHaveBeenCalledTimes(2);
+    expect(context.close).toHaveBeenCalledTimes(1);
   });
 });
