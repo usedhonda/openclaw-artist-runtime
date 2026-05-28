@@ -36,6 +36,7 @@ const TELEGRAM_SILENT_EVENT_TYPES: ReadonlySet<RuntimeEvent["type"]> = new Set([
   "prompt_pack_char_count",
   "spawn_proposal_appended",
   "spawn_proposal_queue_full",
+  "spawn_proposal_skip_queue_full",
   "bird_cooldown_triggered",
   "error"
 ]);
@@ -1143,6 +1144,8 @@ async function formatRuntimeEventRaw(
       return `Spawn proposal appended: ${event.proposalId} pending=${event.pendingCount}`;
     case "spawn_proposal_queue_full":
       return `Spawn proposal queue full: pending=${event.pendingCount}/${event.limit}`;
+    case "spawn_proposal_skip_queue_full":
+      return `Spawn proposal skipped because queue is full: pending=${event.pendingCount}/${event.limit}`;
     case "observation_collected":
       return `Observations collected: ${event.entryCount} entries${typeof event.topScore === "number" ? `, top score=${event.topScore}` : ""}${event.topMotifMatch ? ` (${event.topMotifMatch})` : ""}`;
     case "artist_presence":

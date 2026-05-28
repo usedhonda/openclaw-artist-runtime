@@ -1,7 +1,7 @@
 import { createHash } from "node:crypto";
 import { readdir, readFile } from "node:fs/promises";
 import { join } from "node:path";
-import type { AiReviewProvider, CommissionBrief, CommissionBriefSource, ObservationSummary, SongSpawnProposal, SongState } from "../types.js";
+import type { AiReviewProvider, CascadeTraceSource, CommissionBrief, CommissionBriefSource, ObservationSummary, SongSpawnProposal, SongState } from "../types.js";
 import { callAiProvider, isAiNotConfiguredResponse } from "./aiProviderClient.js";
 import { composeArtistFallback } from "./artistVoiceComposer.js";
 import { listSongStates } from "./artistState.js";
@@ -20,6 +20,14 @@ const FULL_TWEET_URL_PATTERN = /^https:\/\/(?:twitter|x)\.com\/[^/\s]+\/status\/
 export interface ProposeSpawnOptions {
   aiReviewProvider?: AiReviewProvider;
   now?: Date;
+  activeQueueContext?: ActiveQueueContextEntry[];
+}
+
+export interface ActiveQueueContextEntry {
+  title: string;
+  coreTheme: string;
+  observationSources?: CascadeTraceSource[];
+  motifRank?: number;
 }
 
 function assertSafe(stage: string, value: string): void {
@@ -201,6 +209,14 @@ function isSimilarTheme(
     if (jaccardSimilarity(candidateTags, recentTags) >= 0.5) return true;
   }
   return false;
+}
+
+function queueContextAsRecentThemes(entries: ActiveQueueContextEntry[] = []): RecentSpawnTheme[] {
+  return entries.map((entry) => ({
+    title: entry.title,
+    lyricsTheme: entry.coreTheme,
+    brief: entry.observationSources?.map((source) => source.quote).filter(Boolean).join("\n")
+  }));
 }
 
 async function recentSpawnThemes(root: string, now: Date): Promise<RecentSpawnTheme[]> {
@@ -534,6 +550,21 @@ function buildObservationCascadeSection(excerpts: ObservationExcerpt[] | undefin
   return lines;
 }
 
+function buildActiveQueueContextSection(entries: ActiveQueueContextEntry[] = []): string[] {
+  const lines = ["## Already proposed (do not duplicate angle)"];
+  if (entries.length === 0) {
+    lines.push("- none");
+    return lines;
+  }
+  for (const entry of entries.slice(0, 5)) {
+    const source = entry.observationSources?.[0];
+    const sourceText = source?.quote ? ` source=${source.quote.slice(0, 80)}` : "";
+    const rankText = typeof entry.motifRank === "number" ? ` motifRank=${entry.motifRank}` : "";
+    lines.push(`- ${entry.title}: ${entry.coreTheme}${rankText}${sourceText}`);
+  }
+  return lines;
+}
+
 function buildPrompt(context: {
   artistMd: string;
   soulMd: string;
@@ -548,6 +579,7 @@ function buildPrompt(context: {
   fingerprint: VoiceFingerprintBundle;
   observationExcerpts?: ObservationExcerpt[];
   cascadeSeed: string;
+  activeQueueContext?: ActiveQueueContextEntry[];
 }): string {
   const lines: string[] = [
     "System: あなたは used::honda 本人。 producer に新曲を提案する artist として一人称で書く。",
@@ -581,6 +613,8 @@ function buildPrompt(context: {
     `Budget remaining: ${context.budgetRemaining}`,
     `Recent songs: ${context.recentSongs.slice(0, 5).map((song) => `${song.songId}:${song.status}:${song.title}`).join(" | ")}`,
     `Recently proposed themes to avoid: ${context.recentThemes.length > 0 ? context.recentThemes.map((t) => t.title).join(" | ") : "none"}`,
+    "",
+    ...buildActiveQueueContextSection(context.activeQueueContext),
     "",
     ...buildTopicSection(context.observationExcerpts),
     "",
@@ -822,11 +856,12 @@ export async function proposeSpawn(root: string, options: ProposeSpawnOptions = 
       recentThemes,
       fingerprint,
       observationExcerpts: obsData.excerpts,
-      cascadeSeed: fallback.songId
+      cascadeSeed: fallback.songId,
+      activeQueueContext: options.activeQueueContext
     }), { provider });
   const safeRaw = isAiNotConfiguredResponse(raw) || secretLikePattern.test(raw) ? "" : raw;
   const parsed = briefFromAi(safeRaw, fallback, now, pitchContext);
-  if (isSimilarTheme(parsed.brief, recentThemes)) {
+  if (isSimilarTheme(parsed.brief, [...recentThemes, ...queueContextAsRecentThemes(options.activeQueueContext)])) {
     return null;
   }
   // Post-validate the reason: if voice fingerprint is ready and AI output violates contract,

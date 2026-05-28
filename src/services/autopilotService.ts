@@ -2,7 +2,7 @@ import { readFile } from "node:fs/promises";
 import { isAbsolute, join } from "node:path";
 import { applyConfigDefaults } from "../config/schema.js";
 import { BrowserWorkerSunoConnector } from "../connectors/suno/browserWorkerConnector.js";
-import type { AutopilotRunState, AutopilotStage, AutopilotStatus, ArtistRuntimeConfig, CommissionBrief, CommissionBriefSource, ObservationSummary, SocialPublishLedgerEntry, SocialPublishResult, SongState } from "../types.js";
+import type { AutopilotRunState, AutopilotStage, AutopilotStatus, ArtistRuntimeConfig, CommissionBrief, CommissionBriefSource, ObservationSummary, SocialPublishLedgerEntry, SocialPublishResult, SongState, SpawnProposal } from "../types.js";
 import { composeDailyVoice } from "./artistDailyVoiceComposer.js";
 import { markPulsed, shouldPulse } from "./artistPulseRateLimiter.js";
 import { AutopilotControlService } from "./autopilotControlService.js";
@@ -31,7 +31,9 @@ import { pollSongDistribution } from "./songDistributionPoller.js";
 import { cleanupExpiredCallbacks } from "./callbackLedgerMaintenance.js";
 import { readCallbackActionEntries } from "./callbackActionRegistry.js";
 import { applyRuntimeEnvOverrides, getArtistPulseIntervalHours, getSongSpawnIntervalHours, getStaleQueueCleanupHours, isArtistPulseConfigured, isSongbookAutoSyncEnabled, isSongSpawnConfigured } from "./runtimeConfig.js";
-import { proposeSpawn } from "./songSpawnProposer.js";
+import { proposeSpawn, type ActiveQueueContextEntry } from "./songSpawnProposer.js";
+import { appendSpawnProposal, listPendingSpawnProposals, SPAWN_PROPOSAL_QUEUE_LIMIT } from "./spawnProposalQueue.js";
+import { buildCascadeTrace } from "./cascadeTrace.js";
 import { shouldSpawn } from "./songSpawnRateLimiter.js";
 import { validatePlanningFiles } from "./planningSkeletonValidator.js";
 import { applyChangeSet } from "./changeSetApplier.js";
@@ -214,6 +216,40 @@ async function suspendForProducerSpawnApproval(
     lastError: undefined,
     cycleCount: previous.cycleCount + 1
   });
+}
+
+function activeQueueContextFromProposals(proposals: SpawnProposal[]): ActiveQueueContextEntry[] {
+  return proposals.map((proposal) => ({
+    title: proposal.title,
+    coreTheme: proposal.coreTheme,
+    observationSources: proposal.observationSources,
+    motifRank: proposal.motifRank
+  }));
+}
+
+function spawnProposalRecordFromGenerated(
+  proposal: NonNullable<Awaited<ReturnType<typeof proposeSpawn>>>,
+  voiceTop: string | undefined
+): SpawnProposal {
+  const cascadeTrace = buildCascadeTrace({
+    songId: proposal.candidateSongId,
+    title: proposal.brief.title,
+    artistVoice: voiceTop,
+    lyricsTheme: proposal.brief.lyricsTheme,
+    styleLayer: proposal.brief.styleNotes,
+    observationSummary: proposal.observationSummary,
+    commissionSources: proposal.brief.sources
+  });
+  return {
+    proposalId: proposal.candidateSongId,
+    createdAt: proposal.brief.createdAt,
+    status: "pending",
+    title: proposal.brief.title,
+    voiceTop: voiceTop ?? "",
+    coreTheme: proposal.brief.lyricsTheme || proposal.brief.brief,
+    observationSources: cascadeTrace.observationSources,
+    cascadeTrace
+  };
 }
 
 async function importMockSunoGeneration(root: string, songId: string, state: AutopilotRunState, config: ArtistRuntimeConfig): Promise<void> {
@@ -755,17 +791,31 @@ export class ArtistAutopilotService {
       }
     }
     if (isSongSpawnConfigured(config)) {
+      let skippedForFullQueue = false;
       await shouldSpawn(input.workspaceRoot, { minIntervalHours: getSongSpawnIntervalHours(process.env, config) }).then(async (allowed) => {
         if (!allowed) {
           return;
         }
+        const pendingProposals = await listPendingSpawnProposals(input.workspaceRoot);
+        if (pendingProposals.length >= SPAWN_PROPOSAL_QUEUE_LIMIT) {
+          skippedForFullQueue = true;
+          emitRuntimeEvent({
+            type: "spawn_proposal_skip_queue_full",
+            limit: SPAWN_PROPOSAL_QUEUE_LIMIT,
+            pendingCount: pendingProposals.length,
+            timestamp: Date.now()
+          });
+          return;
+        }
         const proposal = await proposeSpawn(input.workspaceRoot, {
-          aiReviewProvider: config.aiReview.provider
+          aiReviewProvider: config.aiReview.provider,
+          activeQueueContext: activeQueueContextFromProposals(pendingProposals)
         });
         if (!proposal) {
           return;
         }
         const voiceTop = await composeVoiceTopOnly("propose", input.workspaceRoot, undefined, [], { runId: proposal.candidateSongId }).catch(() => undefined);
+        await appendSpawnProposal(input.workspaceRoot, spawnProposalRecordFromGenerated(proposal, voiceTop));
         emitRuntimeEvent({
           type: "song_spawn_proposed",
           brief: proposal.brief,
@@ -788,6 +838,13 @@ export class ArtistAutopilotService {
         const reason = error instanceof Error ? error.message : String(error);
         console.warn(`[artist-runtime] song spawn proposal failed: ${reason}`);
       });
+      if (skippedForFullQueue) {
+        return writeStageState(input.workspaceRoot, existing, {
+          ...existing,
+          blockedReason: "spawn_proposal_queue_full",
+          lastRunAt: nowIso()
+        });
+      }
       const afterSpawn = await readAutopilotRunState(input.workspaceRoot);
       if (afterSpawn.suspendedAt === "spawn_proposal_ready") {
         return afterSpawn;
