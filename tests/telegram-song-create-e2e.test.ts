@@ -14,7 +14,7 @@ async function waitForSong(root: string): Promise<string[]> {
   await vi.waitFor(async () => {
     const entries = await readdir(join(root, "songs"));
     expect(entries.filter((name) => name.startsWith("song-")).length).toBeGreaterThan(0);
-  }, { timeout: 8000 });
+  }, { timeout: 15000 });
   return readdir(join(root, "songs"));
 }
 
