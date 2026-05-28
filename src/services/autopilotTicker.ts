@@ -2,6 +2,7 @@ import { applyConfigDefaults } from "../config/schema.js";
 import type { AutopilotRunState, ArtistRuntimeConfig } from "../types.js";
 import { ArtistAutopilotService, readAutopilotRunState } from "./autopilotService.js";
 import { emitRuntimeEvent } from "./runtimeEventBus.js";
+import { writeAutopilotHeartbeat } from "./supervisorHealth.js";
 
 type PartialDeep<T> = {
   [K in keyof T]?: T[K] extends string[] ? string[] : T[K] extends Record<string, unknown> ? PartialDeep<T[K]> : T[K];
@@ -72,26 +73,29 @@ export class AutopilotTicker {
     const baseConfig = configOverride ?? this.options.getConfig?.();
     const resolved = applyConfigDefaults(baseConfig);
     const workspaceRoot = resolved.artist.workspaceRoot;
+    await writeAutopilotHeartbeat(workspaceRoot, {
+      lastTickAttempt: new Date().toISOString()
+    }).catch(() => undefined);
 
     if (!manualSeed && !resolved.autopilot.enabled) {
       return {
-        outcome: this.emit("skipped:disabled"),
+        outcome: await this.emitWithHeartbeat(workspaceRoot, "skipped:disabled"),
         state: await readAutopilotRunState(workspaceRoot)
       };
     }
 
     const state = await readAutopilotRunState(workspaceRoot);
     if (state.paused) {
-      return { outcome: this.emit("skipped:paused"), state };
+      return { outcome: await this.emitWithHeartbeat(workspaceRoot, "skipped:paused", state), state };
     }
     if (state.hardStopReason) {
-      return { outcome: this.emit("skipped:hardStop"), state };
+      return { outcome: await this.emitWithHeartbeat(workspaceRoot, "skipped:hardStop", state), state };
     }
     if (running) {
       const startedAt = runningStartedAt;
       const ageMs = typeof startedAt === "number" ? Date.now() - startedAt : 0;
       if (!startedAt || ageMs < resolveStallMs()) {
-        return { outcome: this.emit("skipped:concurrent"), state };
+        return { outcome: await this.emitWithHeartbeat(workspaceRoot, "skipped:concurrent", state), state };
       }
       running = false;
       runningStartedAt = undefined;
@@ -113,13 +117,14 @@ export class AutopilotTicker {
         manualSeed
       });
       return {
-        outcome: this.emit("ran"),
+        outcome: await this.emitWithHeartbeat(workspaceRoot, "ran", nextState),
         state: nextState
       };
     } catch {
+      const errorState = await readAutopilotRunState(workspaceRoot);
       return {
-        outcome: this.emit("error"),
-        state: await readAutopilotRunState(workspaceRoot)
+        outcome: await this.emitWithHeartbeat(workspaceRoot, "error", errorState),
+        state: errorState
       };
     } finally {
       running = false;
@@ -152,6 +157,19 @@ export class AutopilotTicker {
     });
     this.options.onOutcome?.(outcome);
     return outcome;
+  }
+
+  private async emitWithHeartbeat(
+    workspaceRoot: string,
+    outcome: AutopilotTickOutcome,
+    state?: AutopilotRunState
+  ): Promise<AutopilotTickOutcome> {
+    const emitted = this.emit(outcome);
+    await writeAutopilotHeartbeat(workspaceRoot, {
+      lastTickResult: emitted,
+      currentStage: state?.stage
+    }).catch(() => undefined);
+    return emitted;
   }
 }
 

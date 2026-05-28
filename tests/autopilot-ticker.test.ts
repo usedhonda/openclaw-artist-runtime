@@ -1,4 +1,4 @@
-import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -12,6 +12,7 @@ import {
 } from "../src/services/autopilotTicker.js";
 import { ArtistAutopilotService } from "../src/services/autopilotService.js";
 import { getRuntimeEventBus, type RuntimeEvent } from "../src/services/runtimeEventBus.js";
+import { autopilotHeartbeatPath } from "../src/services/supervisorHealth.js";
 
 function makeWorkspace(state: Record<string, unknown>): string {
   const root = mkdtempSync(join(tmpdir(), "autopilot-ticker-"));
@@ -81,6 +82,21 @@ describe("AutopilotTicker", () => {
 
     expect(getLastOutcome()).toBe("ran");
     expect(getLastTickAt()).toMatch(/\d{4}-\d{2}-\d{2}T/);
+  });
+
+  it("writes a heartbeat artifact for external ticker watchers", async () => {
+    const root = makeWorkspace({ paused: true, stage: "paused" });
+    const ticker = new AutopilotTicker();
+
+    await ticker.tick({
+      artist: { workspaceRoot: root },
+      autopilot: { enabled: true, dryRun: true }
+    });
+
+    const heartbeat = JSON.parse(readFileSync(autopilotHeartbeatPath(root), "utf8")) as Record<string, unknown>;
+    expect(heartbeat.lastTickAttempt).toMatch(/\d{4}-\d{2}-\d{2}T/);
+    expect(heartbeat.lastTickResult).toBe("skipped:paused");
+    expect(heartbeat.currentStage).toBe("paused");
   });
 
   it("start/stop cleanly manages the interval handle", () => {

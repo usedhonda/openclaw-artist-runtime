@@ -16,6 +16,7 @@ supervisor_log="${OPENCLAW_LOCAL_LOGS}/gateway.supervisor.log"
 watchdog_log="${OPENCLAW_LOCAL_LOGS}/telegram-watchdog.log"
 watchdog_flag="${OPENCLAW_LOCAL_WORKSPACE}/runtime/telegram-watchdog-fired-at.txt"
 mkdir -p "${OPENCLAW_LOCAL_LOGS}"
+mkdir -p "${OPENCLAW_LOCAL_WORKSPACE}/runtime"
 
 restart_delay_seconds="${OPENCLAW_LOCAL_GATEWAY_RESTART_DELAY:-3}"
 watchdog_enabled="${OPENCLAW_TELEGRAM_WATCHDOG_ENABLED:-0}"
@@ -23,8 +24,12 @@ watchdog_interval="${OPENCLAW_TELEGRAM_WATCHDOG_INTERVAL:-30}"
 watchdog_tail_lines="${OPENCLAW_TELEGRAM_WATCHDOG_TAIL_LINES:-300}"
 watchdog_threshold="${OPENCLAW_TELEGRAM_WATCHDOG_THRESHOLD:-10}"
 watchdog_grace_seconds="${OPENCLAW_TELEGRAM_WATCHDOG_GRACE_SECONDS:-90}"
+supervisor_heartbeat_interval="${OPENCLAW_SUPERVISOR_HEARTBEAT_INTERVAL:-15}"
+crash_tail_lines="${OPENCLAW_SUPERVISOR_CRASH_TAIL_LINES:-400}"
+supervisor_started_ms="$(node -e 'console.log(Date.now())' 2>/dev/null || date +%s000)"
 child=""
 watchdog_pid=""
+heartbeat_pid=""
 
 log_line() {
   printf '[supervisor %s] %s\n' "$(date '+%Y-%m-%dT%H:%M:%S')" "$1" >>"${supervisor_log}"
@@ -32,6 +37,41 @@ log_line() {
 
 watchdog_log_line() {
   printf '[watchdog %s] %s\n' "$(date '+%Y-%m-%dT%H:%M:%S')" "$1" >>"${watchdog_log}"
+}
+
+now_ms() {
+  node -e 'console.log(Date.now())' 2>/dev/null || date +%s000
+}
+
+write_supervisor_heartbeat() {
+  node "${script_dir}/openclaw-supervisor-health.mjs" heartbeat \
+    --workspace "${OPENCLAW_LOCAL_WORKSPACE}" \
+    --pid "$$" \
+    --started-at-ms "${supervisor_started_ms}" >/dev/null 2>&1 \
+    || log_line "supervisor heartbeat write failed"
+}
+
+supervisor_heartbeat_loop() {
+  while true; do
+    write_supervisor_heartbeat
+    sleep "${supervisor_heartbeat_interval}"
+  done
+}
+
+capture_gateway_exit_evidence() {
+  local target_pid="$1"
+  local target_rc="$2"
+  local target_started_ms="$3"
+  local target_exited_ms="$4"
+  node "${script_dir}/openclaw-supervisor-health.mjs" crash-evidence \
+    --workspace "${OPENCLAW_LOCAL_WORKSPACE}" \
+    --pid "${target_pid}" \
+    --rc "${target_rc}" \
+    --started-at-ms "${target_started_ms}" \
+    --exited-at-ms "${target_exited_ms}" \
+    --log "${OPENCLAW_LOCAL_GATEWAY_LOG}" \
+    --tail-lines "${crash_tail_lines}" >>"${supervisor_log}" 2>&1 \
+    || log_line "gateway crash evidence capture failed pid=${target_pid} rc=${target_rc}"
 }
 
 watchdog_loop() {
@@ -75,6 +115,9 @@ handle_term() {
   if [[ -n "${watchdog_pid}" ]]; then
     kill "${watchdog_pid}" 2>/dev/null
   fi
+  if [[ -n "${heartbeat_pid}" ]]; then
+    kill "${heartbeat_pid}" 2>/dev/null
+  fi
   if [[ -n "${child}" ]]; then
     kill "${child}" 2>/dev/null
   fi
@@ -84,8 +127,11 @@ trap handle_term TERM INT QUIT
 trap 'log_line "received SIGHUP; ignoring"' HUP
 
 log_line "started (pid $$)"
+supervisor_heartbeat_loop &
+heartbeat_pid=$!
 
 while true; do
+  child_started_ms="$(now_ms)"
   (
     trap '' HUP
     exec "${script_dir}/openclaw-local" gateway run \
@@ -103,6 +149,7 @@ while true; do
 
   wait "${child}"
   rc=$?
+  child_exited_ms="$(now_ms)"
 
   if [[ -n "${watchdog_pid}" ]]; then
     kill "${watchdog_pid}" 2>/dev/null
@@ -110,6 +157,7 @@ while true; do
     watchdog_pid=""
   fi
 
+  capture_gateway_exit_evidence "${child}" "${rc}" "${child_started_ms}" "${child_exited_ms}"
   log_line "gateway exited pid=${child} rc=${rc}; restart in ${restart_delay_seconds}s"
   child=""
   sleep "${restart_delay_seconds}"
