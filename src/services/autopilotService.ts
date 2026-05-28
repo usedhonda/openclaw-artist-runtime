@@ -253,6 +253,96 @@ function spawnProposalRecordFromGenerated(
   };
 }
 
+function isProducerReviewOnlyLane(state: AutopilotRunState): boolean {
+  return state.suspendedAt === PRODUCER_REVIEW_SUSPENDED_AT;
+}
+
+async function runIdeaQueueLane(
+  root: string,
+  existing: AutopilotRunState,
+  config: ArtistRuntimeConfig,
+  options: { preserveCurrentSongLane?: boolean } = {}
+): Promise<{ state?: AutopilotRunState; emitted: boolean; skippedForFullQueue: boolean }> {
+  let skippedForFullQueue = false;
+  let emitted = false;
+  await shouldSpawn(root, { minIntervalHours: getSongSpawnIntervalHours(process.env, config) }).then(async (allowed) => {
+    if (!allowed) {
+      return;
+    }
+    const pendingProposals = await listPendingSpawnProposals(root);
+    if (pendingProposals.length >= SPAWN_PROPOSAL_QUEUE_LIMIT) {
+      skippedForFullQueue = true;
+      emitRuntimeEvent({
+        type: "spawn_proposal_skip_queue_full",
+        limit: SPAWN_PROPOSAL_QUEUE_LIMIT,
+        pendingCount: pendingProposals.length,
+        timestamp: Date.now()
+      });
+      return;
+    }
+    const proposal = await proposeSpawn(root, {
+      aiReviewProvider: config.aiReview.provider,
+      activeQueueContext: activeQueueContextFromProposals(pendingProposals),
+      ignoreRecentCompletion: options.preserveCurrentSongLane
+    });
+    if (!proposal) {
+      return;
+    }
+    const voiceTop = await composeVoiceTopOnly("propose", root, undefined, [], { runId: proposal.candidateSongId }).catch(() => undefined);
+    await appendSpawnProposal(root, spawnProposalRecordFromGenerated(proposal, voiceTop));
+    emitRuntimeEvent({
+      type: "song_spawn_proposed",
+      brief: proposal.brief,
+      reason: proposal.reason,
+      candidateSongId: proposal.candidateSongId,
+      voiceTop,
+      observationSummary: proposal.observationSummary,
+      timestamp: Date.now()
+    });
+    emitted = true;
+  }).catch((error) => {
+    const reason = error instanceof Error ? error.message : String(error);
+    console.warn(`[artist-runtime] song spawn proposal failed: ${reason}`);
+  });
+  if (skippedForFullQueue) {
+    return {
+      state: await writeStageState(root, existing, {
+        ...existing,
+        blockedReason: options.preserveCurrentSongLane ? existing.blockedReason : "spawn_proposal_queue_full",
+        lastRunAt: nowIso()
+      }),
+      emitted,
+      skippedForFullQueue
+    };
+  }
+  if (!emitted) {
+    return { emitted, skippedForFullQueue };
+  }
+  if (options.preserveCurrentSongLane) {
+    return {
+      state: await writeStageState(root, existing, {
+        ...existing,
+        lastRunAt: nowIso()
+      }),
+      emitted,
+      skippedForFullQueue
+    };
+  }
+  return {
+    state: await writeStageState(root, existing, {
+      ...existing,
+      currentSongId: existing.currentSongId,
+      stage: existing.currentSongId ? existing.stage : "planning",
+      suspendedAt: "spawn_proposal_ready",
+      blockedReason: "spawn_proposal_ready",
+      lastError: undefined,
+      lastRunAt: nowIso()
+    }),
+    emitted,
+    skippedForFullQueue
+  };
+}
+
 function matchingApprovedSpawnCallback(proposal: SpawnProposal, entries: CallbackActionEntry[]): CallbackActionEntry | undefined {
   return [...entries].reverse().find((entry) =>
     entry.action === "song_spawn_inject"
@@ -818,59 +908,20 @@ export class ArtistAutopilotService {
       }
     }
     if (isSongSpawnConfigured(config)) {
-      let skippedForFullQueue = false;
-      await shouldSpawn(input.workspaceRoot, { minIntervalHours: getSongSpawnIntervalHours(process.env, config) }).then(async (allowed) => {
-        if (!allowed) {
-          return;
-        }
-        const pendingProposals = await listPendingSpawnProposals(input.workspaceRoot);
-        if (pendingProposals.length >= SPAWN_PROPOSAL_QUEUE_LIMIT) {
-          skippedForFullQueue = true;
-          emitRuntimeEvent({
-            type: "spawn_proposal_skip_queue_full",
-            limit: SPAWN_PROPOSAL_QUEUE_LIMIT,
-            pendingCount: pendingProposals.length,
-            timestamp: Date.now()
-          });
-          return;
-        }
-        const proposal = await proposeSpawn(input.workspaceRoot, {
-          aiReviewProvider: config.aiReview.provider,
-          activeQueueContext: activeQueueContextFromProposals(pendingProposals)
-        });
-        if (!proposal) {
-          return;
-        }
-        const voiceTop = await composeVoiceTopOnly("propose", input.workspaceRoot, undefined, [], { runId: proposal.candidateSongId }).catch(() => undefined);
-        await appendSpawnProposal(input.workspaceRoot, spawnProposalRecordFromGenerated(proposal, voiceTop));
-        emitRuntimeEvent({
-          type: "song_spawn_proposed",
-          brief: proposal.brief,
-          reason: proposal.reason,
-          candidateSongId: proposal.candidateSongId,
-          voiceTop,
-          observationSummary: proposal.observationSummary,
-          timestamp: Date.now()
-        });
-        await writeStageState(input.workspaceRoot, existing, {
-          ...existing,
-          currentSongId: existing.currentSongId,
-          stage: existing.currentSongId ? existing.stage : "planning",
-          suspendedAt: "spawn_proposal_ready",
-          blockedReason: "spawn_proposal_ready",
-          lastError: undefined,
-          lastRunAt: nowIso()
-        });
-      }).catch((error) => {
-        const reason = error instanceof Error ? error.message : String(error);
-        console.warn(`[artist-runtime] song spawn proposal failed: ${reason}`);
+      const producerReviewOnly = isProducerReviewOnlyLane(existing);
+      const ideaLane = await runIdeaQueueLane(input.workspaceRoot, existing, config, {
+        preserveCurrentSongLane: producerReviewOnly
       });
-      if (skippedForFullQueue) {
-        return writeStageState(input.workspaceRoot, existing, {
+      if (producerReviewOnly) {
+        return ideaLane.state ?? writeStageState(input.workspaceRoot, existing, {
           ...existing,
-          blockedReason: "spawn_proposal_queue_full",
+          stage: "paused",
+          blockedReason: existing.pausedReason ?? existing.blockedReason ?? PRODUCER_REVIEW_SUSPENDED_AT,
           lastRunAt: nowIso()
         });
+      }
+      if (ideaLane.skippedForFullQueue && ideaLane.state) {
+        return ideaLane.state;
       }
       const afterSpawn = await readAutopilotRunState(input.workspaceRoot);
       if (!afterSpawn.currentSongId && afterSpawn.suspendedAt === "spawn_proposal_ready") {

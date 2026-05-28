@@ -21,6 +21,7 @@ export interface ProposeSpawnOptions {
   aiReviewProvider?: AiReviewProvider;
   now?: Date;
   activeQueueContext?: ActiveQueueContextEntry[];
+  ignoreRecentCompletion?: boolean;
 }
 
 export interface ActiveQueueContextEntry {
@@ -816,7 +817,7 @@ export async function proposeSpawn(root: string, options: ProposeSpawnOptions = 
       timestamp: now.getTime()
     });
   }
-  if (budgetRemaining <= 1 || hasRestMood(heartbeat, soulMd) || recentCompletedTooClose(songs, now) || observation.trim().length < 12) {
+  if (budgetRemaining <= 1 || hasRestMood(heartbeat, soulMd) || (!options.ignoreRecentCompletion && recentCompletedTooClose(songs, now)) || observation.trim().length < 12) {
     return null;
   }
   const inputContext = [artistMd, soulMd, identityMd, innerMd, producerMd, heartbeat, observation, JSON.stringify(songs.slice(0, 5)), JSON.stringify(budget)].join("\n");
