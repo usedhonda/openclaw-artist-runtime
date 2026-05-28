@@ -294,6 +294,7 @@ export class TelegramNotifier {
     const [inject, skip, edit] = await Promise.all([
       registerCallbackAction(this.options.workspaceRoot, {
         action: "song_spawn_inject",
+        proposalId: event.candidateSongId,
         songId: event.candidateSongId,
         commissionBrief: event.brief,
         spawnReason: event.reason,
@@ -303,6 +304,7 @@ export class TelegramNotifier {
       }),
       registerCallbackAction(this.options.workspaceRoot, {
         action: "song_spawn_skip",
+        proposalId: event.candidateSongId,
         songId: event.candidateSongId,
         commissionBrief: event.brief,
         spawnReason: event.reason,
@@ -312,6 +314,7 @@ export class TelegramNotifier {
       }),
       registerCallbackAction(this.options.workspaceRoot, {
         action: "song_spawn_edit",
+        proposalId: event.candidateSongId,
         songId: event.candidateSongId,
         commissionBrief: event.brief,
         spawnReason: event.reason,
@@ -337,6 +340,7 @@ export class TelegramNotifier {
       const [inject, skip, edit] = await Promise.all([
         registerCallbackAction(this.options.workspaceRoot!, {
           action: "song_spawn_inject",
+          proposalId: event.candidateSongId,
           songId: event.candidateSongId,
           commissionBrief: event.brief,
           spawnReason: event.reason,
@@ -346,6 +350,7 @@ export class TelegramNotifier {
         }),
         registerCallbackAction(this.options.workspaceRoot!, {
           action: "song_spawn_skip",
+          proposalId: event.candidateSongId,
           songId: event.candidateSongId,
           commissionBrief: event.brief,
           spawnReason: event.reason,
@@ -355,6 +360,7 @@ export class TelegramNotifier {
         }),
         registerCallbackAction(this.options.workspaceRoot!, {
           action: "song_spawn_edit",
+          proposalId: event.candidateSongId,
           songId: event.candidateSongId,
           commissionBrief: event.brief,
           spawnReason: event.reason,
@@ -1269,6 +1275,14 @@ async function formatRuntimeEventRaw(
       return `Spawn proposal queue full: pending=${event.pendingCount}/${event.limit}`;
     case "spawn_proposal_skip_queue_full":
       return `Spawn proposal skipped because queue is full: pending=${event.pendingCount}/${event.limit}`;
+    case "spawn_proposal_accepted_waiting":
+      return [
+        "採用、承りました。",
+        "",
+        `『${event.title}』は前の曲が終わったら着手します。`,
+        event.currentSongId ? `今の制作中: ${event.currentSongId}` : undefined,
+        "Suno は同時に走らせない。順番に行く。"
+      ].filter(Boolean).join("\n");
     case "observation_collected":
       return `Observations collected: ${event.entryCount} entries${typeof event.topScore === "number" ? `, top score=${event.topScore}` : ""}${event.topMotifMatch ? ` (${event.topMotifMatch})` : ""}`;
     case "artist_presence":

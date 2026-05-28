@@ -12,6 +12,7 @@ import { injectCommissionSong } from "./songStateInjector.js";
 import { markSpawned } from "./songSpawnRateLimiter.js";
 import { readAutopilotRunState, writeAutopilotRunState } from "./autopilotService.js";
 import { handleSongPublishActionRequest, type SongPublishAction } from "./songPublishActionRegistry.js";
+import { markSpawnProposalAcceptedWaiting, markSpawnProposalApproved, markSpawnProposalDiscarded } from "./spawnProposalQueue.js";
 import { selectTake } from "./takeSelection.js";
 import { emitRuntimeEvent } from "./runtimeEventBus.js";
 import type { TelegramClient } from "./telegramClient.js";
@@ -149,6 +150,31 @@ function isWatchdogActor(actor: TelegramCallbackContext["actor"]): boolean {
 
 function isExternalPublishCallbackAction(action: string): boolean {
   return action === "daily_voice_publish" || action === "x_publish_confirm";
+}
+
+const TERMINAL_SONG_STATUSES = new Set(["scheduled", "published", "archived", "discarded", "failed"]);
+
+async function markProposalStatusIfPresent(
+  action: (root: string, proposalId: string) => Promise<unknown>,
+  root: string,
+  proposalId: string | undefined
+): Promise<void> {
+  if (!proposalId) return;
+  await action(root, proposalId).catch((error) => {
+    const reason = error instanceof Error ? error.message : String(error);
+    if (!reason.startsWith("spawn_proposal_not_found:")) {
+      throw error;
+    }
+  });
+}
+
+async function currentSongLaneBusy(root: string, state: Awaited<ReturnType<typeof readAutopilotRunState>>, proposalSongId: string): Promise<boolean> {
+  const currentSongId = state.currentSongId;
+  if (!currentSongId) return false;
+  if (currentSongId === proposalSongId && state.suspendedAt === "spawn_proposal_ready") return false;
+  const current = await readSongState(root, currentSongId).catch(() => undefined);
+  if (!current) return false;
+  return !TERMINAL_SONG_STATUSES.has(current.status);
 }
 
 async function clearButtonsAndReply(
@@ -339,6 +365,7 @@ export async function routeTelegramCallback(ctx: TelegramCallbackContext): Promi
       return finish(ctx, callbackId, entry, "failed", "song_spawn_disabled", "Song spawn disabled", "failed");
     }
     await ctx.client.answerCallbackQuery(ctx.callbackQueryId, { text: "OK" });
+    const proposalId = entry.proposalId ?? entry.songId ?? entry.commissionBrief?.songId;
     if (entry.action === "song_spawn_edit") {
       await markCallbackResolved(ctx.root, callbackId, { status: "updated", reason: "song_spawn_edit_requested", now });
       await appendCallbackAudit(ctx.root, auditBase(ctx, callbackId, entry, "updated", "song_spawn_edit_requested"));
@@ -347,6 +374,7 @@ export async function routeTelegramCallback(ctx: TelegramCallbackContext): Promi
       return { processed: true, result: "updated", reason: "song_spawn_edit_requested", callbackId };
     }
     if (entry.action === "song_spawn_skip") {
+      await markProposalStatusIfPresent(markSpawnProposalDiscarded, ctx.root, proposalId);
       const state = await readAutopilotRunState(ctx.root);
       if (state.suspendedAt === "spawn_proposal_ready") {
         await writeAutopilotRunState(ctx.root, {
@@ -371,6 +399,24 @@ export async function routeTelegramCallback(ctx: TelegramCallbackContext): Promi
       return { processed: true, result: "failed", reason: "song_spawn_missing_brief", callbackId };
     }
     try {
+      const state = await readAutopilotRunState(ctx.root);
+      if (await currentSongLaneBusy(ctx.root, state, entry.commissionBrief.songId)) {
+        await markProposalStatusIfPresent(markSpawnProposalAcceptedWaiting, ctx.root, proposalId);
+        await markSpawned(ctx.root, new Date(now));
+        await markCallbackResolved(ctx.root, callbackId, { status: "applied", reason: "song_spawn_accepted_waiting", now });
+        await appendCallbackAudit(ctx.root, auditBase(ctx, callbackId, entry, "applied", "song_spawn_accepted_waiting"));
+        emitRuntimeEvent({
+          type: "spawn_proposal_accepted_waiting",
+          proposalId: proposalId ?? entry.commissionBrief.songId,
+          songId: entry.commissionBrief.songId,
+          title: entry.commissionBrief.title,
+          currentSongId: state.currentSongId,
+          timestamp: now
+        });
+        await clearButtonsAndReply(ctx, entry, `採用承りました。『${entry.commissionBrief.title}』は前の曲が終わったら着手します。`);
+        return { processed: true, result: "applied", reason: "song_spawn_accepted_waiting", callbackId };
+      }
+      await markProposalStatusIfPresent(markSpawnProposalApproved, ctx.root, proposalId);
       const injected = await injectCommissionSong(ctx.root, entry.commissionBrief, { now: new Date(now) });
       await markSpawned(ctx.root, new Date(now));
       await markCallbackResolved(ctx.root, callbackId, { status: "applied", reason: "song_spawn_injected", now });

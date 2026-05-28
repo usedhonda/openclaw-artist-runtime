@@ -48,6 +48,10 @@ export async function listPendingSpawnProposals(root: string): Promise<SpawnProp
   return activePending(await loadSpawnProposalQueue(root));
 }
 
+export async function listAcceptedWaitingSpawnProposals(root: string): Promise<SpawnProposal[]> {
+  return (await loadSpawnProposalQueue(root)).filter((proposal) => proposal.status === "accepted_waiting");
+}
+
 export async function appendSpawnProposal(
   root: string,
   proposal: SpawnProposal,
