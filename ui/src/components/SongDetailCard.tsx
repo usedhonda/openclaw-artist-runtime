@@ -93,7 +93,7 @@ type SongDetailResponse = {
   takeHistory?: TakeHistoryEntry[];
   socialAssets?: SocialAsset[];
   lastSocialAction?: SocialAction | null;
-  latestPromptPack?: { version?: number | string } | null;
+  latestPromptPack?: { version?: number | string; metadata?: { charCounts?: { style?: number; lyrics?: number; title?: number } } } | null;
 };
 
 type SongReviewActionResponse = {
@@ -574,6 +574,11 @@ export function SongDetailCard(props: SongDetailCardProps) {
             <div className="item song-detail-reason">
               <div className="muted">Latest prompt pack</div>
               <div>v{detail.latestPromptPack.version ?? "-"} · {detail.takeSelections?.length ?? 0} take selections</div>
+              {detail.latestPromptPack.metadata?.charCounts ? (
+                <div className="muted">
+                  style {detail.latestPromptPack.metadata.charCounts.style ?? "-"}字 / lyrics {detail.latestPromptPack.metadata.charCounts.lyrics ?? "-"}字 / title {detail.latestPromptPack.metadata.charCounts.title ?? "-"}字
+                </div>
+              ) : null}
             </div>
           ) : null}
 

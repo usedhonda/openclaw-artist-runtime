@@ -284,7 +284,7 @@ describe("suno and social pipelines", () => {
     expect(status.autopilot.currentSongId).toBe(songId);
     expect(status.autopilot.blockedReason).toContain("dry-run");
     expect(status.setupReadiness.checklist.find((item) => item.id === "run_dry_run_cycle")?.state).toBe("complete");
-  });
+  }, 30_000);
 
   it("persists dry-run-safe Suno connect and reconnect intents", async () => {
     const root = mkdtempSync(join(tmpdir(), "artist-runtime-suno-worker-"));

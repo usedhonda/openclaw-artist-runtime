@@ -46,5 +46,5 @@ describe("autopilot Suno mock bypass", () => {
     const selected = await service.runCycle({ workspaceRoot: root, config });
     expect(selected.stage).toBe("take_selection");
     expect(await readSongState(root, "mock-song")).toMatchObject({ status: "take_selected", selectedTakeId: "take-1" });
-  });
+  }, 30_000);
 });

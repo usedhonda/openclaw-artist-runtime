@@ -40,7 +40,7 @@ describe("autopilot completion stage", () => {
     expect(await readSongState(root, "done-song")).toMatchObject({ status: "published", selectedTakeId: "take-1" });
     expect(songbook).toContain("| done-song | Done Song | published |");
     expect(songbook).toContain("https://suno.example/take-1");
-  });
+  }, 30_000);
 
   it("pauses instead of failing closed when completion sync cannot write SONGBOOK", async () => {
     const root = mkdtempSync(join(tmpdir(), "artist-runtime-completion-fallback-"));

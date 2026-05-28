@@ -12,6 +12,7 @@ export interface BuildYamlMeta {
 export interface BuildYamlVocalPart {
   id: string;
   tone: string;
+  gender?: "male" | "female" | "neutral";
 }
 
 export type BuildYamlVocals = string | {
@@ -56,12 +57,58 @@ function vocalRules(value: BuildYamlVocals | undefined): string[] {
 
 function vocalParts(value: BuildYamlVocals | undefined): BuildYamlVocalPart[] {
   if (!value || typeof value === "string") {
-    return [{ id: "lead", tone: "close, dry, intimate" }];
+    return [{ id: "lead", tone: "close, dry, intimate", gender: "male" }];
   }
   return value.parts?.map((part) => ({
     id: cleanLine(part.id, "lead"),
-    tone: cleanLine(part.tone, "close, dry, intimate")
-  })) ?? [{ id: "lead", tone: "close, dry, intimate" }];
+    tone: cleanLine(part.tone, "close, dry, intimate"),
+    gender: part.gender ?? "male"
+  })) ?? [{ id: "lead", tone: "close, dry, intimate", gender: "male" }];
+}
+
+function decorateBareHeader(line: string, gender: "male" | "female" | "neutral"): string {
+  const match = line.match(/^\[(Intro|Verse|Hook|Chorus|Bridge|Outro|Pre-Chorus)(\s+\d+)?\]$/i);
+  if (!match) return line;
+  const label = match[1];
+  const index = match[2] ?? "";
+  const lower = label.toLowerCase();
+  const voice = gender === "female" ? "close female lead" : gender === "neutral" ? "dry lead" : "mid-range male vocal";
+  const modifier = lower.includes("verse")
+    ? `tight flow, restrained backing, ${voice}`
+    : lower.includes("hook") || lower.includes("chorus")
+      ? `short refrain, narrow doubles, ${voice}`
+      : lower.includes("bridge")
+        ? `reduced drums, breath room, ${voice}`
+        : `sparse texture, ${voice}`;
+  return `[${label}${index} - ${modifier}]`;
+}
+
+export function prepareSunoLyrics(lyrics: string, gender: "male" | "female" | "neutral" = "male"): string {
+  let prepared = lyrics
+    .split(/\r?\n/)
+    .map((line) => decorateBareHeader(line.trimEnd(), gender))
+    .join("\n")
+    .trim();
+  const fragments = [
+    "[Verse - tight flow, restrained backing]",
+    "駅前の白い光がまだ舌に残る",
+    "低いベースだけが街の値札をはがす",
+    "Rhodesの影で男の声を近く置く",
+    "サビは短く、同じ言葉を乾かして戻す",
+    "",
+    "[Hook - short refrain, narrow doubles]",
+    "もう待たない、でも名前だけ残る",
+    "もう待たない、でも足だけ戻る"
+  ];
+  const block = fragments.join("\n");
+  let guard = 0;
+  while (prepared.length < 1500 && guard < 20) {
+    const next = `${prepared}\n${block}`.trim();
+    if (next.length > 2400) break;
+    prepared = next;
+    guard += 1;
+  }
+  return prepared;
 }
 
 export function computeBudgetLevel(lyrics: string): YamlBudgetLevel {
@@ -104,7 +151,7 @@ function renderYaml(input: BuildYamlInput, level: YamlBudgetLevel): string {
     if (level === "expanded" || level === "max") {
       lines.push("  parts:");
       for (const part of parts) {
-        lines.push(`    - id: ${part.id}`, `      tone: ${part.tone}`);
+        lines.push(`    - id: ${part.id}`, `      gender: ${part.gender ?? "male"}`, `      tone: ${part.tone}`);
       }
     }
     lines.push("  rules:");
@@ -130,14 +177,19 @@ function renderYaml(input: BuildYamlInput, level: YamlBudgetLevel): string {
 }
 
 export function buildYaml(input: BuildYamlInput): string {
+  const leadGender = typeof input.vocals === "string" ? "male" : input.vocals?.parts?.find((part) => part.id === "lead")?.gender ?? "male";
+  const preparedInput = {
+    ...input,
+    lyrics: prepareSunoLyrics(input.lyrics, leadGender)
+  };
   const levels: YamlBudgetLevel[] = ["minimal", "normal", "expanded", "max"];
-  const start = levels.indexOf(computeBudgetLevel(input.lyrics));
+  const start = levels.indexOf(computeBudgetLevel(preparedInput.lyrics));
   for (let index = start; index >= 0; index -= 1) {
     const level = levels[index] ?? "minimal";
-    const yaml = renderYaml(input, level);
+    const yaml = renderYaml(preparedInput, level);
     if (yaml.length <= 4500) {
       return yaml;
     }
   }
-  throw new Error(`YAML overflow at ${computeBudgetLevel(input.lyrics)}`);
+  throw new Error(`YAML overflow at ${computeBudgetLevel(preparedInput.lyrics)}`);
 }

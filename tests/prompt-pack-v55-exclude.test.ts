@@ -7,7 +7,7 @@ import {
 } from "../src/suno-production/excludeSynthesisPrompt";
 
 describe("Suno V5.5 exclude builder", () => {
-  it("keeps 2-5 safe items under 200 chars", () => {
+  it("keeps 2-8 safe items under 240 chars", () => {
     const result = buildExclude({
       genre: "nu-jazz",
       artistAvoid: ["stadium reverb", "fake crowd noise"],
@@ -15,9 +15,10 @@ describe("Suno V5.5 exclude builder", () => {
     });
 
     expect(result.items.length).toBeGreaterThanOrEqual(2);
-    expect(result.items.length).toBeLessThanOrEqual(5);
-    expect(result.text.length).toBeLessThanOrEqual(200);
+    expect(result.items.length).toBeLessThanOrEqual(8);
+    expect(result.text.length).toBeLessThanOrEqual(240);
     expect(result.text).toContain("festival EDM drop");
+    expect(result.text).toContain("autotune");
   });
 
   it("removes copyright source names from exclude text", () => {
@@ -38,7 +39,7 @@ describe("Suno V5.5 exclude builder", () => {
     });
 
     expect(prompt.sourceAttribution).toContain("mygpts/style-analyzer/instructions.md");
-    expect(EXCLUDE_SYNTHESIS_SYSTEM_PROMPT).toContain("2-5 items");
+    expect(EXCLUDE_SYNTHESIS_SYSTEM_PROMPT).toContain("2-8 items");
     expect(EXCLUDE_SYNTHESIS_SYSTEM_PROMPT).toContain("No \"no X\" phrasing");
     expect(EXCLUDE_SYNTHESIS_SYSTEM_PROMPT).toContain("style_catalog.md");
     expect(EXCLUDE_SYNTHESIS_KNOWLEDGE_REFERENCES).toContain("style_catalog.md");

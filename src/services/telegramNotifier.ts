@@ -17,6 +17,7 @@ import { join } from "node:path";
 import { buildCascadeTrace, formatCascadeTrace } from "./cascadeTrace.js";
 import { composeArtistReflection } from "./artistReflectionComposer.js";
 import { appendFailedNotification, isCriticalNotificationEvent } from "./failedNotifyLedger.js";
+import { readLatestPromptPackMetadata } from "./sunoPromptPackFiles.js";
 
 export interface TelegramNotifierOptions {
   token: string;
@@ -32,6 +33,7 @@ const TELEGRAM_SILENT_EVENT_TYPES: ReadonlySet<RuntimeEvent["type"]> = new Set([
   "autopilot_stage_changed",
   "autopilot_state_changed",
   "theme_generated",
+  "prompt_pack_char_count",
   "bird_cooldown_triggered",
   "error"
 ]);
@@ -897,6 +899,18 @@ function appendButtonEffectSection(event: RuntimeEvent, body: string): string {
   return `${body}\n\n─────\n次のボタン:\n${lines.join("\n")}`;
 }
 
+async function promptPackCharCountLine(workspaceRoot: string | undefined, songId: string): Promise<string | undefined> {
+  if (!workspaceRoot) return undefined;
+  const metadata = await readLatestPromptPackMetadata(workspaceRoot, songId).catch(() => undefined);
+  const counts = metadata?.metadata?.charCounts as { style?: unknown; lyrics?: unknown; title?: unknown } | undefined;
+  if (!counts) return undefined;
+  const style = typeof counts.style === "number" ? counts.style : undefined;
+  const lyrics = typeof counts.lyrics === "number" ? counts.lyrics : undefined;
+  const title = typeof counts.title === "number" ? counts.title : undefined;
+  if (style === undefined || lyrics === undefined || title === undefined) return undefined;
+  return `style: ${style}字 / lyrics: ${lyrics}字 / title: ${title}字`;
+}
+
 export async function formatRuntimeEvent(
   event: RuntimeEvent,
   options: Pick<TelegramNotifierOptions, "workspaceRoot" | "aiReviewProvider" | "dashboardBaseUrl"> = {}
@@ -1100,6 +1114,7 @@ async function formatRuntimeEventRaw(
     }
     case "prompt_pack_ready": {
       const artistVoice = event.voiceTop ?? "ゆずるさん、歌詞こんな感じ。Suno 行く?";
+      const charCountLine = await promptPackCharCountLine(options.workspaceRoot, event.songId);
       const trace = buildCascadeTrace({
         songId: event.songId,
         brief: await readBriefForTrace(event.songId, options.workspaceRoot),
@@ -1115,10 +1130,13 @@ async function formatRuntimeEventRaw(
         event.lyricsExcerpt,
         "",
         `${event.mood}・${event.tempo}・${event.styleNotes}`,
+        charCountLine,
         "",
         formatCascadeTrace(trace)
-      ].join("\n");
+      ].filter((line) => line !== undefined).join("\n");
     }
+    case "prompt_pack_char_count":
+      return `Prompt pack char count: ${event.songId} style=${event.style} lyrics=${event.lyrics} title=${event.title}`;
     case "observation_collected":
       return `Observations collected: ${event.entryCount} entries${typeof event.topScore === "number" ? `, top score=${event.topScore}` : ""}${event.topMotifMatch ? ` (${event.topMotifMatch})` : ""}`;
     case "artist_presence":

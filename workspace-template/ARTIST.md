@@ -96,6 +96,7 @@ source_channels:
 
 ### Voice
 
+- gender: male
 - breathy close vocal
 - controlled delivery
 - little vibrato

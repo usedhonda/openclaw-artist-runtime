@@ -968,7 +968,8 @@ async function buildMusicSummary(config: ArtistRuntimeConfig): Promise<MusicSumm
     monthlyRuns: runs.filter((run) => run.createdAt.startsWith(currentMonth)).length,
     dailyRuns: runs.filter((run) => todayKey(run.createdAt) === today).length,
     latestPromptPackVersion: latestPromptPack?.version,
-    latestPromptPackMetadata: latestPromptPack?.metadata
+    latestPromptPackMetadata: latestPromptPack?.metadata,
+    latestPromptPackCharCounts: latestPromptPack?.metadata.charCounts as MusicSummary["latestPromptPackCharCounts"] | undefined
   };
 }
 

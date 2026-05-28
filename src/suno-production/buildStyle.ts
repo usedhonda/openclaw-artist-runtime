@@ -3,6 +3,7 @@ import { callAiProvider, isAiProviderMockFallbackResponse } from "../services/ai
 import { buildStyleSynthesisPrompt } from "./styleSynthesisPrompt.js";
 import { KNOWLEDGE_BUNDLE } from "./knowledge-bundle.js";
 import { STYLE_TEMPLATES, type Genre } from "./styleTemplates.js";
+import { styleFillerFragments } from "./styleFillerLibrary.js";
 
 export interface BuildStyleInput {
   artistProfile?: string;
@@ -13,6 +14,7 @@ export interface BuildStyleInput {
   key?: string;
   vibe?: string;
   vocalDescriptor?: string;
+  vocalGender?: "male" | "female" | "neutral";
   instruments?: string[];
   mixKeyword?: string;
   performanceDirection?: string;
@@ -55,6 +57,10 @@ function fitTags(tags: string[], max: number): string {
   return fitted.join(", ");
 }
 
+function fitPhrase(value: string, max: number): string {
+  return compact(value).slice(0, max).trim();
+}
+
 function inferGenre(input: BuildStyleInput): Genre {
   const source = `${input.genre ?? ""} ${input.brief ?? ""} ${input.artistProfile ?? ""}`.toLowerCase();
   if (/nu.?jazz/.test(source) && /rap|hip.?hop/.test(source)) return "nu-jazz rap";
@@ -66,7 +72,10 @@ function inferGenre(input: BuildStyleInput): Genre {
 }
 
 function inferMood(input: BuildStyleInput): string {
-  return splitTags(input.moodHint ?? input.vibe ?? "observational dusk").slice(0, 2).join(" ") || "observational dusk";
+  const tags = splitTags(input.moodHint ?? input.vibe ?? "observational dusk")
+    .slice(0, 2)
+    .map((tag) => fitPhrase(tag, 48));
+  return tags.filter(Boolean).join(", ") || "observational dusk";
 }
 
 function inferInstruments(input: BuildStyleInput): string[] {
@@ -84,17 +93,21 @@ function inferInstruments(input: BuildStyleInput): string[] {
 }
 
 export function buildStyle(input: BuildStyleInput): BuildStyleResult {
-  const vibe = compact(input.vibe ?? inferMood(input));
+  const vibe = fitPhrase(input.vibe ?? inferMood(input), 96);
   const genre = inferGenre(input);
   const template = STYLE_TEMPLATES[genre] ?? STYLE_TEMPLATES.default;
+  const bpm = Math.round(input.bpm ?? 124);
+  const genreLine = template.genreLine.replace(/\b\d{2,3}\s*BPM\b/gi, `${bpm} BPM`);
   const instruments = input.instruments ?? inferInstruments(input);
+  const gender = input.vocalGender ?? "male";
+  const vocalDescriptor = input.vocalDescriptor ?? (gender === "female" ? "close dry female vocal" : gender === "neutral" ? "close dry neutral lead vocal" : "mid-range male rap vocal");
   const tags = uniq([
     vibe,
     genre,
-    `BPM ${Math.round(input.bpm ?? 124)}`,
+    `BPM ${bpm}`,
     input.key ?? "minor key",
     inferMood(input),
-    input.vocalDescriptor ?? "close dry vocal",
+    vocalDescriptor,
     ...(instruments.length > 0 ? instruments : template.instruments).slice(0, 3),
     input.mixKeyword ?? "intimate mix",
     vibe
@@ -109,41 +122,53 @@ export function buildStyle(input: BuildStyleInput): BuildStyleResult {
     "bass-heavy",
     "full arrangement"
   ].filter((term) => KNOWLEDGE_BUNDLE["style_catalog.md"].toLowerCase().includes(term));
-  const render = (arrangement: string[]) => [
+  const render = (arrangement: string[], fillers: string[]) => [
     "# Style",
     "",
     vibe,
     "",
-    `- BPM: ${Math.round(input.bpm ?? 124)}`,
+    `- Genre & Era: ${genreLine}`,
+    `- Vocal Production: ${vocalDescriptor}, ${template.vocalProduction.join(", ")}`,
+    `- Mood: ${inferMood(input)}, ${vibe}`,
+    `- Instruments: ${injectedInstruments.join(", ")}`,
+    `- BPM: ${bpm}`,
     `- Key: ${input.key ?? "minor key"}`,
     "- Signature: 4/4",
-    "",
-    `- Genre & Era: ${template.genreLine}`,
-    `- Instruments: ${injectedInstruments.join(", ")}`,
     `- Mix Vision: ${template.mixVision.join(", ")}`,
+    "- Era: 2000s NY underground to modern Brooklyn lineage",
     `- Texture: ${template.texture.join(", ")}`,
-    `- Vocal Production: ${template.vocalProduction.join(", ")}`,
     `- Arrangement Notes: ${arrangement.join("; ")}`,
     `- Performance Direction: ${direction}`,
     `- Knowledge Vocabulary: ${vocabulary.join(", ")}`,
+    ...fillers.map((fragment) => `- ${fragment}`),
     "",
     vibe
   ].join("\n");
   const arrangement = [...template.arrangementNotes];
-  let total = render(arrangement);
+  const fillers: string[] = [];
+  let total = render(arrangement, fillers);
   const padding = [
     "Keep each section specific rather than generic",
     "let instruments answer the lyric image",
     "preserve vocal intelligibility over density",
     "keep the final hook wider without crowd noise"
   ];
-  while (total.length < 900 && padding.length > 0) {
+  while (total.length < 800 && padding.length > 0) {
     arrangement.push(padding.shift() as string);
-    total = render(arrangement);
+    total = render(arrangement, fillers);
+  }
+  for (const fragment of styleFillerFragments()) {
+    if (total.length >= 900) break;
+    fillers.push(fragment);
+    total = render(arrangement, fillers);
   }
   while (total.length > 1000 && arrangement.length > 1) {
     arrangement.pop();
-    total = render(arrangement);
+    total = render(arrangement, fillers);
+  }
+  while (total.length > 1000 && fillers.length > 0) {
+    fillers.pop();
+    total = render(arrangement, fillers);
   }
   if (total.length > 1000) {
     const suffix = `\n${vibe}`;

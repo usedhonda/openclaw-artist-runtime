@@ -1,5 +1,6 @@
 import { createHash } from "node:crypto";
 import { extractLyricsBody } from "../services/lyricsExtraction.js";
+import { lintJapaneseLyricsEnglishFragments } from "../services/lyricsLanguageLint.js";
 import { repairCommandLeak } from "../services/lyricsRepair.js";
 import type { AiReviewProvider, CreateSunoPromptPackInput, SunoPromptPack, SunoSliders } from "../types.js";
 import { validateSunoPromptPack } from "../validators/promptPackValidator.js";
@@ -23,22 +24,47 @@ function buildPayload(input: CreateSunoPromptPackInput, style: string, exclude: 
     styleAndFeel: style,
     excludeStyles: exclude,
     lyrics: lyricsBody,
-    lyricsText: input.lyricsText,
+    lyricsText: lyricsBody,
     payloadYaml: yamlLyrics,
     lyricsYaml: yamlLyrics,
-    sliders
+    sliders,
+    promptCharCounts: promptCharCounts(input.songTitle, style, lyricsBody),
+    languageWarnings: lintJapaneseLyricsEnglishFragments(lyricsBody).map((warning) => `english_fragment:${warning.token}:line_${warning.line}`)
+  };
+}
+
+function artistDefaultVocalGender(artistSnapshot: string): "male" | "female" | "neutral" {
+  const match = artistSnapshot.match(/(?:^|\n)\s*(?:[-*]\s*)?(?:gender|vocalGender)\s*:\s*(male|female|neutral)\b/i);
+  return (match?.[1]?.toLowerCase() as "male" | "female" | "neutral" | undefined) ?? "male";
+}
+
+function promptCharCounts(title: string, style: string, lyrics: string) {
+  const styleLength = style.length;
+  const lyricsLength = lyrics.length;
+  const titleLength = title.length;
+  return {
+    style: styleLength,
+    lyrics: lyricsLength,
+    title: titleLength,
+    styleZone: styleLength < 800 ? "short" : styleLength > 1000 ? "overflow" : "sweet",
+    lyricsZone: lyricsLength < 1500 ? "short" : lyricsLength > 3000 ? "overflow" : lyricsLength <= 2400 ? "sweet" : "range",
+    titleZone: titleLength < 4 ? "short" : titleLength > 80 ? "overflow" : "sweet"
   };
 }
 
 export function createSunoPromptPack(input: CreateSunoPromptPackInput): SunoPromptPack {
   const lyricsText = repairCommandLeak(input.lyricsText).trim();
   const genre = `${input.artistReason} ${input.moodHint ?? ""}`;
+  const bpm = input.bpm ?? 124;
+  const vocalGender = input.vocalGender ?? artistDefaultVocalGender(input.artistSnapshot);
   const styleResult = buildStyleV55({
     artistProfile: input.artistSnapshot,
     brief: input.artistReason,
     moodHint: input.moodHint,
     genre,
-    vibe: input.moodHint
+    vibe: input.moodHint,
+    bpm,
+    vocalGender
   });
   const style = styleResult.total;
   const exclude = buildExcludeV55({
@@ -50,7 +76,7 @@ export function createSunoPromptPack(input: CreateSunoPromptPackInput): SunoProm
     title: input.songTitle,
     lyrics: lyricsText,
     meta: {
-      tempo: 124,
+      tempo: bpm,
       key: "minor",
       signature: "4/4",
       form: "intro-verse-hook-verse-bridge-verse-hook-outro",
@@ -59,8 +85,8 @@ export function createSunoPromptPack(input: CreateSunoPromptPackInput): SunoProm
     },
     vocals: {
       parts: [
-        { id: "lead", tone: "close, dry, intelligible" },
-        { id: "hook_double", tone: "restrained width only on repeated hook lines" }
+        { id: "lead", gender: vocalGender, tone: vocalGender === "male" ? "mid-range male rap, close, dry, intelligible" : "close, dry, intelligible" },
+        { id: "hook_double", gender: vocalGender, tone: "restrained width only on repeated hook lines" }
       ],
       rules: [
         "keep doubles restrained and intelligible",
@@ -78,7 +104,7 @@ export function createSunoPromptPack(input: CreateSunoPromptPackInput): SunoProm
     cues: ["Intro: sparse texture before groove; Hook: widen rhythm without crowd noise"]
   });
   const sliders = buildSlidersV55({ genre, moodHint: input.moodHint });
-  const payload = buildPayload({ ...input, lyricsText }, style, exclude, yamlLyrics, sliders);
+  const payload = buildPayload({ ...input, lyricsText, bpm, vocalGender }, style, exclude, yamlLyrics, sliders);
   const payloadHash = hashText(JSON.stringify(payload));
   const promptHash = hashText(`${style}\n${exclude}\n${yamlLyrics}`);
   const artistSnapshotHash = hashText(input.artistSnapshot);
@@ -116,12 +142,16 @@ export async function createSunoPromptPackWithAi(
 ): Promise<SunoPromptPack> {
   const lyricsText = repairCommandLeak(input.lyricsText).trim();
   const genre = `${input.artistReason} ${input.moodHint ?? ""}`;
+  const bpm = input.bpm ?? 124;
+  const vocalGender = input.vocalGender ?? artistDefaultVocalGender(input.artistSnapshot);
   const styleResult = await synthesizeStyle({
     artistProfile: input.artistSnapshot,
     brief: input.artistReason,
     moodHint: input.moodHint,
     genre,
-    vibe: input.moodHint
+    vibe: input.moodHint,
+    bpm,
+    vocalGender
   }, { provider: input.aiReviewProvider });
   const excludeResult = await synthesizeExclude({
     genre,
@@ -132,7 +162,7 @@ export async function createSunoPromptPackWithAi(
     title: input.songTitle,
     lyrics: lyricsText,
     meta: {
-      tempo: 124,
+      tempo: bpm,
       key: "minor",
       signature: "4/4",
       form: "intro-verse-hook-verse-bridge-verse-hook-outro",
@@ -141,8 +171,8 @@ export async function createSunoPromptPackWithAi(
     },
     vocals: {
       parts: [
-        { id: "lead", tone: "close, dry, intelligible" },
-        { id: "hook_double", tone: "restrained width only on repeated hook lines" }
+        { id: "lead", gender: vocalGender, tone: vocalGender === "male" ? "mid-range male rap, close, dry, intelligible" : "close, dry, intelligible" },
+        { id: "hook_double", gender: vocalGender, tone: "restrained width only on repeated hook lines" }
       ],
       rules: [
         "keep doubles restrained and intelligible",
@@ -160,7 +190,7 @@ export async function createSunoPromptPackWithAi(
     cues: ["Intro: sparse texture before groove; Hook: widen rhythm without crowd noise"]
   });
   const sliders = buildSlidersV55({ genre, moodHint: input.moodHint });
-  const payload = buildPayload({ ...input, lyricsText }, styleResult.total, excludeResult.text, yamlLyrics, sliders);
+  const payload = buildPayload({ ...input, lyricsText, bpm, vocalGender }, styleResult.total, excludeResult.text, yamlLyrics, sliders);
   const payloadHash = hashText(JSON.stringify(payload));
   const promptHash = hashText(`${styleResult.total}\n${excludeResult.text}\n${yamlLyrics}`);
   const artistSnapshotHash = hashText(input.artistSnapshot);

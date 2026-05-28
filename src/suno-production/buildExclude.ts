@@ -60,15 +60,22 @@ export function buildExclude(input: BuildExcludeInput = {}): BuildExcludeResult 
     ...(input.artistAvoid ?? []),
     ...genreClashFor(genre),
     (input.voices ?? []).length > 0 ? "celebrity voice imitation" : "source-name imitation",
-    "muddy master"
+    "muddy master",
+    "autotune",
+    "generic reverb",
+    "vocal doubling",
+    "glossy mastering",
+    "fake crowd noise",
+    "arena rock reverb",
+    "over-compressed master"
   ].filter((item): item is string => Boolean(item));
   const items = [...new Set(base.map(normalize))]
     .filter((item) => !containsSourceName(item, denylist))
-    .slice(0, 5);
-  const safeItems = items.length >= 2 ? items : [...items, "copyrighted artist cloning", "generic stock loop"].slice(0, 5);
+    .slice(0, 8);
+  const safeItems = items.length >= 2 ? items : [...items, "copyrighted artist cloning", "generic stock loop"].slice(0, 8);
   return {
     items: safeItems,
-    text: safeItems.join(", ").slice(0, 200)
+    text: safeItems.join(", ").slice(0, 240)
   };
 }
 
@@ -84,11 +91,11 @@ function normalizeAiExclude(raw: string, denylist: string[]): BuildExcludeResult
   const items = [...new Set(text.split(",").map(normalize))]
     .filter((item) => item && !/^no\s+/i.test(item))
     .filter((item) => !containsSourceName(item, denylist))
-    .slice(0, 5);
+    .slice(0, 8);
   if (items.length < 2) {
     return undefined;
   }
-  return { items, text: items.join(", ").slice(0, 200) };
+  return { items, text: items.join(", ").slice(0, 240) };
 }
 
 export async function synthesizeExclude(input: BuildExcludeInput = {}, options: ExcludeAiSynthesisOptions = {}): Promise<BuildExcludeResult> {

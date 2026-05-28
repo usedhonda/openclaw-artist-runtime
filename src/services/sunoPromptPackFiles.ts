@@ -7,6 +7,7 @@ import { readSongState, updateSongState } from "./artistState.js";
 import { appendPromptLedger, createPromptLedgerEntry, getSongPromptLedgerPath } from "./promptLedger.js";
 import { createSunoPromptPack, createSunoPromptPackWithAi } from "../suno-production/generatePromptPack.js";
 import { extractObservationSummary } from "./songIdeation.js";
+import { emitRuntimeEvent } from "./runtimeEventBus.js";
 
 async function nextPromptPackVersion(promptsDir: string): Promise<number> {
   try {
@@ -69,13 +70,28 @@ function observationRefs(root: string, observationPath?: string): string[] {
   return [rel && !rel.startsWith("..") ? rel : observationPath];
 }
 
+export function parseBpmFromBriefTempo(value: string | undefined): number | undefined {
+  if (!value) return undefined;
+  if (/artist\s+decides/i.test(value)) return undefined;
+  const match = value.match(/\b(\d{2,3})\s*(?:bpm)?\b/i);
+  if (!match) return undefined;
+  const bpm = Number(match[1]);
+  return Number.isInteger(bpm) && bpm >= 40 && bpm <= 220 ? bpm : undefined;
+}
+
+function readBriefTempo(briefText: string): string | undefined {
+  return briefText.match(/^- Tempo:\s*(.+)$/mi)?.[1]?.trim();
+}
+
 export async function createAndPersistSunoPromptPack(input: PersistSunoPromptPackInput): Promise<PersistedPromptPackResult> {
   await ensureArtistWorkspace(input.workspaceRoot);
   await createSongSkeleton(input.workspaceRoot, input.songId);
 
   const { artistSnapshot, currentStateSnapshot } = await readArtistSnapshots(input.workspaceRoot);
+  const briefText = await readFile(join(input.workspaceRoot, "songs", input.songId, "brief.md"), "utf8").catch(() => "");
   const promptPackInput = {
     ...input,
+    bpm: input.bpm ?? parseBpmFromBriefTempo(readBriefTempo(briefText)),
     artistSnapshot: input.artistSnapshot || artistSnapshot,
     currentStateSnapshot: input.currentStateSnapshot || currentStateSnapshot
   };
@@ -83,6 +99,22 @@ export async function createAndPersistSunoPromptPack(input: PersistSunoPromptPac
   const pack = useAi
     ? await createSunoPromptPackWithAi({ ...promptPackInput, aiReviewProvider: input.aiReviewProvider })
     : createSunoPromptPack(promptPackInput);
+  const charCounts = (pack.payload as { promptCharCounts?: {
+    style: number;
+    lyrics: number;
+    title: number;
+    styleZone: string;
+    lyricsZone: string;
+    titleZone: string;
+  } }).promptCharCounts;
+  if (charCounts) {
+    emitRuntimeEvent({
+      type: "prompt_pack_char_count",
+      songId: input.songId,
+      ...charCounts,
+      timestamp: Date.now()
+    });
+  }
   const lyricsText = pack.lyricsBundle?.lyricsText ?? input.lyricsText;
 
   const promptsDir = join(input.workspaceRoot, "songs", input.songId, "prompts");
@@ -127,7 +159,8 @@ export async function createAndPersistSunoPromptPack(input: PersistSunoPromptPac
       payloadHash: pack.payloadHash,
       artistSnapshotHash: pack.artistSnapshotHash,
       currentStateHash: pack.currentStateHash,
-      knowledgePackHash: pack.knowledgePackHash
+      knowledgePackHash: pack.knowledgePackHash,
+      charCounts
     })
   ]);
 

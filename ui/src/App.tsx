@@ -181,6 +181,14 @@ type StatusResponse = {
     monthlyGenerationBudget: number;
     dailyRuns: number;
     latestPromptPackVersion?: number;
+    latestPromptPackCharCounts?: {
+      style: number;
+      lyrics: number;
+      title: number;
+      styleZone: string;
+      lyricsZone: string;
+      titleZone: string;
+    };
   };
   distributionSummary: {
     postsToday: number;
@@ -1738,7 +1746,11 @@ export function App() {
         <MetricCard
           label="Music Budget"
           value={status ? `${status.musicSummary.monthlyRuns}/${status.musicSummary.monthlyGenerationBudget}` : "-"}
-          detail={status ? `today ${status.musicSummary.dailyRuns} · prompt pack ${status.musicSummary.latestPromptPackVersion ?? "none"}` : "loading"}
+          detail={status ? `today ${status.musicSummary.dailyRuns} · prompt pack ${status.musicSummary.latestPromptPackVersion ?? "none"}${
+            status.musicSummary.latestPromptPackCharCounts
+              ? ` · style ${status.musicSummary.latestPromptPackCharCounts.style}字 / lyrics ${status.musicSummary.latestPromptPackCharCounts.lyrics}字 / title ${status.musicSummary.latestPromptPackCharCounts.title}字`
+              : ""
+          }` : "loading"}
         />
         <MetricCard
           label="Distribution"

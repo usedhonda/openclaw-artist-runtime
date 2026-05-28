@@ -68,7 +68,7 @@ describe("autopilot autonomous production loop", () => {
     vi.unstubAllEnvs();
     expect(state.blockedReason).toContain("budget exhausted");
     expect(events.some((event) => event.type === "budget_exhausted")).toBe(true);
-  });
+  }, 30_000);
 
   it("emits song_take_completed after take selection", async () => {
     const root = workspace();

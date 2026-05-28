@@ -20,7 +20,7 @@ export const EXCLUDE_SYNTHESIS_SYSTEM_PROMPT = [
   STYLE_ANALYZER_SYSTEM_PROMPT,
   "",
   "Exclude synthesis adaptation for artist-runtime:",
-  "Write Exclude Styles in English only, one comma-separated line, 200 chars max, 2-5 items.",
+  "Write Exclude Styles in English only, one comma-separated line, 240 chars max, 2-8 items.",
   "No \"no X\" phrasing. Just item names.",
   "Use style_catalog.md to identify elements that clash with the requested genre, instrumentation, and mix.",
   "Never include artist names, song titles, album names, or living-artist voice cloning targets.",

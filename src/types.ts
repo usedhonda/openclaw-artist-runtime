@@ -634,6 +634,16 @@ export interface MusicSummary {
   dailyRuns: number;
   latestPromptPackVersion?: number;
   latestPromptPackMetadata?: Record<string, unknown>;
+  latestPromptPackCharCounts?: PromptPackCharCounts;
+}
+
+export interface PromptPackCharCounts {
+  style: number;
+  lyrics: number;
+  title: number;
+  styleZone: "sweet" | "short" | "overflow";
+  lyricsZone: "sweet" | "range" | "short" | "overflow";
+  titleZone: "sweet" | "short" | "overflow";
 }
 
 export interface SunoBudgetStatus {
@@ -887,6 +897,7 @@ export interface SunoSliders {
 export interface SunoPromptPackValidation {
   valid: boolean;
   errors: string[];
+  warnings?: string[];
 }
 
 export interface SunoPromptPack {
@@ -920,6 +931,8 @@ export interface CreateSunoPromptPackInput {
   currentStateSnapshot: string;
   knowledgePackVersion?: string;
   moodHint?: string;
+  bpm?: number;
+  vocalGender?: "male" | "female" | "neutral";
 }
 
 export interface PersistSunoPromptPackInput extends Omit<CreateSunoPromptPackInput, "artistSnapshot" | "currentStateSnapshot"> {
