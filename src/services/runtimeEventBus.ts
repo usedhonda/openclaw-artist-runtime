@@ -31,6 +31,8 @@ export type RuntimeEvent =
   | { type: "producer_decision_reminder"; callbackId: string; action: string; label: string; effect: string; songId?: string; pendingHours: number; timestamp: number }
   | ({ type: "artist_pulse_drafted"; timestamp: number } & DailyVoiceDraft)
   | { type: "song_spawn_proposed"; brief: CommissionBrief; reason: string; candidateSongId: string; voiceTop?: string; observationSummary?: ObservationSummary; timestamp: number }
+  | { type: "spawn_proposal_appended"; proposalId: string; pendingCount: number; timestamp: number }
+  | { type: "spawn_proposal_queue_full"; proposalId?: string; limit: number; pendingCount: number; timestamp: number }
   | { type: "observation_collected"; topMotifMatch?: string; topScore?: number; entryCount: number; timestamp: number }
   | { type: "artist_presence"; trigger: "observation_high_score" | "producer_silent_after_take"; text: string; songId?: string; timestamp: number }
   | { type: "theme_starvation"; source: "observation_empty" | "motif_bucket_empty"; details?: string; songId?: string; timestamp: number }

@@ -1,7 +1,7 @@
 import { createHash } from "node:crypto";
 import { readdir, readFile } from "node:fs/promises";
 import { join } from "node:path";
-import type { AiReviewProvider, CommissionBrief, CommissionBriefSource, ObservationSummary, SongState, SpawnProposal } from "../types.js";
+import type { AiReviewProvider, CommissionBrief, CommissionBriefSource, ObservationSummary, SongSpawnProposal, SongState } from "../types.js";
 import { callAiProvider, isAiNotConfiguredResponse } from "./aiProviderClient.js";
 import { composeArtistFallback } from "./artistVoiceComposer.js";
 import { listSongStates } from "./artistState.js";
@@ -752,7 +752,7 @@ function composeReasonFromBrief(
   return undefined;
 }
 
-export async function proposeSpawn(root: string, options: ProposeSpawnOptions = {}): Promise<SpawnProposal | null> {
+export async function proposeSpawn(root: string, options: ProposeSpawnOptions = {}): Promise<SongSpawnProposal | null> {
   const now = options.now ?? new Date();
   const [artistMd, soulMd, identityMd, innerMd, producerMd, heartbeat, obsData, songs, budget, recentThemes] = await Promise.all([
     readFile(join(root, "ARTIST.md"), "utf8").catch(() => ""),

@@ -342,12 +342,28 @@ export interface CommissionResult {
   warnings: string[];
 }
 
-export interface SpawnProposal {
+export interface SongSpawnProposal {
   spawn: boolean;
   brief: CommissionBrief;
   reason: string;
   candidateSongId: string;
   observationSummary?: ObservationSummary;
+}
+
+export type SpawnProposalStatus = "pending" | "approved" | "discarded" | "accepted_waiting";
+
+export interface SpawnProposal {
+  proposalId: string;
+  createdAt: string;
+  status: SpawnProposalStatus;
+  title: string;
+  voiceTop: string;
+  coreTheme: string;
+  observationSources: CascadeTraceSource[];
+  motifRank?: number;
+  cascadeTrace: CascadeTrace;
+  telegramMessageId?: number;
+  deliveryId?: string;
 }
 
 export interface ArtistPulseState {
