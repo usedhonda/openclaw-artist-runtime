@@ -1283,6 +1283,14 @@ async function formatRuntimeEventRaw(
         event.currentSongId ? `今の制作中: ${event.currentSongId}` : undefined,
         "Suno は同時に走らせない。順番に行く。"
       ].filter(Boolean).join("\n");
+    case "autopilot_ticker_safe_recovery":
+      return [
+        "ticker が止まっていたので、安全な 1 tick だけ入れた。",
+        "",
+        "─────",
+        `outcome: ${event.outcome}`,
+        event.songId ? `song: ${event.songId}` : undefined
+      ].filter(Boolean).join("\n");
     case "observation_collected":
       return `Observations collected: ${event.entryCount} entries${typeof event.topScore === "number" ? `, top score=${event.topScore}` : ""}${event.topMotifMatch ? ` (${event.topMotifMatch})` : ""}`;
     case "artist_presence":

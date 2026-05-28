@@ -1469,6 +1469,60 @@ export async function buildSpawnProposalsResponse(input: unknown): Promise<Spawn
   };
 }
 
+export interface SafeTickTriggerResponse {
+  triggered: boolean;
+  tickerOutcome?: string;
+  stage?: string;
+  songId?: string;
+  reason: string;
+  statusCode: number;
+}
+
+function safeTickTokenFromPayload(payload: Record<string, unknown>): string | undefined {
+  const direct = typeof payload.token === "string"
+    ? payload.token
+    : typeof payload.authToken === "string"
+      ? payload.authToken
+      : typeof payload.safeTickToken === "string"
+        ? payload.safeTickToken
+        : undefined;
+  if (direct?.trim()) {
+    return direct.trim();
+  }
+  const authorization = typeof payload.authorization === "string" ? payload.authorization.trim() : "";
+  return authorization.toLowerCase().startsWith("bearer ") ? authorization.slice(7).trim() : undefined;
+}
+
+export async function buildSafeTickTriggerResponse(
+  input: unknown,
+  env: NodeJS.ProcessEnv = process.env
+): Promise<SafeTickTriggerResponse> {
+  const payload = payloadRecord(input);
+  const expectedToken = env.OPENCLAW_SAFE_TICK_TRIGGER_TOKEN?.trim() || env.OPENCLAW_TICKER_WATCHER_TOKEN?.trim();
+  if (!expectedToken) {
+    return { triggered: false, reason: "safe_tick_trigger_token_missing", statusCode: 403 };
+  }
+  if (safeTickTokenFromPayload(payload) !== expectedToken) {
+    return { triggered: false, reason: "safe_tick_trigger_unauthorized", statusCode: 401 };
+  }
+  const config = await resolveRuntimeConfig(payload.config as Partial<ArtistRuntimeConfig> | undefined);
+  const result = await getAutopilotTicker().runNow(config);
+  emitRuntimeEvent({
+    type: "autopilot_ticker_safe_recovery",
+    outcome: result.outcome,
+    songId: result.state.currentSongId,
+    timestamp: Date.now()
+  });
+  return {
+    triggered: true,
+    tickerOutcome: result.outcome,
+    stage: result.state.stage,
+    songId: result.state.currentSongId,
+    reason: "autopilot_ticker_safe_recovery",
+    statusCode: 200
+  };
+}
+
 export async function buildStatusExportResponse(
   config?: Partial<ArtistRuntimeConfig>,
   window: ObservabilityExportWindow = "7d",
@@ -1521,6 +1575,12 @@ export function registerRoutes(api: unknown): void {
     match: "prefix",
     path: "/plugins/artist-runtime/api/spawn-proposals",
     handler: buildSpawnProposalsResponse
+  });
+
+  safeRegisterRoute(api, {
+    method: "POST",
+    path: "/plugins/artist-runtime/api/autopilot/safe-tick-trigger",
+    handler: buildSafeTickTriggerResponse
   });
 
   safeRegisterRoute(api, {

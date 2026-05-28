@@ -1,0 +1,137 @@
+#!/usr/bin/env node
+import { appendFile, mkdir, readFile } from "node:fs/promises";
+import { dirname, resolve } from "node:path";
+import { spawn } from "node:child_process";
+
+function usage() {
+  console.error("usage: openclaw-ticker-watcher --workspace <root> --gateway-url <url> --supervisor <script> [--token <token>] [--once]");
+  process.exit(2);
+}
+
+function argValue(args, name, fallback) {
+  const index = args.indexOf(name);
+  if (index === -1 || index + 1 >= args.length) {
+    return fallback;
+  }
+  return args[index + 1];
+}
+
+function numberArg(args, name, fallback) {
+  const raw = argValue(args, name, undefined);
+  if (raw === undefined) {
+    return fallback;
+  }
+  const parsed = Number.parseInt(raw, 10);
+  return Number.isFinite(parsed) ? parsed : fallback;
+}
+
+async function readJson(path) {
+  return readFile(path, "utf8").then((text) => JSON.parse(text)).catch(() => undefined);
+}
+
+async function logLine(path, message) {
+  await mkdir(dirname(path), { recursive: true });
+  await appendFile(path, `[ticker-watcher ${new Date().toISOString()}] ${message}\n`, "utf8");
+}
+
+function processAlive(pid) {
+  if (!Number.isFinite(pid) || pid <= 0) {
+    return false;
+  }
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function isStale(heartbeat, staleMs) {
+  const raw = heartbeat?.lastTickAttempt ?? heartbeat?.updatedAt;
+  const timestamp = typeof raw === "string" ? Date.parse(raw) : Number.NaN;
+  return !Number.isFinite(timestamp) || Date.now() - timestamp > staleMs;
+}
+
+async function triggerSafeTick(gatewayUrl, token) {
+  const base = gatewayUrl.replace(/\/+$/, "");
+  const response = await fetch(`${base}/plugins/artist-runtime/api/autopilot/safe-tick-trigger`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ token })
+  });
+  return {
+    httpStatus: response.status,
+    body: await response.json().catch(() => ({}))
+  };
+}
+
+function spawnSupervisor(supervisor, args, logPath, reason) {
+  const child = spawn(resolve(supervisor), args, {
+    detached: true,
+    stdio: "ignore"
+  });
+  child.unref();
+  void logLine(logPath, `spawned supervisor pid=${child.pid} reason=${reason}`);
+  return child.pid;
+}
+
+async function runOnce(options) {
+  const heartbeat = await readJson(`${options.workspace}/runtime/autopilot-heartbeat.json`);
+  const supervisorHeartbeat = await readJson(`${options.workspace}/runtime/supervisor-heartbeat.json`);
+  if (!isStale(heartbeat, options.staleMs)) {
+    await logLine(options.logPath, "ticker fresh; no action");
+    return { action: "none", reason: "ticker_fresh" };
+  }
+
+  const gatewayPid = Number(heartbeat?.pid ?? 0);
+  if (processAlive(gatewayPid)) {
+    if (!options.token) {
+      await logLine(options.logPath, "ticker stale and gateway alive; safe tick skipped token_missing");
+      return { action: "blocked", reason: "token_missing" };
+    }
+    const result = await triggerSafeTick(options.gatewayUrl, options.token);
+    await logLine(options.logPath, `safe tick trigger http=${result.httpStatus} statusCode=${result.body?.statusCode ?? "unknown"} outcome=${result.body?.tickerOutcome ?? "unknown"}`);
+    return { action: "safe_tick_trigger", reason: "ticker_stale_gateway_alive", result };
+  }
+
+  const supervisorPid = Number(supervisorHeartbeat?.pid ?? 0);
+  if (processAlive(supervisorPid)) {
+    await logLine(options.logPath, `gateway pid=${gatewayPid || "unknown"} dead; supervisor pid=${supervisorPid} alive`);
+    return { action: "wait_supervisor", reason: "gateway_dead_supervisor_alive" };
+  }
+
+  const pid = spawnSupervisor(options.supervisor, options.supervisorArgs, options.logPath, "gateway_pid_dead");
+  return { action: "supervisor_restart", reason: "gateway_dead_supervisor_dead", pid };
+}
+
+async function main() {
+  const args = process.argv.slice(2);
+  const workspace = argValue(args, "--workspace", process.env.OPENCLAW_LOCAL_WORKSPACE);
+  const gatewayUrl = argValue(args, "--gateway-url", process.env.OPENCLAW_LOCAL_GATEWAY_HTTP_URL ?? "http://127.0.0.1:43134");
+  const supervisor = argValue(args, "--supervisor", "scripts/openclaw-local-gateway-supervisor");
+  if (!workspace || !gatewayUrl || !supervisor) {
+    usage();
+  }
+  const logPath = argValue(args, "--log", `${workspace}/runtime/ticker-watcher.log`);
+  const staleMs = numberArg(args, "--stale-ms", 5 * 60 * 1000);
+  const intervalMs = numberArg(args, "--interval-ms", 60 * 1000);
+  const token = argValue(args, "--token", process.env.OPENCLAW_SAFE_TICK_TRIGGER_TOKEN ?? process.env.OPENCLAW_TICKER_WATCHER_TOKEN);
+  const separator = args.indexOf("--");
+  const supervisorArgs = separator === -1 ? [] : args.slice(separator + 1);
+  const options = { workspace, gatewayUrl, supervisor, supervisorArgs, logPath, staleMs, token };
+
+  await logLine(logPath, `started pid=${process.pid} workspace=${workspace} staleMs=${staleMs}`);
+  if (args.includes("--once")) {
+    const result = await runOnce(options);
+    console.log(JSON.stringify(result));
+    return;
+  }
+  setInterval(() => {
+    void runOnce(options).catch((error) => {
+      void logLine(logPath, `error ${(error instanceof Error ? error.message : String(error))}`);
+    });
+  }, intervalMs);
+  await runOnce(options);
+}
+
+await main();

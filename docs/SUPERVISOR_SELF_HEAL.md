@@ -92,3 +92,27 @@ Use cron only when launchd/systemd are unavailable:
 ```cron
 @reboot cd /path/to/artist-runtime && nohup node scripts/openclaw-supervisor-health.mjs watch-supervisor --workspace .local/openclaw/workspace --supervisor scripts/openclaw-local-gateway-supervisor --stale-ms 60000 >> .local/openclaw/logs/supervisor-watchdog.log 2>&1 &
 ```
+
+## ticker external watcher
+
+Plan v10.54 Phase B adds `scripts/openclaw-ticker-watcher`. It watches
+`runtime/autopilot-heartbeat.json`:
+
+- stale ticker + gateway process alive -> `POST /plugins/artist-runtime/api/autopilot/safe-tick-trigger`
+- stale ticker + gateway process dead + supervisor dead -> respawn the supervisor script
+- stale ticker + gateway process dead + supervisor alive -> wait for the supervisor to restart the gateway
+
+The safe tick endpoint requires a local token. Set the same value for the
+watcher process and the gateway process:
+
+```bash
+export OPENCLAW_SAFE_TICK_TRIGGER_TOKEN="$(openssl rand -hex 24)"
+nohup scripts/openclaw-ticker-watcher \
+  --workspace .local/openclaw/workspace \
+  --gateway-url http://127.0.0.1:43134 \
+  --supervisor scripts/openclaw-local-gateway-supervisor \
+  --stale-ms 300000 \
+  --interval-ms 60000 \
+  --log .local/openclaw/logs/ticker-watcher.log \
+  >/tmp/openclaw-artist-runtime-ticker-watcher.out 2>&1 &
+```
