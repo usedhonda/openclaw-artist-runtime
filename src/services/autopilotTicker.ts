@@ -1,6 +1,6 @@
 import { applyConfigDefaults } from "../config/schema.js";
 import type { AutopilotRunState, ArtistRuntimeConfig } from "../types.js";
-import { ArtistAutopilotService, readAutopilotRunState } from "./autopilotService.js";
+import { ArtistAutopilotService, readAutopilotRunState, PRODUCER_REVIEW_SUSPENDED_AT } from "./autopilotService.js";
 import { emitRuntimeEvent } from "./runtimeEventBus.js";
 import { writeAutopilotHeartbeat } from "./supervisorHealth.js";
 
@@ -85,7 +85,11 @@ export class AutopilotTicker {
     }
 
     const state = await readAutopilotRunState(workspaceRoot);
-    if (state.paused) {
+    // Plan v10.54 Phase C wire fix: producer_review_after_take_selected は paused でも
+    // runCycle に通す。runCycle 内 runIdeaQueueLane が currentSongId lane を停止維持したまま
+    // ideaQueue lane だけ tick する (御大「自然と新曲提案降ってくる」)。それ以外の paused
+    // (operator pause / safety stop) は従来どおり skip。
+    if (state.paused && state.suspendedAt !== PRODUCER_REVIEW_SUSPENDED_AT) {
       return { outcome: await this.emitWithHeartbeat(workspaceRoot, "skipped:paused", state), state };
     }
     if (state.hardStopReason) {

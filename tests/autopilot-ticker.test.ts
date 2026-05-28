@@ -51,6 +51,24 @@ describe("AutopilotTicker", () => {
     expect(result).toBe("skipped:paused");
   });
 
+  it("does not skip producer_review_after_take_selected paused state (Phase C wire fix)", async () => {
+    const root = makeWorkspace({
+      paused: true,
+      stage: "take_selection",
+      suspendedAt: "producer_review_after_take_selected",
+      currentSongId: "spawn_test",
+      pausedReason: "take selected after bounded one-shot Suno create; awaiting producer review"
+    });
+    const ticker = new AutopilotTicker();
+    const result = await ticker.tick({
+      artist: { workspaceRoot: root },
+      autopilot: { enabled: true, dryRun: true }
+    });
+    // ticker は producer_review を skip せず runCycle に通す。runCycle 内の
+    // runIdeaQueueLane が ideaQueue lane だけ tick する (currentSongId lane は停止維持)。
+    expect(result).not.toBe("skipped:paused");
+  });
+
   it("returns skipped:hardStop when hardStopReason is set", async () => {
     const root = makeWorkspace({ paused: false, hardStopReason: "test stop", stage: "failed_closed" });
     const ticker = new AutopilotTicker();
