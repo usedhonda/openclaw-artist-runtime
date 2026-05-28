@@ -47,6 +47,12 @@ export function isTelegramSilentEvent(event: RuntimeEvent): boolean {
 
 export class TelegramNotifier {
   private readonly client: TelegramClient;
+  private spawnBuffer: Array<{
+    event: Extract<RuntimeEvent, { type: "song_spawn_proposed" }>;
+    resolve: () => void;
+    reject: (error: unknown) => void;
+  }> = [];
+  private spawnFlushTimer: ReturnType<typeof setTimeout> | undefined;
 
   constructor(private readonly options: TelegramNotifierOptions) {
     this.client = new TelegramClient(options.token, options.fetchImpl);
@@ -73,6 +79,9 @@ export class TelegramNotifier {
 
   async notify(event: RuntimeEvent): Promise<void> {
     if (isTelegramSilentEvent(event)) return;
+    if (event.type === "song_spawn_proposed") {
+      return this.enqueueSongSpawnNotification(event);
+    }
     const text = await formatRuntimeEvent(event, {
       workspaceRoot: this.options.workspaceRoot,
       aiReviewProvider: this.options.aiReviewProvider,
@@ -87,9 +96,6 @@ export class TelegramNotifier {
     }
     if (event.type === "artist_pulse_drafted") {
       await this.attachDailyVoiceButtons(event, sent.message_id).catch(() => undefined);
-    }
-    if (event.type === "song_spawn_proposed") {
-      await this.attachSongSpawnButtons(event, sent.message_id);
     }
     if (event.type === "prompt_pack_ready") {
       await this.attachPromptPackReadyButtons(event, sent.message_id);
@@ -241,6 +247,46 @@ export class TelegramNotifier {
     });
   }
 
+  private enqueueSongSpawnNotification(event: Extract<RuntimeEvent, { type: "song_spawn_proposed" }>): Promise<void> {
+    return new Promise((resolve, reject) => {
+      this.spawnBuffer.push({ event, resolve, reject });
+      if (this.spawnFlushTimer) {
+        return;
+      }
+      this.spawnFlushTimer = setTimeout(() => {
+        this.spawnFlushTimer = undefined;
+        const batch = this.spawnBuffer;
+        this.spawnBuffer = [];
+        void this.notifySongSpawnBatch(batch.map((item) => item.event)).then(() => {
+          batch.forEach((item) => item.resolve());
+        }).catch((error) => {
+          batch.forEach((item) => item.reject(error));
+        });
+      }, 0);
+    });
+  }
+
+  private async notifySongSpawnBatch(events: Array<Extract<RuntimeEvent, { type: "song_spawn_proposed" }>>): Promise<void> {
+    if (events.length === 0) return;
+    if (events.length === 1) {
+      const [event] = events;
+      const text = await formatRuntimeEvent(event, {
+        workspaceRoot: this.options.workspaceRoot,
+        aiReviewProvider: this.options.aiReviewProvider,
+        dashboardBaseUrl: this.options.dashboardBaseUrl
+      });
+      const sent = await this.client.sendMessage(this.options.chatId, text);
+      await this.attachSongSpawnButtons(event, sent.message_id);
+      return;
+    }
+    const text = await formatSongSpawnDigest(events, {
+      workspaceRoot: this.options.workspaceRoot,
+      aiReviewProvider: this.options.aiReviewProvider
+    });
+    const sent = await this.client.sendMessage(this.options.chatId, text);
+    await this.attachSongSpawnDigestButtons(events, sent.message_id);
+  }
+
   private async attachSongSpawnButtons(event: Extract<RuntimeEvent, { type: "song_spawn_proposed" }>, messageId: number): Promise<void> {
     if (!isInlineButtonsEnabled() || !this.options.workspaceRoot || typeof this.options.chatId !== "number") {
       return;
@@ -280,6 +326,51 @@ export class TelegramNotifier {
         { text: buttonVoiceLabels.songSpawn.skip, callback_data: `cb:${skip.callbackId}` },
         { text: buttonVoiceLabels.songSpawn.edit, callback_data: `cb:${edit.callbackId}` }
       ]]
+    });
+  }
+
+  private async attachSongSpawnDigestButtons(events: Array<Extract<RuntimeEvent, { type: "song_spawn_proposed" }>>, messageId: number): Promise<void> {
+    if (!isInlineButtonsEnabled() || !this.options.workspaceRoot || typeof this.options.chatId !== "number") {
+      return;
+    }
+    const rows = await Promise.all(events.map(async (event) => {
+      const [inject, skip, edit] = await Promise.all([
+        registerCallbackAction(this.options.workspaceRoot!, {
+          action: "song_spawn_inject",
+          songId: event.candidateSongId,
+          commissionBrief: event.brief,
+          spawnReason: event.reason,
+          chatId: this.options.chatId as number,
+          messageId,
+          userId: this.options.chatId as number
+        }),
+        registerCallbackAction(this.options.workspaceRoot!, {
+          action: "song_spawn_skip",
+          songId: event.candidateSongId,
+          commissionBrief: event.brief,
+          spawnReason: event.reason,
+          chatId: this.options.chatId as number,
+          messageId,
+          userId: this.options.chatId as number
+        }),
+        registerCallbackAction(this.options.workspaceRoot!, {
+          action: "song_spawn_edit",
+          songId: event.candidateSongId,
+          commissionBrief: event.brief,
+          spawnReason: event.reason,
+          chatId: this.options.chatId as number,
+          messageId,
+          userId: this.options.chatId as number
+        })
+      ]);
+      return [
+        { text: buttonVoiceLabels.songSpawn.inject, callback_data: `cb:${inject.callbackId}` },
+        { text: buttonVoiceLabels.songSpawn.skip, callback_data: `cb:${skip.callbackId}` },
+        { text: buttonVoiceLabels.songSpawn.edit, callback_data: `cb:${edit.callbackId}` }
+      ];
+    }));
+    await this.client.editMessageReplyMarkup(this.options.chatId, messageId, {
+      inline_keyboard: rows
     });
   }
 
@@ -641,6 +732,38 @@ function formatSpawnBriefVoiceDetail(brief: Extract<RuntimeEvent, { type: "song_
     `『${brief.title}』、${humanizeTempo(brief.tempo)}、${humanizeMood(brief.mood)}${humanizeDuration(brief.duration)}。これで合ってる気がする。`,
     cleanReason
   ].join("\n");
+}
+
+async function formatSongSpawnDigest(
+  events: Array<Extract<RuntimeEvent, { type: "song_spawn_proposed" }>>,
+  options: Pick<TelegramNotifierOptions, "workspaceRoot" | "aiReviewProvider"> = {}
+): Promise<string> {
+  const lines = [
+    `アイデアが ${events.length} 件、並んでます。`,
+    "今はまだ Suno には投げない。進めるものだけ選んで。",
+    "",
+    "─────"
+  ];
+  for (const [index, event] of events.entries()) {
+    const top = (event.voiceTop ?? event.brief.title).split(/\r?\n/).map((line) => line.trim()).find(Boolean) ?? event.brief.title;
+    const trace = buildCascadeTrace({
+      songId: event.candidateSongId,
+      title: event.brief.title,
+      artistVoice: top,
+      lyricsTheme: event.brief.lyricsTheme,
+      styleLayer: event.brief.styleNotes,
+      observationSummary: event.observationSummary,
+      commissionSources: event.brief.sources
+    });
+    lines.push(
+      `${index + 1}. ${event.brief.title}`,
+      `voice: ${top}`,
+      `theme: ${event.brief.lyricsTheme}`,
+      formatCascadeTrace(trace),
+      ""
+    );
+  }
+  return lines.join("\n").trim();
 }
 
 async function readSongCompletionContext(event: Extract<RuntimeEvent, { type: "song_take_completed" }>, workspaceRoot?: string): Promise<{ title: string; observationSummary?: ObservationSummary }> {

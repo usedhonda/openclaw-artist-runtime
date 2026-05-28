@@ -15,7 +15,7 @@ import { ArtistAutopilotService, PRODUCER_REVIEW_PAUSED_REASON, PRODUCER_REVIEW_
 import { AutopilotControlService } from "../services/autopilotControlService.js";
 import { getAutopilotTicker, getAutopilotTickerIntervalMs, getLastOutcome, getLastTickAt } from "../services/autopilotTicker.js";
 import { readBirdLedgerDetail, readBirdRateLimitStatus } from "../services/birdRateLimiter.js";
-import { appendCallbackAuditEvent, listPendingCallbackActionSummaries, resolveCallbackAction, summarizePendingCallbackActions } from "../services/callbackActionRegistry.js";
+import { appendCallbackAuditEvent, describeCallbackActionEffect, listPendingCallbackActionSummaries, resolveCallbackAction, summarizePendingCallbackActions } from "../services/callbackActionRegistry.js";
 import { buildCascadeTrace } from "../services/cascadeTrace.js";
 import { handleProposalResponse, listPendingProposalDetails, listPendingProposals } from "../services/conversationalSession.js";
 import { buildPlatformStats, readDistributionEvents } from "../services/distributionLedgerReader.js";
@@ -26,6 +26,7 @@ import { getSongPromptLedgerPath } from "../services/promptLedger.js";
 import { isDebugCallbackDispatchEnabled, isDebugNotifyReviewEnabled, mergeResolvedConfig, patchResolvedConfig, readConfigOverrides, resolveRuntimeConfig, resolveSunoDailyBudget, writeRuntimeSafetyOverrides, type RuntimeSafetyOverridesPatch } from "../services/runtimeConfig.js";
 import { publishSocialAction, readLatestSocialAction } from "../services/socialPublishing.js";
 import { SocialDistributionWorker } from "../services/socialDistributionWorker.js";
+import { listPendingSpawnProposals } from "../services/spawnProposalQueue.js";
 import { buildEffectiveDryRunMap, resolvePlatformSocialDryRun } from "../services/socialDryRunResolver.js";
 import { prepareSocialAssets } from "../services/socialAssets.js";
 import { readDistributionDetectionState } from "../services/songDistributionPoller.js";
@@ -1424,6 +1425,50 @@ export async function buildCallbackActionsResponse(input: unknown): Promise<Call
   };
 }
 
+export interface SpawnProposalsResponse {
+  count: number;
+  proposals: Array<{
+    proposalId: string;
+    createdAt: string;
+    status: string;
+    title: string;
+    voiceTop: string;
+    coreTheme: string;
+    observationSources: unknown[];
+    motifRank?: number;
+    cascadeTrace: unknown;
+    actions: Array<{
+      action: string;
+      label: string;
+      effect: string;
+    }>;
+  }>;
+}
+
+export async function buildSpawnProposalsResponse(input: unknown): Promise<SpawnProposalsResponse> {
+  const payload = payloadRecord(input);
+  const config = await resolveRuntimeConfig(payload.config as Partial<ArtistRuntimeConfig> | undefined);
+  const routePath = "/plugins/artist-runtime/api/spawn-proposals";
+  const limit = integerFromPayloadOrQuery(payload, "limit", 3, routePath);
+  const proposals = await listPendingSpawnProposals(config.artist.workspaceRoot);
+  const actions = ["song_spawn_inject", "song_spawn_skip", "song_spawn_edit"].map(describeCallbackActionEffect);
+  return {
+    count: proposals.length,
+    proposals: proposals.slice(0, Math.max(0, limit)).map((proposal) => ({
+      proposalId: proposal.proposalId,
+      createdAt: proposal.createdAt,
+      status: proposal.status,
+      title: proposal.title,
+      voiceTop: proposal.voiceTop,
+      coreTheme: proposal.coreTheme,
+      observationSources: proposal.observationSources,
+      motifRank: proposal.motifRank,
+      cascadeTrace: proposal.cascadeTrace,
+      actions
+    }))
+  };
+}
+
 export async function buildStatusExportResponse(
   config?: Partial<ArtistRuntimeConfig>,
   window: ObservabilityExportWindow = "7d",
@@ -1469,6 +1514,13 @@ export function registerRoutes(api: unknown): void {
     match: "prefix",
     path: "/plugins/artist-runtime/api/callback-actions",
     handler: buildCallbackActionsResponse
+  });
+
+  safeRegisterRoute(api, {
+    method: "GET",
+    match: "prefix",
+    path: "/plugins/artist-runtime/api/spawn-proposals",
+    handler: buildSpawnProposalsResponse
   });
 
   safeRegisterRoute(api, {
