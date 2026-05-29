@@ -252,14 +252,14 @@ export function ProducerReviewButtons(props: {
         disabled={props.disabled}
         onClick={props.onArchive}
       >
-        採用して次の曲へ
+        採用
       </button>
       <button
         type="button"
         disabled={props.disabled}
         onClick={props.onDiscard}
       >
-        破棄して次の曲へ
+        破棄
       </button>
     </div>
   );

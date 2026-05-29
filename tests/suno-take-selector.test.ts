@@ -14,7 +14,7 @@ describe("suno take selector", () => {
     });
   });
 
-  it("gates low-score takes for producer judgment", () => {
+  it("keeps low-score diagnostics available without owning autopilot blocking", () => {
     expect(selectBestScoredTake([score("low", 0.2)], 0.5)).toMatchObject({
       status: "low_score",
       best: { takeId: "low" }

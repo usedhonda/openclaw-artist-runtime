@@ -54,7 +54,7 @@ describe("producer status composer", () => {
 
     expect(text).toContain("Stage: take_selection");
     expect(text).toContain("song-026 / みじかいかげ");
-    expect(text).toContain("採用して次の曲へ");
+    expect(text).toContain("採用");
     expect(text).toContain("9時間前");
     expect(text).toContain("https://suno.com/song/take-1");
     expect(text).toContain("http://127.0.0.1:8787/plugins/artist-runtime#song=song-026");

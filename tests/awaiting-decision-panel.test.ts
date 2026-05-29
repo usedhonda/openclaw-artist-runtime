@@ -20,7 +20,7 @@ describe("awaiting decision panel", () => {
           {
             callbackId: "cb1",
             action: "song_discard",
-            label: "破棄して次の曲へ",
+            label: "破棄",
             effect: "この曲を破棄し、次の曲作りへ進める。",
             songId: "song-026",
             songTitle: "みじかいかげ",
@@ -36,7 +36,7 @@ describe("awaiting decision panel", () => {
     expect(html).toContain("song-026 / みじかいかげ");
     expect(html).toContain("take_selection");
     expect(html).toContain("9時間待ち");
-    expect(html).toContain("破棄して次の曲へ");
+    expect(html).toContain("破棄");
   });
 
   it("exposes producer decision callbacks through the callback-actions route response", async () => {

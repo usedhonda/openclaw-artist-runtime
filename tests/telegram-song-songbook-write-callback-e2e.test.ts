@@ -75,15 +75,15 @@ describe("telegram song completion SONGBOOK callbacks", () => {
     const markupPayload = JSON.parse(String((markupCall?.[1] as RequestInit).body)) as { reply_markup: { inline_keyboard: Array<Array<{ text: string; callback_data: string }>> } };
     expect(markupPayload.reply_markup.inline_keyboard).toEqual([
       [
-        { text: "採用して次の曲へ", callback_data: `cb:${archive?.callbackId}` },
-        { text: "破棄して次の曲へ", callback_data: `cb:${discard?.callbackId}` }
+        { text: "採用", callback_data: `cb:${archive?.callbackId}` },
+        { text: "破棄", callback_data: `cb:${discard?.callbackId}` }
       ]
     ]);
     expect(markupPayload.reply_markup.inline_keyboard.every((row) => row.length <= 2)).toBe(true);
     const buttons = markupPayload.reply_markup.inline_keyboard.flat();
     expect(buttons).toEqual([
-      { text: "採用して次の曲へ", callback_data: `cb:${archive?.callbackId}` },
-      { text: "破棄して次の曲へ", callback_data: `cb:${discard?.callbackId}` }
+      { text: "採用", callback_data: `cb:${archive?.callbackId}` },
+      { text: "破棄", callback_data: `cb:${discard?.callbackId}` }
     ]);
     expect(buttons.map((button) => button.text).join(" ")).not.toMatch(/Instagram|TikTok|IG/i);
 

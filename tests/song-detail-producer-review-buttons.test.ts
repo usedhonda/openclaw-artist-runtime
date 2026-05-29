@@ -12,8 +12,8 @@ describe("SongDetailCard producer review buttons", () => {
       })
     );
 
-    expect(html).toContain("採用して次の曲へ");
-    expect(html).toContain("破棄して次の曲へ");
+    expect(html).toContain("採用");
+    expect(html).toContain("破棄");
     expect(html).not.toMatch(/publish|SNS|artist voice/i);
   });
 

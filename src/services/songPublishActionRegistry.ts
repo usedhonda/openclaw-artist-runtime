@@ -46,8 +46,8 @@ export function listSongPublishActions(): SongPublishActionDefinition[] {
   return [
     { action: "song_songbook_write", label: "SONGBOOK 反映", publishSideEffect: false },
     { action: "song_skip", label: "後で", publishSideEffect: false },
-    { action: "song_archive", label: "採用して次の曲へ", publishSideEffect: false },
-    { action: "song_discard", label: "破棄して次の曲へ", publishSideEffect: false }
+    { action: "song_archive", label: "採用", publishSideEffect: false },
+    { action: "song_discard", label: "破棄", publishSideEffect: false }
   ];
 }
 
@@ -95,7 +95,7 @@ export async function runSongPublishAction(action: SongPublishAction, context: S
       return {
         action,
         status: "applied",
-        message: "この曲を採用しました。次の曲作りへ進みます (autopilot 再開の合図をお待ちしています)。SNS には出していません。",
+        message: "採用しました。SNS には出していません。",
         song,
         safety
       };
@@ -114,7 +114,7 @@ export async function runSongPublishAction(action: SongPublishAction, context: S
     return {
       action,
       status: "discarded",
-      message: "この曲を破棄しました。次の曲作りへ進みます (autopilot 再開の合図をお待ちしています)。brief は残しています。",
+      message: "破棄しました。brief は残しています。",
       reason: discardReason,
       song,
       safety

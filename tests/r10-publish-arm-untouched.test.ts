@@ -166,8 +166,8 @@ describe("R10 callback safety", () => {
     expect(replyMarkup.inline_keyboard).toHaveLength(1);
     expect(replyMarkup.inline_keyboard?.[0]).toHaveLength(2);
     const buttonText = JSON.stringify(body.reply_markup, (_key, value) => _key === "callback_data" ? undefined : value);
-    expect(buttonText).toContain("採用して次の曲へ");
-    expect(buttonText).toContain("破棄して次の曲へ");
+    expect(buttonText).toContain("採用");
+    expect(buttonText).toContain("破棄");
     expect(buttonText).not.toContain("SONGBOOK.md に追記");
     expect(buttonText).not.toContain("X 草案を作る");
     expect(buttonText).not.toMatch(/Instagram|TikTok|IG/i);

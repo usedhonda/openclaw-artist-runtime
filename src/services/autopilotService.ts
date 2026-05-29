@@ -1374,24 +1374,6 @@ export class ArtistAutopilotService {
               cycleCount: existing.cycleCount + 1
             });
           }
-          if (decision.status === "low_score") {
-            emitRuntimeEvent({
-              type: "take_select_low_score",
-              songId: song.songId,
-              bestTakeId: decision.best.takeId,
-              score: decision.best.total,
-              reason: decision.reason,
-              timestamp: Date.now()
-            });
-            return writeStageState(input.workspaceRoot, existing, {
-              ...baseState,
-              currentSongId: song.songId,
-              stage: "take_selection",
-              blockedReason: decision.reason,
-              lastError: undefined,
-              cycleCount: existing.cycleCount + 1
-            });
-          }
           const selection = await selectTake({ workspaceRoot: input.workspaceRoot, songId: song.songId });
           emitRuntimeEvent({
             type: "song_take_completed",

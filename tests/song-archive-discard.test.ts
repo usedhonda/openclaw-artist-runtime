@@ -53,7 +53,7 @@ describe("song archive/discard producer review state machine", () => {
       expect(result).toMatchObject({
         action: "song_archive",
         status: "applied",
-        message: "この曲を採用しました。次の曲作りへ進みます (autopilot 再開の合図をお待ちしています)。SNS には出していません。"
+        message: "採用しました。SNS には出していません。"
       });
       expect(result.song).toMatchObject({ status: "archived", selectedTakeId: "take-1" });
       expect(events).toContainEqual(expect.objectContaining({
@@ -86,7 +86,7 @@ describe("song archive/discard producer review state machine", () => {
       expect(result).toMatchObject({
         action: "song_discard",
         status: "discarded",
-        message: "この曲を破棄しました。次の曲作りへ進みます (autopilot 再開の合図をお待ちしています)。brief は残しています。"
+        message: "破棄しました。brief は残しています。"
       });
       const song = await readSongState(root, "review-song");
       expect(song).toMatchObject({ status: "discarded" });
@@ -180,14 +180,14 @@ describe("song archive/discard producer review state machine", () => {
     expect(result).toMatchObject({ result: "applied", reason: "applied" });
     expect(await readSongState(root, "review-song")).toMatchObject({ status: "archived" });
     expect(client.editMessageReplyMarkup).toHaveBeenCalledWith(100, 200, { inline_keyboard: [] });
-    expect(client.sendMessage).toHaveBeenCalledWith(100, "この曲を採用しました。次の曲作りへ進みます (autopilot 再開の合図をお待ちしています)。SNS には出していません。", undefined);
+    expect(client.sendMessage).toHaveBeenCalledWith(100, "採用しました。SNS には出していません。", undefined);
     expect(describeCallbackActionEffect("song_archive")).toMatchObject({
-      label: "採用して次の曲へ",
-      effect: "この曲を採用し、次の曲作りへ進める (autopilot 再開待ち)。SNS には出さない。"
+      label: "採用",
+      effect: "この曲を採用する。SNS には出さない。"
     });
     expect(describeCallbackActionEffect("song_discard")).toMatchObject({
-      label: "破棄して次の曲へ",
-      effect: "この曲を破棄し、次の曲作りへ進める (autopilot 再開待ち)。brief は reuse のため残す。"
+      label: "破棄",
+      effect: "この曲を破棄する。brief は reuse のため残す。"
     });
   });
 });

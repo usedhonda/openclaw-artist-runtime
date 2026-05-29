@@ -605,6 +605,7 @@ function formatObservationMetadata(summary?: ObservationSummary): string[] {
 function formatSongMetadata(title: string, take: string, urls: string, summary?: ObservationSummary): string {
   return [
     `🎵 ${title}${take}`,
+    "完成しました。採用/破棄は後からで結構です。",
     "🔗 試聴:",
     urls,
     ...formatObservationMetadata(summary),

@@ -45,9 +45,6 @@ export async function selectTake(input: SelectTakeInput): Promise<TakeSelectionR
   }
 
   const decision = await evaluateSunoTakeSelection(input.workspaceRoot, input.songId);
-  if (!input.selectedTakeId && !latestResults.selectedTakeId && decision.status === "low_score") {
-    throw new Error(decision.reason);
-  }
   const selectedTakeId = input.selectedTakeId ?? latestResults.selectedTakeId ?? (decision.status !== "pending" ? decision.best.takeId : inferTakeId(urls[0], 0));
   const runId = input.runId ?? latestResults.runId ?? "run-unknown";
   const reason = input.reason ?? (decision.status === "selected" ? `selected best scored take (${decision.best.total})` : "selected imported take");

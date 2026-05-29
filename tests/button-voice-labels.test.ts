@@ -51,8 +51,8 @@ describe("buttonVoiceLabels", () => {
   it("songCompletion labels reference SONGBOOK.md target", () => {
     expect(buttonVoiceLabels.songCompletion.write).toBe("SONGBOOK.md に追記");
     expect(buttonVoiceLabels.songCompletion.later).toBe("保留");
-    expect(buttonVoiceLabels.songCompletion.archive).toBe("採用して次の曲へ");
-    expect(buttonVoiceLabels.songCompletion.discard).toBe("破棄して次の曲へ");
+    expect(buttonVoiceLabels.songCompletion.archive).toBe("採用");
+    expect(buttonVoiceLabels.songCompletion.discard).toBe("破棄");
     expect(buttonVoiceLabels.songCompletion.xPrepare).toBe("X 草案を作る");
   });
 

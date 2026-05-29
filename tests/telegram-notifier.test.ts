@@ -14,8 +14,8 @@ const songCompletionButtonEffects = [
   "",
   "─────",
   "次のボタン:",
-  "- 採用して次の曲へ: この曲を採用し、次の曲作りへ進める (autopilot 再開待ち)。SNS には出さない。",
-  "- 破棄して次の曲へ: この曲を破棄し、次の曲作りへ進める (autopilot 再開待ち)。brief は reuse のため残す。"
+  "- 採用: この曲を採用する。SNS には出さない。",
+  "- 破棄: この曲を破棄する。brief は reuse のため残す。"
 ];
 
 describe("TelegramNotifier", () => {
@@ -41,6 +41,7 @@ describe("TelegramNotifier", () => {
       "",
       "─────",
       "🎵 song-004 (selected: take-2)",
+      "完成しました。採用/破棄は後からで結構です。",
       "🔗 試聴:",
       "1. https://suno.com/song/a",
       "2. https://suno.com/song/b",
@@ -63,6 +64,7 @@ describe("TelegramNotifier", () => {
       "",
       "─────",
       "🎵 song-004",
+      "完成しました。採用/破棄は後からで結構です。",
       "🔗 試聴:",
       "1. https://suno.com/song/a",
       "🎯 動機: 観察 summary なし",
