@@ -106,17 +106,17 @@ function isPrePromptSongWithoutApprovalGate(song: SongState): boolean {
   return PRODUCER_APPROVAL_REQUIRED_STATUSES.has(song.status);
 }
 
-function producerReviewPausedState(baseState: AutopilotRunState, songId: string): AutopilotRunState {
+function releaseAfterTakeCompletion(baseState: AutopilotRunState): AutopilotRunState {
   return {
     ...baseState,
-    currentSongId: songId,
-    stage: "take_selection",
-    paused: true,
-    pausedReason: PRODUCER_REVIEW_PAUSED_REASON,
-    suspendedAt: PRODUCER_REVIEW_SUSPENDED_AT,
-    blockedReason: PRODUCER_REVIEW_SUSPENDED_AT,
+    currentSongId: undefined,
+    stage: "completed",
+    paused: false,
+    pausedReason: undefined,
+    suspendedAt: undefined,
+    blockedReason: undefined,
     lastError: undefined,
-    lastSuccessfulStage: "take_selection"
+    lastSuccessfulStage: "completed"
   };
 }
 
@@ -254,7 +254,8 @@ function spawnProposalRecordFromGenerated(
 }
 
 function isProducerReviewOnlyLane(state: AutopilotRunState): boolean {
-  return state.suspendedAt === PRODUCER_REVIEW_SUSPENDED_AT;
+  void state;
+  return false;
 }
 
 async function runIdeaQueueLane(
@@ -547,7 +548,7 @@ async function currentSong(root: string, preferredSongId?: string): Promise<Song
   if (preferred && !["scheduled", "published", "archived", "discarded", "failed"].includes(preferred.status)) {
     return preferred;
   }
-  return songs.find((song) => song.status !== "scheduled" && song.status !== "published" && song.status !== "archived" && song.status !== "discarded" && song.status !== "failed");
+  return songs.find((song) => !["scheduled", "published", "archived", "discarded", "failed", "take_selected"].includes(song.status));
 }
 
 async function ensureLyrics(root: string, song: SongState, config?: Partial<ArtistRuntimeConfig>): Promise<SongState> {
@@ -890,6 +891,23 @@ export class ArtistAutopilotService {
         return promoted;
       }
     }
+    if (
+      currentLaneSong
+      && (
+        existing.suspendedAt === PRODUCER_REVIEW_SUSPENDED_AT
+        || currentLaneSong.status === "take_selected"
+      )
+    ) {
+      return writeStageState(input.workspaceRoot, existing, {
+        ...releaseAfterTakeCompletion({
+          ...existing,
+          currentSongId: currentLaneSong.songId,
+          stage: "take_selection",
+          lastRunAt: nowIso()
+        }),
+        cycleCount: existing.cycleCount + 1
+      });
+    }
     if (!input.manualSeed && isSongSpawnConfigured(config)) {
       const pendingSong = currentLaneSong;
       if (
@@ -1038,12 +1056,11 @@ export class ArtistAutopilotService {
       lastRunAt: nowIso()
     };
 
-    if (song && config.telegram.enabled && song.status === "take_selected") {
-      return writeStageState(
-        input.workspaceRoot,
-        existing,
-        producerReviewPausedState(baseState, song.songId)
-      );
+    if (song && song.status === "take_selected") {
+      return writeStageState(input.workspaceRoot, existing, {
+        ...releaseAfterTakeCompletion(baseState),
+        cycleCount: existing.cycleCount + 1
+      });
     }
 
     if (
@@ -1384,11 +1401,7 @@ export class ArtistAutopilotService {
             timestamp: Date.now()
           });
           return writeStageState(input.workspaceRoot, existing, {
-            ...producerReviewPausedState(baseState, song.songId),
-            paused: config.telegram.enabled,
-            pausedReason: config.telegram.enabled ? PRODUCER_REVIEW_PAUSED_REASON : undefined,
-            suspendedAt: config.telegram.enabled ? PRODUCER_REVIEW_SUSPENDED_AT : undefined,
-            blockedReason: config.telegram.enabled ? PRODUCER_REVIEW_SUSPENDED_AT : undefined,
+            ...releaseAfterTakeCompletion(baseState),
             cycleCount: existing.cycleCount + 1
           });
         }

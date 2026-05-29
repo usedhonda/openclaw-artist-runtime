@@ -1,5 +1,4 @@
 import { mkdtempSync } from "node:fs";
-import { readFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { beforeEach, describe, expect, it, vi } from "vitest";
@@ -16,7 +15,7 @@ import { importSunoResults, readLatestSunoRun } from "../src/services/sunoRuns";
 describe("autopilot planning to completed e2e", () => {
   beforeEach(() => spawnMock.mockReset());
 
-  it("runs planning through completion and leaves SONGBOOK synced", async () => {
+  it("runs planning through take completion and releases the current song lane", async () => {
     const root = mkdtempSync(join(tmpdir(), "artist-runtime-full-cycle-e2e-"));
     await ensureArtistWorkspace(root);
     vi.stubGlobal("fetch", vi.fn());
@@ -33,18 +32,15 @@ describe("autopilot planning to completed e2e", () => {
     const run = await readLatestSunoRun(root, songId);
     await importSunoResults({ workspaceRoot: root, songId, runId: run?.runId ?? "dry-run", urls: ["https://suno.example/good-bass-cold-hook"] });
     stages.push((await service.runCycle({ workspaceRoot: root, config })).stage);
-    stages.push((await service.runCycle({ workspaceRoot: root, config })).stage);
-    stages.push((await service.runCycle({ workspaceRoot: root, config })).stage);
-    stages.push((await service.runCycle({ workspaceRoot: root, config })).stage);
     unsubscribe();
 
     const song = await readSongState(root, songId);
-    const songbook = await readFile(join(root, "artist", "SONGBOOK.md"), "utf8");
-    expect(stages).toEqual(["planning", "prompt_pack", "suno_generation", "take_selection", "asset_generation", "publishing", "completed"]);
+    const autopilotState = await readAutopilotRunState(root);
+    expect(stages).toEqual(["planning", "prompt_pack", "suno_generation", "completed"]);
     expect(events.some((event) => event.type === "song_take_completed" && event.songId === songId)).toBe(true);
-    expect(song).toMatchObject({ status: "published", selectedTakeId: "good-bass-cold-hook" });
-    expect(songbook).toContain(`| ${songId} |`);
-    expect(songbook).toContain("published");
+    expect(song).toMatchObject({ status: "take_selected", selectedTakeId: "good-bass-cold-hook" });
+    expect(autopilotState).toMatchObject({ stage: "completed", lastSuccessfulStage: "completed" });
+    expect(autopilotState.currentSongId).toBeUndefined();
     expect(spawnMock).not.toHaveBeenCalled();
     vi.unstubAllGlobals();
   });

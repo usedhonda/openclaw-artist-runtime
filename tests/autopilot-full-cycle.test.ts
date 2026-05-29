@@ -15,7 +15,6 @@ vi.mock("node:child_process", () => ({
 import { ArtistAutopilotService, readAutopilotRunState } from "../src/services/autopilotService";
 import { readSongState } from "../src/services/artistState";
 import { ensureArtistWorkspace } from "../src/services/artistWorkspace";
-import { readLatestSocialAction } from "../src/services/socialPublishing";
 import { readLatestSunoRun, importSunoResults } from "../src/services/sunoRuns";
 
 describe("ArtistAutopilotService full dry-run cycle", () => {
@@ -71,18 +70,11 @@ describe("ArtistAutopilotService full dry-run cycle", () => {
     cycleStages.push(fourth.stage);
     const fifth = await service.runCycle({ workspaceRoot: root, config });
     cycleStages.push(fifth.stage);
+    const secondSongId = fifth.currentSongId ?? "song-002";
     const sixth = await service.runCycle({ workspaceRoot: root, config });
     cycleStages.push(sixth.stage);
     const seventh = await service.runCycle({ workspaceRoot: root, config });
     cycleStages.push(seventh.stage);
-    const eighth = await service.runCycle({ workspaceRoot: root, config });
-    cycleStages.push(eighth.stage);
-
-    const secondSongId = eighth.currentSongId ?? "song-002";
-    const ninth = await service.runCycle({ workspaceRoot: root, config });
-    cycleStages.push(ninth.stage);
-    const tenth = await service.runCycle({ workspaceRoot: root, config });
-    cycleStages.push(tenth.stage);
 
     const secondGeneratedRun = await readLatestSunoRun(root, secondSongId);
     expect(secondGeneratedRun?.status).toBe("blocked_dry_run");
@@ -93,14 +85,8 @@ describe("ArtistAutopilotService full dry-run cycle", () => {
       urls: ["https://example.com/takes/auto-2"]
     });
 
-    const eleventh = await service.runCycle({ workspaceRoot: root, config });
-    cycleStages.push(eleventh.stage);
-    const twelfth = await service.runCycle({ workspaceRoot: root, config });
-    cycleStages.push(twelfth.stage);
-    const thirteenth = await service.runCycle({ workspaceRoot: root, config });
-    cycleStages.push(thirteenth.stage);
-    const fourteenth = await service.runCycle({ workspaceRoot: root, config });
-    cycleStages.push(fourteenth.stage);
+    const eighth = await service.runCycle({ workspaceRoot: root, config });
+    cycleStages.push(eighth.stage);
 
     const [
       firstBrief,
@@ -108,35 +94,26 @@ describe("ArtistAutopilotService full dry-run cycle", () => {
       firstPromptPackMetadata,
       firstRunsLedger,
       firstSelectedTake,
-      firstSocialAssets,
-      firstSocialLedger,
       secondBrief,
       secondLyrics,
       secondPromptPackMetadata,
       secondRunsLedger,
-      secondSelectedTake,
-      secondSocialAssets,
-      secondSocialLedger
+      secondSelectedTake
     ] = await Promise.all([
       readFile(join(root, "songs", firstSongId, "brief.md"), "utf8"),
       readFile(join(root, "songs", firstSongId, "lyrics", "lyrics.v1.md"), "utf8"),
       readFile(join(root, "songs", firstSongId, "prompts", "prompt-pack-v001", "metadata.json"), "utf8"),
       readFile(join(root, "songs", firstSongId, "suno", "runs.jsonl"), "utf8"),
       readFile(join(root, "songs", firstSongId, "suno", "selected-take.json"), "utf8"),
-      readFile(join(root, "songs", firstSongId, "social", "assets.json"), "utf8"),
-      readFile(join(root, "songs", firstSongId, "social", "social-publish.jsonl"), "utf8"),
       readFile(join(root, "songs", secondSongId, "brief.md"), "utf8"),
       readFile(join(root, "songs", secondSongId, "lyrics", "lyrics.v1.md"), "utf8"),
       readFile(join(root, "songs", secondSongId, "prompts", "prompt-pack-v001", "metadata.json"), "utf8"),
       readFile(join(root, "songs", secondSongId, "suno", "runs.jsonl"), "utf8"),
-      readFile(join(root, "songs", secondSongId, "suno", "selected-take.json"), "utf8"),
-      readFile(join(root, "songs", secondSongId, "social", "assets.json"), "utf8"),
-      readFile(join(root, "songs", secondSongId, "social", "social-publish.jsonl"), "utf8")
+      readFile(join(root, "songs", secondSongId, "suno", "selected-take.json"), "utf8")
     ]);
-    const [firstSongState, secondSongState, latestSocialAction, autopilotState] = await Promise.all([
+    const [firstSongState, secondSongState, autopilotState] = await Promise.all([
       readSongState(root, firstSongId),
       readSongState(root, secondSongId),
-      readLatestSocialAction(root, secondSongId),
       readAutopilotRunState(root)
     ]);
 
@@ -144,22 +121,17 @@ describe("ArtistAutopilotService full dry-run cycle", () => {
       "planning",
       "prompt_pack",
       "suno_generation",
-      "take_selection",
-      "asset_generation",
-      "publishing",
       "completed",
       "planning",
       "prompt_pack",
       "suno_generation",
-      "take_selection",
-      "asset_generation",
-      "publishing",
       "completed"
     ]);
     expect(second.lastSuccessfulStage).toBe("prompt_pack");
     expect(third.blockedReason).toContain("waiting for Suno result import");
-    expect(sixth.blockedReason).toContain("dry-run");
-    expect(seventh.lastSuccessfulStage).toBe("completed");
+    expect(fourth.lastSuccessfulStage).toBe("completed");
+    expect(seventh.blockedReason).toContain("waiting for Suno result import");
+    expect(eighth.lastSuccessfulStage).toBe("completed");
 
     expect(firstSongId).toBe("song-001");
     expect(secondSongId).toBe("song-002");
@@ -169,11 +141,7 @@ describe("ArtistAutopilotService full dry-run cycle", () => {
     expect(firstRunsLedger).toContain("\"status\":\"blocked_dry_run\"");
     expect(firstRunsLedger).toContain("\"status\":\"imported\"");
     expect(firstSelectedTake).toContain("\"selectedTakeId\"");
-    expect(firstSocialAssets).toContain("\"platform\": \"x\"");
-    expect(firstSocialLedger).toContain("\"action\":\"publish\"");
-    expect(firstSocialLedger).toContain("\"dryRun\":true");
-    expect(firstSongState.status).toBe("published");
-    expect(firstSongState.lastReason).toContain("dry-run publish simulated");
+    expect(firstSongState.status).toBe("take_selected");
 
     expect(secondBrief).toContain("Why this song exists");
     expect(secondLyrics).toContain("A public-facing song");
@@ -181,16 +149,10 @@ describe("ArtistAutopilotService full dry-run cycle", () => {
     expect(secondRunsLedger).toContain("\"status\":\"blocked_dry_run\"");
     expect(secondRunsLedger).toContain("\"status\":\"imported\"");
     expect(secondSelectedTake).toContain("\"selectedTakeId\"");
-    expect(secondSocialAssets).toContain("\"platform\": \"x\"");
-    expect(secondSocialLedger).toContain("\"action\":\"publish\"");
-    expect(secondSocialLedger).toContain("\"dryRun\":true");
-    expect(secondSongState.status).toBe("published");
-    expect(secondSongState.lastReason).toContain("dry-run publish simulated");
+    expect(secondSongState.status).toBe("take_selected");
 
-    expect(latestSocialAction?.accepted).toBe(false);
-    expect(latestSocialAction?.reason).toContain("dry-run");
     expect(autopilotState.stage).toBe("completed");
-    expect(autopilotState.currentSongId).toBe(secondSongId);
+    expect(autopilotState.currentSongId).toBeUndefined();
 
     expect(spawnMock).not.toHaveBeenCalled();
     expect(fetchMock).not.toHaveBeenCalled();

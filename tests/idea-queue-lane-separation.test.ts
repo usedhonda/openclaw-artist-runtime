@@ -5,7 +5,7 @@ import { join } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { ensureArtistWorkspace } from "../src/services/artistWorkspace";
 import { ensureSongState, updateSongState } from "../src/services/artistState";
-import { ArtistAutopilotService, PRODUCER_REVIEW_SUSPENDED_AT, writeAutopilotRunState } from "../src/services/autopilotService";
+import { ArtistAutopilotService, writeAutopilotRunState } from "../src/services/autopilotService";
 import { getRuntimeEventBus, type RuntimeEvent } from "../src/services/runtimeEventBus";
 import {
   appendSpawnProposal,
@@ -33,8 +33,8 @@ async function workspace(): Promise<string> {
     stage: "take_selection",
     paused: true,
     pausedReason: "take selected after bounded one-shot Suno create; awaiting producer review",
-    suspendedAt: PRODUCER_REVIEW_SUSPENDED_AT,
-    blockedReason: PRODUCER_REVIEW_SUSPENDED_AT,
+    suspendedAt: "producer_review_after_take_selected",
+    blockedReason: "producer_review_after_take_selected",
     retryCount: 0,
     cycleCount: 3,
     updatedAt: "2026-05-28T12:00:00.000Z"
@@ -73,13 +73,16 @@ describe("idea queue lane separation during producer review", () => {
     } else {
       process.env.OPENCLAW_SONG_SPAWN_ENABLED = originalSpawn;
     }
+    vi.useRealTimers();
     vi.restoreAllMocks();
     getRuntimeEventBus().clearForTest();
     clearSpawnProposalQueueCacheForTest();
   });
 
-  it("keeps the producer review currentSongId lane stopped while adding a new spawn proposal", async () => {
+  it("releases a stale producer review lane, then lets the idea queue run on the next cycle", async () => {
     process.env.OPENCLAW_SONG_SPAWN_ENABLED = "on";
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-05-28T12:00:00.000Z"));
     const root = await workspace();
     const events: RuntimeEvent[] = [];
     const unsubscribe = getRuntimeEventBus().subscribe((event) => events.push(event));
@@ -94,16 +97,33 @@ describe("idea queue lane separation during producer review", () => {
         aiReview: { provider: "mock" }
       }
     });
+    vi.setSystemTime(new Date("2026-05-28T19:00:00.000Z"));
+    const next = await new ArtistAutopilotService().runCycle({
+      workspaceRoot: root,
+      config: {
+        artist: { workspaceRoot: root },
+        autopilot: { enabled: true, dryRun: true },
+        songSpawn: { enabled: true },
+        telegram: { enabled: true },
+        aiReview: { provider: "mock" }
+      }
+    });
     unsubscribe();
     const queue = await loadSpawnProposalQueue(root);
 
     expect(state).toMatchObject({
-      currentSongId: "song-026",
-      stage: "take_selection",
-      paused: true,
-      suspendedAt: PRODUCER_REVIEW_SUSPENDED_AT,
-      blockedReason: PRODUCER_REVIEW_SUSPENDED_AT
+      currentSongId: undefined,
+      stage: "completed",
+      paused: false,
+      suspendedAt: undefined,
+      blockedReason: undefined
     });
+    expect(next).toMatchObject({
+      stage: "planning",
+      suspendedAt: "spawn_proposal_ready",
+      blockedReason: "spawn_proposal_ready"
+    });
+    expect(next.currentSongId).toBeUndefined();
     expect(queue.filter((entry) => entry.status === "pending")).toHaveLength(1);
     expect(events.some((event) => event.type === "song_spawn_proposed")).toBe(true);
     expect(events.some((event) => event.type === "prompt_pack_ready")).toBe(false);
@@ -111,8 +131,10 @@ describe("idea queue lane separation during producer review", () => {
     expect(events.some((event) => event.type === "song_take_completed")).toBe(false);
   });
 
-  it("preserves the producer review stop when the idea queue is already full", async () => {
+  it("releases a stale producer review lane and preserves queue-full enforcement on the next cycle", async () => {
     process.env.OPENCLAW_SONG_SPAWN_ENABLED = "on";
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-05-28T12:00:00.000Z"));
     const root = await workspace();
     await appendSpawnProposal(root, queuedProposal("p1"));
     await appendSpawnProposal(root, queuedProposal("p2"));
@@ -131,15 +153,31 @@ describe("idea queue lane separation during producer review", () => {
         aiReview: { provider: "mock" }
       }
     });
+    const released = state;
+    vi.setSystemTime(new Date("2026-05-28T19:00:00.000Z"));
+    const queueFullState = await new ArtistAutopilotService().runCycle({
+      workspaceRoot: root,
+      config: {
+        artist: { workspaceRoot: root },
+        autopilot: { enabled: true, dryRun: true },
+        songSpawn: { enabled: true },
+        telegram: { enabled: true },
+        aiReview: { provider: "mock" }
+      }
+    });
     unsubscribe();
 
-    expect(state).toMatchObject({
-      currentSongId: "song-026",
-      stage: "take_selection",
-      paused: true,
-      suspendedAt: PRODUCER_REVIEW_SUSPENDED_AT,
-      blockedReason: PRODUCER_REVIEW_SUSPENDED_AT
+    expect(released).toMatchObject({
+      currentSongId: undefined,
+      stage: "completed",
+      paused: false,
+      suspendedAt: undefined,
+      blockedReason: undefined
     });
+    expect(queueFullState).toMatchObject({
+      blockedReason: "spawn_proposal_queue_full"
+    });
+    expect(queueFullState.currentSongId).toBeUndefined();
     expect((await loadSpawnProposalQueue(root)).filter((entry) => entry.status === "pending")).toHaveLength(3);
     expect(events).toContainEqual(expect.objectContaining({
       type: "spawn_proposal_skip_queue_full",

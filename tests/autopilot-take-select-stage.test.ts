@@ -43,12 +43,19 @@ describe("autopilot take select stage", () => {
     });
 
     unsubscribe();
-    expect(state.stage).toBe("take_selection");
+    expect(state).toMatchObject({
+      stage: "completed",
+      currentSongId: undefined,
+      paused: false,
+      suspendedAt: undefined,
+      blockedReason: undefined,
+      lastSuccessfulStage: "completed"
+    });
     expect(await readSongState(root, "take-song")).toMatchObject({ status: "take_selected", selectedTakeId: "good-bass-cold-hook" });
     expect(events.some((event) => event.type === "song_take_completed")).toBe(true);
   });
 
-  it("holds take_selected songs at producer review when Telegram producer-room is enabled", async () => {
+  it("releases take_selected songs instead of holding producer review when Telegram producer-room is enabled", async () => {
     const root = mkdtempSync(join(tmpdir(), "artist-runtime-take-review-gate-"));
     await seed(root, "https://suno.example/good-bass-cold-hook");
     const service = new ArtistAutopilotService();
@@ -59,19 +66,14 @@ describe("autopilot take select stage", () => {
     };
 
     const selected = await service.runCycle({ workspaceRoot: root, config });
-    const next = await service.runCycle({ workspaceRoot: root, config });
 
     expect(selected).toMatchObject({
-      stage: "take_selection",
-      paused: true,
-      suspendedAt: "producer_review_after_take_selected",
-      blockedReason: "producer_review_after_take_selected",
-      lastSuccessfulStage: "take_selection"
-    });
-    expect(next).toMatchObject({
-      stage: "paused",
-      paused: true,
-      blockedReason: "take selected after bounded one-shot Suno create; awaiting producer review"
+      stage: "completed",
+      currentSongId: undefined,
+      paused: false,
+      suspendedAt: undefined,
+      blockedReason: undefined,
+      lastSuccessfulStage: "completed"
     });
     expect(await readSongState(root, "take-song")).toMatchObject({
       status: "take_selected",

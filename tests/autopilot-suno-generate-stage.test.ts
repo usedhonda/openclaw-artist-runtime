@@ -58,7 +58,11 @@ describe("autopilot Suno generate stage", () => {
     expect(promptPack.stage).toBe("prompt_pack");
     expect(suno.stage).toBe("suno_generation");
     expect(run?.status).toBe("blocked_dry_run");
-    expect(take.stage).toBe("take_selection");
+    expect(take).toMatchObject({
+      stage: "completed",
+      currentSongId: undefined,
+      lastSuccessfulStage: "completed"
+    });
     expect(await readSongState(root, "suno-stage")).toMatchObject({ status: "take_selected" });
     expect(events.some((event) => event.type === "song_take_completed")).toBe(true);
   });
