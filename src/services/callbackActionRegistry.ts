@@ -122,6 +122,25 @@ export function isProducerDecisionAction(action?: string): boolean {
   return callbackActionTtlCategory(action) === "producer_decision";
 }
 
+// Plan v10.56 self-recovery: which expired/stale callbacks a Telegram user may
+// "re-surface" (re-issue a fresh button for) themselves, without developer flags.
+// Stricter than isProducerDecisionAction by design — an explicit allowlist so future
+// action additions do NOT silently become user-re-surfaceable. External-publish
+// (x_publish_*, daily_voice_publish) and execution-gate (prompt_pack_go,
+// take_select_regenerate) actions are intentionally excluded: re-surfacing those
+// approaches external side effects and must re-run the publish guard + explicit GO.
+const RESURFACE_ALLOWED_ACTIONS: ReadonlySet<string> = new Set([
+  "song_spawn_inject",
+  "song_spawn_skip",
+  "song_spawn_edit",
+  "song_archive",
+  "song_discard"
+]);
+
+export function isResurfaceAllowedAction(action?: string): boolean {
+  return action ? RESURFACE_ALLOWED_ACTIONS.has(action) : false;
+}
+
 const callbackActionEffects: Record<string, Omit<CallbackActionEffect, "action">> = {
   proposal_yes: { label: "反映", effect: "提案された変更を workspace に反映します。" },
   proposal_no: { label: "保留", effect: "提案を見送り、現状を変えません。" },

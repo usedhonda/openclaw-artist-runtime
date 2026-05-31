@@ -1,7 +1,7 @@
 import { appendFile, mkdir } from "node:fs/promises";
 import { createHash } from "node:crypto";
 import { dirname, join } from "node:path";
-import { markCallbackResolved, registerCallbackAction, resolveCallbackAction, type CallbackActionEntry, type CallbackActionStatus } from "./callbackActionRegistry.js";
+import { isResurfaceAllowedAction, markCallbackResolved, registerCallbackAction, resolveCallbackAction, type CallbackActionEntry, type CallbackActionStatus } from "./callbackActionRegistry.js";
 import { readSongState, updateSongState } from "./artistState.js";
 import { applyChangeSet } from "./changeSetApplier.js";
 import { handleProposalResponse } from "./conversationalSession.js";
@@ -204,6 +204,60 @@ async function finish(
   return { processed: true, result, reason, callbackId };
 }
 
+// Plan v10.56 self-recovery: terminal song states an expired producer-decision
+// callback may NOT be re-surfaced into (the decision is already final there).
+const TERMINAL_SONG_STATUSES_FOR_RESURFACE: ReadonlySet<string> = new Set([
+  "scheduled", "published", "archived", "discarded", "failed"
+]);
+
+// Plan v10.56: a Telegram user tapping an expired/stale producer-decision button
+// re-surfaces a FRESH proposal notification (with a new live button) — NOT a re-run
+// of the original action. This is UI re-issuance: it re-emits song_spawn_proposed so
+// the notifier's formatter produces the narrative + a freshly-minted GO button.
+// Guarded by isResurfaceAllowedAction (callers) + terminal-state + single-shot here.
+async function resurfaceExpiredProducerDecision(
+  ctx: TelegramCallbackContext,
+  callbackId: string,
+  entry: CallbackActionEntry,
+  staleReason: string
+): Promise<TelegramCallbackResult> {
+  const now = ctx.now ?? Date.now();
+  // multi-fire guard: if already re-surfaced once, point the user at the latest notice.
+  if (entry.resolveReason && entry.resolveReason.includes("resurfaced")) {
+    await ctx.client.answerCallbackQuery(ctx.callbackQueryId, { text: "すでに再表示済みです。最新の通知から選んでください。" });
+    await appendCallbackAudit(ctx.root, auditBase(ctx, callbackId, entry, "duplicate", "resurface_already_done"));
+    return { processed: true, result: "duplicate", reason: "resurface_already_done", callbackId };
+  }
+  // state-based: the song already moved on to a terminal state -> re-surface refused.
+  if (entry.songId) {
+    const song = await readSongState(ctx.root, entry.songId).catch(() => undefined);
+    if (song && TERMINAL_SONG_STATUSES_FOR_RESURFACE.has(song.status)) {
+      await ctx.client.answerCallbackQuery(ctx.callbackQueryId, { text: `この曲はもう「${song.status}」です。再表示はできません。` });
+      await appendCallbackAudit(ctx.root, auditBase(ctx, callbackId, entry, "expired", `resurface_rejected_terminal:${song.status}`));
+      return { processed: true, result: "expired", reason: `resurface_rejected_terminal:${song.status}`, callbackId };
+    }
+  }
+  // spawn-proposal family: re-emit so the notifier re-issues narrative + fresh button.
+  if (entry.commissionBrief && entry.action.startsWith("song_spawn_")) {
+    await appendCallbackAudit(ctx.root, auditBase(ctx, callbackId, entry, "updated", `callback_resurface_requested:${staleReason}`));
+    emitRuntimeEvent({
+      type: "song_spawn_proposed",
+      brief: entry.commissionBrief,
+      reason: entry.spawnReason ?? entry.commissionBrief.brief,
+      candidateSongId: entry.songId ?? entry.proposalId ?? entry.commissionBrief.songId,
+      timestamp: now
+    });
+    await ctx.client.answerCallbackQuery(ctx.callbackQueryId, { text: "最新の提案を再表示しました。届いた通知から選んでください。" });
+    await markCallbackResolved(ctx.root, callbackId, { status: "updated", reason: `resurfaced:${staleReason}`, now });
+    await appendCallbackAudit(ctx.root, auditBase(ctx, callbackId, entry, "updated", "callback_resurfaced"));
+    return { processed: true, result: "updated", reason: "callback_resurfaced", callbackId };
+  }
+  // allowed action but no re-emit path (e.g. archive/discard without a brief) -> graceful stale reply.
+  await ctx.client.answerCallbackQuery(ctx.callbackQueryId, { text: STALE_CALLBACK_JA_REPLY });
+  await appendCallbackAudit(ctx.root, auditBase(ctx, callbackId, entry, "expired", `${staleReason}:resurface_unsupported`));
+  return { processed: true, result: "expired", reason: `${staleReason}:resurface_unsupported`, callbackId };
+}
+
 export async function routeTelegramCallback(ctx: TelegramCallbackContext): Promise<TelegramCallbackResult> {
   const data = ctx.data ?? "";
   if (secretLikePattern.test(data)) {
@@ -224,9 +278,17 @@ export async function routeTelegramCallback(ctx: TelegramCallbackContext): Promi
   }
   const now = ctx.now ?? Date.now();
   if (now > entry.expiresAt) {
+    if (isResurfaceAllowedAction(entry.action)) {
+      return resurfaceExpiredProducerDecision(ctx, callbackId, entry, "callback_action_expired");
+    }
     return finish(ctx, callbackId, entry, "expired", "callback_action_expired", "Expired", "expired");
   }
   if (entry.status !== "pending") {
+    // Plan v10.56: a producer-decision callback wrongly/legitimately left "expired"
+    // (e.g. stale-queue maintenance) can be re-surfaced by the user from Telegram.
+    if (entry.status === "expired" && isResurfaceAllowedAction(entry.action)) {
+      return resurfaceExpiredProducerDecision(ctx, callbackId, entry, `stale_${entry.status}`);
+    }
     await ctx.client.answerCallbackQuery(ctx.callbackQueryId, { text: "Already resolved" });
     await markCallbackResolved(ctx.root, callbackId, { status: "duplicate", reason: `already_${entry.status}`, now });
     await appendCallbackAudit(ctx.root, auditBase(ctx, callbackId, entry, "duplicate", `already_${entry.status}`));
