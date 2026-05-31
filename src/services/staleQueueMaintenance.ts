@@ -95,7 +95,12 @@ export function detectCallbackLedgerInconsistencies(
     }
     const song = songsById.get(entry.songId);
     if (!song) {
-      if (entry.status === "pending") {
+      // song_spawn_* callbacks belong to the pre-Suno idea queue (v10.53) and
+      // legitimately exist before a song state is created (proposal stage). They are
+      // NOT orphans; their TTL is governed by callbackPollingWatchdog (producer_decision
+      // 30d). Flagging them callback_song_missing wrongly expires live producer GO
+      // buttons (v10.53 <-> v10.36 contract gap).
+      if (entry.status === "pending" && !entry.action.startsWith("song_spawn_")) {
         issues.push({
           callbackId: entry.callbackId,
           action: entry.action,

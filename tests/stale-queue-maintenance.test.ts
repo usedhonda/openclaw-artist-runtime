@@ -79,7 +79,7 @@ describe("stale queue maintenance", () => {
     await writeSong(root, "archived-song", "archived", "2026-05-15T00:00:00.000Z");
     const now = Date.parse("2026-05-16T00:00:00.000Z");
     const missing = await registerCallbackAction(root, {
-      action: "song_spawn_inject",
+      action: "song_songbook_write",
       songId: "missing-song",
       chatId: 1,
       messageId: 2,
@@ -134,6 +134,35 @@ describe("stale queue maintenance", () => {
     });
     expect(secondPass.inconsistencies).toHaveLength(0);
     expect(secondPass.resolvedCallbacks).toHaveLength(0);
+  });
+
+  it("keeps pending song_spawn_* callbacks alive without a song state (pre-Suno idea queue contract)", async () => {
+    const root = await tempRoot();
+    const now = Date.parse("2026-05-16T00:00:00.000Z");
+    // v10.53 idea queue: proposal-stage GO buttons exist before any song state is
+    // created. They must NOT be flagged callback_song_missing; their TTL is owned by
+    // callbackPollingWatchdog (producer_decision 30d). Regression lock for v10.53<->v10.36.
+    const proposal = await registerCallbackAction(root, {
+      action: "song_spawn_inject",
+      songId: "spawn_pending",
+      chatId: 1,
+      messageId: 2,
+      userId: 3,
+      now
+    });
+
+    const result = await runStaleQueueMaintenance(root, {
+      now: new Date("2026-05-16T00:00:00.000Z"),
+      ttlHours: 48
+    });
+
+    expect(result.inconsistencies).not.toContainEqual(
+      expect.objectContaining({ callbackId: proposal.callbackId })
+    );
+    expect(result.resolvedCallbacks).toHaveLength(0);
+    await expect(resolveCallbackAction(root, proposal.callbackId)).resolves.toMatchObject({
+      status: "pending"
+    });
   });
 
   it("suppresses restart stale errors when the previous current song is terminal", async () => {
