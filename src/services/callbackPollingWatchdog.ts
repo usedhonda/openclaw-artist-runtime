@@ -1,6 +1,6 @@
 import { appendFailedNotification } from "./failedNotifyLedger.js";
-import { describeCallbackActionEffect, hasCallbackReprompted, isProducerDecisionAction, markCallbackReminderSent, readCallbackActionEntries, resolveCallbackAction, markCallbackResolved, markCallbackReprompted, type CallbackActionEntry } from "./callbackActionRegistry.js";
-import { getPollingWatchdogMinutes, getProducerReminderHours, isPollingWatchdogRepromptOnceEnabled, isProducerReminderEnabled, resolveDefaultWorkspaceRoot } from "./runtimeConfig.js";
+import { describeCallbackActionEffect, hasCallbackReprompted, isProducerDecisionAction, isResurfaceAllowedAction, markCallbackReminderSent, readCallbackActionEntries, resolveCallbackAction, markCallbackResolved, markCallbackReprompted, type CallbackActionEntry } from "./callbackActionRegistry.js";
+import { getPollingWatchdogMinutes, getProducerReminderHours, isPollingWatchdogRepromptOnceEnabled, isProducerReminderEnabled, isResurfaceAutoPushEnabled, resolveDefaultWorkspaceRoot } from "./runtimeConfig.js";
 import { TelegramClient, telegramAttemptsFromError, type TelegramSendMessageOptions } from "./telegramClient.js";
 import type { TelegramReplyMarkup } from "../types.js";
 import type { RuntimeEvent } from "./runtimeEventBus.js";
@@ -115,6 +115,15 @@ export async function runCallbackPollingWatchdogOnce(options: CallbackPollingWat
         actor: "watchdog_expire",
         reason: "polling_watchdog_expired"
       });
+      // Plan v10.56 Phase 5: opt-in nudge that a re-surfaceable producer decision
+      // expired, so the user knows it can be re-surfaced from Telegram (default off).
+      if (isResurfaceAllowedAction(latest.action) && isResurfaceAutoPushEnabled(env)) {
+        const label = describeCallbackActionEffect(latest.action).label;
+        await client.sendMessage(
+          latest.chatId,
+          `「${label}」 の判断ボタンが期限切れになった。最新の通知から再表示できる。`
+        ).catch(() => undefined);
+      }
       result.expired += 1;
       continue;
     }

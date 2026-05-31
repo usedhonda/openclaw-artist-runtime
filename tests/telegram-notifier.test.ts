@@ -19,6 +19,23 @@ const songCompletionButtonEffects = [
 ];
 
 describe("TelegramNotifier", () => {
+  it("surfaces self-heal events to Telegram when OPENCLAW_SELF_HEAL_NOTIFY=on (Plan v10.56 Phase 4)", async () => {
+    vi.stubEnv("OPENCLAW_SELF_HEAL_NOTIFY", "on");
+    const fetchImpl = vi.fn().mockResolvedValue(jsonResponse({ ok: true, result: { message_id: 1, chat: { id: 123 } } }));
+    const notifier = new TelegramNotifier({ token: "token", chatId: 123, fetchImpl });
+    await notifier.notify({ type: "error", source: "stale_queue_cleanup", reason: "older_than_168h", songId: "song-x", timestamp: 1 });
+    expect(fetchImpl).toHaveBeenCalledTimes(1);
+    expect(JSON.parse(fetchImpl.mock.calls[0][1].body as string).text).toContain("自己修復");
+    vi.unstubAllEnvs();
+  });
+
+  it("stays silent on self-heal events when the flag is off", async () => {
+    const fetchImpl = vi.fn().mockResolvedValue(jsonResponse({ ok: true }));
+    const notifier = new TelegramNotifier({ token: "token", chatId: 123, fetchImpl });
+    await notifier.notify({ type: "error", source: "stale_queue_cleanup", reason: "x", timestamp: 1 });
+    expect(fetchImpl).not.toHaveBeenCalled();
+  });
+
   it("formats stage events for Telegram", async () => {
     await expect(formatRuntimeEvent({
       type: "autopilot_stage_changed",

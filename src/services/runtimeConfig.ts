@@ -110,6 +110,20 @@ export function isDebugNotifyReviewEnabled(env: NodeJS.ProcessEnv = process.env)
   return env.OPENCLAW_DEBUG_NOTIFY_REVIEW?.trim().toLowerCase() === "on";
 }
 
+// Plan v10.56 Phase 4: opt-in Telegram visibility for autonomous self-heal events
+// (ticker stall recovery, stale-queue cleanup). Off by default to avoid notification
+// noise — the events are already non-fatal and self-resolved.
+export function isSelfHealNotifyEnabled(env: NodeJS.ProcessEnv = process.env): boolean {
+  return env.OPENCLAW_SELF_HEAL_NOTIFY?.trim().toLowerCase() === "on";
+}
+
+// Plan v10.56 Phase 5: opt-in auto-push when the watchdog expires a re-surfaceable
+// producer-decision callback, nudging the user that it can be re-surfaced. Off by
+// default (manual/pull is the recommended path; push avoids producer-room noise).
+export function isResurfaceAutoPushEnabled(env: NodeJS.ProcessEnv = process.env): boolean {
+  return env.OPENCLAW_RESURFACE_AUTO_PUSH?.trim().toLowerCase() === "on";
+}
+
 export function getPollingWatchdogMinutes(env: NodeJS.ProcessEnv = process.env): number {
   const parsed = Number.parseInt(env.OPENCLAW_POLLING_WATCHDOG_MINUTES ?? "", 10);
   if (!Number.isFinite(parsed)) {

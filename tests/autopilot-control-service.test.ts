@@ -55,6 +55,7 @@ describe("AutopilotControlService", () => {
       paused: true,
       pausedReason: "maintenance",
       hardStopReason: "operator stop",
+      blockedReason: "song_spawn_missing_brief",
       retryCount: 1,
       cycleCount: 3,
       updatedAt: "2026-04-27T08:00:00.000Z"
@@ -67,8 +68,45 @@ describe("AutopilotControlService", () => {
     expect(resumed.paused).toBe(false);
     expect(resumed.pausedReason).toBeUndefined();
     expect(resumed.hardStopReason).toBeUndefined();
+    expect(resumed.blockedReason).toBeUndefined();
     expect(resumed.runId).toBe("auto-existing");
     expect(resumed.currentSongId).toBe("song-001");
+  });
+
+  it("clears blockedReason + user_paused suspension but preserves GO-gate suspension on resume (Plan v10.56 Phase 2)", async () => {
+    const root = tempWorkspace();
+    await writeState(root, {
+      runId: "auto-go",
+      currentSongId: "spawn_x",
+      stage: "paused",
+      paused: true,
+      suspendedAt: "spawn_proposal_ready",
+      blockedReason: "song_spawn_missing_brief",
+      retryCount: 0,
+      cycleCount: 1,
+      updatedAt: "2026-04-27T08:00:00.000Z"
+    });
+
+    const service = new AutopilotControlService(fixedClock());
+    const resumed = await service.resume(root);
+
+    // blockedReason (詰まり) は解除されるが、GO 待ち (spawn_proposal_ready) は維持。
+    expect(resumed.blockedReason).toBeUndefined();
+    expect(resumed.suspendedAt).toBe("spawn_proposal_ready");
+    expect(resumed.paused).toBe(false);
+
+    // user_paused は手動 pause と同義なので resume で解除される。
+    await writeState(root, {
+      runId: "auto-up",
+      stage: "paused",
+      paused: true,
+      suspendedAt: "user_paused",
+      retryCount: 0,
+      cycleCount: 1,
+      updatedAt: "2026-04-27T08:00:00.000Z"
+    });
+    const resumedUserPaused = await service.resume(root);
+    expect(resumedUserPaused.suspendedAt).toBeUndefined();
   });
 
   it("backs up the current state with the colon-less UTC timestamp format", async () => {

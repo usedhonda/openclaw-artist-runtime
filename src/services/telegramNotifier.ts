@@ -5,7 +5,7 @@ import type { AiReviewProvider } from "../types.js";
 import { describeCallbackActionEffect, registerCallbackAction } from "./callbackActionRegistry.js";
 import { appendConversationTurn } from "./conversationalSession.js";
 import { proposalForDetection } from "./songDistributionPoller.js";
-import { isInlineButtonsEnabled, isXInlineButtonEnabled } from "./runtimeConfig.js";
+import { isInlineButtonsEnabled, isSelfHealNotifyEnabled, isXInlineButtonEnabled } from "./runtimeConfig.js";
 import { readSongState } from "./artistState.js";
 import { secretLikePattern } from "./personaMigrator.js";
 import type { ObservationSummary } from "../types.js";
@@ -45,6 +45,26 @@ export function isTelegramSilentEvent(event: RuntimeEvent): boolean {
   return TELEGRAM_SILENT_EVENT_TYPES.has(event.type);
 }
 
+// Plan v10.56 Phase 4: autonomous self-heal events surfaced to Telegram (opt-in).
+// These are normally silent "error"-type events; when OPENCLAW_SELF_HEAL_NOTIFY=on the
+// runtime tells the producer "I recovered myself" in plain JA so the silence gap closes.
+const SELF_HEAL_SOURCES: ReadonlySet<string> = new Set([
+  "autopilot_ticker_stall",
+  "stale_queue_cleanup"
+]);
+
+function formatSelfHealText(event: Extract<RuntimeEvent, { type: "error" }>): string {
+  const label = event.source === "stale_queue_cleanup"
+    ? "古い曲を自動で整理した"
+    : "処理が詰まったので自動で立て直した";
+  return [
+    `🛠 自己修復: ${label}。`,
+    event.songId ? `song: ${event.songId}` : undefined,
+    `詳細: ${event.reason}`,
+    "操作は不要。"
+  ].filter(Boolean).join("\n");
+}
+
 export class TelegramNotifier {
   private readonly client: TelegramClient;
   private spawnBuffer: Array<{
@@ -78,6 +98,10 @@ export class TelegramNotifier {
   }
 
   async notify(event: RuntimeEvent): Promise<void> {
+    if (event.type === "error" && SELF_HEAL_SOURCES.has(event.source) && isSelfHealNotifyEnabled()) {
+      await this.client.sendMessage(this.options.chatId, formatSelfHealText(event));
+      return;
+    }
     if (isTelegramSilentEvent(event)) return;
     if (event.type === "song_spawn_proposed") {
       return this.enqueueSongSpawnNotification(event);

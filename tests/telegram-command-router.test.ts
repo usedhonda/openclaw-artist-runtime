@@ -6,6 +6,9 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { ensureSongState, updateSongState, writeSongBrief } from "../src/services/artistState";
 import { readAutopilotRunState } from "../src/services/autopilotService";
 import { classifyTelegramFreeText, readTelegramInbox, routeTelegramCommand } from "../src/services/telegramCommandRouter";
+import { appendFailedNotification } from "../src/services/failedNotifyLedger";
+import { getRuntimeEventBus, type RuntimeEvent } from "../src/services/runtimeEventBus";
+import type { CommissionBrief } from "../src/types";
 
 const baseInput = {
   fromUserId: 123,
@@ -29,6 +32,47 @@ describe("telegram command router", () => {
     expect(result.responseText).toContain("/pause");
     expect(result.responseText).toContain("/review");
     expect(result.shouldStoreFreeText).toBe(false);
+  });
+
+  it("routes /replay to resend failed Telegram notifications (Plan v10.56 Phase 3)", async () => {
+    const root = makeRoot();
+    await mkdir(join(root, "runtime"), { recursive: true });
+    const brief: CommissionBrief = {
+      songId: "spawn_x",
+      title: "t",
+      brief: "b",
+      lyricsTheme: "lt",
+      mood: "m",
+      tempo: "120 BPM",
+      styleNotes: "s",
+      duration: "3:00",
+      sourceText: "src",
+      createdAt: "2026-05-31T00:00:00.000Z"
+    };
+    await appendFailedNotification(root, {
+      event: { type: "song_spawn_proposed", brief, reason: "r", candidateSongId: "spawn_x", timestamp: 1 },
+      chatId: 456,
+      error: new Error("ENETUNREACH")
+    });
+
+    const events: RuntimeEvent[] = [];
+    const bus = getRuntimeEventBus();
+    bus.clearForTest();
+    const unsub = bus.subscribe((e) => events.push(e));
+    const result = await routeTelegramCommand({ ...baseInput, text: "/replay", workspaceRoot: root });
+    unsub();
+
+    expect(result.kind).toBe("replay");
+    expect(result.responseText).toContain("再送");
+    expect(events.some((e) => e.type === "song_spawn_proposed")).toBe(true);
+  });
+
+  it("routes /replay to a no-op message when nothing failed to deliver", async () => {
+    const root = makeRoot();
+    await mkdir(join(root, "runtime"), { recursive: true });
+    const result = await routeTelegramCommand({ ...baseInput, text: "/replay", workspaceRoot: root });
+    expect(result.kind).toBe("replay");
+    expect(result.responseText).toContain("再送が必要な通知はありません");
   });
 
   it("routes /status to formatted autopilot status", async () => {

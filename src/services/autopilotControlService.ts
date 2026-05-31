@@ -42,11 +42,19 @@ export class AutopilotControlService {
     }
 
     const current = await readAutopilotState(root);
+    // Plan v10.56 Phase 2: resume clears the "stuck" reason (blockedReason) so the
+    // next cycle does not immediately re-stall. A user_paused suspension is also a
+    // manual pause, so clear it too — but GO-gate suspensions (spawn_proposal_ready /
+    // prompt_pack_ready / planning_skeleton_pending) are producer decisions and must
+    // survive resume (cleared only by the corresponding GO, not by /resume).
+    const clearsSuspension = current.suspendedAt === "user_paused";
     const next = await writeAutopilotState(root, {
       ...current,
       paused: false,
       pausedReason: undefined,
       hardStopReason: undefined,
+      blockedReason: undefined,
+      suspendedAt: clearsSuspension ? undefined : current.suspendedAt,
       stage: "idle"
     });
     emitRuntimeEvent({

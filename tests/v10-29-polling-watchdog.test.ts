@@ -47,6 +47,59 @@ async function seedPending(now = 0, extra: { expiresAt?: number } = {}): Promise
 }
 
 describe("polling callback watchdog", () => {
+  it("pushes a resurface nudge for an expired re-surfaceable producer-decision callback when auto-push is on (Plan v10.56 Phase 5)", async () => {
+    const root = await mkdtemp(join(tmpdir(), "artist-runtime-polling-watchdog-"));
+    await ensureArtistWorkspace(root);
+    const client = watchdogClient();
+    await registerCallbackAction(root, {
+      action: "song_spawn_inject",
+      songId: "spawn_x",
+      chatId: 123,
+      messageId: 77,
+      userId: 456,
+      now: 0,
+      expiresAt: 1000
+    });
+
+    const result = await runCallbackPollingWatchdogOnce({
+      root,
+      env: { OPENCLAW_POLLING_WATCHDOG_MINUTES: "10", OPENCLAW_RESURFACE_AUTO_PUSH: "on" } as NodeJS.ProcessEnv,
+      now: 60 * 60 * 1000,
+      client
+    });
+
+    expect(result.expired).toBeGreaterThanOrEqual(1);
+    expect(client.sendMessage).toHaveBeenCalledWith(123, expect.stringContaining("再表示できる"));
+  });
+
+  it("does not push a resurface nudge when auto-push is off (default)", async () => {
+    const root = await mkdtemp(join(tmpdir(), "artist-runtime-polling-watchdog-"));
+    await ensureArtistWorkspace(root);
+    const client = watchdogClient();
+    await registerCallbackAction(root, {
+      action: "song_spawn_inject",
+      songId: "spawn_x",
+      chatId: 123,
+      messageId: 77,
+      userId: 456,
+      now: 0,
+      expiresAt: 1000
+    });
+
+    const result = await runCallbackPollingWatchdogOnce({
+      root,
+      env: { OPENCLAW_POLLING_WATCHDOG_MINUTES: "10" } as NodeJS.ProcessEnv,
+      now: 60 * 60 * 1000,
+      client
+    });
+
+    expect(result.expired).toBeGreaterThanOrEqual(1);
+    const pushedResurface = (client.sendMessage as ReturnType<typeof vi.fn>).mock.calls.some(
+      (call) => typeof call[1] === "string" && (call[1] as string).includes("再表示できる")
+    );
+    expect(pushedResurface).toBe(false);
+  });
+
   it("defaults to disabled unless explicitly enabled", async () => {
     const { root, callbackId } = await seedPending(0);
 

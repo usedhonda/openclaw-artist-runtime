@@ -17,6 +17,8 @@ import { isConversationalSongCreate, routeTelegramConversation, type TelegramPro
 import { readObservationsReport, type ObservationReport } from "./xObservationCollector.js";
 import { wrapCommandVoice, type CommandVoiceKind } from "./commandVoiceWrapper.js";
 import { composeProducerStatus } from "./producerStatusComposer.js";
+import { emitRuntimeEvent } from "./runtimeEventBus.js";
+import { appendFailedNotifyReplayRecord, latestFailedNotifyEntry, listUnreplayedFailedNotifications } from "./failedNotifyLedger.js";
 
 export type TelegramCommandKind =
   | "help"
@@ -28,6 +30,7 @@ export type TelegramCommandKind =
   | "review"
   | "pause"
   | "resume"
+  | "replay"
   | "setup"
   | "persona"
   | "observations"
@@ -99,6 +102,7 @@ function helpInfo(): string {
     "/observations [YYYY-MM-DD] - show what artist-runtime collected from X",
     "/pause - pause autopilot",
     "/resume - resume autopilot",
+    "/replay - resend failed Telegram notifications",
     "/help - show this help"
   ].join("\n");
 }
@@ -479,6 +483,34 @@ export async function routeTelegramCommand(input: TelegramRouteInput): Promise<T
     }
     await new AutopilotControlService().resume(input.workspaceRoot, { reason: `telegram:${input.fromUserId}`, source: "telegram" });
     return { kind: "resume", responseText: await voiceCommand("ack", "Autopilot resumed.", input, "autopilot resumed"), shouldStoreFreeText: false };
+  }
+
+  if (command === "/replay") {
+    if (!input.workspaceRoot) {
+      return { kind: "replay", responseText: await voiceCommand("error", "Replay unavailable: workspace root missing.", input, "replay unavailable"), shouldStoreFreeText: false };
+    }
+    // Plan v10.56 Phase 3: re-send critical Telegram notifications that previously
+    // failed to deliver — from Telegram itself (was API/UI-only). Re-emits the stored
+    // event payload through the runtime bus so the notifier formatter re-delivers it.
+    const pending = await listUnreplayedFailedNotifications(input.workspaceRoot);
+    if (pending.length === 0) {
+      return { kind: "replay", responseText: await voiceCommand("ack", "再送が必要な通知はありません。", input, "no failed notifications"), shouldStoreFreeText: false };
+    }
+    let replayed = 0;
+    for (const summary of pending) {
+      const entry = await latestFailedNotifyEntry(input.workspaceRoot, summary.notifyId);
+      if (!entry || entry.status === "replayed") {
+        continue;
+      }
+      try {
+        emitRuntimeEvent(entry.eventPayload);
+        await appendFailedNotifyReplayRecord(input.workspaceRoot, entry, { ok: true });
+        replayed += 1;
+      } catch (error) {
+        await appendFailedNotifyReplayRecord(input.workspaceRoot, entry, { ok: false, error });
+      }
+    }
+    return { kind: "replay", responseText: await voiceCommand("ack", `届かなかった通知を ${replayed} 件再送した。`, input, "failed notifications replayed"), shouldStoreFreeText: false };
   }
 
   if (command.startsWith("/")) {
