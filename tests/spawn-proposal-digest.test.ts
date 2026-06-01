@@ -124,6 +124,7 @@ describe("spawn proposal digest", () => {
 
     const sendBody = requestBody(fetchImpl.mock.calls[0]);
     expect(sendBody.text).not.toContain("アイデアが 1 件");
+    expect(sendBody.text).toContain("素案を思いついた。草稿箱に入れた。");
     expect(sendBody.text).toContain("路地裏の審判");
     expect(sendBody.text).toContain("行程 trace:");
     const markup = requestBody(fetchImpl.mock.calls[1]).reply_markup as { inline_keyboard: Array<Array<{ text: string }>> };

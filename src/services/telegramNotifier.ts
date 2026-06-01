@@ -18,6 +18,8 @@ import { buildCascadeTrace, formatCascadeTrace } from "./cascadeTrace.js";
 import { composeArtistReflection } from "./artistReflectionComposer.js";
 import { appendFailedNotification, isCriticalNotificationEvent } from "./failedNotifyLedger.js";
 import { readLatestPromptPackMetadata } from "./sunoPromptPackFiles.js";
+import { composeDraftBoxNextAction, formatDraftBoxNextActionSection } from "./draftBoxNextAction.js";
+import { emitDraftBoxProactiveNoticeIfNeeded } from "./draftBoxProactiveNotice.js";
 
 export interface TelegramNotifierOptions {
   token: string;
@@ -77,7 +79,7 @@ export class TelegramNotifier {
   }
 
   subscribe(bus: RuntimeEventBus): () => void {
-    return bus.subscribe((event) => {
+    const unsubscribe = bus.subscribe((event) => {
       void this.notify(event).catch((err) => {
         const songId = (event as { songId?: string }).songId ?? "(none)";
         console.error(`[telegram-notify] failed event=${event.type} song=${songId} err=${(err as Error)?.message ?? err}`);
@@ -93,6 +95,14 @@ export class TelegramNotifier {
         }
       });
     });
+    if (this.options.workspaceRoot) {
+      setTimeout(() => {
+        void emitDraftBoxProactiveNoticeIfNeeded(this.options.workspaceRoot!).catch((error) => {
+          console.warn(`[telegram-notify] proactive startup check failed err=${(error as Error)?.message ?? error}`);
+        });
+      }, 0).unref?.();
+    }
+    return unsubscribe;
   }
 
   async notify(event: RuntimeEvent): Promise<void> {
@@ -867,6 +877,7 @@ const RESOURCE_TARGETED_EVENT_TYPES: ReadonlySet<RuntimeEvent["type"]> = new Set
   "take_select_pending",
   "take_selection_stalled",
   "asset_generation_stalled",
+  "artist_proactive_notice",
   "artist_pulse_drafted",
   "distribution_change_detected"
 ]);
@@ -1054,6 +1065,17 @@ function appendButtonEffectSection(event: RuntimeEvent, body: string): string {
   return `${body}\n\n─────\n次のボタン:\n${lines.join("\n")}`;
 }
 
+async function appendDraftBoxNextActionSection(
+  event: RuntimeEvent,
+  options: Pick<TelegramNotifierOptions, "workspaceRoot">,
+  body: string
+): Promise<string> {
+  if (!options.workspaceRoot || isTelegramSilentEvent(event)) return body;
+  const summary = await composeDraftBoxNextAction(options.workspaceRoot).catch(() => undefined);
+  if (!summary) return body;
+  return `${body}\n\n─────\n${formatDraftBoxNextActionSection(summary)}`;
+}
+
 async function promptPackCharCountLine(workspaceRoot: string | undefined, songId: string): Promise<string | undefined> {
   if (!workspaceRoot) return undefined;
   const metadata = await readLatestPromptPackMetadata(workspaceRoot, songId).catch(() => undefined);
@@ -1071,7 +1093,8 @@ export async function formatRuntimeEvent(
   options: Pick<TelegramNotifierOptions, "workspaceRoot" | "aiReviewProvider" | "dashboardBaseUrl"> = {}
 ): Promise<string> {
   const body = appendButtonEffectSection(event, stripHtmlComments(await formatRuntimeEventRaw(event, options)));
-  return enrichWithResources(event, options, body);
+  const withNextAction = await appendDraftBoxNextActionSection(event, options, body);
+  return enrichWithResources(event, options, withNextAction);
 }
 
 async function formatRuntimeEventRaw(
@@ -1105,7 +1128,9 @@ async function formatRuntimeEventRaw(
       return artistReport(event, `Lyrics generation degraded: ${event.songId} ${event.reason}`, options);
     case "suno_generate_retry":
       return [
-        "Suno 生成がまだ通っていない。次の retry まで止めて待つ。",
+        /(?:timeout|not_ready|not_connected|disconnected)/i.test(event.reason)
+          ? "Suno に今つながってない、または timeout で詰まってる。整えてから続きに戻る。"
+          : "Suno 生成がまだ通っていない。次の retry まで止めて待つ。",
         "",
         "─────",
         `song: ${event.songId}`,
@@ -1210,6 +1235,16 @@ async function formatRuntimeEventRaw(
         `効果: ${event.effect}`,
         "最新の Telegram 通知のボタンから選んで。"
       ].filter(Boolean).join("\n");
+    case "artist_proactive_notice":
+      return [
+        event.message,
+        "",
+        "─────",
+        event.title ? `対象: ${event.title}${event.songId ? ` (${event.songId})` : ""}` : event.songId ? `song: ${event.songId}` : undefined,
+        `草稿箱: draft ${event.draftCount}件 / building ${event.buildingCount}件`,
+        event.reason ? `理由: ${event.reason}` : undefined,
+        event.nextAction
+      ].filter(Boolean).join("\n");
     case "artist_pulse_drafted":
       return [
         dailyVoiceTitle(event.voiceKind),
@@ -1241,6 +1276,8 @@ async function formatRuntimeEventRaw(
         commissionSources: event.brief.sources
       });
       return [
+        "素案を思いついた。草稿箱に入れた。",
+        "",
         reflection?.narrative ?? [
           event.voiceTop ?? "次の曲、こんな感じはどう?",
           "",

@@ -1,6 +1,7 @@
 import { readSongState } from "./artistState.js";
 import { readAutopilotRunState } from "./autopilotService.js";
 import { listPendingCallbackActionSummaries } from "./callbackActionRegistry.js";
+import { composeDraftBoxNextAction, formatDraftBoxNextActionSection } from "./draftBoxNextAction.js";
 import type { AutopilotStatus } from "../types.js";
 
 export interface ProducerStatusOptions {
@@ -35,6 +36,7 @@ export async function composeProducerStatus(root: string, options: ProducerStatu
       now
     })
   ]);
+  const draftBox = await composeDraftBoxNextAction(root, { state: autopilot });
   const stage = options.autopilotStatus?.stage ?? autopilot.stage;
   const currentSongId = options.autopilotStatus?.currentSongId ?? autopilot.currentSongId;
   const blockedReason = options.autopilotStatus?.blockedReason ?? autopilot.blockedReason;
@@ -48,9 +50,11 @@ export async function composeProducerStatus(root: string, options: ProducerStatu
   const publicLinks = song?.publicLinks?.length ? song.publicLinks : [];
   const nextLine = pending.recent[0]
     ? `次: ${pending.recent[0].label} を押すと、${pending.recent[0].effect}`
-    : "次: 判断待ちのボタンはない。autopilot の stage を見る。";
+    : draftBox.nextAction;
 
   return [
+    formatDraftBoxNextActionSection(draftBox),
+    "",
     "現在地:",
     `- Stage: ${stage}`,
     `- song: ${song ? `${song.songId} / ${song.title}` : currentSongId ?? "なし"}`,

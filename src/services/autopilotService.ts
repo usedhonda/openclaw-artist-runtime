@@ -46,6 +46,7 @@ import {
   findDryRunImportPaths,
   findTakeAttributionCollisions
 } from "./takeAttributionGuard.js";
+import { emitDraftBoxProactiveNoticeIfNeeded } from "./draftBoxProactiveNotice.js";
 
 export function isPublishBlockedByDryRun(
   result: Pick<SocialPublishResult, "accepted" | "dryRun">,
@@ -81,7 +82,7 @@ function nowIso(): string {
   return new Date().toISOString();
 }
 
-function writeStageState(root: string, previous: AutopilotRunState, next: AutopilotRunState): Promise<AutopilotRunState> {
+async function writeStageState(root: string, previous: AutopilotRunState, next: AutopilotRunState): Promise<AutopilotRunState> {
   if (previous.stage !== next.stage || previous.currentSongId !== next.currentSongId) {
     emitRuntimeEvent({
       type: "autopilot_stage_changed",
@@ -91,7 +92,12 @@ function writeStageState(root: string, previous: AutopilotRunState, next: Autopi
       timestamp: Date.now()
     });
   }
-  return writeAutopilotRunState(root, next);
+  const written = await writeAutopilotRunState(root, next);
+  await emitDraftBoxProactiveNoticeIfNeeded(root, written).catch((error) => {
+    const reason = error instanceof Error ? error.message : String(error);
+    console.warn(`[artist-runtime] draft box proactive notice failed: ${reason}`);
+  });
+  return written;
 }
 
 function isMockSunoGenerationBypass(config: ArtistRuntimeConfig): boolean {

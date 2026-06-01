@@ -18,6 +18,7 @@ import { readBirdLedgerDetail, readBirdRateLimitStatus } from "../services/birdR
 import { appendCallbackAuditEvent, describeCallbackActionEffect, listPendingCallbackActionSummaries, resolveCallbackAction, summarizePendingCallbackActions } from "../services/callbackActionRegistry.js";
 import { buildCascadeTrace } from "../services/cascadeTrace.js";
 import { handleProposalResponse, listPendingProposalDetails, listPendingProposals } from "../services/conversationalSession.js";
+import { composeDraftBoxNextAction } from "../services/draftBoxNextAction.js";
 import { buildPlatformStats, readDistributionEvents } from "../services/distributionLedgerReader.js";
 import { emitRuntimeEvent, getRuntimeEventBus } from "../services/runtimeEventBus.js";
 import { readRuntimeEvents, readSongEventsAsc } from "../services/runtimeEventsLedger.js";
@@ -998,6 +999,10 @@ export async function buildStatusResponse(config?: Partial<ArtistRuntimeConfig>)
   const distributionWorker = await new SocialDistributionWorker().status(mergedConfig);
   const workspaceStatus = await buildWorkspaceSummaries(mergedConfig.artist.workspaceRoot);
   const sunoWorker = withRecentSongImportOutcome(rawSunoWorker, workspaceStatus.recentSong);
+  const draftBoxAction = await composeDraftBoxNextAction(mergedConfig.artist.workspaceRoot).catch(() => undefined);
+  const autopilotStatus = draftBoxAction
+    ? { ...autopilot, nextAction: draftBoxAction.nextAction }
+    : autopilot;
   const platforms = await buildPlatformStatuses(mergedConfig);
   const alerts = await collectAlerts(mergedConfig.artist.workspaceRoot, sunoWorker, platforms, mergedConfig);
   const sunoBudgetTracker = new SunoBudgetTracker(mergedConfig.artist.workspaceRoot);
@@ -1026,7 +1031,7 @@ export async function buildStatusResponse(config?: Partial<ArtistRuntimeConfig>)
     buildPlatformStats(mergedConfig.artist.workspaceRoot),
     readRuntimeEvents(mergedConfig.artist.workspaceRoot, 20)
   ]);
-  const setupReadiness = await buildSetupReadiness(mergedConfig, autopilot, sunoWorker, platforms, workspaceStatus);
+  const setupReadiness = await buildSetupReadiness(mergedConfig, autopilotStatus, sunoWorker, platforms, workspaceStatus);
   const effectiveDryRunMap = buildEffectiveDryRunMap(mergedConfig);
   const rawConfigOverrides = await readConfigOverrides(mergedConfig.artist.workspaceRoot) as { suno?: { dailyBudget?: unknown } };
   const hasRuntimeSunoBudget = positiveIntegerFromEnv(process.env.OPENCLAW_SUNO_DAILY_BUDGET) !== undefined
@@ -1052,7 +1057,7 @@ export async function buildStatusResponse(config?: Partial<ArtistRuntimeConfig>)
       allPlatformsEffectivelyDryRun: Object.values(effectiveDryRunMap).every(Boolean),
       effectiveDryRunMap
     },
-    autopilot,
+    autopilot: autopilotStatus,
     ticker: buildTickerStatus(mergedConfig),
     suno: {
       budget: statusSunoBudget,

@@ -148,7 +148,7 @@ describe("status ticker and reply simulation routes", () => {
     });
 
     expect(status.autopilot.stage).toBe("paused");
-    expect(status.autopilot.nextAction).toBe("await_producer_review");
+    expect(status.autopilot.nextAction).toContain("/resume");
     expect(status.autopilot.currentSongId).toBe("spawn_test");
     expect(status.autopilot.pausedReason).toContain("awaiting producer review");
   });

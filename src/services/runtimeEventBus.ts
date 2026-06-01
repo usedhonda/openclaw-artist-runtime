@@ -32,6 +32,7 @@ export type RuntimeEvent =
   | ({ type: "artist_pulse_drafted"; timestamp: number } & DailyVoiceDraft)
   | { type: "song_spawn_proposed"; brief: CommissionBrief; reason: string; candidateSongId: string; voiceTop?: string; observationSummary?: ObservationSummary; timestamp: number }
   | { type: "spawn_proposal_appended"; proposalId: string; pendingCount: number; timestamp: number }
+  | { type: "artist_proactive_notice"; trigger: "draft_idle" | "suno_trouble"; message: string; nextAction: string; draftCount: number; buildingCount: number; songId?: string; title?: string; reason?: string; stateKey: string; timestamp: number }
   | { type: "autopilot_ticker_safe_recovery"; outcome: string; songId?: string; timestamp: number }
   | { type: "observation_collected"; topMotifMatch?: string; topScore?: number; entryCount: number; timestamp: number }
   | { type: "artist_presence"; trigger: "observation_high_score" | "producer_silent_after_take"; text: string; songId?: string; timestamp: number }

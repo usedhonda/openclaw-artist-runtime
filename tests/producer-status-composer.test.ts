@@ -53,6 +53,8 @@ describe("producer status composer", () => {
     });
 
     expect(text).toContain("Stage: take_selection");
+    expect(text).toContain("草稿箱: draft 0件 / building 0件");
+    expect(text).toContain("次:");
     expect(text).toContain("song-026 / みじかいかげ");
     expect(text).toContain("採用");
     expect(text).toContain("9時間前");
