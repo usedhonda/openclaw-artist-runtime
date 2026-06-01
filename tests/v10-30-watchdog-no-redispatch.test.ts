@@ -45,12 +45,16 @@ describe("v10.30 watchdog no redispatch", () => {
 
     const result = await runCallbackPollingWatchdogOnce({
       root,
-      env: { OPENCLAW_POLLING_WATCHDOG_MINUTES: "10" } as NodeJS.ProcessEnv,
+      env: {
+        OPENCLAW_POLLING_WATCHDOG_MINUTES: "10",
+        OPENCLAW_PRODUCER_REMINDER_ENABLED: "on",
+        OPENCLAW_PRODUCER_REMINDER_HOURS: "0.001"
+      } as NodeJS.ProcessEnv,
       now: 11 * 60 * 1000,
       client: telegram
     });
 
-    expect(result).toMatchObject({ recovered: 0, reprompted: 1 });
+    expect(result).toMatchObject({ recovered: 0, reminded: 1 });
     expect(telegram.answerCallbackQuery).not.toHaveBeenCalled();
     expect(telegram.editMessageText).not.toHaveBeenCalled();
     expect(telegram.sendMessage).toHaveBeenCalledTimes(1);

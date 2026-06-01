@@ -114,20 +114,20 @@ describe("polling callback watchdog", () => {
     await expect(resolveCallbackAction(root, callbackId)).resolves.toMatchObject({ status: "pending" });
   });
 
-  it("reprompts stale pending callbacks without dispatching state mutations", async () => {
+  it("reminds stale producer-decision callbacks without dispatching state mutations", async () => {
     const { root, callbackId } = await seedPending(0);
     const client = watchdogClient();
 
     const result = await runCallbackPollingWatchdogOnce({
       root,
-      env: staleEnv,
+      env: { ...staleEnv, OPENCLAW_PRODUCER_REMINDER_ENABLED: "on", OPENCLAW_PRODUCER_REMINDER_HOURS: "0.001" } as NodeJS.ProcessEnv,
       now: 11 * 60 * 1000,
       client
     });
 
-    expect(result).toMatchObject({ enabled: true, recovered: 0, reprompted: 1, expired: 0 });
+    expect(result).toMatchObject({ enabled: true, recovered: 0, reminded: 1, expired: 0 });
     expect(await readAutopilotRunState(root)).toMatchObject({ stage: "prompt_pack", suspendedAt: "prompt_pack_ready" });
-    expect(client.sendMessage).toHaveBeenCalledWith(123, "⏰ 押し忘れの確認: Suno に進める");
+    expect(client.sendMessage).toHaveBeenCalledWith(123, expect.stringContaining("Suno 生成へ"));
     await expect(resolveCallbackAction(root, callbackId)).resolves.toMatchObject({
       status: "pending"
     });
@@ -138,9 +138,8 @@ describe("polling callback watchdog", () => {
     expect(audit.at(-1)).toMatchObject({
       callbackId,
       action: "prompt_pack_go",
-      actor: "watchdog_reprompt",
-      reason: "polling_watchdog_reprompt",
-      result: "reprompted"
+      reason: "producer_decision_reminder",
+      result: "reminded"
     });
   });
 

@@ -110,7 +110,10 @@ const CALLBACK_ACTION_CATEGORY: Record<string, TtlCategory> = {
   song_discard: "producer_decision",
   song_spawn_inject: "producer_decision",
   song_spawn_skip: "producer_decision",
-  song_spawn_edit: "producer_decision"
+  song_spawn_edit: "producer_decision",
+  prompt_pack_go: "producer_decision",
+  prompt_pack_edit: "producer_decision",
+  prompt_pack_skip: "producer_decision"
 };
 
 export function callbackActionTtlCategory(action?: string): TtlCategory {
@@ -126,15 +129,17 @@ export function isProducerDecisionAction(action?: string): boolean {
 // "re-surface" (re-issue a fresh button for) themselves, without developer flags.
 // Stricter than isProducerDecisionAction by design — an explicit allowlist so future
 // action additions do NOT silently become user-re-surfaceable. External-publish
-// (x_publish_*, daily_voice_publish) and execution-gate (prompt_pack_go,
-// take_select_regenerate) actions are intentionally excluded: re-surfacing those
-// approaches external side effects and must re-run the publish guard + explicit GO.
+// (x_publish_*, daily_voice_publish) and take-regeneration actions remain excluded:
+// re-surfacing those approaches external side effects and must re-run their guards.
 const RESURFACE_ALLOWED_ACTIONS: ReadonlySet<string> = new Set([
   "song_spawn_inject",
   "song_spawn_skip",
   "song_spawn_edit",
   "song_archive",
-  "song_discard"
+  "song_discard",
+  "prompt_pack_go",
+  "prompt_pack_edit",
+  "prompt_pack_skip"
 ]);
 
 export function isResurfaceAllowedAction(action?: string): boolean {

@@ -19,6 +19,7 @@ import { wrapCommandVoice, type CommandVoiceKind } from "./commandVoiceWrapper.j
 import { composeProducerStatus } from "./producerStatusComposer.js";
 import { emitRuntimeEvent } from "./runtimeEventBus.js";
 import { appendFailedNotifyReplayRecord, latestFailedNotifyEntry, listUnreplayedFailedNotifications } from "./failedNotifyLedger.js";
+import { resurfacePromptPackReady } from "./promptPackResurfaceService.js";
 
 export type TelegramCommandKind =
   | "help"
@@ -482,7 +483,11 @@ export async function routeTelegramCommand(input: TelegramRouteInput): Promise<T
       return { kind: "resume", responseText: await voiceCommand("error", "Resume unavailable: workspace root missing.", input, "resume unavailable"), shouldStoreFreeText: false };
     }
     await new AutopilotControlService().resume(input.workspaceRoot, { reason: `telegram:${input.fromUserId}`, source: "telegram" });
-    return { kind: "resume", responseText: await voiceCommand("ack", "Autopilot resumed.", input, "autopilot resumed"), shouldStoreFreeText: false };
+    const resurface = await resurfacePromptPackReady(input.workspaceRoot, { requireExpiredGo: true });
+    const info = resurface.resurfaced
+      ? `Autopilot resumed. ${resurface.songId} は Suno 生成 GO 待ちだったので、最新の GO ボタンを再表示した。`
+      : "Autopilot resumed.";
+    return { kind: "resume", responseText: await voiceCommand("ack", info, input, "autopilot resumed"), shouldStoreFreeText: false };
   }
 
   if (command === "/replay") {

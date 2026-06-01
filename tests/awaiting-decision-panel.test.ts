@@ -67,12 +67,16 @@ describe("awaiting decision panel", () => {
       requestPath: "/plugins/artist-runtime/api/callback-actions?status=pending&category=producer_decision"
     });
 
-    expect(response.count).toBe(1);
-    expect(response.callbacks[0]).toMatchObject({
+    expect(response.count).toBe(2);
+    expect(response.callbacks.find((callback) => callback.action === "song_archive")).toMatchObject({
       action: "song_archive",
       category: "producer_decision",
       songTitle: "みじかいかげ",
       stage: "asset_generation"
+    });
+    expect(response.callbacks.find((callback) => callback.action === "prompt_pack_go")).toMatchObject({
+      action: "prompt_pack_go",
+      category: "producer_decision"
     });
   });
 });

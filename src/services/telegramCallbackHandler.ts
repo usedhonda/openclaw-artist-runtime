@@ -13,6 +13,7 @@ import { markSpawned } from "./songSpawnRateLimiter.js";
 import { readAutopilotRunState, writeAutopilotRunState } from "./autopilotService.js";
 import { handleSongPublishActionRequest, type SongPublishAction } from "./songPublishActionRegistry.js";
 import { markSpawnProposalAcceptedWaiting, markSpawnProposalApproved, markSpawnProposalDiscarded } from "./spawnProposalQueue.js";
+import { resurfacePromptPackReady } from "./promptPackResurfaceService.js";
 import { selectTake } from "./takeSelection.js";
 import { emitRuntimeEvent } from "./runtimeEventBus.js";
 import type { TelegramClient } from "./telegramClient.js";
@@ -210,10 +211,10 @@ const TERMINAL_SONG_STATUSES_FOR_RESURFACE: ReadonlySet<string> = new Set([
   "scheduled", "published", "archived", "discarded", "failed"
 ]);
 
-// Plan v10.56: a Telegram user tapping an expired/stale producer-decision button
-// re-surfaces a FRESH proposal notification (with a new live button) — NOT a re-run
-// of the original action. This is UI re-issuance: it re-emits song_spawn_proposed so
-// the notifier's formatter produces the narrative + a freshly-minted GO button.
+// Plan v10.56/10.57: a Telegram user tapping an expired/stale producer-decision
+// button re-surfaces a FRESH notification (with a new live button) — NOT a re-run
+// of the original action. This is UI re-issuance: it re-emits the owning event so
+// the notifier's formatter produces the body + freshly-minted buttons.
 // Guarded by isResurfaceAllowedAction (callers) + terminal-state + single-shot here.
 async function resurfaceExpiredProducerDecision(
   ctx: TelegramCallbackContext,
@@ -251,6 +252,19 @@ async function resurfaceExpiredProducerDecision(
     await markCallbackResolved(ctx.root, callbackId, { status: "updated", reason: `resurfaced:${staleReason}`, now });
     await appendCallbackAudit(ctx.root, auditBase(ctx, callbackId, entry, "updated", "callback_resurfaced"));
     return { processed: true, result: "updated", reason: "callback_resurfaced", callbackId };
+  }
+  if (entry.action.startsWith("prompt_pack_") && entry.songId) {
+    await appendCallbackAudit(ctx.root, auditBase(ctx, callbackId, entry, "updated", `callback_resurface_requested:${staleReason}`));
+    const resurface = await resurfacePromptPackReady(ctx.root, { songId: entry.songId, now });
+    if (resurface.resurfaced) {
+      await ctx.client.answerCallbackQuery(ctx.callbackQueryId, { text: "Suno 生成待ちを再表示しました。届いた通知から選んでください。" });
+      await markCallbackResolved(ctx.root, callbackId, { status: "updated", reason: `resurfaced:${staleReason}`, now });
+      await appendCallbackAudit(ctx.root, auditBase(ctx, callbackId, entry, "updated", "callback_resurfaced"));
+      return { processed: true, result: "updated", reason: "callback_resurfaced", callbackId };
+    }
+    await ctx.client.answerCallbackQuery(ctx.callbackQueryId, { text: "この曲は今、Suno 生成待ちではありません。" });
+    await appendCallbackAudit(ctx.root, auditBase(ctx, callbackId, entry, "expired", `resurface_rejected:${resurface.reason}`));
+    return { processed: true, result: "expired", reason: `resurface_rejected:${resurface.reason}`, callbackId };
   }
   // allowed action but no re-emit path (e.g. archive/discard without a brief) -> graceful stale reply.
   await ctx.client.answerCallbackQuery(ctx.callbackQueryId, { text: STALE_CALLBACK_JA_REPLY });
