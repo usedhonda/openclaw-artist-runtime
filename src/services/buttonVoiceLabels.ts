@@ -22,7 +22,7 @@ export const buttonVoiceLabels = {
     cancel: "キャンセル"
   },
   songSpawn: {
-    inject: "進める",
+    inject: "作る",
     skip: "保留する",
     edit: "修正する"
   },

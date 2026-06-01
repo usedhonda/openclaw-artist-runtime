@@ -651,7 +651,7 @@ export function App() {
         apiGet<RecoveryResponse>("/recovery"),
         apiGet<ProposalsResponse>("/proposals"),
         apiGet<CallbackActionsResponse>("/callback-actions?status=pending&category=producer_decision"),
-        apiGet<SpawnProposalsResponse>("/spawn-proposals?status=pending&limit=3")
+        apiGet<SpawnProposalsResponse>("/spawn-proposals?status=draft&limit=20")
       ]);
       const nextSelectedSongId = preferredSongId
         ?? selectedSongId

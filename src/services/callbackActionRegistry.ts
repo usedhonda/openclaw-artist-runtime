@@ -159,7 +159,7 @@ const callbackActionEffects: Record<string, Omit<CallbackActionEffect, "action">
   daily_voice_publish: { label: "投稿", effect: "草案を X に投稿します。外部公開が発生します。" },
   daily_voice_edit: { label: "編集", effect: "草案を直すための返信待ちにします。" },
   daily_voice_cancel: { label: "キャンセル", effect: "草案投稿を破棄します。" },
-  song_spawn_inject: { label: "進める", effect: "この着想で曲を作る。" },
+  song_spawn_inject: { label: "作る", effect: "この草稿で曲を完成まで作る。外部公開はしない。" },
   song_spawn_skip: { label: "保留する", effect: "この着想を保留する。" },
   song_spawn_edit: { label: "修正する", effect: "この commission を編集する。" },
   prompt_pack_go: { label: "Suno 生成へ", effect: "prompt_pack の停止を解除し、次 cycle で Suno 生成へ進めます。" },
@@ -201,7 +201,11 @@ export function defaultCallbackActionExpiresAt(now = Date.now(), action?: string
 }
 
 function shortCallbackId(): string {
-  return randomBytes(7).toString("base64url").replace(/[^A-Za-z0-9]/g, "").slice(0, 10);
+  let id = "";
+  while (id.length < 8) {
+    id += randomBytes(7).toString("base64url").replace(/[^A-Za-z0-9]/g, "");
+  }
+  return id.slice(0, 10);
 }
 
 async function appendEntry(root: string, entry: CallbackActionEntry): Promise<CallbackActionEntry> {

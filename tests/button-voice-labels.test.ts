@@ -60,7 +60,7 @@ describe("buttonVoiceLabels", () => {
     expect(buttonVoiceLabels.dailyVoice.publish).toBe("投稿");
     expect(buttonVoiceLabels.dailyVoice.edit).toBe("編集");
     expect(buttonVoiceLabels.dailyVoice.cancel).toBe("キャンセル");
-    expect(buttonVoiceLabels.songSpawn.inject).toBe("進める");
+    expect(buttonVoiceLabels.songSpawn.inject).toBe("作る");
     expect(buttonVoiceLabels.songSpawn.skip).toBe("保留する");
     expect(buttonVoiceLabels.songSpawn.edit).toBe("修正する");
     expect(buttonVoiceLabels.takeSelect.accept).toBe("採用");

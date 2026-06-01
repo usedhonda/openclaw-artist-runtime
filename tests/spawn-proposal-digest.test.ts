@@ -52,7 +52,7 @@ function proposal(id: string, title: string): SpawnProposal {
   return {
     proposalId: id,
     createdAt: "2026-05-28T00:00:00.000Z",
-    status: "pending",
+    status: "draft",
     title,
     voiceTop: `ゆずるさん、${title}で行く案がある。`,
     coreTheme: `${title}の違和感を切る`,
@@ -99,8 +99,8 @@ describe("spawn proposal digest", () => {
     const markup = requestBody(fetchImpl.mock.calls[1]).reply_markup as { inline_keyboard: Array<Array<{ text: string }>> };
     expect(markup.inline_keyboard).toHaveLength(2);
     expect(markup.inline_keyboard.map((row) => row.map((button) => button.text))).toEqual([
-      ["進める", "保留する", "修正する"],
-      ["進める", "保留する", "修正する"]
+      ["作る", "保留する", "修正する"],
+      ["作る", "保留する", "修正する"]
     ]);
     expect((await readCallbackActionEntries(root)).map((entry) => entry.action).sort()).toEqual([
       "song_spawn_edit",
@@ -128,7 +128,7 @@ describe("spawn proposal digest", () => {
     expect(sendBody.text).toContain("行程 trace:");
     const markup = requestBody(fetchImpl.mock.calls[1]).reply_markup as { inline_keyboard: Array<Array<{ text: string }>> };
     expect(markup.inline_keyboard).toEqual([[
-      expect.objectContaining({ text: "進める" }),
+      expect.objectContaining({ text: "作る" }),
       expect.objectContaining({ text: "保留する" }),
       expect.objectContaining({ text: "修正する" })
     ]]);
@@ -142,7 +142,7 @@ describe("spawn proposal digest", () => {
 
     const response = await buildSpawnProposalsResponse({
       config: { artist: { workspaceRoot: root } },
-      requestPath: "/plugins/artist-runtime/api/spawn-proposals?status=pending&limit=3"
+      requestPath: "/plugins/artist-runtime/api/spawn-proposals?status=draft&limit=20"
     });
     const html = renderToStaticMarkup(
       React.createElement(SpawnProposalQueuePanel, {
@@ -152,17 +152,17 @@ describe("spawn proposal digest", () => {
     );
 
     expect(response.count).toBe(2);
-    expect(response.proposals[0].actions.map((action) => action.label)).toEqual(["進める", "保留する", "修正する"]);
-    expect(html).toContain("Spawn Proposal Queue");
+    expect(response.proposals[0].actions.map((action) => action.label)).toEqual(["作る", "保留する", "修正する"]);
+    expect(html).toContain("永続草稿箱");
     expect(html).toContain("ハンズ前、解散");
-    expect(html).toContain("この着想で曲を作る。");
-    expect(html).toContain("操作は Telegram の最新 digest ボタンから実行します。");
+    expect(html).toContain("この草稿で曲を完成まで作る。外部公開はしない。");
+    expect(html).toContain("操作は Telegram の草稿カードから実行します。");
   });
 
   it("describes proposal button effects in plain Japanese", () => {
     expect(describeCallbackActionEffect("song_spawn_inject")).toMatchObject({
-      label: "進める",
-      effect: "この着想で曲を作る。"
+      label: "作る",
+      effect: "この草稿で曲を完成まで作る。外部公開はしない。"
     });
     expect(describeCallbackActionEffect("song_spawn_skip")).toMatchObject({
       label: "保留する",

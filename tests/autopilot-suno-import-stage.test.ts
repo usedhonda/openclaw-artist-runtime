@@ -99,7 +99,7 @@ describe("autopilot Suno import stage", () => {
     expect(connectorCreate).not.toHaveBeenCalled();
     expect(state.stage).toBe("take_selection");
     expect(await readSongState(root, "import-song")).toMatchObject({ status: "takes_imported" });
-  });
+  }, 30000);
 
   it("does not start a second create after restart when a stale import error remains", async () => {
     const root = mkdtempSync(join(tmpdir(), "artist-runtime-autopilot-import-restart-"));

@@ -35,8 +35,6 @@ const TELEGRAM_SILENT_EVENT_TYPES: ReadonlySet<RuntimeEvent["type"]> = new Set([
   "theme_generated",
   "prompt_pack_char_count",
   "spawn_proposal_appended",
-  "spawn_proposal_queue_full",
-  "spawn_proposal_skip_queue_full",
   "bird_cooldown_triggered",
   "error"
 ]);
@@ -1296,18 +1294,6 @@ async function formatRuntimeEventRaw(
       return `Prompt pack char count: ${event.songId} style=${event.style} lyrics=${event.lyrics} title=${event.title}`;
     case "spawn_proposal_appended":
       return `Spawn proposal appended: ${event.proposalId} pending=${event.pendingCount}`;
-    case "spawn_proposal_queue_full":
-      return `Spawn proposal queue full: pending=${event.pendingCount}/${event.limit}`;
-    case "spawn_proposal_skip_queue_full":
-      return `Spawn proposal skipped because queue is full: pending=${event.pendingCount}/${event.limit}`;
-    case "spawn_proposal_accepted_waiting":
-      return [
-        "採用、承りました。",
-        "",
-        `『${event.title}』は前の曲が終わったら着手します。`,
-        event.currentSongId ? `今の制作中: ${event.currentSongId}` : undefined,
-        "Suno は同時に走らせない。順番に行く。"
-      ].filter(Boolean).join("\n");
     case "autopilot_ticker_safe_recovery":
       return [
         "ticker が止まっていたので、安全な 1 tick だけ入れた。",

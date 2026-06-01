@@ -3,22 +3,41 @@ import { dirname, join } from "node:path";
 import type { SpawnProposal, SpawnProposalStatus } from "../types.js";
 import { emitRuntimeEvent } from "./runtimeEventBus.js";
 
-export const SPAWN_PROPOSAL_QUEUE_LIMIT = 3;
-
 const cache = new Map<string, SpawnProposal[]>();
 
 export function spawnProposalLedgerPath(root: string): string {
   return join(root, "runtime", "spawn-proposals.jsonl");
 }
 
-function activePending(proposals: SpawnProposal[]): SpawnProposal[] {
-  return proposals.filter((proposal) => proposal.status === "pending");
+function draftProposals(proposals: SpawnProposal[]): SpawnProposal[] {
+  return proposals.filter((proposal) => proposal.status === "draft");
+}
+
+function normalizeLegacyStatus(status: string): SpawnProposalStatus {
+  switch (status) {
+    case "draft":
+    case "building":
+    case "done":
+    case "dismissed":
+      return status;
+    case "discarded":
+      return "dismissed";
+    case "pending":
+    case "approved":
+    case "accepted_waiting":
+    default:
+      return "draft";
+  }
+}
+
+function normalizeProposal(entry: SpawnProposal): SpawnProposal {
+  return { ...entry, status: normalizeLegacyStatus(String(entry.status)) };
 }
 
 function latestByProposalId(entries: SpawnProposal[]): SpawnProposal[] {
   const latest = new Map<string, SpawnProposal>();
   for (const entry of entries) {
-    latest.set(entry.proposalId, entry);
+    latest.set(entry.proposalId, normalizeProposal(entry));
   }
   return [...latest.values()].sort((left, right) => Date.parse(left.createdAt) - Date.parse(right.createdAt));
 }
@@ -45,42 +64,31 @@ export async function loadSpawnProposalQueue(root: string, options: { force?: bo
 }
 
 export async function listPendingSpawnProposals(root: string): Promise<SpawnProposal[]> {
-  return activePending(await loadSpawnProposalQueue(root));
+  return draftProposals(await loadSpawnProposalQueue(root));
 }
 
-export async function listAcceptedWaitingSpawnProposals(root: string): Promise<SpawnProposal[]> {
-  return (await loadSpawnProposalQueue(root)).filter((proposal) => proposal.status === "accepted_waiting");
+export async function listBuildingSpawnProposals(root: string): Promise<SpawnProposal[]> {
+  return (await loadSpawnProposalQueue(root)).filter((proposal) => proposal.status === "building");
 }
 
 export async function appendSpawnProposal(
   root: string,
   proposal: SpawnProposal,
-  options: { limit?: number; now?: number } = {}
+  options: { now?: number } = {}
 ): Promise<SpawnProposal> {
-  const limit = options.limit ?? SPAWN_PROPOSAL_QUEUE_LIMIT;
   const proposals = await loadSpawnProposalQueue(root);
-  const pendingCount = activePending(proposals).length;
-  if (pendingCount >= limit) {
-    emitRuntimeEvent({
-      type: "spawn_proposal_queue_full",
-      proposalId: proposal.proposalId,
-      limit,
-      pendingCount,
-      timestamp: options.now ?? Date.now()
-    });
-    throw new Error(`spawn_proposal_queue_full:${pendingCount}/${limit}`);
-  }
-  await writeProposal(root, proposal);
-  const next = [...proposals.filter((entry) => entry.proposalId !== proposal.proposalId), proposal]
+  const normalized = normalizeProposal({ ...proposal, status: normalizeLegacyStatus(String(proposal.status)) });
+  await writeProposal(root, normalized);
+  const next = [...proposals.filter((entry) => entry.proposalId !== normalized.proposalId), normalized]
     .sort((left, right) => Date.parse(left.createdAt) - Date.parse(right.createdAt));
   cache.set(root, next);
   emitRuntimeEvent({
     type: "spawn_proposal_appended",
-    proposalId: proposal.proposalId,
-    pendingCount: pendingCount + (proposal.status === "pending" ? 1 : 0),
+    proposalId: normalized.proposalId,
+    pendingCount: draftProposals(next).length,
     timestamp: options.now ?? Date.now()
   });
-  return proposal;
+  return normalized;
 }
 
 async function markSpawnProposalStatus(root: string, proposalId: string, status: SpawnProposalStatus): Promise<SpawnProposal> {
@@ -95,16 +103,16 @@ async function markSpawnProposalStatus(root: string, proposalId: string, status:
   return updated;
 }
 
-export function markSpawnProposalApproved(root: string, proposalId: string): Promise<SpawnProposal> {
-  return markSpawnProposalStatus(root, proposalId, "approved");
+export function markSpawnProposalBuilding(root: string, proposalId: string): Promise<SpawnProposal> {
+  return markSpawnProposalStatus(root, proposalId, "building");
 }
 
-export function markSpawnProposalDiscarded(root: string, proposalId: string): Promise<SpawnProposal> {
-  return markSpawnProposalStatus(root, proposalId, "discarded");
+export function markSpawnProposalDone(root: string, proposalId: string): Promise<SpawnProposal> {
+  return markSpawnProposalStatus(root, proposalId, "done");
 }
 
-export function markSpawnProposalAcceptedWaiting(root: string, proposalId: string): Promise<SpawnProposal> {
-  return markSpawnProposalStatus(root, proposalId, "accepted_waiting");
+export function markSpawnProposalDismissed(root: string, proposalId: string): Promise<SpawnProposal> {
+  return markSpawnProposalStatus(root, proposalId, "dismissed");
 }
 
 export function clearSpawnProposalQueueCacheForTest(): void {

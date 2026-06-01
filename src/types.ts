@@ -350,7 +350,7 @@ export interface SongSpawnProposal {
   observationSummary?: ObservationSummary;
 }
 
-export type SpawnProposalStatus = "pending" | "approved" | "discarded" | "accepted_waiting";
+export type SpawnProposalStatus = "draft" | "building" | "done" | "dismissed";
 
 export interface SpawnProposal {
   proposalId: string;

@@ -43,9 +43,9 @@ function sourceLine(proposal: SpawnProposalQueueItem): string {
 export function SpawnProposalQueuePanel({ count, proposals }: SpawnProposalQueuePanelProps) {
   return (
     <article className={`panel spawn-proposal-queue-panel${count > 0 ? " has-proposals" : ""}`}>
-      <div className="section-title">Spawn Proposal Queue</div>
+      <div className="section-title">永続草稿箱</div>
       {count === 0 ? (
-        <div className="muted">待機中の曲アイデアはありません。</div>
+        <div className="muted">保存中の曲草稿はありません。</div>
       ) : (
         <div className="list spawn-proposal-queue-list">
           {proposals.map((proposal) => (
@@ -68,7 +68,7 @@ export function SpawnProposalQueuePanel({ count, proposals }: SpawnProposalQueue
         </div>
       )}
       {count > proposals.length ? <div className="muted">ほか {count - proposals.length} 件あります。</div> : null}
-      <div className="muted">操作は Telegram の最新 digest ボタンから実行します。</div>
+      <div className="muted">操作は Telegram の草稿カードから実行します。作るボタンは完成報告まで進め、外部公開はしません。</div>
     </article>
   );
 }

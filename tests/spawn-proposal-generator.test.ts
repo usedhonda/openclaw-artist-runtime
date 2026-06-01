@@ -40,7 +40,7 @@ function queuedProposal(id: string, title = `queue ${id}`, coreTheme = `theme ${
   return {
     proposalId: id,
     createdAt: `2026-05-28T00:00:0${id.at(-1) ?? "0"}.000Z`,
-    status: "pending",
+    status: "draft",
     title,
     voiceTop: "次の案を出している。",
     coreTheme,
@@ -92,8 +92,9 @@ describe("spawn proposal generator queue integration", () => {
     vi.restoreAllMocks();
   });
 
-  it("skips autopilot proposal emission when three pending queue entries already exist", async () => {
+  it("keeps generating draft ideas even when three drafts already exist", async () => {
     process.env.OPENCLAW_SONG_SPAWN_ENABLED = "on";
+    callAiProviderMock.mockResolvedValue(aiOutput("四つ目の草稿", "三つの草稿とは別角度で、コピー機の夜を切る。"));
     const root = await workspace();
     await appendSpawnProposal(root, queuedProposal("p1"));
     await appendSpawnProposal(root, queuedProposal("p2"));
@@ -104,18 +105,13 @@ describe("spawn proposal generator queue integration", () => {
 
     const state = await new ArtistAutopilotService().runCycle({
       workspaceRoot: root,
-      config: { artist: { workspaceRoot: root }, autopilot: { enabled: true, dryRun: true }, songSpawn: { enabled: true } }
+      config: { artist: { workspaceRoot: root }, aiReview: { provider: "openai-codex" }, autopilot: { enabled: true, dryRun: true }, songSpawn: { enabled: true } }
     });
     unsubscribe();
 
-    expect(state.blockedReason).toBe("spawn_proposal_queue_full");
-    expect(events).toContainEqual(expect.objectContaining({
-      type: "spawn_proposal_skip_queue_full",
-      limit: 3,
-      pendingCount: 3
-    }));
-    expect(events.some((event) => event.type === "song_spawn_proposed")).toBe(false);
-    expect(callAiProviderMock).not.toHaveBeenCalled();
+    expect(state.blockedReason).toBe("spawn_proposal_ready");
+    expect(events.some((event) => event.type === "spawn_proposal_skip_queue_full")).toBe(false);
+    expect(events.some((event) => event.type === "song_spawn_proposed")).toBe(true);
   });
 
   it("passes activeQueueContext into the AI prompt as a negative angle section", async () => {

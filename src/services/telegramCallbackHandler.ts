@@ -12,7 +12,7 @@ import { injectCommissionSong } from "./songStateInjector.js";
 import { markSpawned } from "./songSpawnRateLimiter.js";
 import { readAutopilotRunState, writeAutopilotRunState } from "./autopilotService.js";
 import { handleSongPublishActionRequest, type SongPublishAction } from "./songPublishActionRegistry.js";
-import { markSpawnProposalAcceptedWaiting, markSpawnProposalApproved, markSpawnProposalDiscarded } from "./spawnProposalQueue.js";
+import { markSpawnProposalBuilding, markSpawnProposalDismissed } from "./spawnProposalQueue.js";
 import { resurfacePromptPackReady } from "./promptPackResurfaceService.js";
 import { selectTake } from "./takeSelection.js";
 import { emitRuntimeEvent } from "./runtimeEventBus.js";
@@ -450,7 +450,7 @@ export async function routeTelegramCallback(ctx: TelegramCallbackContext): Promi
       return { processed: true, result: "updated", reason: "song_spawn_edit_requested", callbackId };
     }
     if (entry.action === "song_spawn_skip") {
-      await markProposalStatusIfPresent(markSpawnProposalDiscarded, ctx.root, proposalId);
+      await markProposalStatusIfPresent(markSpawnProposalDismissed, ctx.root, proposalId);
       const state = await readAutopilotRunState(ctx.root);
       if (state.suspendedAt === "spawn_proposal_ready") {
         await writeAutopilotRunState(ctx.root, {
@@ -477,27 +477,17 @@ export async function routeTelegramCallback(ctx: TelegramCallbackContext): Promi
     try {
       const state = await readAutopilotRunState(ctx.root);
       if (await currentSongLaneBusy(ctx.root, state, entry.commissionBrief.songId)) {
-        await markProposalStatusIfPresent(markSpawnProposalAcceptedWaiting, ctx.root, proposalId);
-        await markSpawned(ctx.root, new Date(now));
-        await markCallbackResolved(ctx.root, callbackId, { status: "applied", reason: "song_spawn_accepted_waiting", now });
-        await appendCallbackAudit(ctx.root, auditBase(ctx, callbackId, entry, "applied", "song_spawn_accepted_waiting"));
-        emitRuntimeEvent({
-          type: "spawn_proposal_accepted_waiting",
-          proposalId: proposalId ?? entry.commissionBrief.songId,
-          songId: entry.commissionBrief.songId,
-          title: entry.commissionBrief.title,
-          currentSongId: state.currentSongId,
-          timestamp: now
-        });
-        await clearButtonsAndReply(ctx, entry, `採用承りました。『${entry.commissionBrief.title}』は前の曲が終わったら着手します。`);
-        return { processed: true, result: "applied", reason: "song_spawn_accepted_waiting", callbackId };
+        await markCallbackResolved(ctx.root, callbackId, { status: "failed", reason: "draft_box_building_busy", now });
+        await appendCallbackAudit(ctx.root, auditBase(ctx, callbackId, entry, "blocked", "draft_box_building_busy"));
+        await clearButtonsAndReply(ctx, entry, `今は ${state.currentSongId ?? "別の曲"} を作ってる。終わったら、この草稿箱からもう一回「作る」を押してくれ。待ち行列には入れない。`);
+        return { processed: true, result: "blocked", reason: "draft_box_building_busy", callbackId };
       }
-      await markProposalStatusIfPresent(markSpawnProposalApproved, ctx.root, proposalId);
+      await markProposalStatusIfPresent(markSpawnProposalBuilding, ctx.root, proposalId);
       const injected = await injectCommissionSong(ctx.root, entry.commissionBrief, { now: new Date(now) });
       await markSpawned(ctx.root, new Date(now));
       await markCallbackResolved(ctx.root, callbackId, { status: "applied", reason: "song_spawn_injected", now });
       await appendCallbackAudit(ctx.root, auditBase(ctx, callbackId, entry, "applied", "song_spawn_injected"));
-      await clearButtonsAndReply(ctx, entry, `inject した。songId=${injected.songId}、stage=planning。autopilot cycle で進む。`);
+      await clearButtonsAndReply(ctx, entry, `作り始めた。songId=${injected.songId}。Suno 生成まで一気に進める。完成したら報告する。`);
       return { processed: true, result: "applied", reason: "song_spawn_injected", callbackId };
     } catch (error) {
       const reason = error instanceof Error ? error.message : "song_spawn_inject_failed";

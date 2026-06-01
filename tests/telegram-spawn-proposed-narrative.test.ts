@@ -86,7 +86,7 @@ describe("telegram spawn proposed narrative", () => {
     const markupCall = fetchImpl.mock.calls.find((call) => String(call[0]).includes("/editMessageReplyMarkup"));
     const markupBody = String((markupCall?.[1] as RequestInit).body);
     expect(entries.map((entry) => entry.action).sort()).toEqual(["song_spawn_edit", "song_spawn_inject", "song_spawn_skip"].sort());
-    expect(markupBody).toContain("進める");
+    expect(markupBody).toContain("作る");
     expect(markupBody).toContain("保留する");
     expect(markupBody).toContain("修正する");
   });

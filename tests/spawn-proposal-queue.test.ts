@@ -10,9 +10,9 @@ import {
   clearSpawnProposalQueueCacheForTest,
   listPendingSpawnProposals,
   loadSpawnProposalQueue,
-  markSpawnProposalAcceptedWaiting,
-  markSpawnProposalApproved,
-  markSpawnProposalDiscarded,
+  markSpawnProposalBuilding,
+  markSpawnProposalDismissed,
+  markSpawnProposalDone,
   spawnProposalLedgerPath
 } from "../src/services/spawnProposalQueue";
 
@@ -24,7 +24,7 @@ function proposal(id: string): SpawnProposal {
   return {
     proposalId: id,
     createdAt: `2026-05-28T00:00:0${id.at(-1) ?? "0"}.000Z`,
-    status: "pending",
+    status: "draft",
     title: `proposal ${id}`,
     voiceTop: "次の曲、ここから考える。",
     coreTheme: `theme ${id}`,
@@ -50,7 +50,7 @@ describe("spawnProposalQueue", () => {
     getRuntimeEventBus().clearForTest();
   });
 
-  it("appends proposals to the runtime ledger and lists pending entries", async () => {
+  it("appends drafts to the runtime ledger and lists draft entries", async () => {
     const root = workspace();
     const events: RuntimeEvent[] = [];
     const unsubscribe = getRuntimeEventBus().subscribe((event) => events.push(event));
@@ -69,7 +69,7 @@ describe("spawnProposalQueue", () => {
     }));
   });
 
-  it("enforces the max-three pending proposal limit and emits queue-full audit", async () => {
+  it("keeps drafts permanently without enforcing a queue limit", async () => {
     const root = workspace();
     const events: RuntimeEvent[] = [];
     const unsubscribe = getRuntimeEventBus().subscribe((event) => events.push(event));
@@ -77,17 +77,12 @@ describe("spawnProposalQueue", () => {
     await appendSpawnProposal(root, proposal("p1"), { now: 1 });
     await appendSpawnProposal(root, proposal("p2"), { now: 2 });
     await appendSpawnProposal(root, proposal("p3"), { now: 3 });
-    await expect(appendSpawnProposal(root, proposal("p4"), { now: 4 })).rejects.toThrow("spawn_proposal_queue_full:3/3");
+    await appendSpawnProposal(root, proposal("p4"), { now: 4 });
 
     unsubscribe();
-    expect((await listPendingSpawnProposals(root)).map((entry) => entry.proposalId)).toEqual(["p1", "p2", "p3"]);
-    expect(events.at(-1)).toMatchObject({
-      type: "spawn_proposal_queue_full",
-      proposalId: "p4",
-      limit: 3,
-      pendingCount: 3,
-      timestamp: 4
-    });
+    expect((await listPendingSpawnProposals(root)).map((entry) => entry.proposalId)).toEqual(["p1", "p2", "p3", "p4"]);
+    expect(events.filter((event) => event.type === "spawn_proposal_appended")).toHaveLength(4);
+    expect(events.some((event) => event.type === "spawn_proposal_queue_full")).toBe(false);
   });
 
   it("records status transitions append-only and rebuilds latest state on load", async () => {
@@ -95,16 +90,32 @@ describe("spawnProposalQueue", () => {
 
     await appendSpawnProposal(root, proposal("p1"));
     await appendSpawnProposal(root, proposal("p2"));
-    await expect(markSpawnProposalApproved(root, "p1")).resolves.toMatchObject({ status: "approved" });
-    await expect(markSpawnProposalAcceptedWaiting(root, "p1")).resolves.toMatchObject({ status: "accepted_waiting" });
-    await expect(markSpawnProposalDiscarded(root, "p2")).resolves.toMatchObject({ status: "discarded" });
+    await expect(markSpawnProposalBuilding(root, "p1")).resolves.toMatchObject({ status: "building" });
+    await expect(markSpawnProposalDone(root, "p1")).resolves.toMatchObject({ status: "done" });
+    await expect(markSpawnProposalDismissed(root, "p2")).resolves.toMatchObject({ status: "dismissed" });
     clearSpawnProposalQueueCacheForTest();
 
     expect(await listPendingSpawnProposals(root)).toEqual([]);
     expect((await loadSpawnProposalQueue(root)).map((entry) => [entry.proposalId, entry.status])).toEqual([
-      ["p1", "accepted_waiting"],
-      ["p2", "discarded"]
+      ["p1", "done"],
+      ["p2", "dismissed"]
     ]);
     expect((await readFile(spawnProposalLedgerPath(root), "utf8")).trim().split("\n")).toHaveLength(5);
+  });
+
+  it("normalizes old queue statuses into draft-box statuses on load", async () => {
+    const root = workspace();
+    await appendSpawnProposal(root, { ...proposal("p1"), status: "pending" as never });
+    await appendSpawnProposal(root, { ...proposal("p2"), status: "approved" as never });
+    await appendSpawnProposal(root, { ...proposal("p3"), status: "accepted_waiting" as never });
+    await appendSpawnProposal(root, { ...proposal("p4"), status: "discarded" as never });
+    clearSpawnProposalQueueCacheForTest();
+
+    expect((await loadSpawnProposalQueue(root)).map((entry) => [entry.proposalId, entry.status])).toEqual([
+      ["p1", "draft"],
+      ["p2", "draft"],
+      ["p3", "draft"],
+      ["p4", "dismissed"]
+    ]);
   });
 });

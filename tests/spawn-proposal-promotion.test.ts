@@ -50,7 +50,7 @@ function proposal(songId = "spawn_waiting"): SpawnProposal {
   return {
     proposalId: songId,
     createdAt: "2026-05-28T00:00:00.000Z",
-    status: "pending",
+    status: "draft",
     title: "ハンズ前、解散",
     voiceTop: "ゆずるさん、ハンズ前、解散で行く案がある。",
     coreTheme: "ハンズ前で解散する若者の距離を切る",
@@ -84,7 +84,7 @@ async function registerInject(root: string, songId = "spawn_waiting") {
   });
 }
 
-describe("spawn proposal promotion", () => {
+describe("spawn proposal draft-box creation", () => {
   afterEach(() => {
     if (originalSpawn === undefined) {
       delete process.env.OPENCLAW_SONG_SPAWN_ENABLED;
@@ -96,7 +96,7 @@ describe("spawn proposal promotion", () => {
     clearSpawnProposalQueueCacheForTest();
   });
 
-  it("promotes an approved proposal immediately when currentSongId is empty", async () => {
+  it("starts building a draft immediately when currentSongId is empty", async () => {
     process.env.OPENCLAW_SONG_SPAWN_ENABLED = "on";
     const root = workspace();
     await ensureArtistWorkspace(root);
@@ -120,10 +120,10 @@ describe("spawn proposal promotion", () => {
       suspendedAt: null
     });
     expect(await readSongState(root, "spawn_waiting")).toMatchObject({ status: "brief" });
-    expect((await loadSpawnProposalQueue(root)).find((entry) => entry.proposalId === "spawn_waiting")).toMatchObject({ status: "approved" });
+    expect((await loadSpawnProposalQueue(root)).find((entry) => entry.proposalId === "spawn_waiting")).toMatchObject({ status: "building" });
   });
 
-  it("marks an approved proposal as accepted_waiting while another song owns currentSongId", async () => {
+  it("rejects a second create while another song owns currentSongId without creating a waiting queue", async () => {
     process.env.OPENCLAW_SONG_SPAWN_ENABLED = "on";
     const root = workspace();
     await ensureArtistWorkspace(root);
@@ -140,9 +140,6 @@ describe("spawn proposal promotion", () => {
     });
     await appendSpawnProposal(root, proposal());
     const entry = await registerInject(root);
-    const events: RuntimeEvent[] = [];
-    const unsubscribe = getRuntimeEventBus().subscribe((event) => events.push(event));
-
     const result = await routeTelegramCallback({
       root,
       client: client(),
@@ -152,19 +149,13 @@ describe("spawn proposal promotion", () => {
       chatId: 123,
       messageId: 77
     });
-    unsubscribe();
 
-    expect(result).toMatchObject({ result: "applied", reason: "song_spawn_accepted_waiting" });
+    expect(result).toMatchObject({ result: "blocked", reason: "draft_box_building_busy" });
     expect(await readAutopilotRunState(root)).toMatchObject({ currentSongId: "song-active", stage: "suno_generation" });
-    expect((await loadSpawnProposalQueue(root)).find((entry) => entry.proposalId === "spawn_waiting")).toMatchObject({ status: "accepted_waiting" });
-    expect(events).toContainEqual(expect.objectContaining({
-      type: "spawn_proposal_accepted_waiting",
-      proposalId: "spawn_waiting",
-      currentSongId: "song-active"
-    }));
+    expect((await loadSpawnProposalQueue(root)).find((entry) => entry.proposalId === "spawn_waiting")).toMatchObject({ status: "draft" });
   });
 
-  it("promotes the oldest accepted_waiting proposal when the current song is released", async () => {
+  it("does not auto-promote old accepted_waiting ledger rows after the current song is released", async () => {
     process.env.OPENCLAW_SONG_SPAWN_ENABLED = "on";
     const root = workspace();
     await ensureArtistWorkspace(root);
@@ -183,10 +174,10 @@ describe("spawn proposal promotion", () => {
     const entry = await registerInject(root);
     await markCallbackResolved(root, entry.callbackId, {
       status: "applied",
-      reason: "song_spawn_accepted_waiting",
+      reason: "song_spawn_injected",
       now: Date.parse("2026-05-28T00:01:00.000Z")
     });
-    await appendSpawnProposal(root, { ...proposal(), status: "accepted_waiting" });
+    await appendSpawnProposal(root, { ...proposal(), status: "accepted_waiting" as never });
 
     const state = await new ArtistAutopilotService().runCycle({
       workspaceRoot: root,
@@ -198,11 +189,10 @@ describe("spawn proposal promotion", () => {
     });
 
     expect(state).toMatchObject({
-      currentSongId: "spawn_waiting",
-      stage: "planning",
-      suspendedAt: null
+      currentSongId: undefined,
+      stage: "planning"
     });
-    expect(await readSongState(root, "spawn_waiting")).toMatchObject({ status: "brief" });
-    expect((await loadSpawnProposalQueue(root)).find((entry) => entry.proposalId === "spawn_waiting")).toMatchObject({ status: "approved" });
+    expect((await readSongState(root, "spawn_waiting")).status).toBe("idea");
+    expect((await loadSpawnProposalQueue(root)).find((entry) => entry.proposalId === "spawn_waiting")).toMatchObject({ status: "draft" });
   });
 });

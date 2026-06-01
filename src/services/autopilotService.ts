@@ -32,7 +32,7 @@ import { cleanupExpiredCallbacks } from "./callbackLedgerMaintenance.js";
 import { readCallbackActionEntries, type CallbackActionEntry } from "./callbackActionRegistry.js";
 import { applyRuntimeEnvOverrides, getArtistPulseIntervalHours, getSongSpawnIntervalHours, getStaleQueueCleanupHours, isArtistPulseConfigured, isSongbookAutoSyncEnabled, isSongSpawnConfigured } from "./runtimeConfig.js";
 import { proposeSpawn, type ActiveQueueContextEntry } from "./songSpawnProposer.js";
-import { appendSpawnProposal, listAcceptedWaitingSpawnProposals, listPendingSpawnProposals, markSpawnProposalApproved, SPAWN_PROPOSAL_QUEUE_LIMIT } from "./spawnProposalQueue.js";
+import { appendSpawnProposal, listBuildingSpawnProposals, listPendingSpawnProposals, markSpawnProposalDone } from "./spawnProposalQueue.js";
 import { injectCommissionSong } from "./songStateInjector.js";
 import { buildCascadeTrace } from "./cascadeTrace.js";
 import { shouldSpawn } from "./songSpawnRateLimiter.js";
@@ -244,7 +244,7 @@ function spawnProposalRecordFromGenerated(
   return {
     proposalId: proposal.candidateSongId,
     createdAt: proposal.brief.createdAt,
-    status: "pending",
+    status: "draft",
     title: proposal.brief.title,
     voiceTop: voiceTop ?? "",
     coreTheme: proposal.brief.lyricsTheme || proposal.brief.brief,
@@ -271,16 +271,6 @@ async function runIdeaQueueLane(
       return;
     }
     const pendingProposals = await listPendingSpawnProposals(root);
-    if (pendingProposals.length >= SPAWN_PROPOSAL_QUEUE_LIMIT) {
-      skippedForFullQueue = true;
-      emitRuntimeEvent({
-        type: "spawn_proposal_skip_queue_full",
-        limit: SPAWN_PROPOSAL_QUEUE_LIMIT,
-        pendingCount: pendingProposals.length,
-        timestamp: Date.now()
-      });
-      return;
-    }
     const proposal = await proposeSpawn(root, {
       aiReviewProvider: config.aiReview.provider,
       activeQueueContext: activeQueueContextFromProposals(pendingProposals),
@@ -305,17 +295,6 @@ async function runIdeaQueueLane(
     const reason = error instanceof Error ? error.message : String(error);
     console.warn(`[artist-runtime] song spawn proposal failed: ${reason}`);
   });
-  if (skippedForFullQueue) {
-    return {
-      state: await writeStageState(root, existing, {
-        ...existing,
-        blockedReason: options.preserveCurrentSongLane ? existing.blockedReason : "spawn_proposal_queue_full",
-        lastRunAt: nowIso()
-      }),
-      emitted,
-      skippedForFullQueue
-    };
-  }
   if (!emitted) {
     return { emitted, skippedForFullQueue };
   }
@@ -344,31 +323,17 @@ async function runIdeaQueueLane(
   };
 }
 
-function matchingApprovedSpawnCallback(proposal: SpawnProposal, entries: CallbackActionEntry[]): CallbackActionEntry | undefined {
-  return [...entries].reverse().find((entry) =>
-    entry.action === "song_spawn_inject"
-    && entry.status === "applied"
-    && Boolean(entry.commissionBrief)
-    && (
-      entry.proposalId === proposal.proposalId
-      || entry.songId === proposal.proposalId
-      || entry.commissionBrief?.songId === proposal.proposalId
-    )
-  );
+async function isBuildingDraftSong(root: string, songId: string): Promise<boolean> {
+  return (await listBuildingSpawnProposals(root)).some((proposal) => proposal.proposalId === songId);
 }
 
-async function promoteAcceptedWaitingSpawnProposal(root: string): Promise<AutopilotRunState | undefined> {
-  const waiting = await listAcceptedWaitingSpawnProposals(root);
-  if (waiting.length === 0) return undefined;
-  const callbacks = await readCallbackActionEntries(root).catch(() => []);
-  for (const proposal of waiting) {
-    const callback = matchingApprovedSpawnCallback(proposal, callbacks);
-    if (!callback?.commissionBrief) continue;
-    await markSpawnProposalApproved(root, proposal.proposalId);
-    await injectCommissionSong(root, callback.commissionBrief);
-    return readAutopilotRunState(root);
-  }
-  return undefined;
+async function markBuildingDraftDone(root: string, songId: string): Promise<void> {
+  await markSpawnProposalDone(root, songId).catch((error) => {
+    const reason = error instanceof Error ? error.message : String(error);
+    if (!reason.startsWith("spawn_proposal_not_found:")) {
+      throw error;
+    }
+  });
 }
 
 async function importMockSunoGeneration(root: string, songId: string, state: AutopilotRunState, config: ArtistRuntimeConfig): Promise<void> {
@@ -885,12 +850,6 @@ export class ArtistAutopilotService {
     }
     const existing = await readAutopilotRunState(input.workspaceRoot);
     const currentLaneSong = await currentSong(input.workspaceRoot, existing.currentSongId);
-    if (!currentLaneSong) {
-      const promoted = await promoteAcceptedWaitingSpawnProposal(input.workspaceRoot);
-      if (promoted) {
-        return promoted;
-      }
-    }
     if (
       currentLaneSong
       && (
@@ -937,9 +896,6 @@ export class ArtistAutopilotService {
           blockedReason: existing.pausedReason ?? existing.blockedReason ?? PRODUCER_REVIEW_SUSPENDED_AT,
           lastRunAt: nowIso()
         });
-      }
-      if (ideaLane.skippedForFullQueue && ideaLane.state) {
-        return ideaLane.state;
       }
       const afterSpawn = await readAutopilotRunState(input.workspaceRoot);
       if (!afterSpawn.currentSongId && afterSpawn.suspendedAt === "spawn_proposal_ready") {
@@ -1073,7 +1029,11 @@ export class ArtistAutopilotService {
       return suspendForProducerSpawnApproval(input.workspaceRoot, existing, song, baseState);
     }
 
-    if (song && (existing.suspendedAt === "prompt_pack_ready" || existing.suspendedAt === "user_paused")) {
+    if (
+      song
+      && (existing.suspendedAt === "prompt_pack_ready" || existing.suspendedAt === "user_paused")
+      && !(existing.suspendedAt === "prompt_pack_ready" && await isBuildingDraftSong(input.workspaceRoot, song.songId))
+    ) {
       return writeStageState(input.workspaceRoot, existing, {
         ...baseState,
         currentSongId: song.songId,
@@ -1182,7 +1142,8 @@ export class ArtistAutopilotService {
             }
             throw error;
           }
-          const promptReadySuspension = config.telegram.enabled;
+          const draftBoxOneShot = await isBuildingDraftSong(input.workspaceRoot, packedSong.songId);
+          const promptReadySuspension = config.telegram.enabled && !draftBoxOneShot;
           if (promptReadySuspension) {
             const [summary, voiceTop] = await Promise.all([
               promptPackReadySummary(input.workspaceRoot, packedSong),
@@ -1203,7 +1164,7 @@ export class ArtistAutopilotService {
           return writeStageState(input.workspaceRoot, existing, {
             ...baseState,
             currentSongId: packedSong.songId,
-            stage: "prompt_pack",
+            stage: draftBoxOneShot ? "suno_generation" : "prompt_pack",
             blockedReason: undefined,
             lastError: undefined,
             lastSuccessfulStage: "prompt_pack",
@@ -1382,6 +1343,7 @@ export class ArtistAutopilotService {
             urls: selection.sourceUrls,
             timestamp: Date.now()
           });
+          await markBuildingDraftDone(input.workspaceRoot, song.songId);
           return writeStageState(input.workspaceRoot, existing, {
             ...releaseAfterTakeCompletion(baseState),
             cycleCount: existing.cycleCount + 1

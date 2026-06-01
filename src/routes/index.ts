@@ -1449,7 +1449,7 @@ export async function buildSpawnProposalsResponse(input: unknown): Promise<Spawn
   const payload = payloadRecord(input);
   const config = await resolveRuntimeConfig(payload.config as Partial<ArtistRuntimeConfig> | undefined);
   const routePath = "/plugins/artist-runtime/api/spawn-proposals";
-  const limit = integerFromPayloadOrQuery(payload, "limit", 3, routePath);
+  const limit = integerFromPayloadOrQuery(payload, "limit", 20, routePath);
   const proposals = await listPendingSpawnProposals(config.artist.workspaceRoot);
   const actions = ["song_spawn_inject", "song_spawn_skip", "song_spawn_edit"].map(describeCallbackActionEffect);
   return {

@@ -46,7 +46,7 @@ function queuedProposal(id: string): SpawnProposal {
   return {
     proposalId: id,
     createdAt: `2026-05-28T00:00:0${id.at(-1) ?? "0"}.000Z`,
-    status: "pending",
+    status: "draft",
     title: `待機案 ${id}`,
     voiceTop: "ゆずるさん、次の案も置いておく。",
     coreTheme: `待機している別案 ${id}`,
@@ -124,14 +124,14 @@ describe("idea queue lane separation during producer review", () => {
       blockedReason: "spawn_proposal_ready"
     });
     expect(next.currentSongId).toBeUndefined();
-    expect(queue.filter((entry) => entry.status === "pending")).toHaveLength(1);
+    expect(queue.filter((entry) => entry.status === "draft")).toHaveLength(1);
     expect(events.some((event) => event.type === "song_spawn_proposed")).toBe(true);
     expect(events.some((event) => event.type === "prompt_pack_ready")).toBe(false);
     expect(events.some((event) => event.type === "suno_generate_retry")).toBe(false);
     expect(events.some((event) => event.type === "song_take_completed")).toBe(false);
   });
 
-  it("releases a stale producer review lane and preserves queue-full enforcement on the next cycle", async () => {
+  it("releases a stale producer review lane and keeps draft generation unbounded on the next cycle", async () => {
     process.env.OPENCLAW_SONG_SPAWN_ENABLED = "on";
     vi.useFakeTimers();
     vi.setSystemTime(new Date("2026-05-28T12:00:00.000Z"));
@@ -155,7 +155,7 @@ describe("idea queue lane separation during producer review", () => {
     });
     const released = state;
     vi.setSystemTime(new Date("2026-05-28T19:00:00.000Z"));
-    const queueFullState = await new ArtistAutopilotService().runCycle({
+    const draftState = await new ArtistAutopilotService().runCycle({
       workspaceRoot: root,
       config: {
         artist: { workspaceRoot: root },
@@ -174,16 +174,12 @@ describe("idea queue lane separation during producer review", () => {
       suspendedAt: undefined,
       blockedReason: undefined
     });
-    expect(queueFullState).toMatchObject({
-      blockedReason: "spawn_proposal_queue_full"
+    expect(draftState).toMatchObject({
+      blockedReason: "spawn_proposal_ready"
     });
-    expect(queueFullState.currentSongId).toBeUndefined();
-    expect((await loadSpawnProposalQueue(root)).filter((entry) => entry.status === "pending")).toHaveLength(3);
-    expect(events).toContainEqual(expect.objectContaining({
-      type: "spawn_proposal_skip_queue_full",
-      limit: 3,
-      pendingCount: 3
-    }));
-    expect(events.some((event) => event.type === "song_spawn_proposed")).toBe(false);
+    expect(draftState.currentSongId).toBeUndefined();
+    expect((await loadSpawnProposalQueue(root)).filter((entry) => entry.status === "draft")).toHaveLength(4);
+    expect(events.some((event) => event.type === "spawn_proposal_skip_queue_full")).toBe(false);
+    expect(events.some((event) => event.type === "song_spawn_proposed")).toBe(true);
   });
 });

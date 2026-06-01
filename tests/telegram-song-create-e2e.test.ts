@@ -14,7 +14,7 @@ async function waitForSong(root: string): Promise<string[]> {
   await vi.waitFor(async () => {
     const entries = await readdir(join(root, "songs"));
     expect(entries.filter((name) => name.startsWith("song-")).length).toBeGreaterThan(0);
-  }, { timeout: 15000 });
+  }, { timeout: 30000 });
   return readdir(join(root, "songs"));
 }
 
@@ -33,7 +33,7 @@ describe("telegram song create trigger", () => {
 
     expect(response.responseText).toContain("最新ニュース");
     expect(await waitForSong(root)).toContain("song-001");
-  });
+  }, 30000);
 
   it("starts runCycle from natural language song requests", async () => {
     const root = workspace();

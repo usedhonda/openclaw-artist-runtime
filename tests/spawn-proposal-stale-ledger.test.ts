@@ -11,7 +11,6 @@ import {
 } from "../src/services/staleQueueMaintenance";
 import {
   clearSpawnProposalQueueCacheForTest,
-  listAcceptedWaitingSpawnProposals,
   listPendingSpawnProposals,
   loadSpawnProposalQueue,
   spawnProposalLedgerPath
@@ -19,10 +18,8 @@ import {
 import type { AutopilotRunState, CommissionBrief, SpawnProposal } from "../src/types";
 
 type SpawnProposalLedgerIssueReason =
-  | "stale_pending"
-  | "applied_callback_pending_proposal"
-  | "current_song_pending_proposal"
-  | "accepted_waiting_without_applied_callback";
+  | "applied_callback_draft_proposal"
+  | "current_song_draft_proposal";
 
 interface SpawnProposalLedgerIssue {
   proposalId: string;
@@ -51,13 +48,13 @@ function brief(songId: string): CommissionBrief {
 
 function proposal(
   proposalId: string,
-  status: SpawnProposal["status"],
+  status: SpawnProposal["status"] | "pending" | "approved" | "discarded" | "accepted_waiting",
   createdAt = "2026-05-28T00:00:00.000Z"
 ): SpawnProposal {
   return {
     proposalId,
     createdAt,
-    status,
+    status: status as SpawnProposal["status"],
     title: `proposal ${proposalId}`,
     voiceTop: "次の曲、ここから考える。",
     coreTheme: `core theme ${proposalId}`,
@@ -108,17 +105,12 @@ async function detectSpawnProposalLedgerIssues(
 
   for (const item of proposals) {
     const hasAppliedInject = callbacks.some((entry) => entry.status === "applied" && callbackMatchesProposal(entry, item));
-    if (item.status === "pending" && Date.parse(item.createdAt) < cutoff) {
-      issues.push({ proposalId: item.proposalId, status: item.status, reason: "stale_pending" });
+    void cutoff;
+    if (item.status === "draft" && hasAppliedInject) {
+      issues.push({ proposalId: item.proposalId, status: item.status, reason: "applied_callback_draft_proposal" });
     }
-    if (item.status === "pending" && hasAppliedInject) {
-      issues.push({ proposalId: item.proposalId, status: item.status, reason: "applied_callback_pending_proposal" });
-    }
-    if (item.status === "pending" && options.state?.currentSongId === item.proposalId) {
-      issues.push({ proposalId: item.proposalId, status: item.status, reason: "current_song_pending_proposal" });
-    }
-    if (item.status === "accepted_waiting" && !hasAppliedInject) {
-      issues.push({ proposalId: item.proposalId, status: item.status, reason: "accepted_waiting_without_applied_callback" });
+    if (item.status === "draft" && options.state?.currentSongId === item.proposalId) {
+      issues.push({ proposalId: item.proposalId, status: item.status, reason: "current_song_draft_proposal" });
     }
   }
 
@@ -137,20 +129,24 @@ describe("spawn proposal stale ledger invariants", () => {
       proposal("spawn-old", "pending", "2026-05-28T00:00:00.000Z"),
       proposal("spawn-waiting", "pending", "2026-05-28T00:01:00.000Z"),
       proposal("spawn-old", "accepted_waiting", "2026-05-28T00:02:00.000Z"),
-      proposal("spawn-old", "approved", "2026-05-28T00:03:00.000Z")
+      proposal("spawn-old", "approved", "2026-05-28T00:03:00.000Z"),
+      proposal("spawn-dismissed", "discarded", "2026-05-28T00:04:00.000Z")
     ]);
 
     clearSpawnProposalQueueCacheForTest();
 
     expect((await loadSpawnProposalQueue(root, { force: true })).map((entry) => [entry.proposalId, entry.status])).toEqual([
-      ["spawn-waiting", "pending"],
-      ["spawn-old", "approved"]
+      ["spawn-waiting", "draft"],
+      ["spawn-old", "draft"],
+      ["spawn-dismissed", "dismissed"]
     ]);
-    await expect(listPendingSpawnProposals(root)).resolves.toMatchObject([{ proposalId: "spawn-waiting", status: "pending" }]);
-    await expect(listAcceptedWaitingSpawnProposals(root)).resolves.toEqual([]);
+    await expect(listPendingSpawnProposals(root)).resolves.toMatchObject([
+      { proposalId: "spawn-waiting", status: "draft" },
+      { proposalId: "spawn-old", status: "draft" }
+    ]);
   });
 
-  it("detects stale pending, applied callback, current song, and accepted_waiting inconsistencies", async () => {
+  it("detects applied-callback and current-song drift without treating old drafts as stale", async () => {
     const root = await tempRoot();
     await writeProposalLedger(root, [
       proposal("spawn-stale", "pending", "2026-05-27T00:00:00.000Z"),
@@ -207,11 +203,11 @@ describe("spawn proposal stale ledger invariants", () => {
     });
 
     expect(issues).toEqual(expect.arrayContaining([
-      { proposalId: "spawn-stale", status: "pending", reason: "stale_pending" },
-      { proposalId: "spawn-applied", status: "pending", reason: "applied_callback_pending_proposal" },
-      { proposalId: "spawn-current", status: "pending", reason: "current_song_pending_proposal" },
-      { proposalId: "spawn-orphan-waiting", status: "accepted_waiting", reason: "accepted_waiting_without_applied_callback" }
+      { proposalId: "spawn-applied", status: "draft", reason: "applied_callback_draft_proposal" },
+      { proposalId: "spawn-current", status: "draft", reason: "current_song_draft_proposal" }
     ]));
+    expect(issues.some((issue) => issue.proposalId === "spawn-stale")).toBe(false);
+    expect(issues.some((issue) => issue.proposalId === "spawn-orphan-waiting")).toBe(false);
   });
 
   it("audits and expires pending producer callbacks for terminal songs instead of leaving silent drift", async () => {

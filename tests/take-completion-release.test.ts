@@ -47,11 +47,11 @@ function brief(songId = "spawn_waiting"): CommissionBrief {
   };
 }
 
-function acceptedWaitingProposal(songId = "spawn_waiting"): SpawnProposal {
+function draftProposal(songId = "spawn_waiting"): SpawnProposal {
   return {
     proposalId: songId,
     createdAt: "2026-05-29T00:00:00.000Z",
-    status: "accepted_waiting",
+    status: "draft",
     title: "次の曲",
     voiceTop: "ゆずるさん、次の曲は待ってる。",
     coreTheme: "完成後に次の曲へ進む",
@@ -68,7 +68,7 @@ function acceptedWaitingProposal(songId = "spawn_waiting"): SpawnProposal {
 }
 
 async function seedAcceptedWaiting(root: string, songId = "spawn_waiting"): Promise<void> {
-  await appendSpawnProposal(root, acceptedWaitingProposal(songId));
+  await appendSpawnProposal(root, draftProposal(songId));
   const action = await registerCallbackAction(root, {
     action: "song_spawn_inject",
     proposalId: songId,
@@ -81,13 +81,13 @@ async function seedAcceptedWaiting(root: string, songId = "spawn_waiting"): Prom
   });
   await markCallbackResolved(root, action.callbackId, {
     status: "applied",
-    reason: "song_spawn_accepted_waiting",
+    reason: "song_spawn_injected",
     now: Date.parse("2026-05-29T00:01:00.000Z")
   });
 }
 
 describe("take completion release contract", () => {
-  it("releases currentSongId after take selection and promotes accepted_waiting on the next cycle", async () => {
+  it("releases currentSongId after take selection and does not promote another draft automatically", async () => {
     clearSpawnProposalQueueCacheForTest();
     const root = workspace();
     await seedImportedTake(root);
@@ -113,18 +113,10 @@ describe("take completion release contract", () => {
       selectedTakeId: "good-bass-cold-hook"
     });
 
-    const promoted = await service.runCycle({ workspaceRoot: root, config });
-
-    expect(promoted).toMatchObject({
-      currentSongId: "spawn_waiting",
-      stage: "planning",
-      suspendedAt: null
-    });
-    expect(await readSongState(root, "spawn_waiting")).toMatchObject({ status: "brief" });
-    expect((await loadSpawnProposalQueue(root)).find((entry) => entry.proposalId === "spawn_waiting")).toMatchObject({ status: "approved" });
+    expect((await loadSpawnProposalQueue(root)).find((entry) => entry.proposalId === "spawn_waiting")).toMatchObject({ status: "draft" });
   });
 
-  it("keeps the lane released after take completion when there is no accepted_waiting proposal", async () => {
+  it("keeps the lane released after take completion when there is no draft creation in progress", async () => {
     clearSpawnProposalQueueCacheForTest();
     const root = workspace();
     await seedImportedTake(root);

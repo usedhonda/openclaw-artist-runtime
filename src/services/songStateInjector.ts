@@ -13,6 +13,14 @@ export interface SongCommissionInjectionResult {
 }
 
 function renderBrief(brief: CommissionBrief): string {
+  const sources = brief.sources?.length
+    ? [
+      "",
+      "## Frozen sources",
+      "",
+      ...brief.sources.map((source) => `- ${source.kind}: ${source.url}${source.author ? ` (${source.author})` : ""}${source.quote ? ` — ${source.quote}` : ""}`)
+    ]
+    : [];
   return [
     `# Brief for ${brief.title}`,
     "",
@@ -26,7 +34,8 @@ function renderBrief(brief: CommissionBrief): string {
     `- Mood: ${brief.mood}`,
     `- Tempo: ${brief.tempo}`,
     `- Duration: ${brief.duration}`,
-    `- Style notes: ${brief.styleNotes}`
+    `- Style notes: ${brief.styleNotes}`,
+    ...sources
   ].join("\n");
 }
 

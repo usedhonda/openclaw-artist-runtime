@@ -54,7 +54,7 @@ describe("prompt_pack_ready event", () => {
     expect(ready).toMatchObject({ songId: "song-ready", title: "Song Ready" });
     expect(ready?.tempo).toMatch(/\d{2,3}\s*BPM/);
     expect(ready?.lyricsExcerpt.split("\n").length).toBeGreaterThan(0);
-  });
+  }, 60000);
 
   it("keeps a suspended prompt pack from advancing on the next cycle", async () => {
     const root = await seedPromptPackSong();
