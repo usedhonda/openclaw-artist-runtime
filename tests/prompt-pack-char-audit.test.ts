@@ -23,13 +23,14 @@ describe("prompt pack character audit", () => {
     };
     expect(metadata.charCounts.style).toBeGreaterThanOrEqual(800);
     expect(metadata.charCounts.style).toBeLessThanOrEqual(1000);
-    expect(metadata.charCounts.lyrics).toBeGreaterThanOrEqual(1500);
+    expect(metadata.charCounts.lyrics).toBeLessThan(1500);
     expect(metadata.charCounts.lyrics).toBeLessThanOrEqual(3000);
     expect(metadata.charCounts.title).toBe("Character Gate".length);
     expect(metadata.charCounts.styleZone).toBe("sweet");
+    expect(metadata.charCounts.lyricsZone).toBe("short");
   });
 
-  it("fails validation when style or lyrics fall below the enforced floor", () => {
+  it("warns validation when lyrics fall below the preferred floor", () => {
     const validation = validateSunoPromptPack({
       songId: "song-short",
       songTitle: "Short Gate",
@@ -45,6 +46,7 @@ describe("prompt pack character audit", () => {
 
     expect(validation.valid).toBe(false);
     expect(validation.errors.join("\n")).toContain("styleAndFeel length out of range");
-    expect(validation.errors.join("\n")).toContain("lyrics length out of range");
+    expect(validation.errors.join("\n")).not.toContain("lyrics length out of range");
+    expect(validation.warnings.join("\n")).toContain("lyrics length below preferred floor");
   });
 });

@@ -80,7 +80,7 @@ export function buildLyricsDraftingPrompt(input: BuildLyricsPromptInput): string
     "Prioritize 韻, 伏線, 情景, genre-aware flow, hook design, Suno V5.5 section tags, and singable line length.",
     "Return strict JSON only: {\"title\":\"2-4 words\",\"form\":\"short form name\",\"sections\":[{\"tag\":\"Verse 1 - tight flow\",\"lines\":[\"line\"]}],\"bilingual_hint\":\"short note\",\"moodHint\":\"2-4 word sonic mood\"}.",
     "Use 7-10 tagged sections. Verse sections need 4-21 lines, Hook 2-6, Bridge 1-3, Intro/Outro 0-1.",
-    "Every section tag must include an annotation after the section name. Do not place commands outside tags. Do not name existing artists or songs.",
+    "Every section tag must include an annotation after the section name. Do not place commands outside tags. Do not name existing artists or songs. Do not reuse title kanji directly in hook or refrain lines; convert any title phrase used inside lyrics to hiragana.",
     "Length budget: total lyric body (joined section lines + tag overhead, before YAML META) must reach 4400-4600 characters; absolute upper bound 4800. Treat anything under 4000 as a draft failure and keep expanding verses, hook variations, and bridge before returning.",
     "Use the full knowledge digest below — quote rhyme tables, structure formulas, and V5.5 metatag vocabulary explicitly when they apply. Do not paraphrase the references away.",
     input.repairNotes?.length ? `Repair notes from previous draft: ${input.repairNotes.join("; ")}` : "",

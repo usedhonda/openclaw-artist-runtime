@@ -63,12 +63,12 @@ describe("Suno driver payload contract", () => {
     launchPersistentContextMock.mockReset();
   });
 
-  it("extracts UI lyrics body from payloadYaml when present", async () => {
+  it("submits full double-entry payloadYaml when present", async () => {
     await expect(filledLyrics({
-      payloadYaml: "# META\ntitle: YAML first\nLYRICS START\n[Verse]\ncanonical\nLYRICS END",
+      payloadYaml: "# META (hints; do not sing)\ntitle: YAML first\n=== LYRICS START (do not sing tags) ===\n[Verse]\ncanonical\n=== LYRICS END ===",
       lyrics: "[Verse]\nbody fallback",
       lyricsText: "[Verse]\nplain fallback"
-    })).resolves.toBe("[Verse]\ncanonical");
+    })).resolves.toBe("# META (hints; do not sing)\ntitle: YAML first\n=== LYRICS START (do not sing tags) ===\n[Verse]\ncanonical\n=== LYRICS END ===");
   });
 
   it("prefers payload.lyrics when payloadYaml is missing and lyricsText also exists", async () => {

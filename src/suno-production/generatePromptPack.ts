@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 import { extractLyricsBody } from "../services/lyricsExtraction.js";
-import { lintJapaneseLyricsEnglishFragments } from "../services/lyricsLanguageLint.js";
+import { lintJapaneseLyricsEnglishFragments, lintResidualKanji, normalizeAsciiNumbersToHiragana } from "../services/lyricsLanguageLint.js";
 import { repairCommandLeak } from "../services/lyricsRepair.js";
 import type { AiReviewProvider, CreateSunoPromptPackInput, SunoPromptPack, SunoSliders } from "../types.js";
 import { validateSunoPromptPack } from "../validators/promptPackValidator.js";
@@ -17,6 +17,10 @@ function hashText(value: string): string {
 
 function buildPayload(input: CreateSunoPromptPackInput, style: string, exclude: string, yamlLyrics: string, sliders: SunoSliders): Record<string, unknown> {
   const lyricsBody = extractLyricsBody(yamlLyrics);
+  const languageWarnings = [
+    ...lintJapaneseLyricsEnglishFragments(lyricsBody).map((warning) => `english_fragment:${warning.token}:line_${warning.line}`),
+    ...lintResidualKanji(lyricsBody).map((warning) => `${warning.kind ?? "residual_kanji"}:${warning.token}:line_${warning.line}`)
+  ];
   return {
     songId: input.songId,
     songName: input.songTitle,
@@ -29,7 +33,7 @@ function buildPayload(input: CreateSunoPromptPackInput, style: string, exclude: 
     lyricsYaml: yamlLyrics,
     sliders,
     promptCharCounts: promptCharCounts(input.songTitle, style, lyricsBody),
-    languageWarnings: lintJapaneseLyricsEnglishFragments(lyricsBody).map((warning) => `english_fragment:${warning.token}:line_${warning.line}`)
+    languageWarnings
   };
 }
 
@@ -53,7 +57,7 @@ function promptCharCounts(title: string, style: string, lyrics: string) {
 }
 
 export function createSunoPromptPack(input: CreateSunoPromptPackInput): SunoPromptPack {
-  const lyricsText = repairCommandLeak(input.lyricsText).trim();
+  const lyricsText = normalizeAsciiNumbersToHiragana(repairCommandLeak(input.lyricsText).trim());
   const genre = `${input.artistReason} ${input.moodHint ?? ""}`;
   const bpm = input.bpm ?? 124;
   const vocalGender = input.vocalGender ?? artistDefaultVocalGender(input.artistSnapshot);

@@ -15,7 +15,7 @@ describe("Suno payload lyrics text split", () => {
 
     expect(String(pack.payload.lyricsText)).toContain("line one\nline two");
     expect(String(pack.payload.lyrics)).toContain("line one\nline two");
-    expect(String(pack.payload.lyrics).length).toBeGreaterThanOrEqual(1500);
+    expect(String(pack.payload.lyrics).length).toBeLessThan(1500);
     expect(pack.payload.payloadYaml).toBe(pack.yamlLyrics);
     expect(pack.payload.payloadYaml).toContain("title: Plain Signal");
     expect(pack.payload.payloadYaml).toContain("LYRICS START");

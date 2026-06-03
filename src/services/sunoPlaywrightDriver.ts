@@ -12,7 +12,6 @@ import type { SunoBrowserDriver, SunoBrowserDriverProbe } from "./sunoBrowserWor
 import type { BrowserContext, Locator, Page } from "playwright";
 import { captureSunoFailure, resolveSunoFailureLogsDir } from "./sunoFailureSnapshot.js";
 import { isSunoCdpEnabled, sunoBrowserArgs, sunoBrowserChannel, sunoCdpEndpoint, sunoChromeExecutablePath } from "./runtimeConfig.js";
-import { extractLyricsBody } from "./lyricsExtraction.js";
 import { checkSunoBrowserBinaryHealth, isSunoBrowserLaunchFailure, reinstallPlaywrightChromium } from "./sunoBinaryHealthCheck.js";
 
 export const DEFAULT_SUNO_PROFILE_PATH = ".openclaw-browser-profiles/suno";
@@ -442,15 +441,11 @@ export class PlaywrightSunoDriver implements SunoBrowserDriver {
   }
 
   private extractPayloadLyrics(payload: Record<string, unknown>): string | undefined {
-    const source =
+    return (
       this.readPayloadText(payload.payloadYaml) ??
       this.readPayloadText(payload.lyrics) ??
-      this.readPayloadText(payload.lyricsText);
-    if (!source) {
-      return undefined;
-    }
-
-    return this.readPayloadText(extractLyricsBody(source)) ?? source;
+      this.readPayloadText(payload.lyricsText)
+    );
   }
 
   private async fillCreateForm(

@@ -123,7 +123,7 @@ describe("distribution smoke", () => {
     const ledger = readFileSync(result.artifactPaths.promptLedger, "utf8");
 
     expect(String(payload.lyrics)).toContain(lyrics);
-    expect(String(payload.lyrics).length).toBeGreaterThanOrEqual(1500);
+    expect(String(payload.lyrics).length).toBeLessThan(1500);
     expect(payload.payloadYaml).toBe(result.pack.yamlLyrics);
     expect(result.pack.validation.valid).toBe(true);
     expect(ledger).toContain("suno_payload_build");

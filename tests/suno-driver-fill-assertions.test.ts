@@ -198,8 +198,7 @@ describe("PlaywrightSunoDriver fill assertions", () => {
     });
 
     expect(result.reason).toBe(PLAYWRIGHT_CREATE_SKIPPED_REASON);
-    expect(extractLyricsBodyMock).toHaveBeenCalledTimes(1);
-    expect(extractLyricsBodyMock).toHaveBeenCalledWith("line one\nline two");
+    expect(extractLyricsBodyMock).not.toHaveBeenCalled();
     expect(page.waits).toEqual(
       expect.arrayContaining([lyricsSelector, styleSelector, titleSelector, excludeSelector, instrumentalSelector])
     );

@@ -84,31 +84,11 @@ function decorateBareHeader(line: string, gender: "male" | "female" | "neutral")
 }
 
 export function prepareSunoLyrics(lyrics: string, gender: "male" | "female" | "neutral" = "male"): string {
-  let prepared = lyrics
+  return lyrics
     .split(/\r?\n/)
     .map((line) => decorateBareHeader(line.trimEnd(), gender))
     .join("\n")
     .trim();
-  const fragments = [
-    "[Verse - tight flow, restrained backing]",
-    "駅前の白い光がまだ舌に残る",
-    "低いベースだけが街の値札をはがす",
-    "Rhodesの影で男の声を近く置く",
-    "サビは短く、同じ言葉を乾かして戻す",
-    "",
-    "[Hook - short refrain, narrow doubles]",
-    "もう待たない、でも名前だけ残る",
-    "もう待たない、でも足だけ戻る"
-  ];
-  const block = fragments.join("\n");
-  let guard = 0;
-  while (prepared.length < 1500 && guard < 20) {
-    const next = `${prepared}\n${block}`.trim();
-    if (next.length > 2400) break;
-    prepared = next;
-    guard += 1;
-  }
-  return prepared;
 }
 
 export function computeBudgetLevel(lyrics: string): YamlBudgetLevel {
@@ -135,8 +115,13 @@ function renderYaml(input: BuildYamlInput, level: YamlBudgetLevel): string {
   ]);
   const rules = vocalRules(input.vocals);
   const parts = vocalParts(input.vocals);
-  const lines = [
-    "# META",
+  const lines = level === "minimal" ? [
+    "# META (hints; do not sing)",
+    `title: ${cleanLine(input.title, "untitled")}`,
+    `tempo: ${cleanLine(input.meta.tempo, "124")}`,
+    `language: ${cleanLine(input.meta.language, "ja")}`
+  ] : [
+    "# META (hints; do not sing)",
     "version: v5.5",
     `title: ${cleanLine(input.title, "untitled")}`,
     `tempo: ${cleanLine(input.meta.tempo, "124")}`,
@@ -173,7 +158,7 @@ function renderYaml(input: BuildYamlInput, level: YamlBudgetLevel): string {
       lines.push(`  - ${cue}`);
     }
   }
-  return [...lines, "", "LYRICS START", input.lyrics.trim(), "LYRICS END"].join("\n");
+  return [...lines, "", "=== LYRICS START (do not sing tags) ===", input.lyrics.trim(), "=== LYRICS END ==="].join("\n");
 }
 
 export function buildYaml(input: BuildYamlInput): string {

@@ -61,6 +61,19 @@ function fitPhrase(value: string, max: number): string {
   return compact(value).slice(0, max).trim();
 }
 
+function trimAtPhraseBoundary(text: string, maxLength: number): string {
+  if (text.length <= maxLength) return text;
+  const head = text.slice(0, maxLength);
+  const boundaryPatterns = [/\n-\s[^\n]*$/, /\n[^\n]*$/, /[.;,]\s+[^.;,\n]*$/, /\s+[A-Za-z0-9'-]*$/];
+  for (const pattern of boundaryPatterns) {
+    const match = head.match(pattern);
+    if (match?.index && match.index >= Math.floor(maxLength * 0.65)) {
+      return head.slice(0, match.index).trimEnd();
+    }
+  }
+  return head.replace(/[A-Za-z0-9'-]+$/, "").trimEnd() || head.trimEnd();
+}
+
 function inferGenre(input: BuildStyleInput): Genre {
   const source = `${input.genre ?? ""} ${input.brief ?? ""} ${input.artistProfile ?? ""}`.toLowerCase();
   if (/nu.?jazz/.test(source) && /rap|hip.?hop/.test(source)) return "nu-jazz rap";
@@ -113,8 +126,8 @@ export function buildStyle(input: BuildStyleInput): BuildStyleResult {
     vibe
   ]);
   const coreTags = fitTags(tags, 120);
-  const direction = compact(input.performanceDirection ?? "Keep performance restrained, intelligible, and image-led; avoid arena-pop exaggeration.").slice(0, 100);
-  const injectedInstruments = uniq([...instruments, ...template.instruments]).slice(0, 7);
+  const direction = trimAtPhraseBoundary(compact(input.performanceDirection ?? "Keep performance restrained, intelligible, and image-led; avoid arena-pop exaggeration."), 72);
+  const injectedInstruments = uniq([...instruments, ...template.instruments]).slice(0, 5);
   const vocabulary = [
     "wide stereo",
     "close-mic",
@@ -137,9 +150,9 @@ export function buildStyle(input: BuildStyleInput): BuildStyleResult {
     `- Mix Vision: ${template.mixVision.join(", ")}`,
     "- Era: 2000s NY underground to modern Brooklyn lineage",
     `- Texture: ${template.texture.join(", ")}`,
+    `- Knowledge Vocabulary: ${vocabulary.join(", ")}`,
     `- Arrangement Notes: ${arrangement.join("; ")}`,
     `- Performance Direction: ${direction}`,
-    `- Knowledge Vocabulary: ${vocabulary.join(", ")}`,
     ...fillers.map((fragment) => `- ${fragment}`),
     "",
     vibe
@@ -172,7 +185,7 @@ export function buildStyle(input: BuildStyleInput): BuildStyleResult {
   }
   if (total.length > 1000) {
     const suffix = `\n${vibe}`;
-    total = `${total.slice(0, 1000 - suffix.length).trimEnd()}${suffix}`;
+    total = `${trimAtPhraseBoundary(total, 1000 - suffix.length)}${suffix}`;
   }
   return { coreTags, performanceDirection: direction, total };
 }

@@ -819,13 +819,13 @@ export interface SunoWorkerStatus {
 
 export interface SunoCreatePayload {
   /**
-   * Primary Suno lyrics payload. This is the UI textarea body only, with YAML
-   * META and lyrics boundary markers removed.
+   * Plain lyrics body retained for display, linting, and compatibility. When
+   * payloadYaml is present, the Suno driver submits the full double-entry YAML.
    */
   lyrics?: string;
   /**
-   * Full Suno payload YAML retained for ledger and persistence. This is not
-   * intended to be pasted into the Suno lyrics textarea.
+   * Full Suno double-entry payload YAML submitted to the lyrics textarea when
+   * present. It includes META hints plus the mirrored lyrics body.
    */
   payloadYaml?: string;
   /**

@@ -39,7 +39,7 @@ describe("Suno V5.5 prompt pack orchestration", () => {
     expect(pack.yamlLyrics).toContain("LYRICS START");
     expect(String(pack.payload.lyrics)).toContain(lyrics);
     expect(String(pack.payload.lyricsText)).toContain(lyrics);
-    expect(String(pack.payload.lyrics).length).toBeGreaterThanOrEqual(1500);
+    expect(String(pack.payload.lyrics).length).toBeLessThan(1500);
     expect(pack.payload.payloadYaml).toBe(pack.yamlLyrics);
     expect(pack.sliders.weirdness).toBeGreaterThanOrEqual(15);
     expect(pack.sliders.weirdness).toBeLessThanOrEqual(85);
@@ -114,7 +114,7 @@ describe("Suno V5.5 prompt pack orchestration", () => {
     expect(lyricsSuno).toContain("[Verse 1 - tight civic flow]");
     expect(String(payload.lyrics)).toContain(lyrics);
     expect(String(payload.lyricsText)).toContain(lyrics);
-    expect(String(payload.lyrics).length).toBeGreaterThanOrEqual(1500);
+    expect(String(payload.lyrics).length).toBeLessThan(1500);
     expect(payload.payloadYaml).toBe(result.pack.yamlLyrics);
     expect(String(payload.lyrics)).not.toContain("LYRICS START");
     expect(String(payload.lyrics)).not.toContain("# META");

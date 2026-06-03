@@ -1,4 +1,5 @@
 const markerPairs = [
+  ["=== LYRICS START (do not sing tags) ===", "=== LYRICS END ==="],
   ["=== LYRICS START ===", "=== LYRICS END ==="],
   ["LYRICS START", "LYRICS END"]
 ] as const;
