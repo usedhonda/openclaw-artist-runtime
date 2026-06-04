@@ -164,7 +164,9 @@ async function composeLyricsDraft(input: DraftLyricsInput, title: string, briefT
     }
     repairNotes = validation.issues.map((issue) => `${issue.code}: ${issue.message}`).slice(0, 5);
   }
-  throw new Error("lyrics_generation_degraded");
+  const notes = repairNotes.length > 0 ? repairNotes : ["unknown lyrics degradation"];
+  const error = new Error(`lyrics_generation_degraded: ${notes.join(" | ")}`);
+  throw Object.assign(error, { repairNotes: notes });
 }
 
 export async function draftLyrics(input: DraftLyricsInput): Promise<{ lyricsText: string; lyricsPath: string; version: number }> {
@@ -181,7 +183,11 @@ export async function draftLyrics(input: DraftLyricsInput): Promise<{ lyricsText
     draft = await composeLyricsDraft(input, title, briefText);
   } catch (error) {
     const reason = error instanceof Error ? error.message : String(error);
-    emitRuntimeEvent({ type: "lyrics_generation_degraded", songId: input.songId, reason, timestamp: Date.now() });
+    const repairNotes = Array.isArray((error as { repairNotes?: unknown }).repairNotes)
+      ? (error as { repairNotes: string[] }).repairNotes
+      : [];
+    const detail = repairNotes.join(" | ") || undefined;
+    emitRuntimeEvent({ type: "lyrics_generation_degraded", songId: input.songId, reason, detail, repairNotes, timestamp: Date.now() });
     await updateSongState(input.workspaceRoot, input.songId, {
       degradedLyrics: true,
       reason,

@@ -113,7 +113,8 @@ const CALLBACK_ACTION_CATEGORY: Record<string, TtlCategory> = {
   song_spawn_edit: "producer_decision",
   prompt_pack_go: "producer_decision",
   prompt_pack_edit: "producer_decision",
-  prompt_pack_skip: "producer_decision"
+  prompt_pack_skip: "producer_decision",
+  lyrics_redraft: "producer_decision"
 };
 
 export function callbackActionTtlCategory(action?: string): TtlCategory {
@@ -131,6 +132,8 @@ export function isProducerDecisionAction(action?: string): boolean {
 // action additions do NOT silently become user-re-surfaceable. External-publish
 // (x_publish_*, daily_voice_publish) and take-regeneration actions remain excluded:
 // re-surfacing those approaches external side effects and must re-run their guards.
+// lyrics_redraft is intentionally excluded: degraded-lyrics recovery is issued
+// from the fresh degraded notification, not from stale resurface.
 const RESURFACE_ALLOWED_ACTIONS: ReadonlySet<string> = new Set([
   "song_spawn_inject",
   "song_spawn_skip",
@@ -165,6 +168,7 @@ const callbackActionEffects: Record<string, Omit<CallbackActionEffect, "action">
   prompt_pack_go: { label: "Suno 生成へ", effect: "prompt_pack の停止を解除し、次 cycle で Suno 生成へ進めます。" },
   prompt_pack_edit: { label: "lyrics-suno.md を編集", effect: "planning に戻し、歌詞をもう一度作り直します。" },
   prompt_pack_skip: { label: "保留", effect: "この曲を user_paused にして後で再開できる状態にします。" },
+  lyrics_redraft: { label: "歌詞を作り直す", effect: "歌詞をもう一度作り直す。autopilot を再開し、Suno 生成は御大の確認を待つ。" },
   planning_skeleton_apply: { label: "進める", effect: "補完案を反映し、prompt_pack へ進めます。" },
   planning_skeleton_skip: { label: "中止", effect: "補完案を見送り、今の planning 停止を解除します。" },
   planning_skeleton_edit: { label: "書き直す", effect: "補完案を直すための編集指示待ちにします。" },

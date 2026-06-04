@@ -4,6 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { readSongState } from "../src/services/artistState";
+import { getRuntimeEventBus, type RuntimeEvent } from "../src/services/runtimeEventBus";
 
 const { callAiProviderMock } = vi.hoisted(() => ({
   callAiProviderMock: vi.fn()
@@ -95,13 +96,31 @@ describe("lyrics drafting repair-not-reject orchestration", () => {
 
   it("marks degraded only after deterministic repair and two retries fail", async () => {
     const root = await workspace();
+    const events: RuntimeEvent[] = [];
+    const unsubscribe = getRuntimeEventBus().subscribe((event) => events.push(event));
     callAiProviderMock.mockResolvedValue(fieldDraft(fixture("lyrics-v55-bad-too-short.md")));
 
-    await expect(draftLyrics({ workspaceRoot: root, songId: "song-001", aiReviewProvider: "openai-codex" })).rejects.toThrow("lyrics_generation_degraded");
+    let thrown: Error | undefined;
+    await draftLyrics({ workspaceRoot: root, songId: "song-001", aiReviewProvider: "openai-codex" }).catch((error) => {
+      thrown = error as Error;
+    });
 
     expect(callAiProviderMock).toHaveBeenCalledTimes(3);
     const state = await readSongState(root, "song-001");
+    const degraded = events.find((event) => event.type === "lyrics_generation_degraded");
+    expect(thrown?.message).toContain("lyrics_generation_degraded:");
     expect(state.degradedLyrics).toBe(true);
     expect(state.status).toBe("brief");
+    expect(state.lastReason).toBe(thrown?.message);
+    expect(degraded).toMatchObject({
+      type: "lyrics_generation_degraded",
+      reason: thrown?.message,
+      detail: expect.any(String),
+      repairNotes: expect.arrayContaining([expect.stringContaining(":")])
+    });
+    if (degraded?.type === "lyrics_generation_degraded") {
+      expect(thrown?.message).toContain(degraded.detail);
+    }
+    unsubscribe();
   });
 });

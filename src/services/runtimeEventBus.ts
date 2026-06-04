@@ -11,7 +11,7 @@ export type RuntimeEvent =
   | { type: "prompt_pack_char_count"; songId: string; style: number; lyrics: number; title: number; styleZone: string; lyricsZone: string; titleZone: string; timestamp: number }
   | { type: "theme_generated"; theme: string; reason: string; timestamp: number }
   | { type: "suno_budget_low"; songId?: string; reason: string; limit: number; used: number; timestamp: number }
-  | { type: "lyrics_generation_degraded"; songId: string; reason: string; timestamp: number }
+  | { type: "lyrics_generation_degraded"; songId: string; reason: string; detail?: string; repairNotes?: string[]; timestamp: number }
   | { type: "suno_generate_retry"; songId: string; reason: string; retryCount: number; nextRetryAt?: string; timestamp: number }
   | { type: "suno_create_failed"; songId: string; reason: string; retryCount: number; timestamp: number }
   | { type: "suno_generate_failed"; songId: string; reason: string; retryCount: number; timestamp: number }

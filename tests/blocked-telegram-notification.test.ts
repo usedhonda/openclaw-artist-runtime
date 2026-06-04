@@ -1,7 +1,15 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
+import { mkdtempSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { isCriticalNotificationEvent } from "../src/services/failedNotifyLedger";
-import { isTelegramSilentEvent, formatRuntimeEvent } from "../src/services/telegramNotifier";
+import { readCallbackActionEntries } from "../src/services/callbackActionRegistry";
+import { isTelegramSilentEvent, formatRuntimeEvent, TelegramNotifier } from "../src/services/telegramNotifier";
 import type { RuntimeEvent } from "../src/services/runtimeEventBus";
+
+function telegramResponse(result: unknown): Response {
+  return new Response(JSON.stringify({ ok: true, result }), { status: 200 });
+}
 
 describe("blocked runtime events Telegram delivery", () => {
   const blockedEvents: RuntimeEvent[] = [
@@ -42,5 +50,34 @@ describe("blocked runtime events Telegram delivery", () => {
     expect(texts.join("\n")).not.toMatch(/Runtime error|Suno generate retry|Suno generate failed/);
     expect(texts.join("\n")).toContain("song-026");
     expect(texts.join("\n")).toContain("─────");
+  });
+
+  it("formats degraded lyrics as Japanese recovery text and attaches redraft/discard buttons", async () => {
+    const root = mkdtempSync(join(tmpdir(), "artist-runtime-degraded-notify-"));
+    const event: RuntimeEvent = {
+      type: "lyrics_generation_degraded",
+      songId: "song-lyrics",
+      reason: "lyrics_generation_degraded: provider fallback response",
+      detail: "provider fallback response",
+      repairNotes: ["provider fallback response"],
+      timestamp: 1
+    };
+    const text = await formatRuntimeEvent(event);
+    expect(text).toContain("歌詞生成で止まった");
+    expect(text).toContain("provider fallback response");
+    expect(text).not.toContain("Lyrics generation degraded:");
+    expect(text).toContain("歌詞を作り直す");
+    expect(text).toContain("破棄");
+
+    const fetchImpl = vi.fn()
+      .mockResolvedValueOnce(telegramResponse({ message_id: 77, chat: { id: 123 } }))
+      .mockResolvedValueOnce(telegramResponse(true));
+    await new TelegramNotifier({ token: "token", chatId: 123, workspaceRoot: root, fetchImpl }).notify(event);
+    const entries = await readCallbackActionEntries(root);
+    const markupCall = fetchImpl.mock.calls.find((call) => String(call[0]).includes("/editMessageReplyMarkup"));
+    const markupBody = String((markupCall?.[1] as RequestInit).body);
+    expect(entries.map((entry) => entry.action).sort()).toEqual(["lyrics_redraft", "song_discard"].sort());
+    expect(markupBody).toContain("歌詞を作り直す");
+    expect(markupBody).toContain("破棄");
   });
 });

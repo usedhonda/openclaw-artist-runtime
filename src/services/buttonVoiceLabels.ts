@@ -31,6 +31,10 @@ export const buttonVoiceLabels = {
     edit: "lyrics-suno.md を編集",
     skip: "保留"
   },
+  lyricsDegraded: {
+    redraft: "歌詞を作り直す",
+    discard: "破棄"
+  },
   planningSkeleton: {
     apply: "進める",
     skip: "中止",

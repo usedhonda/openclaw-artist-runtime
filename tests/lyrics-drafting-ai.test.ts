@@ -11,6 +11,7 @@ import {
   readLyricsKnowledgeDigest
 } from "../src/services/lyricsDraftingPrompt";
 import { readSongState } from "../src/services/artistState";
+import { getRuntimeEventBus, type RuntimeEvent } from "../src/services/runtimeEventBus";
 
 async function workspace(): Promise<string> {
   const root = mkdtempSync(join(tmpdir(), "artist-runtime-lyrics-ai-"));
@@ -71,10 +72,25 @@ describe("AI lyrics drafting", () => {
 
   it("marks degraded lyrics and stops when the provider only returns fallback text", async () => {
     const root = await workspace();
+    const events: RuntimeEvent[] = [];
+    const unsubscribe = getRuntimeEventBus().subscribe((event) => events.push(event));
 
-    await expect(draftLyrics({ workspaceRoot: root, songId: "song-001", aiReviewProvider: "openclaw" })).rejects.toThrow("lyrics_generation_degraded");
-    const state = await readSongState(root, "song-001");
-    expect(state.degradedLyrics).toBe(true);
-    expect(state.status).toBe("brief");
+    try {
+      await expect(draftLyrics({ workspaceRoot: root, songId: "song-001", aiReviewProvider: "openclaw" })).rejects.toThrow("lyrics_generation_degraded");
+      const state = await readSongState(root, "song-001");
+      const degraded = events.find((event) => event.type === "lyrics_generation_degraded");
+      expect(state.degradedLyrics).toBe(true);
+      expect(state.status).toBe("brief");
+      expect(state.lastReason).toContain("lyrics_generation_degraded:");
+      expect(degraded).toMatchObject({
+        type: "lyrics_generation_degraded",
+        songId: "song-001",
+        reason: expect.stringContaining("lyrics_generation_degraded:"),
+        detail: expect.stringContaining("provider fallback response"),
+        repairNotes: ["provider fallback response"]
+      });
+    } finally {
+      unsubscribe();
+    }
   });
 });

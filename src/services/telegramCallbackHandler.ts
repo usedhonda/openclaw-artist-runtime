@@ -178,6 +178,24 @@ async function currentSongLaneBusy(root: string, state: Awaited<ReturnType<typeo
   return !TERMINAL_SONG_STATUSES.has(current.status);
 }
 
+async function releaseDiscardedCurrentSongLane(root: string, songId: string | undefined, now: number): Promise<void> {
+  if (!songId) return;
+  const state = await readAutopilotRunState(root);
+  if (state.currentSongId !== songId) return;
+  await writeAutopilotRunState(root, {
+    ...state,
+    currentSongId: undefined,
+    stage: "idle",
+    paused: false,
+    pausedReason: undefined,
+    hardStopReason: undefined,
+    suspendedAt: undefined,
+    blockedReason: undefined,
+    lastError: undefined,
+    lastRunAt: new Date(now).toISOString()
+  });
+}
+
 async function clearButtonsAndReply(
   ctx: TelegramCallbackContext,
   entry: Pick<CallbackActionEntry, "chatId" | "messageId">,
@@ -372,6 +390,9 @@ export async function routeTelegramCallback(ctx: TelegramCallbackContext): Promi
       const auditReason = actionResult.reason ?? actionResult.status;
       await markCallbackResolved(ctx.root, callbackId, { status: callbackStatus, reason: auditReason, now });
       await appendCallbackAudit(ctx.root, auditBase(ctx, callbackId, entry, callbackResult, auditReason));
+      if (entry.action === "song_discard") {
+        await releaseDiscardedCurrentSongLane(ctx.root, entry.songId, now);
+      }
       await clearButtonsAndReply(ctx, entry, actionResult.message);
       return { processed: true, result: callbackResult, reason: auditReason, callbackId };
     } catch (error) {
@@ -496,6 +517,34 @@ export async function routeTelegramCallback(ctx: TelegramCallbackContext): Promi
       await clearButtonsAndReply(ctx, entry, "spawn injection failed. Check the runtime log.");
       return { processed: true, result: "failed", reason, callbackId };
     }
+  }
+
+  if (entry.action === "lyrics_redraft") {
+    await ctx.client.answerCallbackQuery(ctx.callbackQueryId, { text: "OK" });
+    const state = await readAutopilotRunState(ctx.root);
+    const songId = entry.songId ?? state.currentSongId ?? "";
+    await updateSongState(ctx.root, songId, {
+      status: "brief",
+      degradedLyrics: false,
+      reason: "lyrics_redraft_requested"
+    });
+    await writeAutopilotRunState(ctx.root, {
+      ...state,
+      currentSongId: songId,
+      stage: "planning",
+      paused: false,
+      pausedReason: undefined,
+      hardStopReason: undefined,
+      suspendedAt: null,
+      blockedReason: undefined,
+      lastError: undefined,
+      lastSuccessfulStage: "planning",
+      lastRunAt: new Date(now).toISOString()
+    });
+    await markCallbackResolved(ctx.root, callbackId, { status: "updated", reason: "lyrics_redraft_requested", now });
+    await appendCallbackAudit(ctx.root, auditBase(ctx, callbackId, entry, "updated", "lyrics_redraft_requested"));
+    await clearButtonsAndReply(ctx, entry, "歌詞、もう一回作り直す。Suno 生成の前にまた確認を出す。");
+    return { processed: true, result: "updated", reason: "lyrics_redraft_requested", callbackId };
   }
 
   if (entry.action === "prompt_pack_go" || entry.action === "prompt_pack_edit" || entry.action === "prompt_pack_skip") {

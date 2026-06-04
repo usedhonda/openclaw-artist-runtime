@@ -3,6 +3,9 @@ import { readFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it, vi } from "vitest";
+import { ensureArtistWorkspace } from "../src/services/artistWorkspace";
+import { readSongState, updateSongState } from "../src/services/artistState";
+import { readAutopilotRunState, writeAutopilotRunState } from "../src/services/autopilotService";
 import { markCallbackResolved, registerCallbackAction } from "../src/services/callbackActionRegistry";
 import { routeTelegramCallback, STALE_CALLBACK_JA_REPLY } from "../src/services/telegramCallbackHandler";
 import type { TelegramClient } from "../src/services/telegramClient";
@@ -172,5 +175,128 @@ describe("telegram callback handler", () => {
 
     expect(result).toMatchObject({ result: "failed", reason: "callback_data_contains_secret_like_text" });
     expect(client.answerCallbackQuery).toHaveBeenCalledWith("query-6", { text: "Unsupported action" });
+  });
+
+  it("redrafts degraded lyrics and explicitly unpauses autopilot back to planning", async () => {
+    const workspace = root();
+    const client = clientMock();
+    await ensureArtistWorkspace(workspace);
+    await updateSongState(workspace, "song-lyrics", {
+      title: "Lyrics Stuck",
+      status: "brief",
+      degradedLyrics: true,
+      reason: "lyrics_generation_degraded: provider fallback response"
+    });
+    await writeAutopilotRunState(workspace, {
+      runId: "lyrics-degraded",
+      currentSongId: "song-lyrics",
+      stage: "paused",
+      paused: true,
+      pausedReason: "lyrics_generation_degraded: provider fallback response",
+      hardStopReason: "lyrics_generation_degraded",
+      blockedReason: "lyrics_generation_degraded: provider fallback response",
+      lastError: "lyrics_generation_degraded: provider fallback response",
+      retryCount: 1,
+      cycleCount: 3,
+      updatedAt: new Date(1000).toISOString(),
+      lastRunAt: new Date(1000).toISOString()
+    });
+    const entry = await registerCallbackAction(workspace, {
+      action: "lyrics_redraft",
+      songId: "song-lyrics",
+      chatId: 100,
+      messageId: 200,
+      userId: 300,
+      now: 1000,
+      expiresAt: 5000
+    });
+
+    const result = await routeTelegramCallback({
+      root: workspace,
+      client,
+      callbackQueryId: "query-redraft",
+      data: `cb:${entry.callbackId}`,
+      fromUserId: 300,
+      chatId: 100,
+      messageId: 200,
+      now: 2000
+    });
+
+    expect(result).toMatchObject({ processed: true, result: "updated", reason: "lyrics_redraft_requested" });
+    expect(await readSongState(workspace, "song-lyrics")).toMatchObject({
+      status: "brief",
+      degradedLyrics: false,
+      lastReason: "lyrics_redraft_requested"
+    });
+    const runState = await readAutopilotRunState(workspace);
+    expect(runState).toMatchObject({
+      currentSongId: "song-lyrics",
+      stage: "planning",
+      paused: false,
+      suspendedAt: null,
+      lastSuccessfulStage: "planning"
+    });
+    expect(runState).not.toHaveProperty("pausedReason");
+    expect(runState).not.toHaveProperty("hardStopReason");
+    expect(runState).not.toHaveProperty("blockedReason");
+    expect(runState).not.toHaveProperty("lastError");
+    expect(client.editMessageReplyMarkup).toHaveBeenCalledWith(100, 200, { inline_keyboard: [] });
+    expect(client.sendMessage).toHaveBeenCalledWith(100, "歌詞、もう一回作り直す。Suno 生成の前にまた確認を出す。", undefined);
+  });
+
+  it("discards a degraded brief song and clears the paused current song lane", async () => {
+    const workspace = root();
+    const client = clientMock();
+    await ensureArtistWorkspace(workspace);
+    await updateSongState(workspace, "song-lyrics", {
+      title: "Lyrics Stuck",
+      status: "brief",
+      degradedLyrics: true,
+      reason: "lyrics_generation_degraded: provider fallback response"
+    });
+    await writeAutopilotRunState(workspace, {
+      runId: "lyrics-degraded",
+      currentSongId: "song-lyrics",
+      stage: "paused",
+      paused: true,
+      pausedReason: "lyrics_generation_degraded: provider fallback response",
+      blockedReason: "lyrics_generation_degraded: provider fallback response",
+      retryCount: 1,
+      cycleCount: 3,
+      updatedAt: new Date(1000).toISOString(),
+      lastRunAt: new Date(1000).toISOString()
+    });
+    const entry = await registerCallbackAction(workspace, {
+      action: "song_discard",
+      songId: "song-lyrics",
+      chatId: 100,
+      messageId: 200,
+      userId: 300,
+      now: 1000,
+      expiresAt: 5000
+    });
+
+    const result = await routeTelegramCallback({
+      root: workspace,
+      client,
+      callbackQueryId: "query-discard",
+      data: `cb:${entry.callbackId}`,
+      fromUserId: 300,
+      chatId: 100,
+      messageId: 200,
+      now: 2000
+    });
+
+    expect(result).toMatchObject({ processed: true, result: "discarded" });
+    expect(await readSongState(workspace, "song-lyrics")).toMatchObject({ status: "discarded" });
+    const runState = await readAutopilotRunState(workspace);
+    expect(runState).toMatchObject({
+      stage: "idle",
+      paused: false
+    });
+    expect(runState).not.toHaveProperty("currentSongId");
+    expect(runState).not.toHaveProperty("pausedReason");
+    expect(runState).not.toHaveProperty("blockedReason");
+    expect(runState).not.toHaveProperty("lastError");
   });
 });

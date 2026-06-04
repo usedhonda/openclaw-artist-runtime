@@ -6,6 +6,7 @@ import {
   callbackActionTtlCategory,
   defaultCallbackActionExpiresAt,
   isProducerDecisionAction,
+  isResurfaceAllowedAction,
   markCallbackResolved,
   readCallbackActionEntries,
   registerCallbackAction,
@@ -79,7 +80,7 @@ describe("callback action registry", () => {
     const workspace = root();
     const now = 1_000_000;
 
-    for (const action of ["song_archive", "song_discard", "song_spawn_inject", "song_spawn_skip", "prompt_pack_go", "prompt_pack_edit", "prompt_pack_skip"] as const) {
+    for (const action of ["song_archive", "song_discard", "song_spawn_inject", "song_spawn_skip", "prompt_pack_go", "prompt_pack_edit", "prompt_pack_skip", "lyrics_redraft"] as const) {
       const entry = await registerCallbackAction(workspace, {
         action,
         chatId: 1,
@@ -92,6 +93,7 @@ describe("callback action registry", () => {
       expect(isProducerDecisionAction(action)).toBe(true);
       expect(callbackActionTtlCategory(action)).toBe("producer_decision");
     }
+    expect(isResurfaceAllowedAction("lyrics_redraft")).toBe(false);
   });
 
   it("keeps 24-hour TTL for working-confirmation actions", async () => {

@@ -132,6 +132,9 @@ export class TelegramNotifier {
     if (event.type === "prompt_pack_ready") {
       await this.attachPromptPackReadyButtons(event, sent.message_id);
     }
+    if (event.type === "lyrics_generation_degraded") {
+      await this.attachLyricsDegradedButtons(event, sent.message_id);
+    }
     if (event.type === "planning_skeleton_incomplete") {
       await this.attachPlanningSkeletonButtons(event, sent.message_id, text).catch(() => undefined);
     }
@@ -444,6 +447,34 @@ export class TelegramNotifier {
         { text: buttonVoiceLabels.promptPackReady.go, callback_data: `cb:${go.callbackId}` },
         { text: buttonVoiceLabels.promptPackReady.edit, callback_data: `cb:${edit.callbackId}` },
         { text: buttonVoiceLabels.promptPackReady.skip, callback_data: `cb:${skip.callbackId}` }
+      ]]
+    });
+  }
+
+  private async attachLyricsDegradedButtons(event: Extract<RuntimeEvent, { type: "lyrics_generation_degraded" }>, messageId: number): Promise<void> {
+    if (!isInlineButtonsEnabled() || !this.options.workspaceRoot || typeof this.options.chatId !== "number") {
+      return;
+    }
+    const [redraft, discard] = await Promise.all([
+      registerCallbackAction(this.options.workspaceRoot, {
+        action: "lyrics_redraft",
+        songId: event.songId,
+        chatId: this.options.chatId,
+        messageId,
+        userId: this.options.chatId
+      }),
+      registerCallbackAction(this.options.workspaceRoot, {
+        action: "song_discard",
+        songId: event.songId,
+        chatId: this.options.chatId,
+        messageId,
+        userId: this.options.chatId
+      })
+    ]);
+    await this.client.editMessageReplyMarkup(this.options.chatId, messageId, {
+      inline_keyboard: [[
+        { text: buttonVoiceLabels.lyricsDegraded.redraft, callback_data: `cb:${redraft.callbackId}` },
+        { text: buttonVoiceLabels.lyricsDegraded.discard, callback_data: `cb:${discard.callbackId}` }
       ]]
     });
   }
@@ -1044,6 +1075,8 @@ function callbackActionsForRuntimeEvent(event: RuntimeEvent): string[] {
       return ["song_spawn_inject", "song_spawn_skip", "song_spawn_edit"];
     case "prompt_pack_ready":
       return ["prompt_pack_go", "prompt_pack_edit", "prompt_pack_skip"];
+    case "lyrics_generation_degraded":
+      return ["lyrics_redraft", "song_discard"];
     case "planning_skeleton_incomplete":
       return ["planning_skeleton_apply", "planning_skeleton_skip", "planning_skeleton_edit"];
     case "take_select_low_score":
@@ -1125,7 +1158,14 @@ async function formatRuntimeEventRaw(
         options
       );
     case "lyrics_generation_degraded":
-      return artistReport(event, `Lyrics generation degraded: ${event.songId} ${event.reason}`, options);
+      return [
+        "歌詞生成で止まった。理由を残して、ここで止める。",
+        "",
+        "─────",
+        `song: ${event.songId}`,
+        `reason: ${event.detail ?? event.reason}`,
+        "next: 「歌詞を作り直す」か「破棄」を選んで。"
+      ].join("\n");
     case "suno_generate_retry":
       return [
         /(?:timeout|not_ready|not_connected|disconnected)/i.test(event.reason)

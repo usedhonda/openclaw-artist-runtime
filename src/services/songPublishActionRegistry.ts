@@ -59,12 +59,12 @@ async function readSafety(root: string): Promise<SongPublishActionResult["safety
   };
 }
 
-const discardableReviewStatuses = new Set<SongStatus>(["take_selected", "social_assets", "publishing"]);
+const discardableReviewStatuses = new Set<SongStatus>(["brief", "take_selected", "social_assets", "publishing"]);
 
 function discardReasonForStatus(status: SongStatus): string {
-  return status === "take_selected"
-    ? "producer discarded selected take and kept brief for reuse"
-    : `discard_from_post_review:${status}`;
+  if (status === "brief") return "producer discarded brief before Suno generation";
+  if (status === "take_selected") return "producer discarded selected take and kept brief for reuse";
+  return `discard_from_post_review:${status}`;
 }
 
 export async function runSongPublishAction(action: SongPublishAction, context: SongPublishActionContext): Promise<SongPublishActionResult> {
