@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { ensureSongState, updateSongState, writeSongBrief } from "../src/services/artistState";
-import { readAutopilotRunState } from "../src/services/autopilotService";
+import { readAutopilotRunState, writeAutopilotRunState } from "../src/services/autopilotService";
 import { classifyTelegramFreeText, readTelegramInbox, routeTelegramCommand } from "../src/services/telegramCommandRouter";
 import { appendFailedNotification } from "../src/services/failedNotifyLedger";
 import { getRuntimeEventBus, type RuntimeEvent } from "../src/services/runtimeEventBus";
@@ -196,6 +196,48 @@ describe("telegram command router", () => {
     expect(pausedState.pausedReason).toBe("telegram:123");
     expect(resumed.kind).toBe("resume");
     expect(resumedState.paused).toBe(false);
+  });
+
+  it("re-surfaces degraded lyrics from /resume without resuming the paused autopilot", async () => {
+    const root = makeRoot();
+    await ensureSongState(root, "song-lyrics", "Lyrics Stuck");
+    await updateSongState(root, "song-lyrics", {
+      status: "brief",
+      degradedLyrics: true,
+      reason: "lyrics_generation_degraded: provider fallback response"
+    });
+    await writeAutopilotRunState(root, {
+      runId: "degraded",
+      currentSongId: "song-lyrics",
+      stage: "paused",
+      paused: true,
+      blockedReason: "lyrics_generation_degraded: provider fallback response",
+      retryCount: 1,
+      cycleCount: 1,
+      updatedAt: new Date(1000).toISOString(),
+      lastRunAt: new Date(1000).toISOString()
+    });
+    const events: RuntimeEvent[] = [];
+    const bus = getRuntimeEventBus();
+    bus.clearForTest();
+    const unsubscribe = bus.subscribe((event) => events.push(event));
+
+    const result = await routeTelegramCommand({ ...baseInput, text: "/resume", workspaceRoot: root });
+    const state = await readAutopilotRunState(root);
+    unsubscribe();
+
+    expect(result.kind).toBe("resume");
+    expect(result.responseText).toContain("歌詞生成に失敗");
+    expect(result.responseText).toContain("破棄");
+    expect(result.responseText).toContain("歌詞を作り直す");
+    expect(state).toMatchObject({
+      currentSongId: "song-lyrics",
+      stage: "paused",
+      paused: true,
+      blockedReason: "lyrics_generation_degraded: provider fallback response"
+    });
+    expect(events).toHaveLength(1);
+    expect(events[0]).toMatchObject({ type: "lyrics_generation_degraded", songId: "song-lyrics" });
   });
 
   it("returns a safe response for unknown commands", async () => {

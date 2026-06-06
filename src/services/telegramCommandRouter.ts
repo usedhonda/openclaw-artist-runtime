@@ -1,8 +1,9 @@
 import { appendFile, mkdir, readFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import type { AiReviewProvider, AutopilotStatus } from "../types.js";
-import { stageFromSong } from "./autopilotService.js";
+import { readAutopilotRunState, stageFromSong } from "./autopilotService.js";
 import { AutopilotControlService } from "./autopilotControlService.js";
+import { readSongState } from "./artistState.js";
 import { formatDebugAiReviewResult, reviewSongDebugMaterial } from "./debugAiReviewService.js";
 import { auditPersonaCompleteness, formatPersonaAuditReport, type PersonaFieldAudit } from "./personaFieldAuditor.js";
 import { readArtistPersonaSummary } from "./personaFileBuilder.js";
@@ -19,6 +20,7 @@ import { wrapCommandVoice, type CommandVoiceKind } from "./commandVoiceWrapper.j
 import { composeProducerStatus } from "./producerStatusComposer.js";
 import { emitRuntimeEvent } from "./runtimeEventBus.js";
 import { appendFailedNotifyReplayRecord, latestFailedNotifyEntry, listUnreplayedFailedNotifications } from "./failedNotifyLedger.js";
+import { resurfaceDegradedLyrics } from "./degradedLyricsResurfaceService.js";
 import { resurfacePromptPackReady } from "./promptPackResurfaceService.js";
 
 export type TelegramCommandKind =
@@ -481,6 +483,17 @@ export async function routeTelegramCommand(input: TelegramRouteInput): Promise<T
   if (command === "/resume") {
     if (!input.workspaceRoot) {
       return { kind: "resume", responseText: await voiceCommand("error", "Resume unavailable: workspace root missing.", input, "resume unavailable"), shouldStoreFreeText: false };
+    }
+    const state = await readAutopilotRunState(input.workspaceRoot);
+    const currentSong = state.currentSongId
+      ? await readSongState(input.workspaceRoot, state.currentSongId).catch(() => undefined)
+      : undefined;
+    if (currentSong?.degradedLyrics && typeof state.blockedReason === "string" && state.blockedReason.includes("lyrics_generation_degraded")) {
+      const resurface = await resurfaceDegradedLyrics(input.workspaceRoot, { songId: currentSong.songId });
+      const info = resurface.resurfaced
+        ? `この曲は歌詞生成に失敗して止まってる。${currentSong.songId} の「破棄」か「歌詞を作り直す」を選んで。`
+        : `この曲は歌詞生成に失敗して止まってる。再表示できなかった: ${resurface.reason}`;
+      return { kind: "resume", responseText: await voiceCommand("ack", info, input, "lyrics degraded recovery surfaced"), shouldStoreFreeText: false };
     }
     await new AutopilotControlService().resume(input.workspaceRoot, { reason: `telegram:${input.fromUserId}`, source: "telegram" });
     const resurface = await resurfacePromptPackReady(input.workspaceRoot, { requireExpiredGo: true });
