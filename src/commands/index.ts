@@ -136,6 +136,13 @@ export function registerCommands(api: unknown): void {
     requireAuth: true,
     handler: (ctx) => handleRoutedCommand("observations", ctx as PluginCommandContextLike, apiConfig)
   }, logRegistration);
+  safeRegisterCommand(api, {
+    name: "resume",
+    description: "Resume artist-runtime autopilot or re-surface a stuck producer recovery choice.",
+    acceptsArgs: true,
+    requireAuth: true,
+    handler: (ctx) => handleRoutedCommand("resume", ctx as PluginCommandContextLike, apiConfig)
+  }, logRegistration);
   for (const name of ["confirm", "cancel"]) {
     safeRegisterCommand(api, {
       name,
