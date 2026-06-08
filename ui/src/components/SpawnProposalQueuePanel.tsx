@@ -27,6 +27,16 @@ export type SpawnProposalQueueItem = {
 export interface SpawnProposalQueuePanelProps {
   count: number;
   proposals: SpawnProposalQueueItem[];
+  // Plan v10.65 Layer 2: receive-independent spawn GO. When provided, inject/skip
+  // buttons act via the Console API instead of being display-only.
+  onDecide?: (proposalId: string, decision: "inject" | "skip") => void;
+  busyKey?: string | null;
+}
+
+function spawnDecisionFor(action: string): "inject" | "skip" | undefined {
+  if (action === "song_spawn_inject") return "inject";
+  if (action === "song_spawn_skip") return "skip";
+  return undefined;
 }
 
 function firstLine(value: string | undefined): string {
@@ -40,7 +50,7 @@ function sourceLine(proposal: SpawnProposalQueueItem): string {
   return source.url ? `観察 source: ${source.label ?? "source"} ${quote} ${source.url}` : `観察 source: ${source.label ?? "source"} ${quote}`;
 }
 
-export function SpawnProposalQueuePanel({ count, proposals }: SpawnProposalQueuePanelProps) {
+export function SpawnProposalQueuePanel({ count, proposals, onDecide, busyKey }: SpawnProposalQueuePanelProps) {
   return (
     <article className={`panel spawn-proposal-queue-panel${count > 0 ? " has-proposals" : ""}`}>
       <div className="section-title">永続草稿箱</div>
@@ -57,18 +67,29 @@ export function SpawnProposalQueuePanel({ count, proposals }: SpawnProposalQueue
               <div className="muted">{sourceLine(proposal)}</div>
               <div className="muted">style: {proposal.cascadeTrace?.styleLayer ?? "未記録"}</div>
               <div className="inline-actions">
-                {proposal.actions.map((action) => (
-                  <button type="button" key={action.action} disabled title={action.effect}>
-                    {action.label}
-                  </button>
-                ))}
+                {proposal.actions.map((action) => {
+                  const decision = spawnDecisionFor(action.action);
+                  const actionable = Boolean(onDecide && decision);
+                  const isBusy = decision ? busyKey === `spawn-${decision}:${proposal.proposalId}` : false;
+                  return (
+                    <button
+                      type="button"
+                      key={action.action}
+                      disabled={!actionable || busyKey != null}
+                      title={action.effect}
+                      onClick={actionable && decision ? () => onDecide?.(proposal.proposalId, decision) : undefined}
+                    >
+                      {isBusy ? "送信中…" : action.label}
+                    </button>
+                  );
+                })}
               </div>
             </div>
           ))}
         </div>
       )}
       {count > proposals.length ? <div className="muted">ほか {count - proposals.length} 件あります。</div> : null}
-      <div className="muted">操作は Telegram の草稿カードから実行します。作るボタンは完成報告まで進め、外部公開はしません。</div>
+      <div className="muted">Telegram の草稿カード、または上のボタンから実行できます。作るボタンは完成報告まで進め、外部公開はしません。</div>
     </article>
   );
 }

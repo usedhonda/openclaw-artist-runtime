@@ -17,6 +17,10 @@ export interface AwaitingDecisionPanelProps {
   callbacks: AwaitingDecision[];
   count: number;
   now?: number;
+  // Plan v10.65 Layer 2: receive-independent Suno pre-GO. When provided, a
+  // prompt_pack_go callback can be advanced from the Console.
+  onPromptPackGo?: (songId: string) => void;
+  busyKey?: string | null;
 }
 
 function elapsed(timestamp: number, now: number): string {
@@ -32,7 +36,7 @@ function targetLabel(callback: AwaitingDecision): string {
   return callback.songId ?? callback.action;
 }
 
-export function AwaitingDecisionPanel({ callbacks, count, now = Date.now() }: AwaitingDecisionPanelProps) {
+export function AwaitingDecisionPanel({ callbacks, count, now = Date.now(), onPromptPackGo, busyKey }: AwaitingDecisionPanelProps) {
   return (
     <article className={`panel awaiting-decision-panel${count > 0 ? " has-waiting" : ""}`}>
       <div className="section-title">Awaiting Producer Decision</div>
@@ -47,6 +51,18 @@ export function AwaitingDecisionPanel({ callbacks, count, now = Date.now() }: Aw
                 <div className="muted">{callback.stage ?? "stage 不明"} · {elapsed(callback.createdAt, now)}待ち</div>
                 <div className="muted">{callback.label}: {callback.effect}</div>
                 {callback.reminderSentAt ? <div className="muted">reminder 済み: {elapsed(callback.reminderSentAt, now)}前</div> : null}
+                {callback.action === "prompt_pack_go" && callback.songId && onPromptPackGo ? (
+                  <div className="inline-actions">
+                    <button
+                      type="button"
+                      disabled={busyKey != null}
+                      title="Suno 生成へ進めます (外部公開はしません)"
+                      onClick={() => onPromptPackGo(callback.songId as string)}
+                    >
+                      {busyKey === `prompt-pack-go:${callback.songId}` ? "送信中…" : "Suno 生成へ進める"}
+                    </button>
+                  </div>
+                ) : null}
               </div>
             </div>
           ))}

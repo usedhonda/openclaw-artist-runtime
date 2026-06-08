@@ -18,6 +18,7 @@ import { selectTake } from "./takeSelection.js";
 import { emitRuntimeEvent } from "./runtimeEventBus.js";
 import type { TelegramClient } from "./telegramClient.js";
 import { executeXPublishAction, type XPublishActionInput } from "./xPublishActionRegistry.js";
+import { stampCallback } from "./receiveHealthService.js";
 
 export const STALE_CALLBACK_JA_REPLY = "このボタンはもう古い。 最新の通知から選び直して。";
 
@@ -30,7 +31,7 @@ export interface TelegramCallbackContext {
   chatId?: number;
   messageId?: number;
   now?: number;
-  actor?: "telegram_callback" | "internal_recovery" | "watchdog_recovery" | "watchdog_reprompt" | "watchdog_expire";
+  actor?: "telegram_callback" | "internal_recovery" | "ui_api" | "watchdog_recovery" | "watchdog_reprompt" | "watchdog_expire";
   auditReason?: string;
   xPublishSpawnImpl?: XPublishActionInput["spawnImpl"];
 }
@@ -292,6 +293,9 @@ async function resurfaceExpiredProducerDecision(
 
 export async function routeTelegramCallback(ctx: TelegramCallbackContext): Promise<TelegramCallbackResult> {
   const data = ctx.data ?? "";
+  // Plan v10.65 Layer 1: record that a callback_query physically reached the
+  // plugin handler (records receive regardless of authorization/expiry outcome).
+  await stampCallback(ctx.root, ctx.now ?? Date.now());
   if (secretLikePattern.test(data)) {
     return finish(ctx, undefined, undefined, "failed", "callback_data_contains_secret_like_text", "Unsupported action", "failed");
   }

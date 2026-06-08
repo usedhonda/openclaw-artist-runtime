@@ -22,6 +22,7 @@ import { emitRuntimeEvent } from "./runtimeEventBus.js";
 import { appendFailedNotifyReplayRecord, latestFailedNotifyEntry, listUnreplayedFailedNotifications } from "./failedNotifyLedger.js";
 import { resurfaceDegradedLyrics } from "./degradedLyricsResurfaceService.js";
 import { resurfacePromptPackReady } from "./promptPackResurfaceService.js";
+import { stampInbound } from "./receiveHealthService.js";
 
 export type TelegramCommandKind =
   | "help"
@@ -162,6 +163,10 @@ async function formatTimelineInfo(input: TelegramRouteInput): Promise<string> {
 
 export async function routeTelegramCommand(input: TelegramRouteInput): Promise<TelegramRouteResult> {
   const text = input.text.trim();
+  // Plan v10.65 Layer 1: record that inbound text physically reached the plugin.
+  if (input.workspaceRoot) {
+    await stampInbound(input.workspaceRoot);
+  }
   if (!text) {
     return {
       kind: "unknown",

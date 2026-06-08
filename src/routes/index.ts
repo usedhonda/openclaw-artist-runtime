@@ -15,10 +15,11 @@ import { ArtistAutopilotService, PRODUCER_REVIEW_PAUSED_REASON, PRODUCER_REVIEW_
 import { AutopilotControlService } from "../services/autopilotControlService.js";
 import { getAutopilotTicker, getAutopilotTickerIntervalMs, getLastOutcome, getLastTickAt } from "../services/autopilotTicker.js";
 import { readBirdLedgerDetail, readBirdRateLimitStatus } from "../services/birdRateLimiter.js";
-import { appendCallbackAuditEvent, describeCallbackActionEffect, listPendingCallbackActionSummaries, resolveCallbackAction, summarizePendingCallbackActions } from "../services/callbackActionRegistry.js";
+import { appendCallbackAuditEvent, describeCallbackActionEffect, listPendingCallbackActionSummaries, readCallbackActionEntries, resolveCallbackAction, summarizePendingCallbackActions, type CallbackActionEntry } from "../services/callbackActionRegistry.js";
 import { buildCascadeTrace } from "../services/cascadeTrace.js";
 import { handleProposalResponse, listPendingProposalDetails, listPendingProposals } from "../services/conversationalSession.js";
 import { composeDraftBoxNextAction } from "../services/draftBoxNextAction.js";
+import { readReceiveHealth } from "../services/receiveHealthService.js";
 import { buildPlatformStats, readDistributionEvents } from "../services/distributionLedgerReader.js";
 import { emitRuntimeEvent, getRuntimeEventBus } from "../services/runtimeEventBus.js";
 import { readRuntimeEvents, readSongEventsAsc } from "../services/runtimeEventsLedger.js";
@@ -1026,10 +1027,11 @@ export async function buildStatusResponse(config?: Partial<ArtistRuntimeConfig>)
     buildMusicSummary(mergedConfig),
     buildDistributionSummary(mergedConfig, platforms)
   ]);
-  const [recentDistributionEvents, platformStats, runtimeEventsLedger] = await Promise.all([
+  const [recentDistributionEvents, platformStats, runtimeEventsLedger, telegramInbound] = await Promise.all([
     readDistributionEvents(mergedConfig.artist.workspaceRoot, 20),
     buildPlatformStats(mergedConfig.artist.workspaceRoot),
-    readRuntimeEvents(mergedConfig.artist.workspaceRoot, 20)
+    readRuntimeEvents(mergedConfig.artist.workspaceRoot, 20),
+    readReceiveHealth(mergedConfig.artist.workspaceRoot)
   ]);
   const setupReadiness = await buildSetupReadiness(mergedConfig, autopilotStatus, sunoWorker, platforms, workspaceStatus);
   const effectiveDryRunMap = buildEffectiveDryRunMap(mergedConfig);
@@ -1097,7 +1099,8 @@ export async function buildStatusResponse(config?: Partial<ArtistRuntimeConfig>)
     alerts,
     recentSong: workspaceStatus.recentSong,
     lastSunoRun: workspaceStatus.lastSunoRun,
-    lastSocialAction: workspaceStatus.lastSocialAction
+    lastSocialAction: workspaceStatus.lastSocialAction,
+    telegramInbound
   };
 }
 
@@ -1194,6 +1197,80 @@ export async function buildInternalCallbackDispatchResponse(
     return { dispatched: false, callbackId, action: entry.action, result: result.result, reason: result.reason, statusCode: 400 };
   }
   return { dispatched: true, callbackId, action: entry.action, result: result.result, reason: result.reason, statusCode: 200 };
+}
+
+/**
+ * Plan v10.65 Layer 2 — receive-independent escape.
+ *
+ * The spawn GO (`song_spawn_inject`/`song_spawn_skip`) and Suno pre-GO
+ * (`prompt_pack_go`) decisions were Telegram-callback-only. If Telegram receive
+ * dies, the producer could see proposals (GET) but had no way to act. These
+ * actions are now drivable from the Producer Console via an explicit operator
+ * click (actor "ui_api"), reusing the SAME callback handler as Telegram so the
+ * inject/state-flip/audit logic lives in exactly one place.
+ *
+ * R10: this set is an airtight allowlist. Any publish/social callback id is
+ * rejected here BEFORE dispatch — the Console can never fire an external post,
+ * independent of the downstream actor guards.
+ */
+const PRODUCER_UI_DISPATCH_ALLOWLIST: ReadonlySet<string> = new Set([
+  "song_spawn_inject",
+  "song_spawn_skip",
+  "prompt_pack_go"
+]);
+
+export interface ProducerCallbackDispatchResponse {
+  dispatched: boolean;
+  callbackId?: string;
+  action?: string;
+  result?: string;
+  reason?: string;
+  error?: string;
+  statusCode: number;
+}
+
+async function findLatestPendingCallback(
+  root: string,
+  match: { action: string; proposalId?: string; songId?: string }
+): Promise<CallbackActionEntry | undefined> {
+  const entries = await readCallbackActionEntries(root);
+  // Duplicate callbacks exist in this codebase (resurface/re-emit/stale-queue);
+  // pick the newest pending match deterministically so we never dispatch a stale row.
+  return entries
+    .filter((entry) => entry.status === "pending" && entry.action === match.action)
+    .filter((entry) => (match.proposalId ? entry.proposalId === match.proposalId : true))
+    .filter((entry) => (match.songId ? entry.songId === match.songId : true))
+    .sort((a, b) => b.createdAt - a.createdAt)[0];
+}
+
+export async function buildProducerCallbackDispatchResponse(
+  workspaceRoot: string,
+  match: { action: string; proposalId?: string; songId?: string }
+): Promise<ProducerCallbackDispatchResponse> {
+  if (!PRODUCER_UI_DISPATCH_ALLOWLIST.has(match.action)) {
+    return { dispatched: false, action: match.action, error: "action_not_allowed_from_console", statusCode: 403 };
+  }
+  const entry = await findLatestPendingCallback(workspaceRoot, match);
+  if (!entry) {
+    return { dispatched: false, action: match.action, error: "pending_callback_not_found", statusCode: 404 };
+  }
+  const result = await routeTelegramCallback({
+    root: workspaceRoot,
+    client: internalCallbackTelegramClient,
+    callbackQueryId: `ui_api:${entry.callbackId}`,
+    data: `cb:${entry.callbackId}`,
+    fromUserId: entry.userId,
+    chatId: entry.chatId,
+    messageId: entry.messageId,
+    actor: "ui_api"
+  });
+  if (result.result === "unauthorized") {
+    return { dispatched: false, callbackId: entry.callbackId, action: entry.action, result: result.result, reason: result.reason, statusCode: 403 };
+  }
+  if (result.result === "failed") {
+    return { dispatched: false, callbackId: entry.callbackId, action: entry.action, result: result.result, reason: result.reason, statusCode: 400 };
+  }
+  return { dispatched: true, callbackId: entry.callbackId, action: entry.action, result: result.result, reason: result.reason, statusCode: 200 };
 }
 
 export interface NotifyReviewResponse {
@@ -1576,10 +1653,30 @@ export function registerRoutes(api: unknown): void {
   });
 
   safeRegisterRoute(api, {
-    method: "GET",
+    method: ["GET", "POST"],
     match: "prefix",
     path: "/plugins/artist-runtime/api/spawn-proposals",
-    handler: buildSpawnProposalsResponse
+    handler: async (input) => {
+      const payload = payloadRecord(input);
+      const method = payloadRequestMethod(payload);
+      if (method !== "POST") {
+        return buildSpawnProposalsResponse(input);
+      }
+      // Plan v10.65 Layer 2: receive-independent spawn GO from the Console.
+      const segments = payloadPathSegments(payload, "/plugins/artist-runtime/api/spawn-proposals");
+      const proposalId = segments[0] ?? (typeof payload.proposalId === "string" ? payload.proposalId : "");
+      const decision = segments[1];
+      const action = decision === "inject"
+        ? "song_spawn_inject"
+        : decision === "skip"
+          ? "song_spawn_skip"
+          : undefined;
+      if (!proposalId || !action) {
+        return { error: "unknown_spawn_proposal_decision", statusCode: 400 };
+      }
+      const config = await resolveRuntimeConfig(payload.config as Partial<ArtistRuntimeConfig> | undefined);
+      return buildProducerCallbackDispatchResponse(config.artist.workspaceRoot, { action, proposalId });
+    }
   });
 
   safeRegisterRoute(api, {
@@ -1823,6 +1920,13 @@ export function registerRoutes(api: unknown): void {
             workspaceRoot: config.artist.workspaceRoot,
             songId: segments[0] ?? (typeof payload.songId === "string" ? payload.songId : "song-001"),
             config
+          });
+        }
+        if (segments.length === 2 && segments[1] === "prompt-pack-go") {
+          // Plan v10.65 Layer 2: receive-independent Suno pre-GO from the Console.
+          return buildProducerCallbackDispatchResponse(config.artist.workspaceRoot, {
+            action: "prompt_pack_go",
+            songId: segments[0] ?? (typeof payload.songId === "string" ? payload.songId : "song-001")
           });
         }
       }

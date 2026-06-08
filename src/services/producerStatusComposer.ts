@@ -2,6 +2,7 @@ import { readSongState } from "./artistState.js";
 import { readAutopilotRunState } from "./autopilotService.js";
 import { listPendingCallbackActionSummaries } from "./callbackActionRegistry.js";
 import { composeDraftBoxNextAction, formatDraftBoxNextActionSection } from "./draftBoxNextAction.js";
+import { readReceiveHealth } from "./receiveHealthService.js";
 import type { AutopilotStatus } from "../types.js";
 
 export interface ProducerStatusOptions {
@@ -28,13 +29,14 @@ function dashboardLine(baseUrl: string | undefined, songId: string | undefined):
 
 export async function composeProducerStatus(root: string, options: ProducerStatusOptions = {}): Promise<string> {
   const now = options.now ?? Date.now();
-  const [autopilot, pending] = await Promise.all([
+  const [autopilot, pending, receive] = await Promise.all([
     readAutopilotRunState(root),
     listPendingCallbackActionSummaries(root, {
       category: "producer_decision",
       limit: options.limit ?? 6,
       now
-    })
+    }),
+    readReceiveHealth(root)
   ]);
   const draftBox = await composeDraftBoxNextAction(root, { state: autopilot });
   const stage = options.autopilotStatus?.stage ?? autopilot.stage;
@@ -47,6 +49,14 @@ export async function composeProducerStatus(root: string, options: ProducerStatu
         `- ${callback.label}: ${callback.songId ?? callback.proposalId ?? callback.action} / ${elapsedLabel(callback.createdAt, now)}`,
         `  効果: ${callback.effect}`
       ].join("\n"));
+  const receiveLines = [
+    receive.lastInboundAt
+      ? `- 最後のメッセージ受信: ${elapsedLabel(receive.lastInboundAt, now)} (${new Date(receive.lastInboundAt).toISOString()})`
+      : "- 最後のメッセージ受信: 記録なし",
+    receive.lastCallbackAt
+      ? `- 最後のボタン受信: ${elapsedLabel(receive.lastCallbackAt, now)} (${new Date(receive.lastCallbackAt).toISOString()})`
+      : "- 最後のボタン受信: 記録なし"
+  ];
   const publicLinks = song?.publicLinks?.length ? song.publicLinks : [];
   const nextLine = pending.recent[0]
     ? `次: ${pending.recent[0].label} を押すと、${pending.recent[0].effect}`
@@ -62,6 +72,9 @@ export async function composeProducerStatus(root: string, options: ProducerStatu
     blockedReason ? `- blocked: ${blockedReason}` : undefined,
     autopilot.hardStopReason ? `- hard stop: ${autopilot.hardStopReason}` : undefined,
     autopilot.lastError ? `- last error: ${autopilot.lastError}` : undefined,
+    "",
+    "受信 (Telegram):",
+    ...receiveLines,
     "",
     "待ち:",
     ...waitingLines,

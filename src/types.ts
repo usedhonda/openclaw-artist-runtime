@@ -1155,6 +1155,24 @@ export interface StatusResponse {
   recentSong?: SongState;
   lastSunoRun?: SunoRunRecord;
   lastSocialAction?: SocialPublishLedgerEntry;
+  telegramInbound?: TelegramReceiveHealth;
+}
+
+/**
+ * Raw receive-side timestamps for the Telegram producer room. The plugin does
+ * NOT own the getUpdates poll (the host gateway does), so it can only record
+ * when the host actually invoked a command/callback handler. We expose raw
+ * facts (last inbound text / last callback_query, + elapsed) and deliberately
+ * fabricate NO healthy|stale verdict: an absence of inbound is indistinguishable
+ * (plugin-side) from "operator simply sent nothing".
+ */
+export interface TelegramReceiveHealth {
+  /** epoch ms of the last inbound text/command reaching routeTelegramCommand */
+  lastInboundAt?: number;
+  /** epoch ms of the last callback_query reaching routeTelegramCallback */
+  lastCallbackAt?: number;
+  /** ISO timestamp of the last write to this record */
+  updatedAt: string;
 }
 
 export type ObservabilityExportWindow = "7d" | "30d" | "all";

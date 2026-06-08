@@ -157,7 +157,7 @@ describe("spawn proposal digest", () => {
     expect(html).toContain("永続草稿箱");
     expect(html).toContain("ハンズ前、解散");
     expect(html).toContain("この草稿で曲を完成まで作る。外部公開はしない。");
-    expect(html).toContain("操作は Telegram の草稿カードから実行します。");
+    expect(html).toContain("Telegram の草稿カード、または上のボタンから実行できます。");
   });
 
   it("describes proposal button effects in plain Japanese", () => {

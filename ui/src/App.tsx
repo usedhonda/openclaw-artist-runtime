@@ -810,6 +810,38 @@ export function App() {
     }
   };
 
+  // Plan v10.65 Layer 2: receive-independent spawn GO from the Console.
+  const decideSpawnProposal = async (proposalId: string, decision: "inject" | "skip") => {
+    setBusy(`spawn-${decision}:${proposalId}`);
+    try {
+      await apiPost(`/spawn-proposals/${encodeURIComponent(proposalId)}/${decision}`);
+      await refresh(selectedSongId);
+      showErrorToast("runtime", `spawn_${decision}_applied`, decision === "inject" ? "曲づくりを開始しました。" : "草稿を見送りました。");
+    } catch (caughtError) {
+      const message = caughtError instanceof Error ? caughtError.message : String(caughtError);
+      setError(message);
+      showErrorToast("runtime", `spawn_${decision}_failed`, message);
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  // Plan v10.65 Layer 2: receive-independent Suno pre-GO from the Console.
+  const goPromptPack = async (songId: string) => {
+    setBusy(`prompt-pack-go:${songId}`);
+    try {
+      await apiPost(`/songs/${encodeURIComponent(songId)}/prompt-pack-go`);
+      await refresh(songId);
+      showErrorToast("runtime", "prompt_pack_go_applied", "Suno 生成へ進めました。");
+    } catch (caughtError) {
+      const message = caughtError instanceof Error ? caughtError.message : String(caughtError);
+      setError(message);
+      showErrorToast("runtime", "prompt_pack_go_failed", message);
+    } finally {
+      setBusy(null);
+    }
+  };
+
   const writeSongbookFromMirror = async (songId: string) => {
     setBusy(`songbook-write:${songId}`);
     try {
@@ -1490,6 +1522,8 @@ export function App() {
       callbacks={awaitingDecisions.callbacks}
       count={awaitingDecisions.count}
       now={nowMs}
+      onPromptPackGo={goPromptPack}
+      busyKey={busy}
     />
   );
 
@@ -1497,6 +1531,8 @@ export function App() {
     <SpawnProposalQueuePanel
       count={spawnProposalQueue.count}
       proposals={spawnProposalQueue.proposals}
+      onDecide={decideSpawnProposal}
+      busyKey={busy}
     />
   );
 
