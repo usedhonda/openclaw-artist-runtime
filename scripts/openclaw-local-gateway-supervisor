@@ -15,6 +15,10 @@ set +o pipefail
 supervisor_log="${OPENCLAW_LOCAL_LOGS}/gateway.supervisor.log"
 watchdog_log="${OPENCLAW_LOCAL_LOGS}/telegram-watchdog.log"
 watchdog_flag="${OPENCLAW_LOCAL_WORKSPACE}/runtime/telegram-watchdog-fired-at.txt"
+# Singleton lock: prevents multiple independent supervisors from accumulating
+# (orphaned ppid=1 supervisors crash-looping on the same gateway port were the
+# source of restart-window races + log/CPU churn — Plan v10.65 Layer 0.5).
+supervisor_lock="${OPENCLAW_LOCAL_WORKSPACE}/runtime/gateway-supervisor.lock"
 mkdir -p "${OPENCLAW_LOCAL_LOGS}"
 mkdir -p "${OPENCLAW_LOCAL_WORKSPACE}/runtime"
 
@@ -44,6 +48,24 @@ watchdog_log_line() {
 
 now_ms() {
   node -e 'console.log(Date.now())' 2>/dev/null || date +%s000
+}
+
+# Enforce one supervisor per repo. FAIL-OPEN by design: only exit when we are
+# CONFIDENT another live supervisor holds the lock (its PID is alive AND its
+# argv actually names this supervisor script). Any uncertainty -> proceed and
+# (re)claim the lock, so a stale/unreadable lock never prevents startup.
+acquire_singleton_lock() {
+  local other_pid=""
+  if [[ -f "${supervisor_lock}" ]]; then
+    other_pid="$(tr -d '[:space:]' < "${supervisor_lock}" 2>/dev/null)"
+  fi
+  if [[ -n "${other_pid}" && "${other_pid}" != "$$" ]] && kill -0 "${other_pid}" 2>/dev/null; then
+    if ps -o args= -p "${other_pid}" 2>/dev/null | grep -q "openclaw-local-gateway-supervisor"; then
+      log_line "another supervisor already running (pid ${other_pid}); exiting to enforce singleton"
+      exit 0
+    fi
+  fi
+  echo "$$" > "${supervisor_lock}" 2>/dev/null || true
 }
 
 restart_delay_for_crashes() {
@@ -136,6 +158,11 @@ watchdog_loop() {
 
 handle_term() {
   log_line "received signal; shutting down"
+  # Release the singleton lock only if we still own it (avoid clobbering a
+  # successor supervisor that may have reclaimed a stale lock).
+  if [[ -f "${supervisor_lock}" ]] && [[ "$(tr -d '[:space:]' < "${supervisor_lock}" 2>/dev/null)" == "$$" ]]; then
+    rm -f "${supervisor_lock}" 2>/dev/null
+  fi
   if [[ -n "${watchdog_pid}" ]]; then
     kill "${watchdog_pid}" 2>/dev/null
   fi
@@ -151,6 +178,7 @@ trap handle_term TERM INT QUIT
 trap 'log_line "received SIGHUP; ignoring"' HUP
 
 log_line "started (pid $$)"
+acquire_singleton_lock
 supervisor_heartbeat_loop &
 heartbeat_pid=$!
 
