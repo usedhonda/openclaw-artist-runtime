@@ -54,6 +54,12 @@ export class AutopilotControlService {
       pausedReason: undefined,
       hardStopReason: undefined,
       blockedReason: undefined,
+      // A manual resume means the operator addressed whatever stalled the song, so
+      // grant a fresh Suno retry budget. Otherwise a song that exhausted its automatic
+      // retries (retryCount >= maxRetries) re-fails immediately on the next tick
+      // (nextSunoRetryDecision -> "failed") without ever re-attempting — which would
+      // make a Telegram /resume look like it did nothing.
+      retryCount: 0,
       suspendedAt: clearsSuspension ? undefined : current.suspendedAt,
       stage: "idle"
     });

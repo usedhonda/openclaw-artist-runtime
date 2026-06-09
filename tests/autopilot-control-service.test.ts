@@ -71,6 +71,9 @@ describe("AutopilotControlService", () => {
     expect(resumed.blockedReason).toBeUndefined();
     expect(resumed.runId).toBe("auto-existing");
     expect(resumed.currentSongId).toBe("song-001");
+    // Plan v10.66: a manual resume grants a fresh Suno retry budget so an exhausted
+    // song re-attempts on the next tick instead of re-failing immediately.
+    expect(resumed.retryCount).toBe(0);
   });
 
   it("clears blockedReason + user_paused suspension but preserves GO-gate suspension on resume (Plan v10.56 Phase 2)", async () => {

@@ -3,6 +3,7 @@ import { dirname, join } from "node:path";
 import type { AiReviewProvider, AutopilotStatus } from "../types.js";
 import { readAutopilotRunState, stageFromSong } from "./autopilotService.js";
 import { AutopilotControlService } from "./autopilotControlService.js";
+import { getAutopilotTicker } from "./autopilotTicker.js";
 import { readSongState } from "./artistState.js";
 import { formatDebugAiReviewResult, reviewSongDebugMaterial } from "./debugAiReviewService.js";
 import { auditPersonaCompleteness, formatPersonaAuditReport, type PersonaFieldAudit } from "./personaFieldAuditor.js";
@@ -502,10 +503,30 @@ export async function routeTelegramCommand(input: TelegramRouteInput): Promise<T
     }
     await new AutopilotControlService().resume(input.workspaceRoot, { reason: `telegram:${input.fromUserId}`, source: "telegram" });
     const resurface = await resurfacePromptPackReady(input.workspaceRoot, { requireExpiredGo: true });
-    const info = resurface.resurfaced
-      ? `Autopilot resumed. ${resurface.songId} は Suno 生成 GO 待ちだったので、最新の GO ボタンを再表示した。`
-      : "Autopilot resumed.";
-    return { kind: "resume", responseText: await voiceCommand("ack", info, input, "autopilot resumed"), shouldStoreFreeText: false };
+    if (resurface.resurfaced) {
+      const info = `Autopilot resumed. ${resurface.songId} は Suno 生成 GO 待ちだったので、最新の GO ボタンを再表示した。`;
+      return { kind: "resume", responseText: await voiceCommand("ack", info, input, "autopilot resumed"), shouldStoreFreeText: false };
+    }
+    // Plan v10.66: /resume must CONTINUE the current song from Telegram, not just clear
+    // the block and idle until the next ticker tick (cycleIntervalMinutes, default 180).
+    // Telegram is the operator's only surface, so "再開して" has to actually move the song.
+    // Kick one immediate cycle when a mid-pipeline current song remains AND no producer
+    // GO gate is pending — GO-gate suspensions (spawn_proposal_ready / prompt_pack_ready /
+    // planning_skeleton_pending) keep their suspendedAt through resume and must wait for
+    // the operator's GO button, never auto-fire. This is the operator's own Telegram
+    // action, so the resulting LIVE work is operator-initiated, not an autopilot
+    // script-fire. runCycle advances one stage and re-applies downstream gates.
+    const afterResume = await readAutopilotRunState(input.workspaceRoot);
+    const resumedSong = afterResume.currentSongId
+      ? await readSongState(input.workspaceRoot, afterResume.currentSongId).catch(() => undefined)
+      : undefined;
+    const terminalStatuses = new Set(["published", "archived", "discarded", "failed"]);
+    if (afterResume.currentSongId && !afterResume.suspendedAt && resumedSong && !terminalStatuses.has(resumedSong.status)) {
+      void getAutopilotTicker().runNow().catch(() => undefined);
+      const info = `Autopilot resumed。${afterResume.currentSongId} の続きを今すぐ進める。できあがったら知らせる。`;
+      return { kind: "resume", responseText: await voiceCommand("ack", info, input, "autopilot resumed and cycle kicked"), shouldStoreFreeText: false };
+    }
+    return { kind: "resume", responseText: await voiceCommand("ack", "Autopilot resumed.", input, "autopilot resumed"), shouldStoreFreeText: false };
   }
 
   if (command === "/replay") {

@@ -6,6 +6,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { ensureSongState, updateSongState, writeSongBrief } from "../src/services/artistState";
 import { readAutopilotRunState, writeAutopilotRunState } from "../src/services/autopilotService";
 import { classifyTelegramFreeText, readTelegramInbox, routeTelegramCommand } from "../src/services/telegramCommandRouter";
+import * as autopilotTicker from "../src/services/autopilotTicker";
 import { appendFailedNotification } from "../src/services/failedNotifyLedger";
 import { getRuntimeEventBus, type RuntimeEvent } from "../src/services/runtimeEventBus";
 import type { CommissionBrief } from "../src/types";
@@ -21,6 +22,7 @@ function makeRoot(): string {
 
 afterEach(() => {
   vi.unstubAllEnvs();
+  vi.restoreAllMocks();
 });
 
 describe("telegram command router", () => {
@@ -196,6 +198,67 @@ describe("telegram command router", () => {
     expect(pausedState.pausedReason).toBe("telegram:123");
     expect(resumed.kind).toBe("resume");
     expect(resumedState.paused).toBe(false);
+  });
+
+  it("kicks an immediate cycle from /resume to continue a mid-pipeline song (Plan v10.66)", async () => {
+    const root = makeRoot();
+    await ensureSongState(root, "spawn-test", "Resume Continue");
+    await updateSongState(root, "spawn-test", { status: "suno_prompt_pack" });
+    await writeAutopilotRunState(root, {
+      runId: "auto-resume",
+      currentSongId: "spawn-test",
+      stage: "paused",
+      paused: true,
+      blockedReason: "suno_generate_failed:suno_worker_not_connected",
+      retryCount: 3,
+      cycleCount: 4,
+      updatedAt: new Date(1000).toISOString(),
+      lastRunAt: new Date(1000).toISOString()
+    });
+    const runNow = vi.fn().mockResolvedValue({ outcome: "ran", state: {} });
+    vi.spyOn(autopilotTicker, "getAutopilotTicker").mockReturnValue(
+      { runNow } as unknown as ReturnType<typeof autopilotTicker.getAutopilotTicker>
+    );
+
+    const result = await routeTelegramCommand({ ...baseInput, text: "/resume", workspaceRoot: root });
+    const state = await readAutopilotRunState(root);
+
+    expect(result.kind).toBe("resume");
+    expect(runNow).toHaveBeenCalledTimes(1);
+    expect(result.responseText).toContain("spawn-test");
+    expect(state.paused).toBe(false);
+    expect(state.blockedReason).toBeUndefined();
+    // manual resume grants a fresh Suno retry budget so the next tick re-attempts
+    expect(state.retryCount).toBe(0);
+  });
+
+  it("does not kick a cycle from /resume when a producer GO gate is pending (Plan v10.66)", async () => {
+    const root = makeRoot();
+    await ensureSongState(root, "spawn-gated", "Awaiting GO");
+    await updateSongState(root, "spawn-gated", { status: "idea" });
+    await writeAutopilotRunState(root, {
+      runId: "auto-gate",
+      currentSongId: "spawn-gated",
+      stage: "paused",
+      paused: true,
+      suspendedAt: "spawn_proposal_ready",
+      retryCount: 0,
+      cycleCount: 1,
+      updatedAt: new Date(1000).toISOString(),
+      lastRunAt: new Date(1000).toISOString()
+    });
+    const runNow = vi.fn().mockResolvedValue({ outcome: "ran", state: {} });
+    vi.spyOn(autopilotTicker, "getAutopilotTicker").mockReturnValue(
+      { runNow } as unknown as ReturnType<typeof autopilotTicker.getAutopilotTicker>
+    );
+
+    const result = await routeTelegramCommand({ ...baseInput, text: "/resume", workspaceRoot: root });
+    const state = await readAutopilotRunState(root);
+
+    expect(result.kind).toBe("resume");
+    expect(runNow).not.toHaveBeenCalled();
+    // GO-gate suspension survives resume and waits for the operator's GO button
+    expect(state.suspendedAt).toBe("spawn_proposal_ready");
   });
 
   it("re-surfaces degraded lyrics from /resume without resuming the paused autopilot", async () => {
