@@ -128,7 +128,24 @@ export function registerServices(api: unknown): void {
 
   safeRegisterService(api, {
     name: "sunoBrowserWorker",
-    create: () => new SunoBrowserWorker(resolveDefaultWorkspaceRoot())
+    // Boot must NOT auto-probe. SunoBrowserWorker.start() launches a headless:false
+    // Chromium on every gateway boot to detect Suno login (operator-visible "flash").
+    // Under profile-lock contention (a second launch on the locked profile opens an
+    // empty profile that redirects to sign-in) or a transient network timeout, that
+    // probe wrote login_required/disconnected over a known-good connected state — the
+    // false negative 御大 observed ("logged-in screen judged as not logged in"), and a
+    // gateway crash loop turned it into repeated flashes. Connection is established by
+    // the explicit operator login flow (scripts/openclaw-suno-login.mjs + POST
+    // .../suno/handoff/complete) and trusted thereafter; a real create() attempt
+    // surfaces a genuine sign-in wall via its own failure capture. So boot only reads
+    // the persisted last-known-good state — no browser launch.
+    create: () => {
+      const worker = new SunoBrowserWorker(resolveDefaultWorkspaceRoot());
+      return {
+        start: () => worker.status(),
+        stop: () => worker.stop()
+      };
+    }
   });
 
   safeRegisterService(api, {
