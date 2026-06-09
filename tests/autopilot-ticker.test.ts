@@ -31,6 +31,8 @@ describe("AutopilotTicker", () => {
     resetAutopilotTickerForTest();
     getRuntimeEventBus().clearForTest();
     delete process.env.OPENCLAW_AUTOPILOT_TICK_STALL_MS;
+    delete process.env.OPENCLAW_AUTOPILOT_FAST_CHAIN_MS;
+    vi.restoreAllMocks();
   });
 
   it("returns skipped:disabled when autopilot.enabled=false", async () => {
@@ -129,6 +131,102 @@ describe("AutopilotTicker", () => {
     const a = getAutopilotTicker();
     const b = getAutopilotTicker();
     expect(a).toBe(b);
+  });
+
+  it("fast-chains a follow-up tick when a cycle advances an in-flight song", async () => {
+    process.env.OPENCLAW_AUTOPILOT_FAST_CHAIN_MS = "5";
+    const root = makeWorkspace({
+      paused: false,
+      stage: "suno_generation",
+      currentSongId: "spawn_chain",
+      blockedReason: "waiting for Suno result import"
+    });
+    const runCycle = vi
+      .spyOn(ArtistAutopilotService.prototype, "runCycle")
+      // tick 1: import lands -> take_selection (progress, not operator-gated) -> chain
+      .mockResolvedValueOnce({
+        runId: "r",
+        stage: "take_selection",
+        paused: false,
+        retryCount: 0,
+        cycleCount: 1,
+        currentSongId: "spawn_chain",
+        updatedAt: new Date().toISOString()
+      })
+      // tick 2 (chained): take selected -> producer review (operator-gated) -> stop
+      .mockResolvedValueOnce({
+        runId: "r",
+        stage: "take_selection",
+        paused: true,
+        suspendedAt: "producer_review_after_take_selected",
+        retryCount: 0,
+        cycleCount: 2,
+        currentSongId: "spawn_chain",
+        updatedAt: new Date().toISOString()
+      });
+    const ticker = new AutopilotTicker({
+      getConfig: () => ({ artist: { workspaceRoot: root }, autopilot: { enabled: true } })
+    });
+
+    await ticker.runNow();
+    await new Promise((resolve) => setTimeout(resolve, 40));
+
+    expect(runCycle).toHaveBeenCalledTimes(2);
+  });
+
+  it("does not fast-chain when a cycle makes no progress (runaway guard)", async () => {
+    process.env.OPENCLAW_AUTOPILOT_FAST_CHAIN_MS = "5";
+    const root = makeWorkspace({
+      paused: false,
+      stage: "suno_generation",
+      currentSongId: "spawn_stuck",
+      blockedReason: "waiting for Suno result import"
+    });
+    const runCycle = vi.spyOn(ArtistAutopilotService.prototype, "runCycle").mockResolvedValue({
+      runId: "r",
+      stage: "suno_generation",
+      paused: false,
+      retryCount: 0,
+      cycleCount: 1,
+      currentSongId: "spawn_stuck",
+      blockedReason: "waiting for Suno result import",
+      updatedAt: new Date().toISOString()
+    });
+    const ticker = new AutopilotTicker({
+      getConfig: () => ({ artist: { workspaceRoot: root }, autopilot: { enabled: true } })
+    });
+
+    await ticker.runNow();
+    await new Promise((resolve) => setTimeout(resolve, 40));
+
+    expect(runCycle).toHaveBeenCalledTimes(1);
+  });
+
+  it("does not fast-chain when the advanced cycle is operator-gated (producer review)", async () => {
+    process.env.OPENCLAW_AUTOPILOT_FAST_CHAIN_MS = "5";
+    const root = makeWorkspace({
+      paused: false,
+      stage: "take_selection",
+      currentSongId: "spawn_gate"
+    });
+    const runCycle = vi.spyOn(ArtistAutopilotService.prototype, "runCycle").mockResolvedValue({
+      runId: "r",
+      stage: "take_selection",
+      paused: true,
+      suspendedAt: "producer_review_after_take_selected",
+      retryCount: 0,
+      cycleCount: 1,
+      currentSongId: "spawn_gate",
+      updatedAt: new Date().toISOString()
+    });
+    const ticker = new AutopilotTicker({
+      getConfig: () => ({ artist: { workspaceRoot: root }, autopilot: { enabled: true } })
+    });
+
+    await ticker.runNow();
+    await new Promise((resolve) => setTimeout(resolve, 40));
+
+    expect(runCycle).toHaveBeenCalledTimes(1);
   });
 
   it("recovers a stalled running flag after the watchdog window", async () => {

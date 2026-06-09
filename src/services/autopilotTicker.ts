@@ -30,6 +30,7 @@ export interface AutopilotManualRunResult {
 const FALLBACK_INTERVAL_MS = 5 * 60 * 1000;
 
 let intervalHandle: ReturnType<typeof setInterval> | null = null;
+let fastChainHandle: ReturnType<typeof setTimeout> | null = null;
 let running = false;
 let runningStartedAt: number | undefined;
 let singleton: AutopilotTicker | null = null;
@@ -38,10 +39,49 @@ let lastTickAt: string | undefined;
 
 const FALLBACK_STALL_MS = 10 * 60 * 1000;
 
+// When a cycle advances an in-flight song (e.g. suno_generation -> import -> take
+// selection), the next stage would otherwise wait the full cycle interval (default
+// 3h), so a song that finished generating sits undelivered for hours. A successful
+// cycle that made progress and is not waiting on the operator schedules a near-term
+// follow-up tick to drive the pipeline tail (create -> import -> take_completed ->
+// Telegram) within ~minutes. Set OPENCLAW_AUTOPILOT_FAST_CHAIN_MS=0 to disable.
+const FALLBACK_FAST_CHAIN_MS = 20 * 1000;
+
+// Stages where the pipeline is idle or terminal: nothing to fast-chain toward.
+const FAST_CHAIN_STOP_STAGES = new Set(["idle", "paused", "completed", "failed_closed"]);
+
 function resolveStallMs(): number {
   const raw = process.env.OPENCLAW_AUTOPILOT_TICK_STALL_MS;
   const parsed = raw ? Number.parseInt(raw, 10) : Number.NaN;
   return Number.isFinite(parsed) && parsed > 0 ? parsed : FALLBACK_STALL_MS;
+}
+
+function resolveFastChainMs(): number {
+  const raw = process.env.OPENCLAW_AUTOPILOT_FAST_CHAIN_MS;
+  if (raw !== undefined && raw !== "") {
+    const parsed = Number.parseInt(raw, 10);
+    if (Number.isFinite(parsed) && parsed >= 0) {
+      return parsed; // 0 disables fast-chaining
+    }
+  }
+  return FALLBACK_FAST_CHAIN_MS;
+}
+
+// Progress fingerprint: a same-stage advance (e.g. create -> pending import within
+// suno_generation) changes blockedReason, so stage alone is too coarse. Comparing the
+// full tuple lets a same-stage advance chain while a no-progress repeat stops it.
+function progressKey(state: AutopilotRunState): string {
+  return `${state.stage}|${state.blockedReason ?? ""}|${state.currentSongId ?? ""}`;
+}
+
+function shouldFastChain(before: AutopilotRunState, after: AutopilotRunState): boolean {
+  if (after.paused) return false;
+  if (after.suspendedAt) return false;
+  if (after.hardStopReason) return false;
+  if (FAST_CHAIN_STOP_STAGES.has(after.stage)) return false;
+  // Only chain when this cycle actually moved the pipeline forward; a repeated state
+  // (e.g. import still not ready) falls back to the normal interval to avoid runaway.
+  return progressKey(before) !== progressKey(after);
 }
 
 export class AutopilotTicker {
@@ -62,6 +102,29 @@ export class AutopilotTicker {
     if (intervalHandle) {
       clearInterval(intervalHandle);
       intervalHandle = null;
+    }
+    if (fastChainHandle) {
+      clearTimeout(fastChainHandle);
+      fastChainHandle = null;
+    }
+  }
+
+  // Drive the pipeline tail without waiting the full cycle interval. Scheduled as a
+  // one-shot; the next runNow re-evaluates from fresh on-disk state, and its running
+  // guard prevents overlap with the regular interval tick.
+  private maybeScheduleFastChain(before: AutopilotRunState, after: AutopilotRunState): void {
+    const delayMs = resolveFastChainMs();
+    if (delayMs <= 0) return;
+    if (!shouldFastChain(before, after)) return;
+    if (fastChainHandle) {
+      clearTimeout(fastChainHandle);
+    }
+    fastChainHandle = setTimeout(() => {
+      fastChainHandle = null;
+      void this.tick();
+    }, delayMs);
+    if (typeof fastChainHandle.unref === "function") {
+      fastChainHandle.unref();
     }
   }
 
@@ -120,6 +183,7 @@ export class AutopilotTicker {
         config: resolved,
         manualSeed
       });
+      this.maybeScheduleFastChain(state, nextState);
       return {
         outcome: await this.emitWithHeartbeat(workspaceRoot, "ran", nextState),
         state: nextState
@@ -188,6 +252,10 @@ export function resetAutopilotTickerForTest(): void {
   if (intervalHandle) {
     clearInterval(intervalHandle);
     intervalHandle = null;
+  }
+  if (fastChainHandle) {
+    clearTimeout(fastChainHandle);
+    fastChainHandle = null;
   }
   singleton = null;
   running = false;
