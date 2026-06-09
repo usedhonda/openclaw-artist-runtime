@@ -563,25 +563,57 @@ export class TelegramNotifier {
   }
 }
 
+const ARTIST_REPORT_TIMEOUT_SENTINEL = Symbol("artist-report-timeout");
+
+function artistReportTimeoutMs(): number {
+  const parsed = Number.parseInt(process.env.OPENCLAW_TELEGRAM_ARTIST_REPORT_TIMEOUT_MS ?? "", 10);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : 12_000;
+}
+
 async function artistReport(event: RuntimeEvent, fallback: string, options: Pick<TelegramNotifierOptions, "workspaceRoot" | "aiReviewProvider">): Promise<string> {
   if (!options.workspaceRoot) {
     return fallback;
   }
-  const context = await readArtistVoiceContext(options.workspaceRoot, {
-    topic: event.type,
-    recentHistory: [fallback]
-  });
-  try {
+  // The artist-voice line is composed by an AI call (generateArtistResponse). If that
+  // call hangs (slow/unreachable provider), the whole notification blocks before
+  // sendMessage ever runs — no send, no error, no failed-notify entry, just a silent
+  // wedge. Race it against a deadline and fall back to the deterministic text so a
+  // notification always reaches the producer. Real errors still propagate (-> retry /
+  // failed-notify) so they stay recoverable.
+  const work = (async () => {
+    const context = await readArtistVoiceContext(options.workspaceRoot!, {
+      topic: event.type,
+      recentHistory: [fallback]
+    });
     const response = await generateArtistResponse(fallback, context, {
       intent: "report",
       aiReviewProvider: options.aiReviewProvider
     });
     return response.text;
+  })();
+
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const deadline = new Promise<typeof ARTIST_REPORT_TIMEOUT_SENTINEL>((resolve) => {
+    timer = setTimeout(() => resolve(ARTIST_REPORT_TIMEOUT_SENTINEL), artistReportTimeoutMs());
+  });
+
+  try {
+    const result = await Promise.race([work, deadline]);
+    if (result === ARTIST_REPORT_TIMEOUT_SENTINEL) {
+      console.error(`[telegram-notify] artistReport timed out after ${artistReportTimeoutMs()}ms for ${event.type}; using deterministic fallback`);
+      void work.catch(() => undefined); // mark the late settlement handled
+      return fallback;
+    }
+    return result;
   } catch (error) {
     if (error instanceof Error && error.message.includes("secret_like_text")) {
       return fallback;
     }
     throw error;
+  } finally {
+    if (timer) {
+      clearTimeout(timer);
+    }
   }
 }
 
