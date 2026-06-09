@@ -8,6 +8,7 @@ import { SunoBrowserWorker } from "../src/services/sunoBrowserWorker";
 type RegisteredService = {
   id: string;
   start: () => Promise<unknown>;
+  stop?: () => Promise<unknown> | unknown;
 };
 
 const originalCwd = process.cwd();
@@ -60,5 +61,30 @@ describe("Suno worker service workspace root", () => {
     expect(status?.connected).toBe(true);
     expect(existsSync(join(workspaceRoot, "runtime", "suno-worker.json"))).toBe(true);
     expect(existsSync(join(cwdRoot, "runtime", "suno-worker.json"))).toBe(false);
+  });
+
+  it("does not downgrade a connected worker to stopped on service shutdown (survives gateway restart)", async () => {
+    const workspaceRoot = mkdtempSync(join(tmpdir(), "artist-runtime-service-stop-"));
+    const services = new Map<string, RegisteredService>();
+    const api = {
+      registerService(definition: RegisteredService) {
+        services.set(definition.id, definition);
+      }
+    };
+
+    process.env.OPENCLAW_LOCAL_WORKSPACE = workspaceRoot;
+    process.env.OPENCLAW_SUNO_LIVE = "off";
+
+    await new SunoBrowserWorker(workspaceRoot).setState("connected");
+
+    registerServices(api);
+    // A gateway restart calls the service stop lifecycle. It must NOT mark the worker
+    // stopped/disconnected, or the next (probe-free) boot would leave it permanently
+    // disconnected across every bounce.
+    await services.get("sunoBrowserWorker")?.stop?.();
+    const persisted = await new SunoBrowserWorker(workspaceRoot).status();
+
+    expect(persisted.state).toBe("connected");
+    expect(persisted.connected).toBe(true);
   });
 });

@@ -139,11 +139,19 @@ export function registerServices(api: unknown): void {
     // .../suno/handoff/complete) and trusted thereafter; a real create() attempt
     // surfaces a genuine sign-in wall via its own failure capture. So boot only reads
     // the persisted last-known-good state — no browser launch.
+    //
+    // Shutdown must NOT write "stopped"/disconnected either. worker.stop() marks the
+    // worker stopped+disconnected, which on the next boot (read-only, no probe) leaves
+    // it permanently disconnected across a routine gateway restart — the worker would
+    // lose its connected session every bounce. A gateway restart is not an operator
+    // "stop the worker"; the persisted connection must survive it (any open browser is
+    // a child of the gateway process and dies with it). So shutdown is a no-op; only
+    // explicit operator actions (connect/reconnect/handoff) change connection state.
     create: () => {
       const worker = new SunoBrowserWorker(resolveDefaultWorkspaceRoot());
       return {
         start: () => worker.status(),
-        stop: () => worker.stop()
+        stop: () => undefined
       };
     }
   });
