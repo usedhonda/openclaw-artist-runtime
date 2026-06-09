@@ -18,6 +18,7 @@ function transientError(code: string): Error {
 afterEach(() => {
   delete process.env.OPENCLAW_TELEGRAM_RETRY_MAX;
   delete process.env.OPENCLAW_TELEGRAM_RETRY_BASE_MS;
+  delete process.env.OPENCLAW_TELEGRAM_REQUEST_TIMEOUT_MS;
 });
 
 describe("TelegramClient retry", () => {
@@ -50,6 +51,25 @@ describe("TelegramClient retry", () => {
     const failFetch = vi.fn().mockResolvedValue(jsonResponse({ ok: false }, 400));
     await expect(new TelegramClient("token", failFetch).sendMessage(123, "bad")).rejects.toThrow("telegram_sendMessage_http_400");
     expect(failFetch).toHaveBeenCalledTimes(1);
+  });
+
+  it("fails closed on a hung send instead of waiting forever (per-request timeout)", async () => {
+    process.env.OPENCLAW_TELEGRAM_RETRY_MAX = "1";
+    process.env.OPENCLAW_TELEGRAM_REQUEST_TIMEOUT_MS = "20";
+    // A socket that connects but never responds: resolve/reject only when the
+    // request's AbortSignal fires. Without a per-request timeout this hangs forever
+    // and silently wedges every queued send behind it.
+    const hangUntilAbort = vi.fn((_input: string, init: RequestInit) =>
+      new Promise<Response>((_resolve, reject) => {
+        init.signal?.addEventListener("abort", () =>
+          reject(Object.assign(new Error("The operation was aborted due to timeout"), { name: "TimeoutError" }))
+        );
+      })
+    );
+
+    await expect(new TelegramClient("token", hangUntilAbort).sendMessage(123, "wedge")).rejects.toThrow();
+    expect(hangUntilAbort).toHaveBeenCalledTimes(1);
+    expect(hangUntilAbort.mock.calls[0][1].signal).toBeInstanceOf(AbortSignal);
   });
 
   it("exposes exhausted attempt count on errors", async () => {

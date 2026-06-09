@@ -43,6 +43,18 @@ function retryDelayMs(attempt: number): number {
   return retryBaseMs() * (3 ** Math.max(0, attempt - 1));
 }
 
+// Per-request timeout. Without it a hung socket (connect succeeds, no response)
+// leaves fetch pending forever, wedging the send and every queued send behind it
+// silently — no throw, no retry, no failed-notify. getUpdates long-polls up to 25s,
+// so it needs headroom; other calls fail-closed quickly so the retry/failed-notify
+// path can engage.
+function requestTimeoutMs(method: string): number {
+  if (method === "getUpdates") {
+    return positiveIntegerFromEnv("OPENCLAW_TELEGRAM_POLL_TIMEOUT_MS", 35_000);
+  }
+  return positiveIntegerFromEnv("OPENCLAW_TELEGRAM_REQUEST_TIMEOUT_MS", 20_000);
+}
+
 function causeCode(error: unknown): string | undefined {
   const cause = (error as { cause?: { code?: string; errno?: string } }).cause;
   return cause?.code ?? cause?.errno;
@@ -145,7 +157,8 @@ export class TelegramClient {
           headers: {
             "content-type": "application/json"
           },
-          body: JSON.stringify(payload)
+          body: JSON.stringify(payload),
+          signal: AbortSignal.timeout(requestTimeoutMs(method))
         });
       } catch (err) {
         const cause = (err as { cause?: { code?: string; message?: string; errno?: string } }).cause;
