@@ -594,14 +594,31 @@ export class PlaywrightSunoDriver implements SunoBrowserDriver {
   }
 
   private async readCreateCardSongUrls(page: Page, expectedTitle?: string): Promise<string[]> {
-    const titleFilter = expectedTitle ? `[aria-label="${this.escapeAttributeValue(expectedTitle)}"]` : "";
-    return page
-      .locator(`[data-testid="clip-row"][data-clip-status="complete"]${titleFilter} a[href*='/song/']`)
-      .evaluateAll((elements) =>
-        elements
-          .map((element) => (element as HTMLAnchorElement).href)
-          .filter((href) => href.startsWith("https://suno.com/song/"))
-      );
+    // Suno's create-page workspace no longer exposes data-testid="clip-row" /
+    // data-clip-status, nor /song/ anchors (confirmed against a captured create-page
+    // DOM where finished takes were present but undetectable by the old selector — the
+    // root cause of false playwright_live_timeout). A finished song now surfaces as a
+    // play button (aria-label="Play <title>") whose thumbnail image URL carries the song
+    // id (cdn2.suno.ai/image[_large]_<uuid>.jpeg). Title-scope via the play button and
+    // derive the song URL from that id. Create-page-only; no library navigation, so the
+    // Plan v10.42 take-attribution fail-closed contract is preserved.
+    const selector = expectedTitle
+      ? `button[aria-label="Play ${this.escapeAttributeValue(expectedTitle)}"]`
+      : `button[aria-label^="Play "]`;
+    return page.locator(selector).evaluateAll((buttons) => {
+      const urls = new Set<string>();
+      for (const button of buttons) {
+        const img = button.querySelector("img[src*='suno.ai/image'], img[data-src*='suno.ai/image']");
+        const source = img?.getAttribute("data-src") ?? img?.getAttribute("src") ?? "";
+        const match = source.match(
+          /image(?:_large)?_([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})/i
+        );
+        if (match) {
+          urls.add(`https://suno.com/song/${match[1]}`);
+        }
+      }
+      return Array.from(urls);
+    });
   }
 
   private escapeAttributeValue(value: string): string {

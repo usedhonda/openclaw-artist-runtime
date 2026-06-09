@@ -80,10 +80,8 @@ describe("Suno driver title-based pickup", () => {
 
     expect(result.reason).toBe(PLAYWRIGHT_CREATE_CARD_REASON);
     expect(result.urls).toEqual(["https://suno.com/song/new-title-match"]);
-    expect(page.selectors).toContain(
-      "[data-testid=\"clip-row\"][data-clip-status=\"complete\"][aria-label=\"Watapp Groups\"] a[href*='/song/']"
-    );
-    expect(page.selectors).toContain("[data-testid=\"clip-row\"][data-clip-status=\"complete\"] a[href*='/song/']");
+    expect(page.selectors).toContain("button[aria-label=\"Play Watapp Groups\"]");
+    expect(page.selectors).toContain("button[aria-label^=\"Play \"]");
   });
 
   it("fails closed instead of falling back to unrelated completed cards when title mismatch remains", async () => {
@@ -143,9 +141,7 @@ describe("Suno driver title-based pickup", () => {
 
     expect(result.reason).toBe(PLAYWRIGHT_LIVE_TIMEOUT_REASON);
     expect(result.urls).toEqual([]);
-    expect(page.selectors).toContain(
-      "[data-testid=\"clip-row\"][data-clip-status=\"complete\"][aria-label=\"Mijikai Kage\"] a[href*='/song/']"
-    );
-    expect(page.selectors.filter((selector) => selector === "[data-testid=\"clip-row\"][data-clip-status=\"complete\"] a[href*='/song/']")).toHaveLength(1);
+    expect(page.selectors).toContain("button[aria-label=\"Play Mijikai Kage\"]");
+    expect(page.selectors.filter((selector) => selector === "button[aria-label^=\"Play \"]")).toHaveLength(1);
   });
 });

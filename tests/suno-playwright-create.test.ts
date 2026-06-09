@@ -397,10 +397,11 @@ describe("PlaywrightSunoDriver create", () => {
     });
 
     const createCardSelector = page.selectors.find((selector) => selector.includes("Run 003bd"));
-    expect(createCardSelector).toBe("[data-testid=\"clip-row\"][data-clip-status=\"complete\"][aria-label=\"Run 003bd\"] a[href*='/song/']");
+    // Title-scoped to the finished-song play button on the create page (Suno's current
+    // DOM). Must stay create-page-only — no library navigation (Plan v10.42 fail-closed).
+    expect(createCardSelector).toBe("button[aria-label=\"Play Run 003bd\"]");
     expect(createCardSelector).not.toContain("generation-card");
-    expect(createCardSelector).not.toContain("data-clip-status=\"generating\"");
-    expect(createCardSelector?.split(", ").some((selector) => selector === "a[href*='/song/']")).toBe(false);
+    expect(createCardSelector).not.toContain("generating");
     expect(result.reason).toBe(PLAYWRIGHT_LIVE_TIMEOUT_REASON);
     expect(result.urls).toEqual([]);
     expect(page.goto.mock.calls.filter(([url]) => url === SUNO_LIBRARY_URL)).toHaveLength(0);

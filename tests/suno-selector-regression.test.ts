@@ -13,8 +13,18 @@ const STYLE_SELECTOR =
 const EXCLUDE_SELECTOR = 'input[placeholder="Exclude styles"]';
 const INSTRUMENTAL_SELECTOR = 'button[aria-label="Check this to generate an instrumental only song"]';
 const CREATE_BUTTON_SELECTOR = 'button[aria-label="Create song"]';
-const COMPLETE_TITLE_CLIP_SELECTOR =
-  '[data-testid="clip-row"][data-clip-status="complete"][aria-label="Watapp Groups"] a[href*="/song/"]';
+// Suno's create-page workspace surfaces a finished take as a title-scoped play button
+// whose thumbnail image URL carries the song id. The old clip-row/href selector matched
+// nothing against the live DOM (root cause of false playwright_live_timeout).
+const COMPLETE_TITLE_PLAY_SELECTOR = 'button[aria-label="Play Watapp Groups"]';
+
+// Mirror of the driver's image-id -> song URL derivation, for fixture assertions.
+function songUrlFromImageSource(source: string): string | undefined {
+  const match = source.match(
+    /image(?:_large)?_([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})/i
+  );
+  return match ? `https://suno.com/song/${match[1]}` : undefined;
+}
 
 interface FixtureNode {
   tag: string;
@@ -163,10 +173,6 @@ function matchesCompound(node: FixtureNode, compound: string): boolean {
   return true;
 }
 
-function hrefs(nodes: FixtureNode[]): string[] {
-  return nodes.map((node) => node.attrs.href).filter((href): href is string => Boolean(href));
-}
-
 describe("Suno create selector regression fixture", () => {
   const html = readFileSync(FIXTURE_PATH, "utf8");
   const fixture = parseFixtureHtml(html);
@@ -188,13 +194,23 @@ describe("Suno create selector regression fixture", () => {
     expect(queryAll(fixture, 'textarea[placeholder="Exclude styles"]')).toHaveLength(1);
   });
 
-  it("matches only completed title-specific clip rows for post-submit pickup", () => {
-    expect(hrefs(queryAll(fixture, COMPLETE_TITLE_CLIP_SELECTOR))).toEqual([
-      "https://suno.com/song/watapp-groups-a"
-    ]);
-    expect(hrefs(queryAll(fixture, '[data-testid="clip-row"][data-clip-status="generating"] a[href*="/song/"]'))).toEqual([
-      "https://suno.com/song/still-generating"
-    ]);
+  it("detects a finished take via the title-scoped play button and derives its song URL from the image id", () => {
+    const playButtons = queryAll(fixture, COMPLETE_TITLE_PLAY_SELECTOR);
+    expect(playButtons).toHaveLength(1);
+
+    // The song id lives in the thumbnail image URL inside the play button.
+    const img = queryAll(fixture, `${COMPLETE_TITLE_PLAY_SELECTOR} img`)[0];
+    const source = img?.attrs["data-src"] ?? img?.attrs.src ?? "";
+    expect(songUrlFromImageSource(source)).toBe(
+      "https://suno.com/song/11111111-1111-4111-8111-111111111111"
+    );
+
+    // Title scope excludes other songs in the same workspace.
+    expect(queryAll(fixture, 'button[aria-label="Play Other Title"]')).toHaveLength(1);
+    const otherImg = queryAll(fixture, 'button[aria-label="Play Other Title"] img')[0];
+    expect(songUrlFromImageSource(otherImg?.attrs["data-src"] ?? "")).toBe(
+      "https://suno.com/song/22222222-2222-4222-8222-222222222222"
+    );
   });
 
   it("pins the fixture selectors to the current Playwright driver source", () => {
@@ -212,7 +228,11 @@ describe("Suno create selector regression fixture", () => {
       expect(driverSource).toContain(selector);
     }
 
-    expect(driverSource).toContain('[data-testid="clip-row"][data-clip-status="complete"]');
-    expect(driverSource).toContain("a[href*='/song/']");
+    // Take detection is now title-scoped to the create-page play button and derives the
+    // song id from the thumbnail image URL — create-page-only (no library navigation),
+    // preserving the Plan v10.42 fail-closed contract.
+    expect(driverSource).toContain('button[aria-label="Play ');
+    expect(driverSource).toContain("image(?:_large)?_");
+    expect(driverSource).not.toContain('[data-testid="clip-row"][data-clip-status="complete"]');
   });
 });
