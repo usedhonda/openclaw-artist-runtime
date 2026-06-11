@@ -84,7 +84,7 @@ const placeholderPattern = /^(?:-|tbd|未定|未記入|todo|fixme|none|n\/a|null
 const machineReasonPattern = /(?:ARTIST\.md|SOUL\.md|INNER\.md|PRODUCER\.md|IDENTITY\.md|themes:|geo:|vocab:|sound:|motif anchor:|\bparse\b|\bbuild\b|\bfield\b|\bconfig\b|\bruntime\b|\bmock\b)|基礎人格|基礎トーン|基礎理性|基礎商業|に基づき|に従い|を変換|を生成/i;
 
 function cleanVoiceToken(value?: string): string | undefined {
-  const token = value?.split(/[\/|,、]/)[0]?.trim();
+  const token = value?.split(/[/|,、]/)[0]?.trim();
   return token && !placeholderPattern.test(token) ? token : undefined;
 }
 

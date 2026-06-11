@@ -9,7 +9,7 @@ import { isInlineButtonsEnabled, isSelfHealNotifyEnabled, isXInlineButtonEnabled
 import { readSongState } from "./artistState.js";
 import { secretLikePattern } from "./personaMigrator.js";
 import type { ObservationSummary } from "../types.js";
-import { composeVoiceTopOnly, isUnsafeCommandVoiceTopForTest } from "./commandVoiceWrapper.js";
+import { isUnsafeCommandVoiceTopForTest } from "./commandVoiceWrapper.js";
 import { composePlanningSkeletonVoice } from "./planningSkeletonVoiceComposer.js";
 import { buttonVoiceLabels } from "./buttonVoiceLabels.js";
 import { access, readdir, readFile } from "node:fs/promises";
@@ -314,10 +314,7 @@ export class TelegramNotifier {
       await this.attachSongSpawnButtons(event, sent.message_id);
       return;
     }
-    const text = await formatSongSpawnDigest(events, {
-      workspaceRoot: this.options.workspaceRoot,
-      aiReviewProvider: this.options.aiReviewProvider
-    });
+    const text = await formatSongSpawnDigest(events);
     const sent = await this.client.sendMessage(this.options.chatId, text);
     await this.attachSongSpawnDigestButtons(events, sent.message_id);
   }
@@ -836,10 +833,7 @@ function formatSpawnBriefVoiceDetail(brief: Extract<RuntimeEvent, { type: "song_
   ].join("\n");
 }
 
-async function formatSongSpawnDigest(
-  events: Array<Extract<RuntimeEvent, { type: "song_spawn_proposed" }>>,
-  options: Pick<TelegramNotifierOptions, "workspaceRoot" | "aiReviewProvider"> = {}
-): Promise<string> {
+async function formatSongSpawnDigest(events: Array<Extract<RuntimeEvent, { type: "song_spawn_proposed" }>>): Promise<string> {
   const lines = [
     `アイデアが ${events.length} 件、並んでます。`,
     "今はまだ Suno には投げない。進めるものだけ選んで。",

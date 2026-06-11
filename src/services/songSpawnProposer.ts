@@ -310,7 +310,11 @@ function firstPhrase(
   const filtered = values.filter((value) => value.trim().length > 0);
   if (filtered.length === 0) return fallback;
   const picked = pickWeightedMotif(filtered, observationTopTags, rng);
-  return picked?.split(/[\/|,、]/)[0]?.trim() || fallback;
+  return picked?.split(/[/|,、]/)[0]?.trim() || fallback;
+}
+
+function hasOnlyNonAsciiCharacters(value: string): boolean {
+  return Array.from(value).every((character) => (character.codePointAt(0) ?? 0) > 0x7f);
 }
 
 // Plan v10.38 Phase C: japanese-only weighted phrase picker. Used by pitchSlots
@@ -324,11 +328,10 @@ function firstJapanesePhrase(
   observationTopTags: string[] = [],
   rng?: () => number
 ): string {
-  const japaneseOnly = /^[^\x00-\x7F]+$/;
-  const filtered = values.filter((value) => value.trim().length > 0 && japaneseOnly.test(value.trim()));
+  const filtered = values.filter((value) => value.trim().length > 0 && hasOnlyNonAsciiCharacters(value.trim()));
   if (filtered.length === 0) return fallback;
   const picked = pickWeightedMotif(filtered, observationTopTags, rng);
-  return picked?.split(/[\/|,、]/)[0]?.trim() || fallback;
+  return picked?.split(/[/|,、]/)[0]?.trim() || fallback;
 }
 
 function hasCoreTheme(motifs: ReturnType<typeof extractPersonaMotifs>): boolean {
@@ -757,9 +760,8 @@ function composeReasonInArtistVoice(args: {
 
 function firstJapaneseSound(context: PitchDensityContext, fallback: string): string {
   const motifs = extractPersonaMotifs([context.artistMd, context.soulMd].join("\n"));
-  const japaneseOnly = /^[^\x00-\x7F]+$/;
-  const found = motifs.sound.find((s) => japaneseOnly.test(s.trim()));
-  return found?.split(/[\/|,、]/)[0]?.trim() || fallback;
+  const found = motifs.sound.find((s) => hasOnlyNonAsciiCharacters(s.trim()));
+  return found?.split(/[/|,、]/)[0]?.trim() || fallback;
 }
 
 function composeReasonFromBrief(

@@ -87,7 +87,7 @@ describe("artist presence layer", () => {
     const bus = new RuntimeEventBus();
     const scheduler = fakeScheduler();
     const notify = vi.fn(async () => {});
-    let fakeNow = 5_000;
+    const fakeNow = 5_000;
     const handle = startArtistPresenceLayer({
       bus,
       notify,

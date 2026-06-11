@@ -142,7 +142,7 @@ describe("failed-notify ledger", () => {
     if (!failed) throw new Error("failed entry not created");
     const fetchImpl = vi.fn().mockResolvedValue(telegramOk());
     vi.stubGlobal("fetch", fetchImpl);
-    process.env.TELEGRAM_BOT_TOKEN = "token";
+    process.env["TELEGRAM_BOT_TOKEN"] = "token";
 
     await expect(buildFailedNotifyListResponse({ config: { artist: { workspaceRoot: root } } })).resolves.toMatchObject({
       count: 1,

@@ -31,8 +31,8 @@ function buildOpening(context: SongPitchContext, hash: number): string {
   const title = context.title;
   const core = context.coreTheme?.replace(/[。.、,!?！？]+$/u, "").trim();
   const motifs = context.motifs;
-  const theme = motifs.themes[hash % Math.max(motifs.themes.length, 1)]?.split(/[\/|,、]/)[0]?.trim();
-  const geo = motifs.geographies[hash % Math.max(motifs.geographies.length, 1)]?.split(/[\/|,、]/)[0]?.trim();
+  const theme = motifs.themes[hash % Math.max(motifs.themes.length, 1)]?.split(/[/|,、]/)[0]?.trim();
+  const geo = motifs.geographies[hash % Math.max(motifs.geographies.length, 1)]?.split(/[/|,、]/)[0]?.trim();
 
   const candidates: string[] = [];
   if (title && core) {

@@ -6,7 +6,7 @@ import { ensureArtistWorkspace } from "../src/services/artistWorkspace";
 import { ensureSongState, readSongState, updateSongState } from "../src/services/artistState";
 import { ArtistAutopilotService, readAutopilotRunState, writeAutopilotRunState } from "../src/services/autopilotService";
 import { markCallbackResolved, registerCallbackAction } from "../src/services/callbackActionRegistry";
-import { getRuntimeEventBus, type RuntimeEvent } from "../src/services/runtimeEventBus";
+import { getRuntimeEventBus } from "../src/services/runtimeEventBus";
 import {
   appendSpawnProposal,
   clearSpawnProposalQueueCacheForTest,

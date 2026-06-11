@@ -1,6 +1,6 @@
 import { spawn } from "node:child_process";
 import { readdir, stat } from "node:fs/promises";
-import { dirname, join } from "node:path";
+import { join } from "node:path";
 
 export const MIN_CHROMIUM_APP_BUNDLE_BYTES = 100 * 1024 * 1024;
 export const MIN_CHROMIUM_EXECUTABLE_BYTES = 10 * 1024 * 1024;
@@ -93,4 +93,3 @@ export async function reinstallPlaywrightChromium(reason = "suno_browser_binary_
     });
   });
 }
-

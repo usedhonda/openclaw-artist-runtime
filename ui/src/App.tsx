@@ -492,14 +492,6 @@ function MetricCard(props: { label: string; value: string; detail: string }) {
   );
 }
 
-function excerpt(value: string, maxLength = 220): string {
-  const trimmed = value.trim();
-  if (!trimmed) {
-    return "No brief yet.";
-  }
-  return trimmed.length > maxLength ? `${trimmed.slice(0, maxLength)}...` : trimmed;
-}
-
 function platformEnabled(draft: ConfigDraft | null, platform: "x" | "instagram" | "tiktok"): boolean {
   if (!draft) {
     return false;
@@ -528,13 +520,6 @@ function platformLiveGoArmed(draft: ConfigDraft | null, platform: "x" | "instagr
     default:
       return draft.xLiveGoArmed;
   }
-}
-
-function currentImportedAssets(status: StatusResponse | null, sunoStatus: SunoStatusResponse | null): ImportedAsset[] {
-  return sunoStatus?.lastImportOutcome?.metadata
-    ?? sunoStatus?.worker.lastImportOutcome?.metadata
-    ?? status?.sunoWorker.lastImportOutcome?.metadata
-    ?? [];
 }
 
 function formatProbeReason(reason?: string): string {

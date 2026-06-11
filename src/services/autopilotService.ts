@@ -29,11 +29,10 @@ import { collectNewsObservations } from "./newsObservationCollector.js";
 import { proposeTheme } from "./themeProposer.js";
 import { pollSongDistribution } from "./songDistributionPoller.js";
 import { cleanupExpiredCallbacks } from "./callbackLedgerMaintenance.js";
-import { readCallbackActionEntries, type CallbackActionEntry } from "./callbackActionRegistry.js";
+import { readCallbackActionEntries } from "./callbackActionRegistry.js";
 import { applyRuntimeEnvOverrides, getArtistPulseIntervalHours, getSongSpawnIntervalHours, getStaleQueueCleanupHours, isArtistPulseConfigured, isSongbookAutoSyncEnabled, isSongSpawnConfigured } from "./runtimeConfig.js";
 import { proposeSpawn, type ActiveQueueContextEntry } from "./songSpawnProposer.js";
 import { appendSpawnProposal, listBuildingSpawnProposals, listPendingSpawnProposals, markSpawnProposalDone } from "./spawnProposalQueue.js";
-import { injectCommissionSong } from "./songStateInjector.js";
 import { buildCascadeTrace } from "./cascadeTrace.js";
 import { shouldSpawn } from "./songSpawnRateLimiter.js";
 import { validatePlanningFiles } from "./planningSkeletonValidator.js";
@@ -270,7 +269,7 @@ async function runIdeaQueueLane(
   config: ArtistRuntimeConfig,
   options: { preserveCurrentSongLane?: boolean } = {}
 ): Promise<{ state?: AutopilotRunState; emitted: boolean; skippedForFullQueue: boolean }> {
-  let skippedForFullQueue = false;
+  const skippedForFullQueue = false;
   let emitted = false;
   await shouldSpawn(root, { minIntervalHours: getSongSpawnIntervalHours(process.env, config) }).then(async (allowed) => {
     if (!allowed) {
