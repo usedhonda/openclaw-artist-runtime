@@ -1,3 +1,5 @@
+import { isXTcoFetchEnabled } from "../../services/runtimeConfig.js";
+
 export interface ResolvedReplyTarget {
   ok: true;
   targetId: string;
@@ -29,7 +31,7 @@ function resolveFetchImpl(fetchImpl: ReplyTargetFetch | undefined): ReplyTargetF
   if (fetchImpl) {
     return fetchImpl;
   }
-  if (process.env.OPENCLAW_X_TCO_FETCH_ENABLED !== "1" || typeof globalThis.fetch !== "function") {
+  if (!isXTcoFetchEnabled() || typeof globalThis.fetch !== "function") {
     return undefined;
   }
   return (url: string) => globalThis.fetch(url, { redirect: "follow" });

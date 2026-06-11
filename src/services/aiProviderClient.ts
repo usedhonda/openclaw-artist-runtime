@@ -1,6 +1,7 @@
 import { readFile } from "node:fs/promises";
 import { dirname, join, resolve } from "node:path";
 import type { AiReviewProvider } from "../types.js";
+import { getOpenClawAuthProfilesPath, getOpenClawConfigPath } from "./runtimeConfig.js";
 
 export interface AiProviderCallOptions {
   provider: AiReviewProvider;
@@ -90,7 +91,7 @@ function candidateConfigPaths(explicit?: string): string[] {
   const cwd = process.cwd();
   const candidates = [
     explicit,
-    process.env.OPENCLAW_CONFIG,
+    getOpenClawConfigPath(),
     join(cwd, ".local", "openclaw", "config", "openclaw.json"),
     join(cwd, "..", "config", "openclaw.json"),
     join(cwd, "config", "openclaw.json")
@@ -103,7 +104,7 @@ function candidateAuthProfilePaths(explicit?: string, configPath?: string): stri
   const configRoot = configPath ? dirname(dirname(resolve(configPath))) : undefined;
   const candidates = [
     explicit,
-    process.env.OPENCLAW_AUTH_PROFILES,
+    getOpenClawAuthProfilesPath(),
     configRoot ? join(configRoot, "state", "agents", "main", "agent", "auth-profiles.json") : undefined,
     join(cwd, ".local", "openclaw", "state", "agents", "main", "agent", "auth-profiles.json"),
     join(cwd, "..", "state", "agents", "main", "agent", "auth-profiles.json"),

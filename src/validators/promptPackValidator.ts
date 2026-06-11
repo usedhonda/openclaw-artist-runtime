@@ -1,8 +1,8 @@
 import type { SunoPromptPack, SunoPromptPackValidation } from "../types.js";
+import { getSunoLyricsLimit } from "../services/runtimeConfig.js";
 
 function sunoLyricsBoxLimit(): number {
-  const parsed = Number.parseInt(process.env.OPENCLAW_SUNO_LYRICS_LIMIT ?? "", 10);
-  return Number.isFinite(parsed) && parsed > 0 ? parsed : 5000;
+  return getSunoLyricsLimit();
 }
 
 export function validateSunoPromptPack(pack: Partial<SunoPromptPack>): SunoPromptPackValidation {

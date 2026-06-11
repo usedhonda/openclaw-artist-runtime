@@ -10,6 +10,7 @@
 import { mkdir, readFile, stat, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { secretLikePattern } from "./personaMigrator.js";
+import { getNewsRssUrls } from "./runtimeConfig.js";
 import {
   extractPersonaMotifs,
   type PersonaMotifBundle
@@ -53,13 +54,7 @@ function newsCachePath(root: string, now = new Date()): string {
 }
 
 function rssUrlsFromEnv(): string[] {
-  const raw = process.env.OPENCLAW_NEWS_RSS_URLS;
-  if (!raw) return [];
-  return raw
-    .split(",")
-    .map((value) => value.trim())
-    .filter(Boolean)
-    .slice(0, maxFeedsPerRun);
+  return getNewsRssUrls().slice(0, maxFeedsPerRun);
 }
 
 async function defaultFetcher(url: string, timeoutMs = 15_000): Promise<string> {

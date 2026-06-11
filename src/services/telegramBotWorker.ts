@@ -7,7 +7,7 @@ import { TelegramClient, type TelegramFetch, type TelegramUpdate } from "./teleg
 import { classifyTelegramFreeText, routeTelegramCommand, storeTelegramInbox } from "./telegramCommandRouter.js";
 import { routeTelegramCallback } from "./telegramCallbackHandler.js";
 import { handleTelegramPersonaSessionMessage, readTelegramPersonaSession } from "./telegramPersonaSession.js";
-import { isInlineButtonsEnabled, isLegacyWizardEnabled } from "./runtimeConfig.js";
+import { getDashboardBaseUrl, getTelegramBotToken, isInlineButtonsEnabled, isLegacyWizardEnabled } from "./runtimeConfig.js";
 import { registerCallbackAction } from "./callbackActionRegistry.js";
 import { buildProposalInlineKeyboard } from "./freeformChangesetProposer.js";
 import type { TelegramProposalButtonsRequest } from "./telegramConversationalRouter.js";
@@ -74,7 +74,7 @@ export class TelegramBotWorker {
   private readonly ownerUserIds: Set<string>;
 
   constructor(private readonly options: TelegramBotWorkerOptions) {
-    this.token = options.token ?? process.env.TELEGRAM_BOT_TOKEN;
+    this.token = options.token ?? getTelegramBotToken();
     this.ownerUserIds = options.ownerUserIds ?? getTelegramOwnerUserIds();
   }
 
@@ -210,7 +210,7 @@ export class TelegramBotWorker {
           workspaceRoot: this.options.root,
           autopilotStatus: await this.options.getAutopilotStatus?.(),
           aiReviewProvider: this.options.aiReviewProvider,
-          dashboardBaseUrl: this.options.dashboardBaseUrl ?? (process.env.OPENCLAW_DASHBOARD_BASE_URL?.trim() || undefined)
+          dashboardBaseUrl: this.options.dashboardBaseUrl ?? getDashboardBaseUrl()
         });
     if (route.shouldStoreFreeText) {
       await storeTelegramInbox(this.options.root, {

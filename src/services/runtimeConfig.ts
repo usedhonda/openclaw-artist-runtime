@@ -195,6 +195,80 @@ export function sunoBrowserArgs(): string[] {
   ];
 }
 
+function positiveInteger(value: unknown): number | undefined {
+  if (typeof value === "number" && Number.isInteger(value) && value > 0) {
+    return value;
+  }
+  if (typeof value === "string" && /^\d+$/.test(value.trim())) {
+    const parsed = Number(value.trim());
+    return parsed > 0 ? parsed : undefined;
+  }
+  return undefined;
+}
+
+export function getTelegramBotToken(env: NodeJS.ProcessEnv = process.env): string | undefined {
+  return env.TELEGRAM_BOT_TOKEN;
+}
+
+export function getDashboardBaseUrl(env: NodeJS.ProcessEnv = process.env): string | undefined {
+  return env.OPENCLAW_DASHBOARD_BASE_URL?.trim() || undefined;
+}
+
+export function getAutopilotTickStallMs(env: NodeJS.ProcessEnv = process.env): number | undefined {
+  return positiveInteger(env.OPENCLAW_AUTOPILOT_TICK_STALL_MS);
+}
+
+export function getAutopilotFastChainMs(env: NodeJS.ProcessEnv = process.env): number | undefined {
+  const raw = env.OPENCLAW_AUTOPILOT_FAST_CHAIN_MS;
+  if (raw === undefined || raw === "") {
+    return undefined;
+  }
+  const parsed = Number.parseInt(raw, 10);
+  return Number.isFinite(parsed) && parsed >= 0 ? parsed : undefined;
+}
+
+export function getTelegramArtistReportTimeoutMs(env: NodeJS.ProcessEnv = process.env): number | undefined {
+  return positiveInteger(env.OPENCLAW_TELEGRAM_ARTIST_REPORT_TIMEOUT_MS);
+}
+
+export function getSunoLyricsLimit(env: NodeJS.ProcessEnv = process.env): number {
+  return positiveInteger(env.OPENCLAW_SUNO_LYRICS_LIMIT) ?? 5000;
+}
+
+export function getNewsRssUrls(env: NodeJS.ProcessEnv = process.env): string[] {
+  const raw = env.OPENCLAW_NEWS_RSS_URLS;
+  if (!raw) return [];
+  return raw.split(",").map((value) => value.trim()).filter(Boolean);
+}
+
+export function getOpenClawConfigPath(env: NodeJS.ProcessEnv = process.env): string | undefined {
+  return env.OPENCLAW_CONFIG;
+}
+
+export function getOpenClawAuthProfilesPath(env: NodeJS.ProcessEnv = process.env): string | undefined {
+  return env.OPENCLAW_AUTH_PROFILES;
+}
+
+export function getSpotifyBearerToken(env: NodeJS.ProcessEnv = process.env): string | undefined {
+  return env.SPOTIFY_BEARER_TOKEN;
+}
+
+export function isXTcoFetchEnabled(env: NodeJS.ProcessEnv = process.env): boolean {
+  return env.OPENCLAW_X_TCO_FETCH_ENABLED === "1";
+}
+
+export function getSunoDailyBudgetOverride(env: NodeJS.ProcessEnv = process.env): number | undefined {
+  return positiveInteger(env.OPENCLAW_SUNO_DAILY_BUDGET);
+}
+
+export function getBirdDailyMaxOverride(env: NodeJS.ProcessEnv = process.env): number | undefined {
+  return positiveInteger(env.OPENCLAW_BIRD_DAILY_MAX);
+}
+
+export function getBirdMinIntervalMinutesOverride(env: NodeJS.ProcessEnv = process.env): number | undefined {
+  return positiveInteger(env.OPENCLAW_BIRD_MIN_INTERVAL_MINUTES);
+}
+
 export function applyRuntimeEnvOverrides(config: ArtistRuntimeConfig, env: NodeJS.ProcessEnv = process.env): ArtistRuntimeConfig {
   const next: ArtistRuntimeConfig = {
     ...config,

@@ -25,7 +25,7 @@ import { emitRuntimeEvent, getRuntimeEventBus } from "../services/runtimeEventBu
 import { readRuntimeEvents, readSongEventsAsc } from "../services/runtimeEventsLedger.js";
 import { appendFailedNotifyReplayRecord, latestFailedNotifyEntry, listUnreplayedFailedNotifications, summarizeFailedNotifications } from "../services/failedNotifyLedger.js";
 import { getSongPromptLedgerPath } from "../services/promptLedger.js";
-import { isDebugCallbackDispatchEnabled, isDebugNotifyReviewEnabled, mergeResolvedConfig, patchResolvedConfig, readConfigOverrides, resolveRuntimeConfig, resolveSunoDailyBudget, writeRuntimeSafetyOverrides, type RuntimeSafetyOverridesPatch } from "../services/runtimeConfig.js";
+import { getBirdDailyMaxOverride, getBirdMinIntervalMinutesOverride, getSunoDailyBudgetOverride, isDebugCallbackDispatchEnabled, isDebugNotifyReviewEnabled, mergeResolvedConfig, patchResolvedConfig, readConfigOverrides, resolveRuntimeConfig, resolveSunoDailyBudget, writeRuntimeSafetyOverrides, type RuntimeSafetyOverridesPatch } from "../services/runtimeConfig.js";
 import { publishSocialAction, readLatestSocialAction } from "../services/socialPublishing.js";
 import { SocialDistributionWorker } from "../services/socialDistributionWorker.js";
 import { listPendingSpawnProposals } from "../services/spawnProposalQueue.js";
@@ -696,17 +696,6 @@ interface ConfigOverridesResponse {
   };
 }
 
-function positiveIntegerFromEnv(value: unknown): number | undefined {
-  if (typeof value === "number" && Number.isInteger(value) && value > 0) {
-    return value;
-  }
-  if (typeof value === "string" && /^\d+$/.test(value.trim())) {
-    const parsed = Number(value.trim());
-    return parsed > 0 ? parsed : undefined;
-  }
-  return undefined;
-}
-
 function hasOwnRecordKey(value: unknown, key: string): boolean {
   return typeof value === "object" && value !== null && Object.prototype.hasOwnProperty.call(value, key);
 }
@@ -737,9 +726,9 @@ export async function buildConfigOverridesResponse(config?: Partial<ArtistRuntim
     autopilot?: { intervalMinutes?: unknown; cycleIntervalMinutes?: unknown };
   };
   const bird = await readBirdRateLimitStatus(root);
-  const envSuno = positiveIntegerFromEnv(process.env.OPENCLAW_SUNO_DAILY_BUDGET);
-  const envBirdDailyMax = positiveIntegerFromEnv(process.env.OPENCLAW_BIRD_DAILY_MAX);
-  const envBirdMinInterval = positiveIntegerFromEnv(process.env.OPENCLAW_BIRD_MIN_INTERVAL_MINUTES);
+  const envSuno = getSunoDailyBudgetOverride();
+  const envBirdDailyMax = getBirdDailyMaxOverride();
+  const envBirdMinInterval = getBirdMinIntervalMinutesOverride();
   const autopilotOverridePresent = hasOwnRecordKey(raw.autopilot, "intervalMinutes") || hasOwnRecordKey(raw.autopilot, "cycleIntervalMinutes");
 
   return {
@@ -1036,7 +1025,7 @@ export async function buildStatusResponse(config?: Partial<ArtistRuntimeConfig>)
   const setupReadiness = await buildSetupReadiness(mergedConfig, autopilotStatus, sunoWorker, platforms, workspaceStatus);
   const effectiveDryRunMap = buildEffectiveDryRunMap(mergedConfig);
   const rawConfigOverrides = await readConfigOverrides(mergedConfig.artist.workspaceRoot) as { suno?: { dailyBudget?: unknown } };
-  const hasRuntimeSunoBudget = positiveIntegerFromEnv(process.env.OPENCLAW_SUNO_DAILY_BUDGET) !== undefined
+  const hasRuntimeSunoBudget = getSunoDailyBudgetOverride() !== undefined
     || hasOwnRecordKey(rawConfigOverrides.suno, "dailyBudget");
   const statusSunoBudget = hasRuntimeSunoBudget
     ? {

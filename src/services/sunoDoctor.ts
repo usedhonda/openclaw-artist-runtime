@@ -1,4 +1,5 @@
 import type { Browser, BrowserContext, Locator, Page } from "playwright";
+import { sunoCdpEndpoint } from "./runtimeConfig.js";
 
 export const SUNO_DOCTOR_DEFAULT_CDP_ENDPOINT = "http://127.0.0.1:9222";
 export const SUNO_DOCTOR_VERSION_PATH = "/json/version";
@@ -87,7 +88,7 @@ export async function runSunoDoctor(options: SunoDoctorOptions = {}): Promise<Su
 }
 
 function normalizeEndpoint(endpoint: string | undefined): string {
-  return (endpoint?.trim() || process.env.OPENCLAW_SUNO_CDP_ENDPOINT?.trim() || SUNO_DOCTOR_DEFAULT_CDP_ENDPOINT)
+  return (endpoint?.trim() || sunoCdpEndpoint() || SUNO_DOCTOR_DEFAULT_CDP_ENDPOINT)
     .replace(/\/+$/, "");
 }
 

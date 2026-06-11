@@ -4,6 +4,7 @@ import type { ChangeSetProposal } from "./freeformChangesetProposer.js";
 import { listSongStates } from "./artistState.js";
 import { secretLikePattern } from "./personaMigrator.js";
 import { emitRuntimeEvent } from "./runtimeEventBus.js";
+import { getSpotifyBearerToken } from "./runtimeConfig.js";
 
 export type DistributionPlatform = "unitedMasters" | "spotify" | "appleMusic";
 
@@ -239,7 +240,7 @@ export async function pollSongDistribution(root: string, options: SongDistributi
   for (const song of songs) {
     const checks: Array<[DistributionPlatform, Promise<string | undefined>]> = [
       ["unitedMasters", pollUnitedMasters(fetchImpl, song.title, options)],
-      ["spotify", pollSpotify(fetchImpl, song.title, artistName, options.spotifyBearerToken ?? process.env.SPOTIFY_BEARER_TOKEN)],
+      ["spotify", pollSpotify(fetchImpl, song.title, artistName, options.spotifyBearerToken ?? getSpotifyBearerToken())],
       ["appleMusic", pollAppleMusic(fetchImpl, song.title, options)]
     ];
     for (const [platform, promise] of checks) {

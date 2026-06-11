@@ -5,7 +5,7 @@ import type { AiReviewProvider } from "../types.js";
 import { describeCallbackActionEffect, registerCallbackAction } from "./callbackActionRegistry.js";
 import { appendConversationTurn } from "./conversationalSession.js";
 import { proposalForDetection } from "./songDistributionPoller.js";
-import { isInlineButtonsEnabled, isSelfHealNotifyEnabled, isXInlineButtonEnabled } from "./runtimeConfig.js";
+import { getTelegramArtistReportTimeoutMs, isInlineButtonsEnabled, isSelfHealNotifyEnabled, isXInlineButtonEnabled } from "./runtimeConfig.js";
 import { readSongState } from "./artistState.js";
 import { secretLikePattern } from "./personaMigrator.js";
 import type { ObservationSummary } from "../types.js";
@@ -563,8 +563,7 @@ export class TelegramNotifier {
 const ARTIST_REPORT_TIMEOUT_SENTINEL = Symbol("artist-report-timeout");
 
 function artistReportTimeoutMs(): number {
-  const parsed = Number.parseInt(process.env.OPENCLAW_TELEGRAM_ARTIST_REPORT_TIMEOUT_MS ?? "", 10);
-  return Number.isFinite(parsed) && parsed > 0 ? parsed : 12_000;
+  return getTelegramArtistReportTimeoutMs() ?? 12_000;
 }
 
 async function artistReport(event: RuntimeEvent, fallback: string, options: Pick<TelegramNotifierOptions, "workspaceRoot" | "aiReviewProvider">): Promise<string> {

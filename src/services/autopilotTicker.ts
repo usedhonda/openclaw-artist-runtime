@@ -2,6 +2,7 @@ import { applyConfigDefaults } from "../config/schema.js";
 import type { AutopilotRunState, ArtistRuntimeConfig } from "../types.js";
 import { ArtistAutopilotService, readAutopilotRunState, PRODUCER_REVIEW_SUSPENDED_AT } from "./autopilotService.js";
 import { emitRuntimeEvent } from "./runtimeEventBus.js";
+import { getAutopilotFastChainMs, getAutopilotTickStallMs } from "./runtimeConfig.js";
 import { writeAutopilotHeartbeat } from "./supervisorHealth.js";
 
 type PartialDeep<T> = {
@@ -51,20 +52,11 @@ const FALLBACK_FAST_CHAIN_MS = 20 * 1000;
 const FAST_CHAIN_STOP_STAGES = new Set(["idle", "paused", "completed", "failed_closed"]);
 
 function resolveStallMs(): number {
-  const raw = process.env.OPENCLAW_AUTOPILOT_TICK_STALL_MS;
-  const parsed = raw ? Number.parseInt(raw, 10) : Number.NaN;
-  return Number.isFinite(parsed) && parsed > 0 ? parsed : FALLBACK_STALL_MS;
+  return getAutopilotTickStallMs() ?? FALLBACK_STALL_MS;
 }
 
 function resolveFastChainMs(): number {
-  const raw = process.env.OPENCLAW_AUTOPILOT_FAST_CHAIN_MS;
-  if (raw !== undefined && raw !== "") {
-    const parsed = Number.parseInt(raw, 10);
-    if (Number.isFinite(parsed) && parsed >= 0) {
-      return parsed; // 0 disables fast-chaining
-    }
-  }
-  return FALLBACK_FAST_CHAIN_MS;
+  return getAutopilotFastChainMs() ?? FALLBACK_FAST_CHAIN_MS;
 }
 
 // Progress fingerprint: a same-stage advance (e.g. create -> pending import within
