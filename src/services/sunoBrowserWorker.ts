@@ -53,6 +53,11 @@ interface SunoBrowserWorkerOptions {
   submitMode?: SunoSubmitMode;
 }
 
+function logSunoWorkerSideEffectFailure(context: string, error: unknown): void {
+  const reason = error instanceof Error ? error.message : String(error);
+  console.error(`[suno-browser-worker] ${context} failed: ${reason}`);
+}
+
 function now(): string {
   return new Date().toISOString();
 }
@@ -387,7 +392,7 @@ export class SunoBrowserWorker {
     }
     await this.prepareCopiedProfile();
     const resolvedDriver = this.resolveDriver(driver);
-    await resolvedDriver?.stop?.().catch(() => undefined);
+    await resolvedDriver?.stop?.().catch((error) => logSunoWorkerSideEffectFailure("driver stop", error));
     return this.writeState({
       ...current,
       state: "stopped",

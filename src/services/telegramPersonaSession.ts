@@ -34,6 +34,12 @@ export function telegramPersonaSessionPath(root: string): string {
   return join(root, "runtime", "telegram-persona-session.json");
 }
 
+function logTelegramPersonaSessionFailure(context: string, error: unknown): void {
+  if (typeof error === "object" && error && "code" in error && error.code === "ENOENT") return;
+  const reason = error instanceof Error ? error.message : String(error);
+  console.error(`[telegram-persona-session] ${context} failed: ${reason}`);
+}
+
 function isPersonaSession(value: Partial<TelegramPersonaSession>): value is TelegramPersonaSession {
   return (
     typeof value.active === "boolean" &&
@@ -115,7 +121,7 @@ export async function updateTelegramPersonaSession(root: string, input: UpdateTe
 }
 
 export async function cancelTelegramPersonaSession(root: string): Promise<void> {
-  await unlink(telegramPersonaSessionPath(root)).catch(() => undefined);
+  await unlink(telegramPersonaSessionPath(root)).catch((error) => logTelegramPersonaSessionFailure("cancel session cleanup", error));
 }
 
 export async function handleTelegramPersonaSessionMessage(root: string, text: string, now = Date.now()): Promise<string | undefined> {

@@ -59,6 +59,11 @@ function negative(text: string): boolean {
   return /^\/?(no|n|cancel|やめ|不要|違う)\b/i.test(text);
 }
 
+function logConversationalSideEffectFailure(context: string, error: unknown): void {
+  const reason = error instanceof Error ? error.message : String(error);
+  console.error(`[telegram-conversation] ${context} failed: ${reason}`);
+}
+
 function formatChangeSet(proposal: ChangeSetProposal): string {
   return [
     proposal.summary,
@@ -161,7 +166,7 @@ export async function routeTelegramConversation(input: TelegramConversationalRou
     void new ArtistAutopilotService().runCycle({
       workspaceRoot: input.workspaceRoot,
       manualSeed: { hint: hint ?? "" }
-    }).catch(() => undefined);
+    }).catch((error) => logConversationalSideEffectFailure("manual song create runCycle", error));
     const response = hint ? `その話題、見に行く。${hint} を芯にして曲にする。結果を待っててくれ。` : "観察してくる。こっちで曲に起こす、結果を待っててくれ。";
     await appendConversationTurn(input.workspaceRoot, { chatId: input.chatId, userId: input.fromUserId, topic, turn: { role: "artist", text: response } });
     return { responseText: response, shouldStoreFreeText: true };

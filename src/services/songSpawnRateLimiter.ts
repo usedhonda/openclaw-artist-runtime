@@ -6,6 +6,11 @@ export function songSpawnStatePath(root: string): string {
   return join(root, "runtime", "song-spawn-state.json");
 }
 
+function logSongSpawnBackupFailure(error: unknown): void {
+  const reason = error instanceof Error ? error.message : String(error);
+  console.error(`[song-spawn] backup failed: ${reason}`);
+}
+
 export async function readSongSpawnState(root: string): Promise<SongSpawnState> {
   const raw = await readFile(songSpawnStatePath(root), "utf8").catch(() => "");
   return raw ? JSON.parse(raw) as SongSpawnState : { updatedAt: new Date(0).toISOString() };
@@ -26,7 +31,7 @@ export async function markSpawned(root: string, now = new Date()): Promise<SongS
   await mkdir(dirname(path), { recursive: true });
   const existing = await readFile(path, "utf8").catch(() => "");
   if (existing) {
-    await copyFile(path, `${path}.backup-${Date.now()}`).catch(() => undefined);
+    await copyFile(path, `${path}.backup-${Date.now()}`).catch(logSongSpawnBackupFailure);
   }
   const next: SongSpawnState = {
     lastSpawnAt: now.toISOString(),

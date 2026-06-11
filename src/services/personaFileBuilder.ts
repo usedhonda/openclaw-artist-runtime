@@ -39,6 +39,12 @@ function completionMarkerPath(root: string): string {
   return join(root, "runtime", "persona-completed.json");
 }
 
+function logPersonaFileSideEffectFailure(context: string, error: unknown): void {
+  if (typeof error === "object" && error && "code" in error && error.code === "ENOENT") return;
+  const reason = error instanceof Error ? error.message : String(error);
+  console.error(`[persona-file-builder] ${context} failed: ${reason}`);
+}
+
 function splitCommaish(value: string): string[] {
   return value
     .split(/[,、\n]/)
@@ -257,12 +263,12 @@ export async function resetArtistPersonaBlock(root: string): Promise<boolean> {
   const path = artistPath(root);
   const contents = await readFile(path, "utf8").catch(() => "");
   if (!contents.includes(artistPersonaBlockStart) || !contents.includes(artistPersonaBlockEnd)) {
-    await unlink(completionMarkerPath(root)).catch(() => undefined);
+    await unlink(completionMarkerPath(root)).catch((error) => logPersonaFileSideEffectFailure("completion marker cleanup", error));
     return false;
   }
   const nextContents = removeMarkerBlock(contents);
   await writeFile(path, nextContents ? `${nextContents}\n` : "", "utf8");
-  await unlink(completionMarkerPath(root)).catch(() => undefined);
+  await unlink(completionMarkerPath(root)).catch((error) => logPersonaFileSideEffectFailure("completion marker cleanup", error));
   return true;
 }
 

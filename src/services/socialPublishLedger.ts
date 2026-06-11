@@ -9,6 +9,12 @@ const DEFAULT_ROTATION_DAYS = 90;
 const MS_PER_DAY = 24 * 60 * 60 * 1000;
 const ledgerQueues = new Map<string, Promise<void>>();
 
+function logSocialLedgerFailure(context: string, error: unknown): void {
+  if (typeof error === "object" && error && "code" in error && error.code === "ENOENT") return;
+  const reason = error instanceof Error ? error.message : String(error);
+  console.error(`[social-publish-ledger] ${context} failed: ${reason}`);
+}
+
 export function getSocialLedgerPath(root: string, songId: string): string {
   return join(root, "songs", songId, "social", SOCIAL_LEDGER_FILE);
 }
@@ -37,7 +43,7 @@ async function writeJsonlAtomic<T>(path: string, entries: T[]): Promise<void> {
   await mkdir(dirname(path), { recursive: true });
   await writeFile(tmpPath, serializeJsonl(entries), "utf8");
   await rename(tmpPath, path);
-  await unlink(tmpPath).catch(() => {});
+  await unlink(tmpPath).catch((error) => logSocialLedgerFailure("tmp cleanup after atomic write", error));
 }
 
 function shouldRotate(entry: SocialPublishLedgerEntry, cutoffMs: number): boolean {
@@ -70,7 +76,7 @@ export async function appendSocialReplyLedgerEntry(
 
 async function enqueueLedgerWrite(path: string, task: () => Promise<void>): Promise<void> {
   const previous = ledgerQueues.get(path) ?? Promise.resolve();
-  const current = previous.catch(() => {}).then(task);
+  const current = previous.catch((error) => logSocialLedgerFailure("previous queued write", error)).then(task);
   ledgerQueues.set(path, current);
   try {
     await current;
@@ -89,8 +95,8 @@ async function appendSocialPublishLedgerEntryUnlocked(
 ): Promise<void> {
   const ledgerPath = getSocialLedgerPath(root, songId);
   const archivePath = getSocialLedgerArchivePath(root, songId);
-  await unlink(`${ledgerPath}.tmp`).catch(() => {});
-  await unlink(`${archivePath}.tmp`).catch(() => {});
+  await unlink(`${ledgerPath}.tmp`).catch((error) => logSocialLedgerFailure("stale ledger tmp cleanup", error));
+  await unlink(`${archivePath}.tmp`).catch((error) => logSocialLedgerFailure("stale archive tmp cleanup", error));
 
   const health = await inspectAuditLog(ledgerPath);
   if (!health.healthy) {

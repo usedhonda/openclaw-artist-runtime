@@ -65,6 +65,11 @@ function formatSelfHealText(event: Extract<RuntimeEvent, { type: "error" }>): st
   ].filter(Boolean).join("\n");
 }
 
+function logNotifySideEffectFailure(context: string, error: unknown): void {
+  const reason = error instanceof Error ? error.message : String(error);
+  console.error(`[telegram-notify] ${context} failed: ${reason}`);
+}
+
 export class TelegramNotifier {
   private readonly client: TelegramClient;
   private spawnBuffer: Array<{
@@ -124,10 +129,12 @@ export class TelegramNotifier {
       await this.attachSongCompletionButtons(event, sent.message_id);
     }
     if (event.type === "distribution_change_detected") {
-      await this.attachDistributionButtons(event, sent.message_id, text).catch(() => undefined);
+      await this.attachDistributionButtons(event, sent.message_id, text)
+        .catch((error) => logNotifySideEffectFailure("attachDistributionButtons", error));
     }
     if (event.type === "artist_pulse_drafted") {
-      await this.attachDailyVoiceButtons(event, sent.message_id).catch(() => undefined);
+      await this.attachDailyVoiceButtons(event, sent.message_id)
+        .catch((error) => logNotifySideEffectFailure("attachDailyVoiceButtons", error));
     }
     if (event.type === "prompt_pack_ready") {
       await this.attachPromptPackReadyButtons(event, sent.message_id);
@@ -136,10 +143,12 @@ export class TelegramNotifier {
       await this.attachLyricsDegradedButtons(event, sent.message_id);
     }
     if (event.type === "planning_skeleton_incomplete") {
-      await this.attachPlanningSkeletonButtons(event, sent.message_id, text).catch(() => undefined);
+      await this.attachPlanningSkeletonButtons(event, sent.message_id, text)
+        .catch((error) => logNotifySideEffectFailure("attachPlanningSkeletonButtons", error));
     }
     if (event.type === "take_select_low_score") {
-      await this.attachTakeSelectButtons(event, sent.message_id).catch(() => undefined);
+      await this.attachTakeSelectButtons(event, sent.message_id)
+        .catch((error) => logNotifySideEffectFailure("attachTakeSelectButtons", error));
     }
   }
 
@@ -597,7 +606,7 @@ async function artistReport(event: RuntimeEvent, fallback: string, options: Pick
     const result = await Promise.race([work, deadline]);
     if (result === ARTIST_REPORT_TIMEOUT_SENTINEL) {
       console.error(`[telegram-notify] artistReport timed out after ${artistReportTimeoutMs()}ms for ${event.type}; using deterministic fallback`);
-      void work.catch(() => undefined); // mark the late settlement handled
+      void work.catch((error) => logNotifySideEffectFailure(`late artistReport for ${event.type}`, error));
       return fallback;
     }
     return result;

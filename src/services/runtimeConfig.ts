@@ -32,6 +32,11 @@ function enforceFrozenPlatformBoundaries(config: ArtistRuntimeConfig): ArtistRun
   };
 }
 
+function logRuntimeConfigFailure(context: string, error: unknown): void {
+  const reason = error instanceof Error ? error.message : String(error);
+  console.error(`[runtime-config] ${context} failed: ${reason}`);
+}
+
 export async function readConfigOverrides(root: string): Promise<Partial<ArtistRuntimeConfig>> {
   const contents = await readFile(configOverridePath(root), "utf8").catch(() => "");
   if (!contents) {
@@ -416,7 +421,7 @@ async function writeOverridesFile(root: string, value: unknown): Promise<void> {
   await mkdir(runtimeDir, { recursive: true });
   const existing = await readFile(path, "utf8").catch(() => "");
   if (existing) {
-    await copyFile(path, configOverrideBackupPath(root)).catch(() => undefined);
+    await copyFile(path, configOverrideBackupPath(root)).catch((error) => logRuntimeConfigFailure("config override backup", error));
   }
   const tmpPath = `${path}.${process.pid}.${Date.now()}.tmp`;
   await writeFile(tmpPath, `${JSON.stringify(value, null, 2)}\n`, "utf8");

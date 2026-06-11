@@ -6,6 +6,11 @@ export function artistPulseStatePath(root: string): string {
   return join(root, "runtime", "artist-pulse-state.json");
 }
 
+function logArtistPulseBackupFailure(error: unknown): void {
+  const reason = error instanceof Error ? error.message : String(error);
+  console.error(`[artist-pulse] backup failed: ${reason}`);
+}
+
 export async function readArtistPulseState(root: string): Promise<ArtistPulseState> {
   const raw = await readFile(artistPulseStatePath(root), "utf8").catch(() => "");
   if (!raw) {
@@ -29,7 +34,7 @@ export async function markPulsed(root: string, now = new Date()): Promise<Artist
   await mkdir(dirname(path), { recursive: true });
   const existing = await readFile(path, "utf8").catch(() => "");
   if (existing) {
-    await copyFile(path, `${path}.backup-${Date.now()}`).catch(() => undefined);
+    await copyFile(path, `${path}.backup-${Date.now()}`).catch(logArtistPulseBackupFailure);
   }
   const next: ArtistPulseState = {
     lastPulseAt: now.toISOString(),

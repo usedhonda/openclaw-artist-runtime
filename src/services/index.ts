@@ -24,6 +24,12 @@ const SILENCE_RECOVERY_DELAY_MS = 8000;
 const SILENCE_RECOVERY_MESSAGE =
   "御大、 さっき Telegram の通信が詰まって沈黙してた。 もし button 押してたら反応なかったはず。 今復活したから、 もう一回押してくれる？";
 
+function logSideEffectFailure(context: string, error: unknown): void {
+  if (typeof error === "object" && error && "code" in error && error.code === "ENOENT") return;
+  const reason = error instanceof Error ? error.message : String(error);
+  console.error(`[artist-runtime] ${context} failed: ${reason}`);
+}
+
 export async function readSilenceFlag(workspaceRoot: string): Promise<{ path: string; firedAtMs: number } | null> {
   const path = join(workspaceRoot, "runtime", "telegram-watchdog-fired-at.txt");
   try {
@@ -45,7 +51,7 @@ export async function maybeSendSilenceRecoveryNotice(
   if (!flag) return;
   const ageMs = Date.now() - flag.firedAtMs;
   if (ageMs < 0 || ageMs > SILENCE_RECOVERY_WINDOW_MS) {
-    await unlink(flag.path).catch(() => undefined);
+    await unlink(flag.path).catch((error) => logSideEffectFailure("silence recovery stale flag cleanup", error));
     return;
   }
   let allDelivered = true;
@@ -57,12 +63,13 @@ export async function maybeSendSilenceRecoveryNotice(
         body: JSON.stringify({ chat_id: chatId, text: SILENCE_RECOVERY_MESSAGE })
       });
       if (!response.ok) allDelivered = false;
-    } catch {
+    } catch (error) {
+      logSideEffectFailure("silence recovery notice delivery", error);
       allDelivered = false;
     }
   }
   if (allDelivered) {
-    await unlink(flag.path).catch(() => undefined);
+    await unlink(flag.path).catch((error) => logSideEffectFailure("silence recovery delivered flag cleanup", error));
   }
 }
 

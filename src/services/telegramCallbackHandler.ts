@@ -22,6 +22,14 @@ import { stampCallback } from "./receiveHealthService.js";
 
 export const STALE_CALLBACK_JA_REPLY = "このボタンはもう古い。 最新の通知から選び直して。";
 
+function errorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
+}
+
+function logCallbackDeliveryFailure(context: string, error: unknown): void {
+  console.error(`[telegram-callback] ${context} failed: ${errorMessage(error)}`);
+}
+
 export interface TelegramCallbackContext {
   root: string;
   client: TelegramClient;
@@ -203,8 +211,10 @@ async function clearButtonsAndReply(
   message: string,
   options: { replyMarkup?: { inline_keyboard: { text: string; callback_data: string }[][] } } = {}
 ): Promise<void> {
-  await ctx.client.editMessageReplyMarkup(entry.chatId, entry.messageId, { inline_keyboard: [] }).catch(() => undefined);
-  await ctx.client.sendMessage(entry.chatId, message, options.replyMarkup ? { replyMarkup: options.replyMarkup } : undefined).catch(() => undefined);
+  await ctx.client.editMessageReplyMarkup(entry.chatId, entry.messageId, { inline_keyboard: [] })
+    .catch((error) => logCallbackDeliveryFailure("clear_buttons", error));
+  await ctx.client.sendMessage(entry.chatId, message, options.replyMarkup ? { replyMarkup: options.replyMarkup } : undefined)
+    .catch((error) => logCallbackDeliveryFailure("reply_message", error));
 }
 
 async function finish(
@@ -331,7 +341,8 @@ export async function routeTelegramCallback(ctx: TelegramCallbackContext): Promi
     return { processed: true, result: "duplicate", reason: `already_${entry.status}`, callbackId };
   }
   if (isWatchdogActor(ctx.actor) && isExternalPublishCallbackAction(entry.action)) {
-    await ctx.client.answerCallbackQuery(ctx.callbackQueryId, { text: "Blocked" }).catch(() => undefined);
+    await ctx.client.answerCallbackQuery(ctx.callbackQueryId, { text: "Blocked" })
+      .catch((error) => logCallbackDeliveryFailure("watchdog_publish_guard_answer", error));
     await appendCallbackAudit(ctx.root, auditBase(ctx, callbackId, entry, "blocked", "external_publish_actor_guard"));
     return { processed: true, result: "blocked", reason: "external_publish_actor_guard", callbackId };
   }
@@ -374,8 +385,10 @@ export async function routeTelegramCallback(ctx: TelegramCallbackContext): Promi
     });
     await markCallbackResolved(ctx.root, callbackId, { status: "updated", reason: "edit_opened", now });
     await appendCallbackAudit(ctx.root, auditBase(ctx, callbackId, entry, "updated", proposalResult.status));
-    await ctx.client.sendMessage(entry.chatId, "Edit dialog opened. Send /edit <field> <value>, or use Producer Console to adjust fields.").catch(() => undefined);
-    await ctx.client.editMessageReplyMarkup(entry.chatId, entry.messageId, { inline_keyboard: [] }).catch(() => undefined);
+    await ctx.client.sendMessage(entry.chatId, "Edit dialog opened. Send /edit <field> <value>, or use Producer Console to adjust fields.")
+      .catch((error) => logCallbackDeliveryFailure("proposal_edit_open_message", error));
+    await ctx.client.editMessageReplyMarkup(entry.chatId, entry.messageId, { inline_keyboard: [] })
+      .catch((error) => logCallbackDeliveryFailure("proposal_edit_open_clear_buttons", error));
     return { processed: true, result: "updated", reason: proposalResult.status, callbackId };
   }
 
@@ -428,8 +441,10 @@ export async function routeTelegramCallback(ctx: TelegramCallbackContext): Promi
         draftHash: entry.draftHash,
         draftCharCount: entry.draftCharCount
       }));
-      await ctx.client.sendMessage(entry.chatId, "直すなら、今の文面を踏まえて普通に返信してくれ。callback に本文は載せない。").catch(() => undefined);
-      await ctx.client.editMessageReplyMarkup(entry.chatId, entry.messageId, { inline_keyboard: [] }).catch(() => undefined);
+      await ctx.client.sendMessage(entry.chatId, "直すなら、今の文面を踏まえて普通に返信してくれ。callback に本文は載せない。")
+        .catch((error) => logCallbackDeliveryFailure("daily_voice_edit_message", error));
+      await ctx.client.editMessageReplyMarkup(entry.chatId, entry.messageId, { inline_keyboard: [] })
+        .catch((error) => logCallbackDeliveryFailure("daily_voice_edit_clear_buttons", error));
       return { processed: true, result: "updated", reason: "daily_voice_edit_requested", callbackId };
     }
     const published = await executeXPublishAction({
@@ -470,8 +485,10 @@ export async function routeTelegramCallback(ctx: TelegramCallbackContext): Promi
     if (entry.action === "song_spawn_edit") {
       await markCallbackResolved(ctx.root, callbackId, { status: "updated", reason: "song_spawn_edit_requested", now });
       await appendCallbackAudit(ctx.root, auditBase(ctx, callbackId, entry, "updated", "song_spawn_edit_requested"));
-      await ctx.client.sendMessage(entry.chatId, "修正するなら /commission に方向性を書き直して投げてくれ。callback に本文は載せない。").catch(() => undefined);
-      await ctx.client.editMessageReplyMarkup(entry.chatId, entry.messageId, { inline_keyboard: [] }).catch(() => undefined);
+      await ctx.client.sendMessage(entry.chatId, "修正するなら /commission に方向性を書き直して投げてくれ。callback に本文は載せない。")
+        .catch((error) => logCallbackDeliveryFailure("song_spawn_edit_message", error));
+      await ctx.client.editMessageReplyMarkup(entry.chatId, entry.messageId, { inline_keyboard: [] })
+        .catch((error) => logCallbackDeliveryFailure("song_spawn_edit_clear_buttons", error));
       return { processed: true, result: "updated", reason: "song_spawn_edit_requested", callbackId };
     }
     if (entry.action === "song_spawn_skip") {
@@ -613,8 +630,10 @@ export async function routeTelegramCallback(ctx: TelegramCallbackContext): Promi
       });
       await markCallbackResolved(ctx.root, callbackId, { status: "updated", reason: "planning_skeleton_edit_requested", now });
       await appendCallbackAudit(ctx.root, auditBase(ctx, callbackId, entry, "updated", proposalResult.status));
-      await ctx.client.sendMessage(entry.chatId, "補完案を直すなら /edit <field> <value>、または Producer Console で触ってくれ。").catch(() => undefined);
-      await ctx.client.editMessageReplyMarkup(entry.chatId, entry.messageId, { inline_keyboard: [] }).catch(() => undefined);
+      await ctx.client.sendMessage(entry.chatId, "補完案を直すなら /edit <field> <value>、または Producer Console で触ってくれ。")
+        .catch((error) => logCallbackDeliveryFailure("planning_skeleton_edit_message", error));
+      await ctx.client.editMessageReplyMarkup(entry.chatId, entry.messageId, { inline_keyboard: [] })
+        .catch((error) => logCallbackDeliveryFailure("planning_skeleton_edit_clear_buttons", error));
       return { processed: true, result: "updated", reason: proposalResult.status, callbackId };
     }
     const proposalResult = await handleProposalResponse(ctx.root, {
@@ -808,6 +827,7 @@ export async function routeTelegramCallback(ctx: TelegramCallbackContext): Promi
   await ctx.client.answerCallbackQuery(ctx.callbackQueryId, { text: "Unsupported action" });
   await markCallbackResolved(ctx.root, callbackId, { status: "failed", reason: "unsupported_action", now });
   await appendCallbackAudit(ctx.root, auditBase(ctx, callbackId, entry, "failed", "unsupported_action"));
-  await ctx.client.editMessageReplyMarkup(entry.chatId, entry.messageId, { inline_keyboard: [] }).catch(() => undefined);
+  await ctx.client.editMessageReplyMarkup(entry.chatId, entry.messageId, { inline_keyboard: [] })
+    .catch((error) => logCallbackDeliveryFailure("unsupported_action_clear_buttons", error));
   return { processed: true, result: "failed", reason: "unsupported_action", callbackId };
 }

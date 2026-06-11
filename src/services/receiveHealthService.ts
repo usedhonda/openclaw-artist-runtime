@@ -40,6 +40,11 @@ async function writeReceiveHealth(root: string, next: TelegramReceiveHealth): Pr
   await rename(tmpPath, path);
 }
 
+function logReceiveHealthWriteFailure(context: string, error: unknown): void {
+  const reason = error instanceof Error ? error.message : String(error);
+  console.error(`[telegram-receive-health] ${context} failed: ${reason}`);
+}
+
 /** Record that an inbound text/command physically reached the plugin handler. */
 export async function stampInbound(root: string, now = Date.now()): Promise<void> {
   const current = await readReceiveHealth(root);
@@ -47,7 +52,7 @@ export async function stampInbound(root: string, now = Date.now()): Promise<void
     ...current,
     lastInboundAt: now,
     updatedAt: new Date(now).toISOString()
-  }).catch(() => undefined);
+  }).catch((error) => logReceiveHealthWriteFailure("stampInbound", error));
 }
 
 /** Record that a callback_query physically reached the plugin handler. */
@@ -57,5 +62,5 @@ export async function stampCallback(root: string, now = Date.now()): Promise<voi
     ...current,
     lastCallbackAt: now,
     updatedAt: new Date(now).toISOString()
-  }).catch(() => undefined);
+  }).catch((error) => logReceiveHealthWriteFailure("stampCallback", error));
 }

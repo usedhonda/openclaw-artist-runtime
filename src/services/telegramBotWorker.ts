@@ -66,6 +66,11 @@ async function writeState(root: string, state: TelegramWorkerState): Promise<voi
   await writeFile(path, `${JSON.stringify(state, null, 2)}\n`, "utf8");
 }
 
+function logTelegramWorkerSideEffectFailure(context: string, error: unknown): void {
+  const reason = error instanceof Error ? error.message : String(error);
+  console.error(`[telegram-bot-worker] ${context} failed: ${reason}`);
+}
+
 export class TelegramBotWorker {
   private running = false;
   private timer: NodeJS.Timeout | undefined;
@@ -85,7 +90,8 @@ export class TelegramBotWorker {
     }
     this.running = true;
     const client = new TelegramClient(this.token ?? "", this.options.fetchImpl);
-    await this.pushStartupPersonaAnnouncement(client).catch(() => undefined);
+    await this.pushStartupPersonaAnnouncement(client)
+      .catch((error) => logTelegramWorkerSideEffectFailure("startup persona announcement", error));
     const result = await this.pollOnce();
     this.scheduleNext();
     return result;
@@ -175,7 +181,8 @@ export class TelegramBotWorker {
       const messageId = callback.message?.message_id;
       if (!this.ownerUserIds.has(String(callback.from.id)) || chatId === undefined || messageId === undefined) {
         if (this.ownerUserIds.has(String(callback.from.id))) {
-          await client.answerCallbackQuery(callback.id, { text: "Unsupported action" }).catch(() => undefined);
+          await client.answerCallbackQuery(callback.id, { text: "Unsupported action" })
+            .catch((error) => logTelegramWorkerSideEffectFailure("unsupported callback answer", error));
         }
         return false;
       }

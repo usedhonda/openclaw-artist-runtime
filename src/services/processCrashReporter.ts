@@ -27,6 +27,11 @@ async function appendProcessCrash(kind: string, error: unknown): Promise<void> {
   })}\n`, "utf8");
 }
 
+function logCrashReporterFailure(kind: string, error: unknown): void {
+  const reason = error instanceof Error ? error.message : String(error);
+  console.error(`[artist-runtime] process crash report ${kind} write failed: ${reason}`);
+}
+
 export function installGatewayProcessCrashReporter(): void {
   if (installed) {
     return;
@@ -34,10 +39,10 @@ export function installGatewayProcessCrashReporter(): void {
   installed = true;
 
   process.prependListener("uncaughtExceptionMonitor", (error) => {
-    void appendProcessCrash("uncaughtException", error).catch(() => undefined);
+    void appendProcessCrash("uncaughtException", error).catch((writeError) => logCrashReporterFailure("uncaughtException", writeError));
   });
   process.on("unhandledRejection", (reason) => {
     console.error("[artist-runtime] unhandledRejection", reason);
-    void appendProcessCrash("unhandledRejection", reason).catch(() => undefined);
+    void appendProcessCrash("unhandledRejection", reason).catch((error) => logCrashReporterFailure("unhandledRejection", error));
   });
 }

@@ -7,6 +7,11 @@ import type { RuntimeEvent } from "./runtimeEventBus.js";
 
 const WATCHDOG_SCAN_INTERVAL_MS = 5 * 60 * 1000;
 
+function logWatchdogSideEffectFailure(context: string, error: unknown): void {
+  const reason = error instanceof Error ? error.message : String(error);
+  console.error(`[callback-watchdog] ${context} failed: ${reason}`);
+}
+
 export interface CallbackPollingWatchdogResult {
   enabled: boolean;
   scanned: number;
@@ -122,7 +127,7 @@ export async function runCallbackPollingWatchdogOnce(options: CallbackPollingWat
         await client.sendMessage(
           latest.chatId,
           `「${label}」 の判断ボタンが期限切れになった。最新の通知から再表示できる。`
-        ).catch(() => undefined);
+        ).catch((error) => logWatchdogSideEffectFailure("resurface auto-push", error));
       }
       result.expired += 1;
       continue;

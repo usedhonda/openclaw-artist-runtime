@@ -48,6 +48,12 @@ function utcMonth(clock: () => Date): string {
   return clock().toISOString().slice(0, 7);
 }
 
+function logSunoBudgetFailure(context: string, error: unknown): void {
+  if (typeof error === "object" && error && "code" in error && error.code === "ENOENT") return;
+  const reason = error instanceof Error ? error.message : String(error);
+  console.error(`[suno-budget] ${context} failed: ${reason}`);
+}
+
 export class SunoBudgetTracker {
   constructor(
     private readonly workspaceRoot = ".",
@@ -106,7 +112,7 @@ export class SunoBudgetTracker {
     await mkdir(dirname(finalPath), { recursive: true });
     await writeFile(tmpPath, `${JSON.stringify(state, null, 2)}\n`, "utf8");
     await rename(tmpPath, finalPath);
-    await unlink(tmpPath).catch(() => undefined);
+    await unlink(tmpPath).catch((error) => logSunoBudgetFailure("state tmp cleanup", error));
   }
 
   private normalizeState(current: BudgetState): BudgetState {

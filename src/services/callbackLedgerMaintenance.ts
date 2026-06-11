@@ -35,6 +35,11 @@ function serializeJsonl(entries: CallbackActionEntry[]): string {
   return entries.length > 0 ? `${entries.map((entry) => JSON.stringify(entry)).join("\n")}\n` : "";
 }
 
+function logCallbackCleanupFailure(context: string, error: unknown): void {
+  const reason = error instanceof Error ? error.message : String(error);
+  console.error(`[callback-ledger-maintenance] ${context} failed: ${reason}`);
+}
+
 async function readCleanupState(root: string): Promise<CleanupState> {
   const contents = await readFile(callbackCleanupStatePath(root), "utf8").catch(() => "");
   return contents ? JSON.parse(contents) as CleanupState : {};
@@ -51,7 +56,7 @@ async function writeJsonlAtomicWithBackup(path: string, entries: CallbackActionE
   await mkdir(dirname(path), { recursive: true });
   const existing = await readFile(path, "utf8").catch(() => "");
   if (existing) {
-    await copyFile(path, backupPath(path, now)).catch(() => undefined);
+    await copyFile(path, backupPath(path, now)).catch((error) => logCallbackCleanupFailure("backup", error));
   }
   const tmpPath = `${path}.${process.pid}.${Date.now()}.tmp`;
   await writeFile(tmpPath, serializeJsonl(entries), "utf8");

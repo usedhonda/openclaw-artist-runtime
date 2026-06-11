@@ -76,6 +76,11 @@ function shouldFastChain(before: AutopilotRunState, after: AutopilotRunState): b
   return progressKey(before) !== progressKey(after);
 }
 
+function logHeartbeatFailure(context: string, error: unknown): void {
+  const reason = error instanceof Error ? error.message : String(error);
+  console.error(`[autopilot-ticker] ${context} failed: ${reason}`);
+}
+
 export class AutopilotTicker {
   constructor(private readonly options: AutopilotTickerOptions = {}) {}
 
@@ -130,7 +135,7 @@ export class AutopilotTicker {
     const workspaceRoot = resolved.artist.workspaceRoot;
     await writeAutopilotHeartbeat(workspaceRoot, {
       lastTickAttempt: new Date().toISOString()
-    }).catch(() => undefined);
+    }).catch((error) => logHeartbeatFailure("heartbeat attempt write", error));
 
     if (!manualSeed && !resolved.autopilot.enabled) {
       return {
@@ -228,7 +233,7 @@ export class AutopilotTicker {
     await writeAutopilotHeartbeat(workspaceRoot, {
       lastTickResult: emitted,
       currentStage: state?.stage
-    }).catch(() => undefined);
+    }).catch((error) => logHeartbeatFailure("heartbeat result write", error));
     return emitted;
   }
 }
