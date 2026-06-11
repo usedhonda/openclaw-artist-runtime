@@ -14,12 +14,20 @@ import { composePlanningSkeletonVoice } from "./planningSkeletonVoiceComposer.js
 import { buttonVoiceLabels } from "./buttonVoiceLabels.js";
 import { access, readdir, readFile } from "node:fs/promises";
 import { join } from "node:path";
-import { buildCascadeTrace, formatCascadeTrace } from "./cascadeTrace.js";
+import { buildCascadeTrace } from "./cascadeTrace.js";
 import { composeArtistReflection } from "./artistReflectionComposer.js";
 import { appendFailedNotification, isCriticalNotificationEvent } from "./failedNotifyLedger.js";
 import { readLatestPromptPackMetadata } from "./sunoPromptPackFiles.js";
 import { composeDraftBoxNextAction, formatDraftBoxNextActionSection } from "./draftBoxNextAction.js";
 import { emitDraftBoxProactiveNoticeIfNeeded } from "./draftBoxProactiveNotice.js";
+import {
+  TELEGRAM_SECTION_DIVIDER,
+  appendTelegramSection,
+  formatTelegramCascadeTrace,
+  formatTelegramUrlList,
+  joinTelegramDetailSection,
+  stripTelegramHtmlComments
+} from "./telegramFormatting.js";
 
 export interface TelegramNotifierOptions {
   token: string;
@@ -624,7 +632,7 @@ async function artistReport(event: RuntimeEvent, fallback: string, options: Pick
 
 async function hybridEventReport(event: RuntimeEvent, fallbackTop: string, detail: string, options: Pick<TelegramNotifierOptions, "workspaceRoot" | "aiReviewProvider">): Promise<string> {
   const top = sanitizeArtistTop(await artistReport(event, fallbackTop, options), fallbackTop);
-  return [top, "", "─────", detail].join("\n");
+  return joinTelegramDetailSection(top, detail);
 }
 
 function dailyVoiceTitle(kind: Extract<RuntimeEvent, { type: "artist_pulse_drafted" }>["voiceKind"]): string {
@@ -846,7 +854,7 @@ async function formatSongSpawnDigest(events: Array<Extract<RuntimeEvent, { type:
     `アイデアが ${events.length} 件、並んでます。`,
     "今はまだ Suno には投げない。進めるものだけ選んで。",
     "",
-    "─────"
+    TELEGRAM_SECTION_DIVIDER
   ];
   for (const [index, event] of events.entries()) {
     const top = (event.voiceTop ?? event.brief.title).split(/\r?\n/).map((line) => line.trim()).find(Boolean) ?? event.brief.title;
@@ -863,7 +871,7 @@ async function formatSongSpawnDigest(events: Array<Extract<RuntimeEvent, { type:
       `${index + 1}. ${event.brief.title}`,
       `voice: ${top}`,
       `theme: ${event.brief.lyricsTheme}`,
-      formatCascadeTrace(trace),
+      formatTelegramCascadeTrace(trace),
       ""
     );
   }
@@ -892,9 +900,7 @@ async function formatSongTakeCompleted(
   options: Pick<TelegramNotifierOptions, "workspaceRoot" | "aiReviewProvider"> = {}
 ): Promise<string> {
   const take = event.selectedTakeId ? ` (selected: ${event.selectedTakeId})` : "";
-  const urls = event.urls.length
-    ? event.urls.map((url, index) => `${index + 1}. ${url}`).join("\n")
-    : "(URL なし)";
+  const urls = formatTelegramUrlList(event.urls);
   const context = await readSongCompletionContext(event, options.workspaceRoot);
   const fallbackTop = buildSongCompletionInspirationTop(context.title, context.observationSummary);
   const artistTop = sanitizeCompletionArtistTop(await artistReport(
@@ -912,22 +918,13 @@ async function formatSongTakeCompleted(
   const lines = [
     artistTop,
     "",
-    "─────",
+    TELEGRAM_SECTION_DIVIDER,
     formatSongMetadata(context.title, take, urls, context.observationSummary)
   ];
   if (options.workspaceRoot || context.observationSummary) {
-    lines.push("", formatCascadeTrace(trace));
+    lines.push("", formatTelegramCascadeTrace(trace));
   }
   return lines.join("\n");
-}
-
-function stripHtmlComments(text: string): string {
-  if (!text.includes("<!--")) return text;
-  return text
-    .replace(/<!--[\s\S]*?-->/g, "")
-    .replace(/[ \t]+\n/g, "\n")
-    .replace(/\n{3,}/g, "\n\n")
-    .trim();
 }
 
 const RESOURCE_TARGETED_EVENT_TYPES: ReadonlySet<RuntimeEvent["type"]> = new Set([
@@ -1094,7 +1091,7 @@ export async function enrichWithResources(
   }
 
   if (lines.length === 0) return body;
-  return `${body}\n\n─────\n${lines.join("\n")}`;
+  return appendTelegramSection(body, lines.join("\n"));
 }
 
 function callbackActionsForRuntimeEvent(event: RuntimeEvent): string[] {
@@ -1129,7 +1126,7 @@ function appendButtonEffectSection(event: RuntimeEvent, body: string): string {
     const effect = describeCallbackActionEffect(action);
     return `- ${effect.label}: ${effect.effect}`;
   });
-  return `${body}\n\n─────\n次のボタン:\n${lines.join("\n")}`;
+  return appendTelegramSection(body, `次のボタン:\n${lines.join("\n")}`);
 }
 
 async function appendDraftBoxNextActionSection(
@@ -1140,7 +1137,7 @@ async function appendDraftBoxNextActionSection(
   if (!options.workspaceRoot || isTelegramSilentEvent(event)) return body;
   const summary = await composeDraftBoxNextAction(options.workspaceRoot).catch(() => undefined);
   if (!summary) return body;
-  return `${body}\n\n─────\n${formatDraftBoxNextActionSection(summary)}`;
+  return appendTelegramSection(body, formatDraftBoxNextActionSection(summary));
 }
 
 async function promptPackCharCountLine(workspaceRoot: string | undefined, songId: string): Promise<string | undefined> {
@@ -1159,7 +1156,7 @@ export async function formatRuntimeEvent(
   event: RuntimeEvent,
   options: Pick<TelegramNotifierOptions, "workspaceRoot" | "aiReviewProvider" | "dashboardBaseUrl"> = {}
 ): Promise<string> {
-  const body = appendButtonEffectSection(event, stripHtmlComments(await formatRuntimeEventRaw(event, options)));
+  const body = appendButtonEffectSection(event, stripTelegramHtmlComments(await formatRuntimeEventRaw(event, options)));
   const withNextAction = await appendDraftBoxNextActionSection(event, options, body);
   return enrichWithResources(event, options, withNextAction);
 }
@@ -1195,7 +1192,7 @@ async function formatRuntimeEventRaw(
       return [
         "歌詞生成で止まった。理由を残して、ここで止める。",
         "",
-        "─────",
+        TELEGRAM_SECTION_DIVIDER,
         `song: ${event.songId}`,
         `reason: ${event.detail ?? event.reason}`,
         "next: 「歌詞を作り直す」か「破棄」を選んで。"
@@ -1206,7 +1203,7 @@ async function formatRuntimeEventRaw(
           ? "Suno に今つながってない、または timeout で詰まってる。整えてから続きに戻る。"
           : "Suno 生成がまだ通っていない。次の retry まで止めて待つ。",
         "",
-        "─────",
+        TELEGRAM_SECTION_DIVIDER,
         `song: ${event.songId}`,
         `retry: ${event.retryCount}`,
         `reason: ${event.reason}`,
@@ -1216,7 +1213,7 @@ async function formatRuntimeEventRaw(
       return [
         "Suno create が失敗した。ここで止めて、原因を残す。",
         "",
-        "─────",
+        TELEGRAM_SECTION_DIVIDER,
         `song: ${event.songId}`,
         `retry: ${event.retryCount}`,
         `reason: ${event.reason}`
@@ -1225,7 +1222,7 @@ async function formatRuntimeEventRaw(
       return [
         "Suno 生成は失敗で止めた。勝手に進めない。",
         "",
-        "─────",
+        TELEGRAM_SECTION_DIVIDER,
         `song: ${event.songId}`,
         `retry: ${event.retryCount}`,
         `reason: ${event.reason}`
@@ -1234,7 +1231,7 @@ async function formatRuntimeEventRaw(
       return [
         "Suno 側で hard stop。ここから先は止めている。",
         "",
-        "─────",
+        TELEGRAM_SECTION_DIVIDER,
         event.songId ? `song: ${event.songId}` : undefined,
         `reason: ${event.reason}`
       ].filter(Boolean).join("\n");
@@ -1249,7 +1246,7 @@ async function formatRuntimeEventRaw(
       return [
         "take 選別で止まっている。勝手に決めない。",
         "",
-        "─────",
+        TELEGRAM_SECTION_DIVIDER,
         `song: ${event.songId}`,
         `reason: ${event.reason}`
       ].join("\n");
@@ -1259,7 +1256,7 @@ async function formatRuntimeEventRaw(
       return [
         "素材作りで止まった。曲本体は進めず、原因を残す。",
         "",
-        "─────",
+        TELEGRAM_SECTION_DIVIDER,
         `song: ${event.songId}`,
         `reason: ${event.reason}`
       ].join("\n");
@@ -1302,7 +1299,7 @@ async function formatRuntimeEventRaw(
       return [
         "判断待ちが残っている。",
         "",
-        "─────",
+        TELEGRAM_SECTION_DIVIDER,
         event.songId ? `song: ${event.songId}` : undefined,
         `button: ${event.label}`,
         `待ち時間: ${event.pendingHours}時間`,
@@ -1313,7 +1310,7 @@ async function formatRuntimeEventRaw(
       return [
         event.message,
         "",
-        "─────",
+        TELEGRAM_SECTION_DIVIDER,
         event.title ? `対象: ${event.title}${event.songId ? ` (${event.songId})` : ""}` : event.songId ? `song: ${event.songId}` : undefined,
         `草稿箱: draft ${event.draftCount}件 / building ${event.buildingCount}件`,
         event.reason ? `理由: ${event.reason}` : undefined,
@@ -1358,8 +1355,8 @@ async function formatRuntimeEventRaw(
           formatSpawnBriefVoiceDetail(event.brief, event.reason)
         ].join("\n"),
         "",
-        "─────",
-        formatCascadeTrace(trace)
+        TELEGRAM_SECTION_DIVIDER,
+        formatTelegramCascadeTrace(trace)
       ].join("\n");
     }
     case "planning_skeleton_incomplete": {
@@ -1374,7 +1371,7 @@ async function formatRuntimeEventRaw(
       return [
         monolog,
         "",
-        "─────",
+        TELEGRAM_SECTION_DIVIDER,
         `${humanizeMissingFields(event.missing)}を埋める案、出した。これで進めていい?`
       ].join("\n");
     }
@@ -1392,13 +1389,13 @@ async function formatRuntimeEventRaw(
       return [
         artistVoice,
         "",
-        "─────",
+        TELEGRAM_SECTION_DIVIDER,
         event.lyricsExcerpt,
         "",
         `${event.mood}・${event.tempo}・${event.styleNotes}`,
         charCountLine,
         "",
-        formatCascadeTrace(trace)
+        formatTelegramCascadeTrace(trace)
       ].filter((line) => line !== undefined).join("\n");
     }
     case "prompt_pack_char_count":
@@ -1409,14 +1406,14 @@ async function formatRuntimeEventRaw(
       return [
         "ticker が止まっていたので、安全な 1 tick だけ入れた。",
         "",
-        "─────",
+        TELEGRAM_SECTION_DIVIDER,
         `outcome: ${event.outcome}`,
         event.songId ? `song: ${event.songId}` : undefined
       ].filter(Boolean).join("\n");
     case "observation_collected":
       return `Observations collected: ${event.entryCount} entries${typeof event.topScore === "number" ? `, top score=${event.topScore}` : ""}${event.topMotifMatch ? ` (${event.topMotifMatch})` : ""}`;
     case "artist_presence":
-      return [event.text, "", "─────", `trigger: ${event.trigger}${event.songId ? `\nsongId: ${event.songId}` : ""}`].join("\n");
+      return joinTelegramDetailSection(event.text, `trigger: ${event.trigger}${event.songId ? `\nsongId: ${event.songId}` : ""}`);
     case "error":
       return `Runtime error: ${event.source} ${event.reason}${event.songId ? ` (${event.songId})` : ""}`;
   }
