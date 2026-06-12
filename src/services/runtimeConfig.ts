@@ -232,6 +232,15 @@ export function getAutopilotFastChainMs(env: NodeJS.ProcessEnv = process.env): n
   return Number.isFinite(parsed) && parsed >= 0 ? parsed : undefined;
 }
 
+export function getAutopilotImportPollMs(env: NodeJS.ProcessEnv = process.env): number | undefined {
+  const raw = env.OPENCLAW_AUTOPILOT_IMPORT_POLL_MS;
+  if (raw === undefined || raw === "") {
+    return undefined;
+  }
+  const parsed = Number.parseInt(raw, 10);
+  return Number.isFinite(parsed) && parsed >= 0 ? parsed : undefined;
+}
+
 export function getTelegramArtistReportTimeoutMs(env: NodeJS.ProcessEnv = process.env): number | undefined {
   return positiveInteger(env.OPENCLAW_TELEGRAM_ARTIST_REPORT_TIMEOUT_MS);
 }

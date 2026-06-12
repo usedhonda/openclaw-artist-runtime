@@ -32,6 +32,7 @@ describe("AutopilotTicker", () => {
     getRuntimeEventBus().clearForTest();
     delete process.env.OPENCLAW_AUTOPILOT_TICK_STALL_MS;
     delete process.env.OPENCLAW_AUTOPILOT_FAST_CHAIN_MS;
+    delete process.env.OPENCLAW_AUTOPILOT_IMPORT_POLL_MS;
     vi.restoreAllMocks();
   });
 
@@ -180,7 +181,7 @@ describe("AutopilotTicker", () => {
       paused: false,
       stage: "suno_generation",
       currentSongId: "spawn_stuck",
-      blockedReason: "waiting for Suno result import"
+      blockedReason: "suno daily budget exhausted"
     });
     const runCycle = vi.spyOn(ArtistAutopilotService.prototype, "runCycle").mockResolvedValue({
       runId: "r",
@@ -189,6 +190,81 @@ describe("AutopilotTicker", () => {
       retryCount: 0,
       cycleCount: 1,
       currentSongId: "spawn_stuck",
+      blockedReason: "suno daily budget exhausted",
+      updatedAt: new Date().toISOString()
+    });
+    const ticker = new AutopilotTicker({
+      getConfig: () => ({ artist: { workspaceRoot: root }, autopilot: { enabled: true } })
+    });
+
+    await ticker.runNow();
+    await new Promise((resolve) => setTimeout(resolve, 40));
+
+    expect(runCycle).toHaveBeenCalledTimes(1);
+  });
+
+  it("keeps polling a pending Suno result import instead of waiting the full interval", async () => {
+    // Two-tick Suno generation: create accepted, import pending. A no-progress repeat
+    // must NOT stop the chain here — the take renders minutes later while the next
+    // interval tick is hours away (2026-06-12 incident).
+    process.env.OPENCLAW_AUTOPILOT_FAST_CHAIN_MS = "5";
+    process.env.OPENCLAW_AUTOPILOT_IMPORT_POLL_MS = "5";
+    const root = makeWorkspace({
+      paused: false,
+      stage: "suno_generation",
+      currentSongId: "spawn_oven",
+      blockedReason: "waiting for Suno result import"
+    });
+    const pendingImport = {
+      runId: "r",
+      stage: "suno_generation" as const,
+      paused: false,
+      retryCount: 0,
+      cycleCount: 1,
+      currentSongId: "spawn_oven",
+      blockedReason: "waiting for Suno result import",
+      updatedAt: new Date().toISOString()
+    };
+    const runCycle = vi
+      .spyOn(ArtistAutopilotService.prototype, "runCycle")
+      // tick 1 + polled tick 2: import still pending -> keep polling
+      .mockResolvedValueOnce(pendingImport)
+      .mockResolvedValueOnce(pendingImport)
+      // tick 3: import lands -> producer review gate stops the chain
+      .mockResolvedValue({
+        ...pendingImport,
+        stage: "take_selection",
+        paused: true,
+        suspendedAt: "producer_review_after_take_selected",
+        blockedReason: undefined,
+        cycleCount: 3
+      });
+    const ticker = new AutopilotTicker({
+      getConfig: () => ({ artist: { workspaceRoot: root }, autopilot: { enabled: true } })
+    });
+
+    await ticker.runNow();
+    await new Promise((resolve) => setTimeout(resolve, 80));
+
+    expect(runCycle.mock.calls.length).toBeGreaterThanOrEqual(3);
+  });
+
+  it("does not poll a pending import when import polling is disabled", async () => {
+    process.env.OPENCLAW_AUTOPILOT_FAST_CHAIN_MS = "5";
+    process.env.OPENCLAW_AUTOPILOT_IMPORT_POLL_MS = "0";
+    const root = makeWorkspace({
+      paused: false,
+      stage: "suno_generation",
+      currentSongId: "spawn_off",
+      blockedReason: "waiting for Suno result import"
+    });
+    const runCycle = vi.spyOn(ArtistAutopilotService.prototype, "runCycle").mockResolvedValue({
+      runId: "r",
+      stage: "suno_generation",
+      paused: false,
+      retryCount: 0,
+      cycleCount: 1,
+      currentSongId: "spawn_off",
       blockedReason: "waiting for Suno result import",
       updatedAt: new Date().toISOString()
     });

@@ -2,7 +2,7 @@ import { applyConfigDefaults } from "../config/schema.js";
 import type { AutopilotRunState, ArtistRuntimeConfig } from "../types.js";
 import { ArtistAutopilotService, readAutopilotRunState, PRODUCER_REVIEW_SUSPENDED_AT } from "./autopilotService.js";
 import { emitRuntimeEvent } from "./runtimeEventBus.js";
-import { getAutopilotFastChainMs, getAutopilotTickStallMs } from "./runtimeConfig.js";
+import { getAutopilotFastChainMs, getAutopilotImportPollMs, getAutopilotTickStallMs } from "./runtimeConfig.js";
 import { writeAutopilotHeartbeat } from "./supervisorHealth.js";
 
 type PartialDeep<T> = {
@@ -51,12 +51,33 @@ const FALLBACK_FAST_CHAIN_MS = 20 * 1000;
 // Stages where the pipeline is idle or terminal: nothing to fast-chain toward.
 const FAST_CHAIN_STOP_STAGES = new Set(["idle", "paused", "completed", "failed_closed"]);
 
+// Suno generation is two-tick: tick A submits the create and parks the lane on this
+// blockedReason; the import only lands on a later tick. The progress-gated fast-chain
+// stops after one no-progress repeat, so without dedicated polling that later tick is
+// the next full interval (default 3h) — a take that renders in minutes sits
+// undelivered for hours (2026-06-12 incident; same class as the 06-09 stall). While a
+// run is awaiting import, keep re-ticking on a slower cadence. The lifecycle contract
+// (v10.42) fails a dead run closed, which changes blockedReason and ends the polling.
+// Set OPENCLAW_AUTOPILOT_IMPORT_POLL_MS=0 to disable.
+const SUNO_IMPORT_WAIT_REASON = "waiting for Suno result import"; // autopilotService.ts setSongStage
+const FALLBACK_IMPORT_POLL_MS = 60 * 1000;
+
 function resolveStallMs(): number {
   return getAutopilotTickStallMs() ?? FALLBACK_STALL_MS;
 }
 
 function resolveFastChainMs(): number {
   return getAutopilotFastChainMs() ?? FALLBACK_FAST_CHAIN_MS;
+}
+
+function resolveImportPollMs(): number {
+  return getAutopilotImportPollMs() ?? FALLBACK_IMPORT_POLL_MS;
+}
+
+function isAwaitingSunoImport(state: AutopilotRunState): boolean {
+  if (state.paused || state.suspendedAt || state.hardStopReason) return false;
+  if (FAST_CHAIN_STOP_STAGES.has(state.stage)) return false;
+  return state.blockedReason === SUNO_IMPORT_WAIT_REASON;
 }
 
 // Progress fingerprint: a same-stage advance (e.g. create -> pending import within
@@ -108,11 +129,13 @@ export class AutopilotTicker {
 
   // Drive the pipeline tail without waiting the full cycle interval. Scheduled as a
   // one-shot; the next runNow re-evaluates from fresh on-disk state, and its running
-  // guard prevents overlap with the regular interval tick.
+  // guard prevents overlap with the regular interval tick. A progressing cycle chains
+  // at the fast cadence; a no-progress cycle that is awaiting a Suno result import
+  // keeps polling at the slower import cadence instead of stopping outright.
   private maybeScheduleFastChain(before: AutopilotRunState, after: AutopilotRunState): void {
-    const delayMs = resolveFastChainMs();
+    const progressed = shouldFastChain(before, after);
+    const delayMs = progressed ? resolveFastChainMs() : isAwaitingSunoImport(after) ? resolveImportPollMs() : 0;
     if (delayMs <= 0) return;
-    if (!shouldFastChain(before, after)) return;
     if (fastChainHandle) {
       clearTimeout(fastChainHandle);
     }
