@@ -8,6 +8,7 @@ import { describeCallbackActionEffect, registerCallbackAction } from "../src/ser
 import { getRuntimeEventBus, type RuntimeEvent } from "../src/services/runtimeEventBus";
 import { runSongPublishAction } from "../src/services/songPublishActionRegistry";
 import { routeTelegramCallback } from "../src/services/telegramCallbackHandler";
+import { AutopilotTicker } from "../src/services/autopilotTicker";
 import type { TelegramClient } from "../src/services/telegramClient";
 import type { SongStatus } from "../src/types";
 
@@ -189,5 +190,47 @@ describe("song archive/discard producer review state machine", () => {
       label: "破棄",
       effect: "この曲を破棄する。brief は reuse のため残す。"
     });
+  });
+
+  it("kicks one autopilot cycle after a producer decision instead of waiting the interval", async () => {
+    // Without this kick the adopted/discarded lane sits idle until the next ticker
+    // interval (default 3h) and the producer waits hours for the next proposal
+    // (2026-06-12). Mirrors the v10.66 /resume kick; gates re-apply inside runCycle.
+    const root = await prepareSong();
+    const client = clientMock();
+    const runNow = vi
+      .spyOn(AutopilotTicker.prototype, "runNow")
+      .mockResolvedValue({
+        outcome: "ran",
+        state: { stage: "planning", paused: false, retryCount: 0, cycleCount: 1, updatedAt: new Date().toISOString() }
+      });
+    try {
+      const entry = await registerCallbackAction(root, {
+        action: "song_archive",
+        songId: "review-song",
+        chatId: 100,
+        messageId: 200,
+        userId: 300,
+        now: 1000,
+        expiresAt: 5000
+      });
+
+      const result = await routeTelegramCallback({
+        root,
+        client,
+        callbackQueryId: "query-archive-kick",
+        data: `cb:${entry.callbackId}`,
+        fromUserId: 300,
+        chatId: 100,
+        messageId: 200,
+        now: 2000
+      });
+
+      expect(result).toMatchObject({ result: "applied" });
+      await new Promise((resolve) => setTimeout(resolve, 10));
+      expect(runNow).toHaveBeenCalledTimes(1);
+    } finally {
+      runNow.mockRestore();
+    }
   });
 });

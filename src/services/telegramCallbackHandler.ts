@@ -11,6 +11,7 @@ import { isArtistPulseEnabled, isSongSpawnEnabled, isXInlineButtonEnabled } from
 import { injectCommissionSong } from "./songStateInjector.js";
 import { markSpawned } from "./songSpawnRateLimiter.js";
 import { readAutopilotRunState, writeAutopilotRunState } from "./autopilotService.js";
+import { getAutopilotTicker } from "./autopilotTicker.js";
 import { handleSongPublishActionRequest, type SongPublishAction } from "./songPublishActionRegistry.js";
 import { markSpawnProposalBuilding, markSpawnProposalDismissed } from "./spawnProposalQueue.js";
 import { resurfacePromptPackReady } from "./promptPackResurfaceService.js";
@@ -28,6 +29,18 @@ function errorMessage(error: unknown): string {
 
 function logCallbackDeliveryFailure(context: string, error: unknown): void {
   console.error(`[telegram-callback] ${context} failed: ${errorMessage(error)}`);
+}
+
+// Producer decisions are operator actions; without an immediate cycle the next
+// pipeline move waits for the full ticker interval (default 3h) — the producer
+// adopts a song and then stares at a silent Telegram for hours (2026-06-12).
+// Mirror the v10.66 /resume kick: fire one operator-initiated cycle; every
+// downstream gate (spawn GO, dryRun, Suno budget/live flags) re-applies inside
+// runCycle, so this never bypasses an approval.
+function kickAutopilotCycleAfterProducerDecision(context: string): void {
+  void getAutopilotTicker().runNow().catch((error) => {
+    console.error(`[telegram-callback] post-decision cycle kick (${context}) failed: ${errorMessage(error)}`);
+  });
 }
 
 export interface TelegramCallbackContext {
@@ -411,6 +424,7 @@ export async function routeTelegramCallback(ctx: TelegramCallbackContext): Promi
         await releaseDiscardedCurrentSongLane(ctx.root, entry.songId, now);
       }
       await clearButtonsAndReply(ctx, entry, actionResult.message);
+      kickAutopilotCycleAfterProducerDecision(entry.action);
       return { processed: true, result: callbackResult, reason: auditReason, callbackId };
     } catch (error) {
       const reason = error instanceof Error ? error.message : "song_publish_action_failed";
@@ -508,6 +522,7 @@ export async function routeTelegramCallback(ctx: TelegramCallbackContext): Promi
       await markCallbackResolved(ctx.root, callbackId, { status: "discarded", reason: "song_spawn_skipped", now });
       await appendCallbackAudit(ctx.root, auditBase(ctx, callbackId, entry, "discarded", "song_spawn_skipped"));
       await clearButtonsAndReply(ctx, entry, "今は見送った。次の spawn 候補はまた間隔を置いて見る。");
+      kickAutopilotCycleAfterProducerDecision("song_spawn_skip");
       return { processed: true, result: "discarded", reason: "song_spawn_skipped", callbackId };
     }
     if (!entry.commissionBrief) {
@@ -530,6 +545,7 @@ export async function routeTelegramCallback(ctx: TelegramCallbackContext): Promi
       await markCallbackResolved(ctx.root, callbackId, { status: "applied", reason: "song_spawn_injected", now });
       await appendCallbackAudit(ctx.root, auditBase(ctx, callbackId, entry, "applied", "song_spawn_injected"));
       await clearButtonsAndReply(ctx, entry, `作り始めた。songId=${injected.songId}。Suno 生成まで一気に進める。完成したら報告する。`);
+      kickAutopilotCycleAfterProducerDecision("song_spawn_inject");
       return { processed: true, result: "applied", reason: "song_spawn_injected", callbackId };
     } catch (error) {
       const reason = error instanceof Error ? error.message : "song_spawn_inject_failed";
@@ -565,6 +581,7 @@ export async function routeTelegramCallback(ctx: TelegramCallbackContext): Promi
     await markCallbackResolved(ctx.root, callbackId, { status: "updated", reason: "lyrics_redraft_requested", now });
     await appendCallbackAudit(ctx.root, auditBase(ctx, callbackId, entry, "updated", "lyrics_redraft_requested"));
     await clearButtonsAndReply(ctx, entry, "歌詞、もう一回作り直す。Suno 生成の前にまた確認を出す。");
+    kickAutopilotCycleAfterProducerDecision("lyrics_redraft");
     return { processed: true, result: "updated", reason: "lyrics_redraft_requested", callbackId };
   }
 
