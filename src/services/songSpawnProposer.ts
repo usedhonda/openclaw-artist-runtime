@@ -2,7 +2,7 @@ import { createHash } from "node:crypto";
 import { readdir, readFile } from "node:fs/promises";
 import { join } from "node:path";
 import type { AiReviewProvider, CascadeTraceSource, CommissionBrief, CommissionBriefSource, ObservationSummary, SongSpawnProposal, SongState } from "../types.js";
-import { callAiProvider, isAiNotConfiguredResponse } from "./aiProviderClient.js";
+import { callAiProvider, isAiNotConfiguredResponse, isAiProviderMockFallbackResponse } from "./aiProviderClient.js";
 import { composeArtistFallback } from "./artistVoiceComposer.js";
 import { listSongStates } from "./artistState.js";
 import { readCallbackActionEntries } from "./callbackActionRegistry.js";
@@ -862,7 +862,17 @@ export async function proposeSpawn(root: string, options: ProposeSpawnOptions = 
       cascadeSeed: fallback.songId,
       activeQueueContext: options.activeQueueContext
     }), { provider });
-  const safeRaw = isAiNotConfiguredResponse(raw) || secretLikePattern.test(raw) ? "" : raw;
+  // v10.67 flood guard: a provider fallback echo ("Mock provider fallback (...)" /
+  // not-configured) is not artist output. Building the deterministic template brief
+  // from it floods Telegram with near-identical junk proposals while the provider is
+  // unreachable (2026-06-11: 19 proposals in 2h). Skip this tick entirely; the next
+  // tick retries against a healthy provider. The explicit mock provider (dev path)
+  // keeps its deterministic brief above.
+  if (provider !== "mock" && (isAiNotConfiguredResponse(raw) || isAiProviderMockFallbackResponse(raw))) {
+    console.warn("[song-spawn] AI proposer returned a fallback response; skipping spawn proposal this tick");
+    return null;
+  }
+  const safeRaw = secretLikePattern.test(raw) ? "" : raw;
   const parsed = briefFromAi(safeRaw, fallback, now, pitchContext);
   if (isSimilarTheme(parsed.brief, [...recentThemes, ...queueContextAsRecentThemes(options.activeQueueContext)])) {
     return null;

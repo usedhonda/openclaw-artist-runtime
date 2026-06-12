@@ -32,31 +32,32 @@ async function workspace(): Promise<string> {
 describe("song spawn proposer not-configured fallback", () => {
   beforeEach(() => {
     callAiProviderMock.mockReset();
-    callAiProviderMock.mockResolvedValue("AI provider 'openai-codex' is not configured. No external model call was made.");
   });
 
-  it("does not let AI provider error text become the spawned brief", async () => {
+  // v10.67 flood guard: a provider fallback echo must not become a proposal at all.
+  // The old behavior built a deterministic template brief instead, which flooded
+  // Telegram with near-identical junk while the provider was unreachable
+  // (2026-06-11: 19 proposals in 2h). Skipping the tick is the fix; a healthy
+  // provider on a later tick produces the real proposal.
+  it("skips the proposal entirely when the provider is not configured", async () => {
+    callAiProviderMock.mockResolvedValue("AI provider 'openai-codex' is not configured. No external model call was made.");
+
     const proposal = await proposeSpawn(await workspace(), {
       aiReviewProvider: "openai-codex",
       now: new Date("2026-05-08T00:00:00.000Z")
     });
 
-    expect(proposal?.spawn).toBe(true);
-    const values = [
-      proposal?.brief.title,
-      proposal?.brief.brief,
-      proposal?.brief.mood,
-      proposal?.brief.tempo,
-      proposal?.brief.duration,
-      proposal?.brief.styleNotes,
-      proposal?.reason
-    ].join("\n");
-    expect(values).not.toMatch(/AI provider|not configured|No external model call/i);
-    expect(proposal?.brief.title).toContain("六本木");
-    expect(proposal?.brief.brief).toContain("古い看板");
-    expect(proposal?.brief.mood).toBeTruthy();
-    expect(proposal?.brief.tempo).toBeTruthy();
-    expect(proposal?.brief.duration).toBeTruthy();
-    expect(proposal?.brief.styleNotes).toBeTruthy();
+    expect(proposal).toBeNull();
+  });
+
+  it("skips the proposal when the provider call fails and echoes a mock fallback", async () => {
+    callAiProviderMock.mockResolvedValue("Mock provider fallback (request failed): spawn prompt echo …");
+
+    const proposal = await proposeSpawn(await workspace(), {
+      aiReviewProvider: "openai-codex",
+      now: new Date("2026-05-08T00:00:00.000Z")
+    });
+
+    expect(proposal).toBeNull();
   });
 });
