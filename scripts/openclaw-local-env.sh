@@ -42,9 +42,21 @@ export OPENCLAW_LOCAL_LOGS="${openclaw_local_logs}"
 export OPENCLAW_LOCAL_GATEWAY_PID="${openclaw_local_gateway_pid}"
 export OPENCLAW_LOCAL_GATEWAY_LOG="${openclaw_local_gateway_log}"
 export OPENCLAW_LOCAL_GATEWAY_PORT="${openclaw_local_gateway_port}"
+export OPENCLAW_GATEWAY_PORT="${openclaw_local_gateway_port}"
 export OPENCLAW_LOCAL_GATEWAY_HTTP_URL="${openclaw_local_gateway_http_url}"
 export OPENCLAW_LOCAL_GATEWAY_WS_URL="${openclaw_local_gateway_ws_url}"
 export PATH="${OPENCLAW_LOCAL_PREFIX}/bin:${PATH}"
+
+# Network resilience (2026-06-12): this machine can sit on networks that
+# advertise IPv6 (AAAA resolves) without real IPv6 connectivity. Node fetch
+# then dials the unreachable v6 address first and times out, which surfaces
+# as random "fetch failed" across Telegram / iTunes / AI-provider calls
+# (root cause of the recurring "transient" outages). Prefer IPv4 lookup
+# results so outbound HTTPS stays deterministic.
+case "${NODE_OPTIONS:-}" in
+  *dns-result-order*) ;;
+  *) export NODE_OPTIONS="${NODE_OPTIONS:+${NODE_OPTIONS} }--dns-result-order=ipv4first" ;;
+esac
 
 # Local incident guard: the repo-local gateway must use the artist Firefox
 # profile for Bird/X unless explicitly overridden by the operator.
@@ -84,10 +96,24 @@ export OPENCLAW_POLLING_WATCHDOG_REPROMPT_ONCE=on
 # take_selected review notification without changing song state.
 export OPENCLAW_DEBUG_NOTIFY_REVIEW="${OPENCLAW_DEBUG_NOTIFY_REVIEW:-on}"
 
-# Gateway supervisor Telegram-network watchdog is opt-in only. Killing and
-# restarting the whole gateway on transient Telegram reachability errors can
-# amplify load and confuse live-operation state.
-export OPENCLAW_TELEGRAM_WATCHDOG_ENABLED="${OPENCLAW_TELEGRAM_WATCHDOG_ENABLED:-0}"
+# Internal callback-dispatch endpoint (local-only, R10 allowlist downstream).
+# Needed so producer decisions can be executed via the established
+# internal_recovery path when Telegram inbound is blocked by the network
+# (2026-06-12: venue Wi-Fi throttles Telegram's IP range; producer decisions
+# relayed through the operator).
+export OPENCLAW_DEBUG_CALLBACK_DISPATCH="${OPENCLAW_DEBUG_CALLBACK_DISPATCH:-on}"
+
+# v10.45 体感 verify enablement: spawn path 発火条件 (御大 GO 2026-05-25)。
+# planning_skeleton 路を素通りさせず、 spawn_proposed event 経由で
+# spawn_proposal_ready gate に到達させるための必須 enable。
+export OPENCLAW_SONG_SPAWN_ENABLED=on
+
+# Gateway supervisor Telegram-network watchdog. Default-on (2026-06-16): the
+# gateway's own stall-restart loop could not recover an 8h getUpdates wedge on
+# Jun 15 (inbound receive silently dead while outbound still worked), so the
+# supervisor must be able to kill+restart a wedged poll as a backstop. Set to 0
+# to opt out if the kill/restart churn ever amplifies a transient outage.
+export OPENCLAW_TELEGRAM_WATCHDOG_ENABLED="${OPENCLAW_TELEGRAM_WATCHDOG_ENABLED:-1}"
 
 if [[ "${1:-}" == "print" ]]; then
   telegram_token_status=""
@@ -105,6 +131,7 @@ OPENCLAW_LOCAL_LOGS=${OPENCLAW_LOCAL_LOGS}
 OPENCLAW_LOCAL_GATEWAY_PID=${OPENCLAW_LOCAL_GATEWAY_PID}
 OPENCLAW_LOCAL_GATEWAY_LOG=${OPENCLAW_LOCAL_GATEWAY_LOG}
 OPENCLAW_LOCAL_GATEWAY_PORT=${OPENCLAW_LOCAL_GATEWAY_PORT}
+OPENCLAW_GATEWAY_PORT=${OPENCLAW_GATEWAY_PORT}
 OPENCLAW_LOCAL_GATEWAY_HTTP_URL=${OPENCLAW_LOCAL_GATEWAY_HTTP_URL}
 OPENCLAW_LOCAL_GATEWAY_WS_URL=${OPENCLAW_LOCAL_GATEWAY_WS_URL}
 OPENCLAW_X_FIREFOX_PROFILE=${OPENCLAW_X_FIREFOX_PROFILE:-}
