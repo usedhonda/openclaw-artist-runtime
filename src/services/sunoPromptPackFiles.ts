@@ -83,6 +83,32 @@ function readBriefTempo(briefText: string): string | undefined {
   return briefText.match(/^- Tempo:\s*(.+)$/mi)?.[1]?.trim();
 }
 
+function isLyricsBoxOverflowReason(reason: string): boolean {
+  return reason.includes("payloadYaml length exceeds Suno lyrics box limit")
+    || reason.includes("YAML overflow")
+    || reason.includes("lyrics_too_long_for_suno_box");
+}
+
+async function failClosedLyricsBoxOverflow(input: PersistSunoPromptPackInput, detail: string): Promise<never> {
+  const repairNotes = [`lyrics_too_long_for_suno_box: ${detail}`];
+  const reason = `lyrics_generation_degraded: ${repairNotes.join(" | ")}`;
+  emitRuntimeEvent({
+    type: "lyrics_generation_degraded",
+    songId: input.songId,
+    reason,
+    detail,
+    repairNotes,
+    timestamp: Date.now()
+  });
+  await updateSongState(input.workspaceRoot, input.songId, {
+    degradedLyrics: true,
+    reason,
+    status: "brief"
+  });
+  const error = new Error(reason);
+  throw Object.assign(error, { repairNotes });
+}
+
 export async function createAndPersistSunoPromptPack(input: PersistSunoPromptPackInput): Promise<PersistedPromptPackResult> {
   await ensureArtistWorkspace(input.workspaceRoot);
   await createSongSkeleton(input.workspaceRoot, input.songId);
@@ -96,9 +122,23 @@ export async function createAndPersistSunoPromptPack(input: PersistSunoPromptPac
     currentStateSnapshot: input.currentStateSnapshot || currentStateSnapshot
   };
   const useAi = input.aiReviewProvider && input.aiReviewProvider !== "mock";
-  const pack = useAi
-    ? await createSunoPromptPackWithAi({ ...promptPackInput, aiReviewProvider: input.aiReviewProvider })
-    : createSunoPromptPack(promptPackInput);
+  const pack = await (async () => {
+    try {
+      return useAi
+        ? await createSunoPromptPackWithAi({ ...promptPackInput, aiReviewProvider: input.aiReviewProvider })
+        : createSunoPromptPack(promptPackInput);
+    } catch (error) {
+      const detail = error instanceof Error ? error.message : String(error);
+      if (isLyricsBoxOverflowReason(detail)) {
+        await failClosedLyricsBoxOverflow(input, detail);
+      }
+      throw error;
+    }
+  })();
+  const payloadYamlOverflow = pack.validation.errors.find(isLyricsBoxOverflowReason);
+  if (payloadYamlOverflow) {
+    await failClosedLyricsBoxOverflow(input, payloadYamlOverflow);
+  }
   const charCounts = (pack.payload as { promptCharCounts?: {
     style: number;
     lyrics: number;

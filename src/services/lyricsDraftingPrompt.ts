@@ -21,6 +21,8 @@ export interface BuildLyricsPromptInput {
   title: string;
   knowledgeDigest: string;
   repairNotes?: string[];
+  lyricsBoxLimit?: number;
+  lyricBodyLimit?: number;
 }
 
 function truncate(value: string, max = 8000): string {
@@ -65,6 +67,8 @@ export async function readLyricsKnowledgeDigest(): Promise<string> {
 }
 
 export function buildLyricsDraftingPrompt(input: BuildLyricsPromptInput): string {
+  const lyricsBoxLimit = input.lyricsBoxLimit ?? 1250;
+  const lyricBodyLimit = input.lyricBodyLimit ?? Math.max(200, lyricsBoxLimit - 260);
   return [
     "Write lyrics for used::honda from the provided raw material.",
     "Use the attributed lyrics-writer system source as the craft policy for this draft.",
@@ -81,7 +85,8 @@ export function buildLyricsDraftingPrompt(input: BuildLyricsPromptInput): string
     "Return strict JSON only: {\"title\":\"2-4 words\",\"form\":\"short form name\",\"sections\":[{\"tag\":\"Verse 1 - tight flow\",\"lines\":[\"line\"]}],\"bilingual_hint\":\"short note\",\"moodHint\":\"2-4 word sonic mood\"}.",
     "Use 7-10 tagged sections. Verse sections need 4-21 lines, Hook 2-6, Bridge 1-3, Intro/Outro 0-1.",
     "Every section tag must include an annotation after the section name. Do not place commands outside tags. Do not name existing artists or songs. Do not reuse title kanji directly in hook or refrain lines; convert any title phrase used inside lyrics to hiragana.",
-    "Length budget: total lyric body (joined section lines + tag overhead, before YAML META) must reach 4400-4600 characters; absolute upper bound 4800. Treat anything under 4000 as a draft failure and keep expanding verses, hook variations, and bridge before returning.",
+    `Suno lyrics box limit: ${lyricsBoxLimit} characters total, including YAML META, marker lines, section tags, lyrics, and blank lines.`,
+    `Length budget: total lyric body (joined section lines + tag overhead, before YAML META) must stay within ${lyricBodyLimit} characters. Do not exceed this budget; leave room for the YAML META layer. A short, complete lyric is better than text that Suno silently truncates.`,
     "Use the full knowledge digest below — quote rhyme tables, structure formulas, and V5.5 metatag vocabulary explicitly when they apply. Do not paraphrase the references away.",
     input.repairNotes?.length ? `Repair notes from previous draft: ${input.repairNotes.join("; ")}` : "",
     "",

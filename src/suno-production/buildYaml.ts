@@ -29,6 +29,7 @@ export interface BuildYamlInput {
   production_notes?: string | string[];
   notes?: string | string[];
   cues?: string[];
+  lyricsBoxLimit?: number;
 }
 
 function cleanLine(value: string | number | undefined, fallback: string): string {
@@ -91,8 +92,8 @@ export function prepareSunoLyrics(lyrics: string, gender: "male" | "female" | "n
     .trim();
 }
 
-export function computeBudgetLevel(lyrics: string): YamlBudgetLevel {
-  const margin = 4500 - lyrics.length - 40;
+export function computeBudgetLevel(lyrics: string, lyricsBoxLimit = 4500): YamlBudgetLevel {
+  const margin = lyricsBoxLimit - lyrics.length - 40;
   if (margin <= 200) return "minimal";
   if (margin <= 600) return "normal";
   if (margin <= 1200) return "expanded";
@@ -162,19 +163,20 @@ function renderYaml(input: BuildYamlInput, level: YamlBudgetLevel): string {
 }
 
 export function buildYaml(input: BuildYamlInput): string {
+  const lyricsBoxLimit = input.lyricsBoxLimit ?? 4500;
   const leadGender = typeof input.vocals === "string" ? "male" : input.vocals?.parts?.find((part) => part.id === "lead")?.gender ?? "male";
   const preparedInput = {
     ...input,
     lyrics: prepareSunoLyrics(input.lyrics, leadGender)
   };
   const levels: YamlBudgetLevel[] = ["minimal", "normal", "expanded", "max"];
-  const start = levels.indexOf(computeBudgetLevel(preparedInput.lyrics));
+  const start = levels.indexOf(computeBudgetLevel(preparedInput.lyrics, lyricsBoxLimit));
   for (let index = start; index >= 0; index -= 1) {
     const level = levels[index] ?? "minimal";
     const yaml = renderYaml(preparedInput, level);
-    if (yaml.length <= 4500) {
+    if (yaml.length <= lyricsBoxLimit) {
       return yaml;
     }
   }
-  throw new Error(`YAML overflow at ${computeBudgetLevel(preparedInput.lyrics)}`);
+  throw new Error(`YAML overflow at ${computeBudgetLevel(preparedInput.lyrics, lyricsBoxLimit)}: ${preparedInput.lyrics.length}/${lyricsBoxLimit}`);
 }

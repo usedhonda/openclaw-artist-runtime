@@ -9,6 +9,7 @@ import { validateLyricsV55 } from "./lyricsValidator.js";
 import { secretLikePattern } from "./personaMigrator.js";
 import { emitRuntimeEvent } from "./runtimeEventBus.js";
 import { buildLyricsDraftingPrompt, readLyricsKnowledgeDigest } from "./lyricsDraftingPrompt.js";
+import { getSunoLyricsLimit } from "./runtimeConfig.js";
 
 export interface DraftLyricsInput {
   workspaceRoot: string;
@@ -136,13 +137,28 @@ function parseDraft(raw: string, fallbackTitle: string): LyricsDraft | undefined
   return { title: title.split(/\s+/).slice(0, 4).join(" "), lyrics, moodHint: moodHint.split(/\s+/).slice(0, 4).join(" ") };
 }
 
+function lyricBodyLimitForSunoBox(boxLimit: number): number {
+  return Math.max(200, boxLimit - 260);
+}
+
 async function composeLyricsDraft(input: DraftLyricsInput, title: string, briefText: string): Promise<LyricsDraft> {
   const provider = input.aiReviewProvider ?? input.config?.aiReview?.provider ?? "mock";
   const mind = await readArtistMind(input.workspaceRoot);
   const knowledgeDigest = await readLyricsKnowledgeDigest();
+  const lyricsBoxLimit = getSunoLyricsLimit();
+  const lyricBodyLimit = lyricBodyLimitForSunoBox(lyricsBoxLimit);
   let repairNotes: string[] = [];
   for (let attempt = 0; attempt < 3; attempt += 1) {
-    const prompt = buildLyricsDraftingPrompt({ artistMd: mind.artist, currentState: mind.currentState, briefText, title, knowledgeDigest, repairNotes });
+    const prompt = buildLyricsDraftingPrompt({
+      artistMd: mind.artist,
+      currentState: mind.currentState,
+      briefText,
+      title,
+      knowledgeDigest,
+      repairNotes,
+      lyricsBoxLimit,
+      lyricBodyLimit
+    });
     assertSafe("input", prompt);
     const raw = provider === "mock" ? mockStructuredDraft(title, briefText) : await callAiProvider(prompt, { provider });
     assertSafe("response", raw);
@@ -156,6 +172,12 @@ async function composeLyricsDraft(input: DraftLyricsInput, title: string, briefT
       continue;
     }
     const repaired = repairLyricsV55(parsed.lyrics);
+    if (repaired.length > lyricBodyLimit) {
+      repairNotes = [
+        `lyrics_too_long_for_suno_box: lyric body ${repaired.length}/${lyricBodyLimit}, lyrics box ${lyricsBoxLimit}`
+      ];
+      continue;
+    }
     const validation = validateLyricsV55(repaired, { denylist: ["Drake", "Taylor Swift", "Beatles"] });
     if (validation.valid) {
       const finalDraft = { ...parsed, lyrics: repaired };

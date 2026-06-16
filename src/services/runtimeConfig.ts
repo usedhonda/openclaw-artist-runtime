@@ -245,8 +245,22 @@ export function getTelegramArtistReportTimeoutMs(env: NodeJS.ProcessEnv = proces
   return positiveInteger(env.OPENCLAW_TELEGRAM_ARTIST_REPORT_TIMEOUT_MS);
 }
 
+export const DEFAULT_SUNO_LYRICS_BOX_LIMIT = 1250;
+
+export function effectiveLyricsBoxLimit(
+  options: { configuredLimit?: number; domMaxLength?: number } = {},
+  env: NodeJS.ProcessEnv = process.env
+): number {
+  const configuredLimit = options.configuredLimit ?? positiveInteger(env.OPENCLAW_SUNO_LYRICS_LIMIT);
+  const domMaxLength = options.domMaxLength;
+  if (domMaxLength && domMaxLength > 0) {
+    return Math.min(configuredLimit ?? domMaxLength, domMaxLength);
+  }
+  return Math.min(configuredLimit ?? DEFAULT_SUNO_LYRICS_BOX_LIMIT, DEFAULT_SUNO_LYRICS_BOX_LIMIT);
+}
+
 export function getSunoLyricsLimit(env: NodeJS.ProcessEnv = process.env): number {
-  return positiveInteger(env.OPENCLAW_SUNO_LYRICS_LIMIT) ?? 5000;
+  return effectiveLyricsBoxLimit({}, env);
 }
 
 export function getNewsRssUrls(env: NodeJS.ProcessEnv = process.env): string[] {

@@ -1,7 +1,9 @@
 import { mkdtempSync, readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
+import { readSongState } from "../src/services/artistState";
+import { getRuntimeEventBus, type RuntimeEvent } from "../src/services/runtimeEventBus";
 import { createAndPersistSunoPromptPack } from "../src/services/sunoPromptPackFiles";
 import { validateSunoPromptPack } from "../src/validators/promptPackValidator";
 
@@ -48,5 +50,38 @@ describe("prompt pack character audit", () => {
     expect(validation.errors.join("\n")).toContain("styleAndFeel length out of range");
     expect(validation.errors.join("\n")).not.toContain("lyrics length out of range");
     expect(validation.warnings.join("\n")).toContain("lyrics length below preferred floor");
+  });
+
+  it("stops the prompt-pack pipeline when YAML would exceed the effective Suno box", async () => {
+    const root = mkdtempSync(join(tmpdir(), "artist-runtime-v55-box-"));
+    const events: RuntimeEvent[] = [];
+    const unsubscribe = getRuntimeEventBus().subscribe((event) => events.push(event));
+    vi.stubEnv("OPENCLAW_SUNO_LYRICS_LIMIT", "900");
+
+    try {
+      await expect(createAndPersistSunoPromptPack({
+        workspaceRoot: root,
+        songId: "song-overflow",
+        songTitle: "Overflow Gate",
+        artistReason: "lyrics must not be sliced",
+        lyricsText: `[Verse 1]\n${"あ".repeat(820)}`,
+        moodHint: "dry civic pulse",
+        bpm: 142
+      })).rejects.toThrow("lyrics_too_long_for_suno_box");
+
+      const state = await readSongState(root, "song-overflow");
+      const degraded = events.find((event) => event.type === "lyrics_generation_degraded");
+      expect(state.status).toBe("brief");
+      expect(state.degradedLyrics).toBe(true);
+      expect(state.lastReason).toContain("lyrics_too_long_for_suno_box");
+      expect(degraded).toMatchObject({
+        type: "lyrics_generation_degraded",
+        songId: "song-overflow",
+        reason: expect.stringContaining("lyrics_too_long_for_suno_box")
+      });
+    } finally {
+      vi.unstubAllEnvs();
+      unsubscribe();
+    }
   });
 });

@@ -3,6 +3,7 @@ import { extractLyricsBody } from "../services/lyricsExtraction.js";
 import { lintJapaneseLyricsEnglishFragments, lintResidualKanji, normalizeAsciiNumbersToHiragana } from "../services/lyricsLanguageLint.js";
 import { repairCommandLeak } from "../services/lyricsRepair.js";
 import type { AiReviewProvider, CreateSunoPromptPackInput, SunoPromptPack, SunoSliders } from "../types.js";
+import { getSunoLyricsLimit } from "../services/runtimeConfig.js";
 import { validateSunoPromptPack } from "../validators/promptPackValidator.js";
 import { buildExclude as buildExcludeV55 } from "./buildExclude.js";
 import { synthesizeExclude } from "./buildExclude.js";
@@ -61,6 +62,7 @@ export function createSunoPromptPack(input: CreateSunoPromptPackInput): SunoProm
   const genre = `${input.artistReason} ${input.moodHint ?? ""}`;
   const bpm = input.bpm ?? 124;
   const vocalGender = input.vocalGender ?? artistDefaultVocalGender(input.artistSnapshot);
+  const lyricsBoxLimit = getSunoLyricsLimit();
   const styleResult = buildStyleV55({
     artistProfile: input.artistSnapshot,
     brief: input.artistReason,
@@ -105,7 +107,8 @@ export function createSunoPromptPack(input: CreateSunoPromptPackInput): SunoProm
       "original lyrics and style only; no source-name imitation",
       "metadata describes delivery; lyrics body remains the singable text"
     ],
-    cues: ["Intro: sparse texture before groove; Hook: widen rhythm without crowd noise"]
+    cues: ["Intro: sparse texture before groove; Hook: widen rhythm without crowd noise"],
+    lyricsBoxLimit
   });
   const sliders = buildSlidersV55({ genre, moodHint: input.moodHint });
   const payload = buildPayload({ ...input, lyricsText, bpm, vocalGender }, style, exclude, yamlLyrics, sliders);
@@ -148,6 +151,7 @@ export async function createSunoPromptPackWithAi(
   const genre = `${input.artistReason} ${input.moodHint ?? ""}`;
   const bpm = input.bpm ?? 124;
   const vocalGender = input.vocalGender ?? artistDefaultVocalGender(input.artistSnapshot);
+  const lyricsBoxLimit = getSunoLyricsLimit();
   const styleResult = await synthesizeStyle({
     artistProfile: input.artistSnapshot,
     brief: input.artistReason,
@@ -191,7 +195,8 @@ export async function createSunoPromptPackWithAi(
       "original lyrics and style only; no source-name imitation",
       "metadata describes delivery; lyrics body remains the singable text"
     ],
-    cues: ["Intro: sparse texture before groove; Hook: widen rhythm without crowd noise"]
+    cues: ["Intro: sparse texture before groove; Hook: widen rhythm without crowd noise"],
+    lyricsBoxLimit
   });
   const sliders = buildSlidersV55({ genre, moodHint: input.moodHint });
   const payload = buildPayload({ ...input, lyricsText, bpm, vocalGender }, styleResult.total, excludeResult.text, yamlLyrics, sliders);

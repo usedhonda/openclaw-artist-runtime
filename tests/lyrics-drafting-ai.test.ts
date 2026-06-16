@@ -2,7 +2,7 @@ import { mkdtempSync, readFileSync } from "node:fs";
 import { mkdir, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { draftLyrics } from "../src/services/lyricsDrafting";
 import {
   LYRICS_KNOWLEDGE_DIGEST_FILES,
@@ -49,6 +49,7 @@ describe("AI lyrics drafting", () => {
     expect(prompt).toContain("rap_and_flow.md");
     expect(prompt).toContain("english_lyrics.md");
     expect(prompt).toContain("master_reference.md");
+    expect(prompt).toContain("Suno lyrics box limit: 1250 characters total");
     expect(LYRICS_KNOWLEDGE_DIGEST_FILES).toContain("rap_and_flow.md");
     expect(LYRICS_KNOWLEDGE_DIGEST_FILES).toContain("english_lyrics.md");
     expect(LYRICS_KNOWLEDGE_DIGEST_FILES).toContain("master_reference.md");
@@ -90,6 +91,31 @@ describe("AI lyrics drafting", () => {
         repairNotes: ["provider fallback response"]
       });
     } finally {
+      unsubscribe();
+    }
+  });
+
+  it("redrafts within the Suno box and fails closed instead of trimming lyrics after max attempts", async () => {
+    const root = await workspace();
+    const events: RuntimeEvent[] = [];
+    const unsubscribe = getRuntimeEventBus().subscribe((event) => events.push(event));
+    vi.stubEnv("OPENCLAW_SUNO_LYRICS_LIMIT", "300");
+
+    try {
+      await expect(draftLyrics({ workspaceRoot: root, songId: "song-001", aiReviewProvider: "mock" })).rejects.toThrow("lyrics_too_long_for_suno_box");
+      const state = await readSongState(root, "song-001");
+      const degraded = events.find((event) => event.type === "lyrics_generation_degraded");
+      expect(state.degradedLyrics).toBe(true);
+      expect(state.status).toBe("brief");
+      expect(state.lastReason).toContain("lyrics_too_long_for_suno_box");
+      expect(degraded).toMatchObject({
+        type: "lyrics_generation_degraded",
+        songId: "song-001",
+        reason: expect.stringContaining("lyrics_too_long_for_suno_box"),
+        detail: expect.stringContaining("lyrics_too_long_for_suno_box")
+      });
+    } finally {
+      vi.unstubAllEnvs();
       unsubscribe();
     }
   });

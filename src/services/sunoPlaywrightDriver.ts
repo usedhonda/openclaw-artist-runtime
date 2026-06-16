@@ -540,9 +540,18 @@ export class PlaywrightSunoDriver implements SunoBrowserDriver {
         return element.textContent ?? "";
       }, expected);
 
-      if (reflected.startsWith(expected) || (reflected.length > 0 && expected.startsWith(reflected))) {
+      if (fieldName === "lyrics" && reflected === expected) {
         return;
       }
+      if (fieldName !== "lyrics" && (reflected.startsWith(expected) || (reflected.length > 0 && expected.startsWith(reflected)))) {
+        return;
+      }
+    }
+
+    if (fieldName === "lyrics" && reflected.length > 0 && expected.startsWith(reflected)) {
+      throw new Error(
+        `lyrics_payload_truncated_before_submit: reflected lyrics value shorter than payload; expectedLength=${expected.length} actualLength=${reflected.length}`
+      );
     }
 
     throw new Error(
@@ -741,6 +750,9 @@ export class PlaywrightSunoDriver implements SunoBrowserDriver {
     }
     if (/(selector|locator|not found|strict mode violation|no element|element.*missing)/i.test(message)) {
       return PLAYWRIGHT_CREATE_DOM_MISSING_REASON;
+    }
+    if (message.includes("lyrics_payload_truncated_before_submit")) {
+      return "lyrics_payload_truncated_before_submit";
     }
     if (/(timeout|timed out)/i.test(message)) {
       return PLAYWRIGHT_CREATE_TIMEOUT_REASON;

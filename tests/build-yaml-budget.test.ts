@@ -71,4 +71,17 @@ describe("Suno YAML dynamic budget", () => {
   it("throws instead of slicing lyrics when even minimal YAML overflows", () => {
     expect(() => buildYaml(input("あ".repeat(4480)))).toThrow("YAML overflow");
   });
+
+  it("keeps lyrics intact and shrinks META to fit an explicit Suno box limit", () => {
+    const lyrics = "あ".repeat(760);
+    const yaml = buildYaml({ ...input(lyrics), lyricsBoxLimit: 980 });
+    expect(yaml.length).toBeLessThanOrEqual(980);
+    expect(yaml).toContain(lyrics);
+    expect(yaml).toContain("# META (hints; do not sing)");
+    expect(yaml).not.toContain("vocals:");
+  });
+
+  it("fails closed when lyrics plus minimal META cannot fit an explicit Suno box limit", () => {
+    expect(() => buildYaml({ ...input("あ".repeat(820)), lyricsBoxLimit: 900 })).toThrow("YAML overflow");
+  });
 });

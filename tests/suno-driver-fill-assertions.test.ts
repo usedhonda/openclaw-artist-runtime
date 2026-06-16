@@ -230,4 +230,24 @@ describe("PlaywrightSunoDriver fill assertions", () => {
     expect(page.fills.filter((fill) => fill.selector === styleSelector)).toHaveLength(2);
     expect(page.clicks).not.toContain(createSelector);
   });
+
+  it("fails closed before Create when Suno reflects a truncated lyrics payload", async () => {
+    const page = pageMock();
+    page.reflectionSequences[lyricsSelector] = ["line one", "line one"];
+    launchPersistentContextMock.mockResolvedValue(contextMock([page]));
+
+    const result = await new PlaywrightSunoDriver(".profile", "skip").create({
+      dryRun: false,
+      authority: "auto_create_and_select_take",
+      runId: "lyrics-truncated",
+      payload: {
+        payloadYaml: "line one\nline two"
+      }
+    });
+
+    expect(result.accepted).toBe(false);
+    expect(result.reason).toContain("lyrics_payload_truncated_before_submit");
+    expect(page.fills.filter((fill) => fill.selector === lyricsSelector)).toHaveLength(2);
+    expect(page.clicks).not.toContain(createSelector);
+  });
 });
