@@ -8,6 +8,7 @@ import {
   latestFailedNotifyEntry,
   listUnreplayedFailedNotifications
 } from "../src/services/failedNotifyLedger";
+import { replayFailedNotificationsOnce } from "../src/services/failedNotifyReplayWorker";
 import { buildFailedNotifyListResponse, buildFailedNotifyReplayResponse } from "../src/routes";
 import { RuntimeEventBus, type RuntimeEvent } from "../src/services/runtimeEventBus";
 import { TelegramNotifier } from "../src/services/telegramNotifier";
@@ -161,5 +162,67 @@ describe("failed-notify ledger", () => {
       reason: "failed_notify_already_replayed",
       statusCode: 409
     });
+  });
+
+  it("replay worker keeps retrying failed delivery until a Telegram ack is recorded", async () => {
+    process.env.OPENCLAW_TELEGRAM_RETRY_MAX = "1";
+    process.env.OPENCLAW_TELEGRAM_RETRY_BASE_MS = "1";
+    const root = await mkdtemp(join(tmpdir(), "artist-runtime-replay-worker-"));
+    const failed = await appendFailedNotification(root, {
+      event: promptPackEvent(),
+      chatId: 123,
+      error: new Error("fetch failed"),
+      attempts: 3
+    });
+    if (!failed) throw new Error("failed entry not created");
+    const fetchImpl = vi.fn().mockRejectedValueOnce(timeoutError());
+
+    await expect(replayFailedNotificationsOnce({ root, token: "token", fetchImpl })).resolves.toMatchObject({
+      attempted: 1,
+      replayed: 0,
+      failed: 1,
+      deliveryIds: [failed.deliveryId]
+    });
+    expect(await latestFailedNotifyEntry(root, failed.notifyId)).toMatchObject({
+      status: "replay_failed",
+      attempts: 4
+    });
+    await expect(listUnreplayedFailedNotifications(root)).resolves.toHaveLength(1);
+
+    fetchImpl.mockResolvedValue(telegramOk());
+    await expect(replayFailedNotificationsOnce({ root, token: "token", fetchImpl })).resolves.toMatchObject({
+      attempted: 1,
+      replayed: 1,
+      failed: 0,
+      deliveryIds: [failed.deliveryId]
+    });
+    expect(await latestFailedNotifyEntry(root, failed.notifyId)).toMatchObject({ status: "replayed" });
+    await expect(listUnreplayedFailedNotifications(root)).resolves.toHaveLength(0);
+  });
+
+  it("replay worker suppresses duplicate sends for the same deliveryId", async () => {
+    const root = await mkdtemp(join(tmpdir(), "artist-runtime-replay-dedup-"));
+    const first = await appendFailedNotification(root, {
+      event: promptPackEvent(),
+      chatId: 123,
+      error: new Error("fetch failed"),
+      attempts: 3
+    });
+    await appendFailedNotification(root, {
+      event: promptPackEvent(),
+      chatId: 123,
+      error: new Error("fetch failed again"),
+      attempts: 3
+    });
+    if (!first) throw new Error("failed entry not created");
+    const fetchImpl = vi.fn().mockResolvedValue(telegramOk());
+
+    await expect(replayFailedNotificationsOnce({ root, token: "token", fetchImpl })).resolves.toMatchObject({
+      attempted: 1,
+      replayed: 1,
+      failed: 0,
+      deliveryIds: [first.deliveryId]
+    });
+    expect(fetchImpl).toHaveBeenCalledTimes(2);
   });
 });

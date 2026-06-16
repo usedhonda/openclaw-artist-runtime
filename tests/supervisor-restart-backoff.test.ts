@@ -18,5 +18,9 @@ describe("local gateway supervisor restart backoff", () => {
     expect(script).toContain("delay=30");
     expect(script).toContain('delay="${restart_delay_max_seconds}"');
     expect(script).toContain("crash_count=${consecutive_crash_count}; restart in ${restart_delay_seconds}s");
+    expect(script).toContain("start_ticker_watcher()");
+    expect(script).toContain("openclaw-ticker-watcher");
+    expect(script).toContain("OPENCLAW_TICKER_WATCHER_STALE_MS");
+    expect(script).toContain("OPENCLAW_TICKER_WATCHER_TOKEN");
   });
 });

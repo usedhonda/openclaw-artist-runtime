@@ -72,6 +72,16 @@ if [[ -n "${TELEGRAM_OWNER_USER_IDS:-}" ]]; then
   export TELEGRAM_OWNER_USER_IDS
 fi
 
+if [[ -z "${OPENCLAW_SAFE_TICK_TRIGGER_TOKEN:-}" && -z "${OPENCLAW_TICKER_WATCHER_TOKEN:-}" ]]; then
+  OPENCLAW_TICKER_WATCHER_TOKEN="$(node -e 'console.log(require("crypto").randomBytes(24).toString("hex"))')"
+fi
+if [[ -n "${OPENCLAW_TICKER_WATCHER_TOKEN:-}" ]]; then
+  export OPENCLAW_TICKER_WATCHER_TOKEN
+fi
+if [[ -n "${OPENCLAW_SAFE_TICK_TRIGGER_TOKEN:-}" ]]; then
+  export OPENCLAW_SAFE_TICK_TRIGGER_TOKEN
+fi
+
 # v10.34 Layer 1 live lane. Uses an isolated bundled Chromium profile by
 # default. System Chrome channel is opt-in only because macOS can route launched
 # tabs into the operator's visible Chrome.app singleton. CDP attach remains an

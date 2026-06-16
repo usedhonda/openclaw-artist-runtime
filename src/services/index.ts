@@ -10,6 +10,7 @@ import { appendRuntimeEvent } from "./runtimeEventsLedger.js";
 import { isTelegramNotifierEnabled, resolveDefaultWorkspaceRoot, resolveRuntimeConfig } from "./runtimeConfig.js";
 import { SocialDistributionWorker } from "./socialDistributionWorker.js";
 import { SunoBrowserWorker } from "./sunoBrowserWorker.js";
+import { startFailedNotifyReplayWorker } from "./failedNotifyReplayWorker.js";
 import { getTelegramOwnerUserIds } from "./telegramAuth.js";
 import { TelegramNotifier } from "./telegramNotifier.js";
 
@@ -17,6 +18,7 @@ let telegramNotifierUnsubscribers: Array<() => void> = [];
 let runtimeEventLedgerUnsubscriber: (() => void) | null = null;
 let stopCallbackWatchdog: (() => void) | null = null;
 let stopAutopilotTicker: (() => void) | null = null;
+let stopFailedNotifyReplayWorker: (() => void) | null = null;
 let resolvedConfigCache: ArtistRuntimeConfig | null = null;
 
 const SILENCE_RECOVERY_WINDOW_MS = 10 * 60 * 1000;
@@ -28,6 +30,16 @@ function logSideEffectFailure(context: string, error: unknown): void {
   if (typeof error === "object" && error && "code" in error && error.code === "ENOENT") return;
   const reason = error instanceof Error ? error.message : String(error);
   console.error(`[artist-runtime] ${context} failed: ${reason}`);
+}
+
+function failedNotifyReplayEnabled(env: NodeJS.ProcessEnv): boolean {
+  const value = env.OPENCLAW_FAILED_NOTIFY_REPLAY_ENABLED?.trim().toLowerCase();
+  return value !== "0" && value !== "off" && value !== "false";
+}
+
+function positiveIntegerFromEnv(env: NodeJS.ProcessEnv, name: string, fallback: number): number {
+  const parsed = Number.parseInt(env[name] ?? "", 10);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
 }
 
 export async function readSilenceFlag(workspaceRoot: string): Promise<{ path: string; firedAtMs: number } | null> {
@@ -96,6 +108,15 @@ export async function startTelegramNotifierFromEnv(env: NodeJS.ProcessEnv = proc
     aiReviewProvider: config.aiReview.provider,
     dashboardBaseUrl
   }).subscribe(getRuntimeEventBus()));
+  if (!stopFailedNotifyReplayWorker && failedNotifyReplayEnabled(env)) {
+    stopFailedNotifyReplayWorker = startFailedNotifyReplayWorker({
+      root: config.artist.workspaceRoot,
+      token,
+      aiReviewProvider: config.aiReview.provider,
+      dashboardBaseUrl,
+      intervalMs: positiveIntegerFromEnv(env, "OPENCLAW_FAILED_NOTIFY_REPLAY_INTERVAL_MS", 60_000)
+    });
+  }
   setTimeout(() => {
     void maybeSendSilenceRecoveryNotice(token, ownerIds, config.artist.workspaceRoot);
   }, SILENCE_RECOVERY_DELAY_MS).unref();
@@ -107,6 +128,8 @@ export function stopTelegramNotifierSubscriptions(): void {
     unsubscribe();
   }
   telegramNotifierUnsubscribers = [];
+  stopFailedNotifyReplayWorker?.();
+  stopFailedNotifyReplayWorker = null;
 }
 
 export function startRuntimeEventLedgerFromEnv(env: NodeJS.ProcessEnv = process.env): { started: number; reason?: string } {

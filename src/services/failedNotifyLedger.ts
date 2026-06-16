@@ -8,6 +8,7 @@ export type FailedNotifyStatus = "failed" | "replayed" | "replay_failed";
 
 export interface FailedNotifyEntry {
   notifyId: string;
+  deliveryId?: string;
   status: FailedNotifyStatus;
   eventType: RuntimeEvent["type"];
   songId?: string;
@@ -22,6 +23,7 @@ export interface FailedNotifyEntry {
 
 export interface FailedNotifySummaryEntry {
   notifyId: string;
+  deliveryId?: string;
   eventType: RuntimeEvent["type"];
   songId?: string;
   errorMessage: string;
@@ -98,6 +100,7 @@ export async function appendFailedNotification(
   const safeEvent = assertPayloadSafe(input.event);
   const entry: FailedNotifyEntry = {
     notifyId: notifyIdFor(safeEvent, input.chatId),
+    deliveryId: notifyIdFor(safeEvent, input.chatId),
     status: "failed",
     eventType: safeEvent.type,
     songId: eventSongId(safeEvent),
@@ -129,6 +132,7 @@ function latestByNotifyId(entries: FailedNotifyEntry[]): FailedNotifyEntry[] {
 function summary(entry: FailedNotifyEntry): FailedNotifySummaryEntry {
   return {
     notifyId: entry.notifyId,
+    deliveryId: entry.deliveryId,
     eventType: entry.eventType,
     songId: entry.songId,
     errorMessage: entry.errorMessage,
@@ -144,7 +148,7 @@ export async function listUnreplayedFailedNotifications(
   const sinceMs = options.since ? Date.parse(options.since) : Number.NaN;
   const limit = Math.max(0, options.limit ?? 20);
   return latestByNotifyId(await readFailedNotifyEntries(root))
-    .filter((entry) => entry.status === "failed")
+    .filter((entry) => entry.status !== "replayed")
     .filter((entry) => !Number.isFinite(sinceMs) || Date.parse(entry.failedAt) >= sinceMs)
     .sort((left, right) => right.failedAt.localeCompare(left.failedAt))
     .slice(0, limit)
@@ -172,6 +176,7 @@ export async function appendFailedNotifyReplayRecord(
   const entry: FailedNotifyEntry = {
     ...source,
     status: result.ok ? "replayed" : "replay_failed",
+    attempts: result.ok ? source.attempts : source.attempts + 1,
     replayedAt: (result.now ?? new Date()).toISOString(),
     replayError: result.ok ? undefined : ((result.error as Error)?.message ?? String(result.error))
   };

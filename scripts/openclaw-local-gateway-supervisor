@@ -15,6 +15,7 @@ set +o pipefail
 supervisor_log="${OPENCLAW_LOCAL_LOGS}/gateway.supervisor.log"
 watchdog_log="${OPENCLAW_LOCAL_LOGS}/telegram-watchdog.log"
 watchdog_flag="${OPENCLAW_LOCAL_WORKSPACE}/runtime/telegram-watchdog-fired-at.txt"
+ticker_watcher_log="${OPENCLAW_LOCAL_WORKSPACE}/runtime/ticker-watcher.log"
 # Singleton lock: prevents multiple independent supervisors from accumulating
 # (orphaned ppid=1 supervisors crash-looping on the same gateway port were the
 # source of restart-window races + log/CPU churn — Plan v10.65 Layer 0.5).
@@ -30,12 +31,16 @@ watchdog_interval="${OPENCLAW_TELEGRAM_WATCHDOG_INTERVAL:-30}"
 watchdog_tail_lines="${OPENCLAW_TELEGRAM_WATCHDOG_TAIL_LINES:-300}"
 watchdog_threshold="${OPENCLAW_TELEGRAM_WATCHDOG_THRESHOLD:-10}"
 watchdog_grace_seconds="${OPENCLAW_TELEGRAM_WATCHDOG_GRACE_SECONDS:-90}"
+ticker_watcher_enabled="${OPENCLAW_TICKER_WATCHER_ENABLED:-1}"
+ticker_watcher_interval_ms="${OPENCLAW_TICKER_WATCHER_INTERVAL_MS:-60000}"
+ticker_watcher_stale_ms="${OPENCLAW_TICKER_WATCHER_STALE_MS:-300000}"
 supervisor_heartbeat_interval="${OPENCLAW_SUPERVISOR_HEARTBEAT_INTERVAL:-15}"
 crash_tail_lines="${OPENCLAW_SUPERVISOR_CRASH_TAIL_LINES:-400}"
 supervisor_started_ms="$(node -e 'console.log(Date.now())' 2>/dev/null || date +%s000)"
 child=""
 watchdog_pid=""
 heartbeat_pid=""
+ticker_watcher_pid=""
 consecutive_crash_count=0
 
 log_line() {
@@ -104,6 +109,28 @@ supervisor_heartbeat_loop() {
   done
 }
 
+start_ticker_watcher() {
+  if [[ "${ticker_watcher_enabled}" == "0" || "${ticker_watcher_enabled}" == "off" || "${ticker_watcher_enabled}" == "false" ]]; then
+    log_line "ticker watcher disabled; OPENCLAW_TICKER_WATCHER_ENABLED=${ticker_watcher_enabled}"
+    return
+  fi
+  local ticker_token="${OPENCLAW_SAFE_TICK_TRIGGER_TOKEN:-${OPENCLAW_TICKER_WATCHER_TOKEN:-}}"
+  if [[ -z "${ticker_token}" ]]; then
+    log_line "ticker watcher disabled; safe tick token missing"
+    return
+  fi
+  node "${script_dir}/openclaw-ticker-watcher" \
+    --workspace "${OPENCLAW_LOCAL_WORKSPACE}" \
+    --gateway-url "${OPENCLAW_LOCAL_GATEWAY_HTTP_URL}" \
+    --supervisor "${script_dir}/openclaw-local-gateway-supervisor" \
+    --log "${ticker_watcher_log}" \
+    --stale-ms "${ticker_watcher_stale_ms}" \
+    --interval-ms "${ticker_watcher_interval_ms}" \
+    --token "${ticker_token}" >/dev/null 2>&1 &
+  ticker_watcher_pid=$!
+  log_line "ticker watcher started pid=${ticker_watcher_pid} staleMs=${ticker_watcher_stale_ms} intervalMs=${ticker_watcher_interval_ms}"
+}
+
 capture_gateway_exit_evidence() {
   local target_pid="$1"
   local target_rc="$2"
@@ -169,6 +196,9 @@ handle_term() {
   if [[ -n "${heartbeat_pid}" ]]; then
     kill "${heartbeat_pid}" 2>/dev/null
   fi
+  if [[ -n "${ticker_watcher_pid}" ]]; then
+    kill "${ticker_watcher_pid}" 2>/dev/null
+  fi
   if [[ -n "${child}" ]]; then
     kill "${child}" 2>/dev/null
   fi
@@ -181,6 +211,7 @@ log_line "started (pid $$)"
 acquire_singleton_lock
 supervisor_heartbeat_loop &
 heartbeat_pid=$!
+start_ticker_watcher
 
 while true; do
   child_started_ms="$(now_ms)"
