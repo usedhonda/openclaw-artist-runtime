@@ -136,6 +136,9 @@ export class TelegramNotifier {
     if (event.type === "song_take_completed") {
       await this.attachSongCompletionButtons(event, sent.message_id);
     }
+    if (event.type === "suno_take_url_ready") {
+      await this.attachSunoTakeUrlReadyButtons(event, sent.message_id);
+    }
     if (event.type === "distribution_change_detected") {
       await this.attachDistributionButtons(event, sent.message_id, text)
         .catch((error) => logNotifySideEffectFailure("attachDistributionButtons", error));
@@ -205,6 +208,36 @@ export class TelegramNotifier {
       })] : [])
     ];
     const [archive, discard] = await Promise.all(actions);
+    await this.client.editMessageReplyMarkup(this.options.chatId, messageId, {
+      inline_keyboard: [[
+        { text: buttonVoiceLabels.songCompletion.archive, callback_data: `cb:${archive.callbackId}` },
+        { text: buttonVoiceLabels.songCompletion.discard, callback_data: `cb:${discard.callbackId}` }
+      ]]
+    });
+  }
+
+  private async attachSunoTakeUrlReadyButtons(event: Extract<RuntimeEvent, { type: "suno_take_url_ready" }>, messageId: number): Promise<void> {
+    if (!isInlineButtonsEnabled() || !this.options.workspaceRoot || typeof this.options.chatId !== "number") {
+      return;
+    }
+    const [archive, discard] = await Promise.all([
+      registerCallbackAction(this.options.workspaceRoot, {
+        action: "song_archive",
+        songId: event.songId,
+        selectedTakeId: event.selectedTakeId,
+        chatId: this.options.chatId,
+        messageId,
+        userId: this.options.chatId
+      }),
+      registerCallbackAction(this.options.workspaceRoot, {
+        action: "song_discard",
+        songId: event.songId,
+        selectedTakeId: event.selectedTakeId,
+        chatId: this.options.chatId,
+        messageId,
+        userId: this.options.chatId
+      })
+    ]);
     await this.client.editMessageReplyMarkup(this.options.chatId, messageId, {
       inline_keyboard: [[
         { text: buttonVoiceLabels.songCompletion.archive, callback_data: `cb:${archive.callbackId}` },
@@ -930,6 +963,7 @@ async function formatSongTakeCompleted(
 const RESOURCE_TARGETED_EVENT_TYPES: ReadonlySet<RuntimeEvent["type"]> = new Set([
   "prompt_pack_ready",
   "song_take_completed",
+  "suno_take_url_ready",
   "song_spawn_proposed",
   "planning_skeleton_incomplete",
   "suno_create_failed",
@@ -952,6 +986,7 @@ function extractResourceSongId(event: RuntimeEvent): string | undefined {
       return undefined;
     case "prompt_pack_ready":
     case "song_take_completed":
+    case "suno_take_url_ready":
     case "suno_create_failed":
     case "suno_generate_retry":
     case "suno_generate_failed":
@@ -1023,6 +1058,7 @@ async function resolveResourcePathsForEvent(
       break;
     }
     case "song_take_completed":
+    case "suno_take_url_ready":
     case "suno_create_failed":
     case "suno_generate_retry":
     case "suno_generate_failed":
@@ -1097,6 +1133,7 @@ export async function enrichWithResources(
 function callbackActionsForRuntimeEvent(event: RuntimeEvent): string[] {
   switch (event.type) {
     case "song_take_completed":
+    case "suno_take_url_ready":
       return ["song_archive", "song_discard"];
     case "distribution_change_detected":
       return ["dist_apply", "dist_skip"];
@@ -1174,6 +1211,19 @@ async function formatRuntimeEventRaw(
       return `Autopilot state: enabled=${event.enabled} paused=${event.paused}${event.reason ? ` reason=${event.reason}` : ""}`;
     case "song_take_completed":
       return formatSongTakeCompleted(event, options);
+    case "suno_take_url_ready":
+      return [
+        `生成中、じき完成。${event.songId}。先にURLだけ届ける。`,
+        "",
+        TELEGRAM_SECTION_DIVIDER,
+        event.selectedTakeId ? `take: ${event.selectedTakeId}` : undefined,
+        `run: ${event.runId}`,
+        "🔗 試聴:",
+        formatTelegramUrlList(event.urls),
+        "音源ファイルは採用後に一度だけ取りに行く。取れなくてもこのURLは有効。",
+        "",
+        "非公開、御大のみ"
+      ].filter(Boolean).join("\n");
     case "theme_generated":
       return hybridEventReport(
         event,

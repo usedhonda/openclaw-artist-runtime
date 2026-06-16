@@ -21,6 +21,7 @@ import {
 } from "./sunoBudget.js";
 import { emitRuntimeEvent } from "./runtimeEventBus.js";
 import { SunoBrowserWorker } from "./sunoBrowserWorker.js";
+import { extractSunoTakeId } from "./takeAttributionGuard.js";
 
 export interface GenerateSunoRunInput {
   workspaceRoot: string;
@@ -249,9 +250,13 @@ export async function generateSunoRun(input: GenerateSunoRunInput): Promise<Suno
   ]);
 
   await appendJsonl(getRunsPath(input.workspaceRoot, input.songId), record);
+  const firstTakeUrl = createResult?.pendingTakeUrl ?? createResult?.urls.find(Boolean);
+  const acceptedWithUrl = Boolean(authorityDecision.allowed && createResult?.accepted && firstTakeUrl);
   await updateSongState(input.workspaceRoot, input.songId, {
-    status: authorityDecision.allowed && createResult?.accepted ? "suno_running" : "suno_prompt_pack",
-    reason: authorityDecision.reason,
+    status: acceptedWithUrl ? "suno_take_url_ready" : authorityDecision.allowed && createResult?.accepted ? "suno_running" : "suno_prompt_pack",
+    reason: acceptedWithUrl ? "Suno take URL ready; audio rendering pending" : authorityDecision.reason,
+    selectedTakeId: firstTakeUrl ? extractSunoTakeId(firstTakeUrl) ?? firstTakeUrl : undefined,
+    appendPublicLinks: createResult?.accepted ? createResult.urls : undefined,
     runCountDelta: 1
   });
 

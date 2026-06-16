@@ -33,6 +33,7 @@ const CRITICAL_NOTIFY_EVENTS: ReadonlySet<RuntimeEvent["type"]> = new Set([
   "prompt_pack_ready",
   "song_spawn_proposed",
   "song_take_completed",
+  "suno_take_url_ready",
   "lyrics_generation_degraded",
   "planning_skeleton_incomplete",
   "suno_create_failed",

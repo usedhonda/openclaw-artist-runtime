@@ -25,6 +25,7 @@ function normalizeSongStatus(value: string): SongStatus | undefined {
     case "lyrics":
     case "suno_prompt_pack":
     case "suno_running":
+    case "suno_take_url_ready":
     case "takes_imported":
     case "take_selected":
     case "social_assets":

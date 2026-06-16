@@ -20,6 +20,7 @@ import { emitRuntimeEvent } from "./runtimeEventBus.js";
 import type { TelegramClient } from "./telegramClient.js";
 import { executeXPublishAction, type XPublishActionInput } from "./xPublishActionRegistry.js";
 import { stampCallback } from "./receiveHealthService.js";
+import { scheduleDownloadAfterAdoptionJob } from "./sunoAdoptionDownloadJob.js";
 
 export const STALE_CALLBACK_JA_REPLY = "このボタンはもう古い。 最新の通知から選び直して。";
 
@@ -420,6 +421,15 @@ export async function routeTelegramCallback(ctx: TelegramCallbackContext): Promi
       const auditReason = actionResult.reason ?? actionResult.status;
       await markCallbackResolved(ctx.root, callbackId, { status: callbackStatus, reason: auditReason, now });
       await appendCallbackAudit(ctx.root, auditBase(ctx, callbackId, entry, callbackResult, auditReason));
+      if (entry.action === "song_archive" && actionResult.status === "applied" && entry.songId) {
+        await scheduleDownloadAfterAdoptionJob({
+          root: ctx.root,
+          songId: entry.songId,
+          chatId: entry.chatId,
+          client: ctx.client,
+          now
+        });
+      }
       if (entry.action === "song_discard") {
         await releaseDiscardedCurrentSongLane(ctx.root, entry.songId, now);
       }

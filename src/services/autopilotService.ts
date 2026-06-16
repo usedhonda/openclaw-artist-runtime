@@ -125,6 +125,20 @@ function releaseAfterTakeCompletion(baseState: AutopilotRunState): AutopilotRunS
   };
 }
 
+function releaseAfterSunoTakeUrlReady(baseState: AutopilotRunState): AutopilotRunState {
+  return {
+    ...baseState,
+    currentSongId: undefined,
+    stage: "idle",
+    paused: false,
+    pausedReason: undefined,
+    suspendedAt: undefined,
+    blockedReason: undefined,
+    lastError: undefined,
+    lastSuccessfulStage: "suno_generation"
+  };
+}
+
 async function hasProducerSpawnApproval(root: string, songId: string): Promise<boolean> {
   const entries = await readCallbackActionEntries(root).catch(() => []);
   return entries.some((entry) => entry.songId === songId && entry.action === "song_spawn_inject" && entry.status === "applied");
@@ -494,6 +508,7 @@ export function stageFromSong(song?: SongState): AutopilotStage {
       return "prompt_pack";
     case "suno_prompt_pack":
     case "suno_running":
+    case "suno_take_url_ready":
     case "takes_imported":
       return song.status === "takes_imported" ? "take_selection" : "suno_generation";
     case "take_selected":
@@ -515,14 +530,14 @@ export function stageFromSong(song?: SongState): AutopilotStage {
 async function currentSong(root: string, preferredSongId?: string): Promise<SongState | undefined> {
   const songs = await listSongStates(root);
   const preferred = preferredSongId ? songs.find((song) => song.songId === preferredSongId) : undefined;
-  if (preferred && !["scheduled", "published", "archived", "discarded", "failed"].includes(preferred.status)) {
+  if (preferred && !["scheduled", "published", "archived", "discarded", "failed", "suno_take_url_ready"].includes(preferred.status)) {
     return preferred;
   }
-  return songs.find((song) => !["scheduled", "published", "archived", "discarded", "failed", "take_selected"].includes(song.status));
+  return songs.find((song) => !["scheduled", "published", "archived", "discarded", "failed", "take_selected", "suno_take_url_ready"].includes(song.status));
 }
 
 async function ensureLyrics(root: string, song: SongState, config?: Partial<ArtistRuntimeConfig>): Promise<SongState> {
-  if (song.status === "lyrics" || song.status === "suno_prompt_pack" || song.status === "suno_running" || song.status === "takes_imported" || song.status === "take_selected" || song.status === "social_assets" || song.status === "published") {
+  if (song.status === "lyrics" || song.status === "suno_prompt_pack" || song.status === "suno_running" || song.status === "suno_take_url_ready" || song.status === "takes_imported" || song.status === "take_selected" || song.status === "social_assets" || song.status === "published") {
     return song;
   }
   await draftLyrics({
@@ -1304,6 +1319,22 @@ export class ArtistAutopilotService {
           }
           if (run.status === "failed" || run.status === "blocked_authority") {
             return handleSunoGenerateFailure(input.workspaceRoot, existing, baseState, song, run.error?.message ?? run.authorityDecision.reason);
+          }
+          if (run.status === "accepted" && run.urls.length > 0) {
+            const selectedTakeId = run.urls[0]?.match(/https?:\/\/(?:www\.)?suno\.com\/song\/([^/?#]+)/i)?.[1] ?? run.urls[0];
+            emitRuntimeEvent({
+              type: "suno_take_url_ready",
+              songId: song.songId,
+              runId: run.runId,
+              urls: run.urls,
+              selectedTakeId,
+              timestamp: Date.now()
+            });
+            await markBuildingDraftDone(input.workspaceRoot, song.songId);
+            return writeStageState(input.workspaceRoot, existing, {
+              ...releaseAfterSunoTakeUrlReady(baseState),
+              cycleCount: existing.cycleCount + 1
+            });
           }
           return writeStageState(input.workspaceRoot, existing, {
             ...baseState,

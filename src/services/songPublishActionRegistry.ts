@@ -59,10 +59,12 @@ async function readSafety(root: string): Promise<SongPublishActionResult["safety
   };
 }
 
-const discardableReviewStatuses = new Set<SongStatus>(["brief", "take_selected", "social_assets", "publishing"]);
+const archivableReviewStatuses = new Set<SongStatus>(["take_selected", "suno_take_url_ready"]);
+const discardableReviewStatuses = new Set<SongStatus>(["brief", "suno_take_url_ready", "take_selected", "social_assets", "publishing"]);
 
 function discardReasonForStatus(status: SongStatus): string {
   if (status === "brief") return "producer discarded brief before Suno generation";
+  if (status === "suno_take_url_ready") return "producer discarded Suno URL before audio import";
   if (status === "take_selected") return "producer discarded selected take and kept brief for reuse";
   return `discard_from_post_review:${status}`;
 }
@@ -83,7 +85,7 @@ export async function runSongPublishAction(action: SongPublishAction, context: S
   }
 
   if (action === "song_archive" || action === "song_discard") {
-    if (action === "song_archive" && currentSong.status !== "take_selected") {
+    if (action === "song_archive" && !archivableReviewStatuses.has(currentSong.status)) {
       throw new Error(`invalid_song_review_transition:${currentSong.status}`);
     }
     if (action === "song_archive") {

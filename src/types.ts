@@ -24,7 +24,7 @@ export const platformAuthStatuses = ["unconfigured", "configured", "tested", "fa
 export const aiReviewProviders = ["mock", "openclaw", "openai-codex"] as const;
 export const sunoWorkerStates = ["disconnected", "connecting", "connected", "generating", "importing", "login_required", "login_challenge", "captcha", "payment_prompt", "ui_mismatch", "quota_exhausted", "paused", "stopped"] as const;
 export const autopilotStages = ["idle", "planning", "prompt_pack", "suno_generation", "take_selection", "asset_generation", "publishing", "completed", "paused", "failed_closed"] as const;
-export const songStatuses = ["idea", "brief", "lyrics", "suno_prompt_pack", "suno_running", "takes_imported", "take_selected", "social_assets", "publishing", "scheduled", "published", "archived", "discarded", "failed"] as const;
+export const songStatuses = ["idea", "brief", "lyrics", "suno_prompt_pack", "suno_running", "suno_take_url_ready", "takes_imported", "take_selected", "social_assets", "publishing", "scheduled", "published", "archived", "discarded", "failed"] as const;
 export const sunoRunStatuses = ["blocked_dry_run", "blocked_authority", "accepted", "imported", "failed"] as const;
 export const songUpdateFields = [
   "title",
@@ -851,6 +851,7 @@ export interface SunoCreateResult {
   runId: string;
   reason: string;
   urls: string[];
+  pendingTakeUrl?: string;
   dryRun?: boolean;
 }
 
