@@ -964,6 +964,7 @@ const RESOURCE_TARGETED_EVENT_TYPES: ReadonlySet<RuntimeEvent["type"]> = new Set
   "prompt_pack_ready",
   "song_take_completed",
   "suno_take_url_ready",
+  "suno_adoption_download_imported",
   "song_spawn_proposed",
   "planning_skeleton_incomplete",
   "suno_create_failed",
@@ -987,6 +988,7 @@ function extractResourceSongId(event: RuntimeEvent): string | undefined {
     case "prompt_pack_ready":
     case "song_take_completed":
     case "suno_take_url_ready":
+    case "suno_adoption_download_imported":
     case "suno_create_failed":
     case "suno_generate_retry":
     case "suno_generate_failed":
@@ -1207,6 +1209,17 @@ async function formatRuntimeEventRaw(
       return `Autopilot stage: ${event.from ?? "unknown"} -> ${event.to}${event.songId ? ` (${event.songId})` : ""}`;
     case "take_imported":
       return `Take imported: ${event.songId} (${event.paths.length} path(s))`;
+    case "suno_adoption_download_imported":
+      return [
+        `音源ファイルも取れた。${event.songId}。`,
+        "",
+        TELEGRAM_SECTION_DIVIDER,
+        event.selectedTakeId ? `take: ${event.selectedTakeId}` : undefined,
+        `run: ${event.runId}`,
+        event.paths.length > 0 ? `保存: ${event.paths.join(", ")}` : "保存: 取得済み",
+        "🔗 試聴:",
+        formatTelegramUrlList(event.urls)
+      ].filter((line): line is string => Boolean(line)).join("\n");
     case "autopilot_state_changed":
       return `Autopilot state: enabled=${event.enabled} paused=${event.paused}${event.reason ? ` reason=${event.reason}` : ""}`;
     case "song_take_completed":

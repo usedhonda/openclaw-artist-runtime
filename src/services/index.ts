@@ -11,6 +11,7 @@ import { isTelegramNotifierEnabled, resolveDefaultWorkspaceRoot, resolveRuntimeC
 import { SocialDistributionWorker } from "./socialDistributionWorker.js";
 import { SunoBrowserWorker } from "./sunoBrowserWorker.js";
 import { startFailedNotifyReplayWorker } from "./failedNotifyReplayWorker.js";
+import { rearmQueuedAdoptionDownloadJobs } from "./sunoAdoptionDownloadJob.js";
 import { getTelegramOwnerUserIds } from "./telegramAuth.js";
 import { TelegramNotifier } from "./telegramNotifier.js";
 
@@ -40,6 +41,22 @@ function failedNotifyReplayEnabled(env: NodeJS.ProcessEnv): boolean {
 function positiveIntegerFromEnv(env: NodeJS.ProcessEnv, name: string, fallback: number): number {
   const parsed = Number.parseInt(env[name] ?? "", 10);
   return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
+}
+
+function adoptionDownloadClient(token: string): { sendMessage(chatId: number, text: string): Promise<unknown> } {
+  return {
+    async sendMessage(chatId, text) {
+      const response = await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ chat_id: chatId, text })
+      });
+      if (!response.ok) {
+        throw new Error(`telegram_send_failed:${response.status}`);
+      }
+      return response.json();
+    }
+  };
 }
 
 export async function readSilenceFlag(workspaceRoot: string): Promise<{ path: string; firedAtMs: number } | null> {
@@ -117,6 +134,13 @@ export async function startTelegramNotifierFromEnv(env: NodeJS.ProcessEnv = proc
       intervalMs: positiveIntegerFromEnv(env, "OPENCLAW_FAILED_NOTIFY_REPLAY_INTERVAL_MS", 60_000)
     });
   }
+  const primaryChatId = Number(ownerIds[0]);
+  void rearmQueuedAdoptionDownloadJobs({
+    root: config.artist.workspaceRoot,
+    chatId: Number.isFinite(primaryChatId) ? primaryChatId : undefined,
+    client: Number.isFinite(primaryChatId) ? adoptionDownloadClient(token) : undefined,
+    config
+  }).catch((error) => logSideEffectFailure("adoption download job rearm", error));
   setTimeout(() => {
     void maybeSendSilenceRecoveryNotice(token, ownerIds, config.artist.workspaceRoot);
   }, SILENCE_RECOVERY_DELAY_MS).unref();

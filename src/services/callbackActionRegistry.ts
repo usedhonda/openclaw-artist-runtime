@@ -328,6 +328,33 @@ export async function markCallbackResolved(root: string, callbackId: string, inp
   });
 }
 
+export async function markSiblingCallbacksResolved(
+  root: string,
+  entry: CallbackActionEntry,
+  input: MarkCallbackResolvedInput & { actions: ReadonlySet<string> }
+): Promise<CallbackActionEntry[]> {
+  const now = input.now ?? Date.now();
+  const latest = latestCallbackActionEntries(await readCallbackActionEntries(root));
+  const siblings = latest.filter((candidate) =>
+    candidate.callbackId !== entry.callbackId
+    && candidate.status === "pending"
+    && candidate.chatId === entry.chatId
+    && candidate.messageId === entry.messageId
+    && candidate.songId === entry.songId
+    && input.actions.has(candidate.action)
+  );
+  const resolved: CallbackActionEntry[] = [];
+  for (const sibling of siblings) {
+    const next = await markCallbackResolved(root, sibling.callbackId, {
+      status: input.status,
+      reason: input.reason,
+      now
+    });
+    if (next) resolved.push(next);
+  }
+  return resolved;
+}
+
 async function appendCallbackAuditMarker(
   root: string,
   entry: CallbackActionEntry,

@@ -21,6 +21,8 @@ export interface AdoptionDownloadJobInput {
   now?: number;
 }
 
+export type AdoptionDownloadRearmInput = Omit<AdoptionDownloadJobInput, "songId" | "delayMs">;
+
 type AdoptionDownloadJobStatus = "queued" | "imported" | "failed" | "skipped";
 
 interface AdoptionDownloadJobEntry {
@@ -33,6 +35,12 @@ interface AdoptionDownloadJobEntry {
   createdAt: string;
   scheduledFor?: string;
   completedAt?: string;
+}
+
+export interface AdoptionDownloadRearmResult {
+  queued: number;
+  rearmed: number;
+  runNow: number;
 }
 
 function jobsPath(root: string): string {
@@ -114,11 +122,19 @@ export async function runDownloadAfterAdoptionJob(input: AdoptionDownloadJobInpu
     urls: result.urls,
     selectedTakeId: result.selectedTakeId,
     resultRefs: result.paths ?? [],
-    config: input.config
+    config: input.config,
+    preserveSongLifecycle: true
   });
   const entry = { jobId: id, songId: input.songId, status: "imported" as const, runId, urls: result.urls, createdAt: completedAt, completedAt };
   await appendJobEntry(input.root, entry);
   return entry;
+}
+
+function armDownloadAfterAdoptionJob(input: AdoptionDownloadJobInput, id: string, delayMs: number): void {
+  const timer = setTimeout(() => {
+    void runDownloadAfterAdoptionJob(input, id);
+  }, delayMs);
+  timer.unref?.();
 }
 
 export async function scheduleDownloadAfterAdoptionJob(input: AdoptionDownloadJobInput): Promise<AdoptionDownloadJobEntry> {
@@ -133,14 +149,40 @@ export async function scheduleDownloadAfterAdoptionJob(input: AdoptionDownloadJo
     scheduledFor: new Date(createdAtMs + delayMs).toISOString()
   };
   await appendJobEntry(input.root, entry);
-  const timer = setTimeout(() => {
-    void runDownloadAfterAdoptionJob(input, id);
-  }, delayMs);
-  timer.unref?.();
+  armDownloadAfterAdoptionJob(input, id, delayMs);
   return entry;
 }
 
 export async function readAdoptionDownloadJobEntries(root: string): Promise<AdoptionDownloadJobEntry[]> {
   const contents = await readFile(jobsPath(root), "utf8").catch(() => "");
   return contents.split("\n").filter(Boolean).map((line) => JSON.parse(line) as AdoptionDownloadJobEntry);
+}
+
+export async function rearmQueuedAdoptionDownloadJobs(input: AdoptionDownloadRearmInput): Promise<AdoptionDownloadRearmResult> {
+  const latestByJob = new Map<string, AdoptionDownloadJobEntry>();
+  for (const entry of await readAdoptionDownloadJobEntries(input.root)) {
+    latestByJob.set(entry.jobId, entry);
+  }
+  const now = input.now ?? Date.now();
+  const queued = [...latestByJob.values()].filter((entry) => entry.status === "queued");
+  let rearmed = 0;
+  let runNow = 0;
+  for (const entry of queued) {
+    const scheduledAt = entry.scheduledFor ? Date.parse(entry.scheduledFor) : now;
+    const delayMs = Math.max(0, Number.isFinite(scheduledAt) ? scheduledAt - now : 0);
+    const jobInput = {
+      ...input,
+      songId: entry.songId,
+      now: undefined,
+      delayMs: undefined
+    };
+    if (delayMs === 0) {
+      runNow += 1;
+      void runDownloadAfterAdoptionJob(jobInput, entry.jobId);
+    } else {
+      rearmed += 1;
+      armDownloadAfterAdoptionJob(jobInput, entry.jobId, delayMs);
+    }
+  }
+  return { queued: queued.length, rearmed, runNow };
 }

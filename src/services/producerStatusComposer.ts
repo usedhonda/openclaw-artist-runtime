@@ -1,4 +1,4 @@
-import { readSongState } from "./artistState.js";
+import { listSongStates, readSongState } from "./artistState.js";
 import { readAutopilotRunState } from "./autopilotService.js";
 import { listPendingCallbackActionSummaries } from "./callbackActionRegistry.js";
 import { composeDraftBoxNextAction, formatDraftBoxNextActionSection } from "./draftBoxNextAction.js";
@@ -29,14 +29,15 @@ function dashboardLine(baseUrl: string | undefined, songId: string | undefined):
 
 export async function composeProducerStatus(root: string, options: ProducerStatusOptions = {}): Promise<string> {
   const now = options.now ?? Date.now();
-  const [autopilot, pending, receive] = await Promise.all([
+  const [autopilot, pending, receive, songs] = await Promise.all([
     readAutopilotRunState(root),
     listPendingCallbackActionSummaries(root, {
       category: "producer_decision",
       limit: options.limit ?? 6,
       now
     }),
-    readReceiveHealth(root)
+    readReceiveHealth(root),
+    listSongStates(root)
   ]);
   const draftBox = await composeDraftBoxNextAction(root, { state: autopilot });
   const stage = options.autopilotStatus?.stage ?? autopilot.stage;
@@ -58,6 +59,7 @@ export async function composeProducerStatus(root: string, options: ProducerStatu
       : "- 最後のボタン受信: 記録なし"
   ];
   const publicLinks = song?.publicLinks?.length ? song.publicLinks : [];
+  const awaitingUrlReady = songs.filter((candidate) => candidate.status === "suno_take_url_ready");
   const nextLine = pending.recent[0]
     ? `次: ${pending.recent[0].label} を押すと、${pending.recent[0].effect}`
     : draftBox.nextAction;
@@ -78,6 +80,13 @@ export async function composeProducerStatus(root: string, options: ProducerStatu
     "",
     "待ち:",
     ...waitingLines,
+    ...(awaitingUrlReady.length > 0
+      ? [
+          "",
+          "Suno URL 採用待ち:",
+          ...awaitingUrlReady.slice(0, options.limit ?? 6).map((candidate) => `- ${candidate.songId} / ${candidate.title}: ${candidate.publicLinks[0] ?? "URLなし"}`)
+        ]
+      : []),
     "",
     "公開 URL:",
     ...(publicLinks.length > 0 ? publicLinks.map((link) => `- ${link}`) : ["- なし"]),

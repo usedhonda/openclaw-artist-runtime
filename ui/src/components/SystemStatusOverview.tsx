@@ -52,6 +52,16 @@ type StatusShape = {
     count: number;
     recent: FailedNotification[];
   };
+  awaitingSunoTakeUrlReady?: {
+    count: number;
+    recent: Array<{
+      songId: string;
+      title: string;
+      selectedTakeId?: string;
+      urls: string[];
+      updatedAt?: string;
+    }>;
+  };
   recentSong?: {
     songId: string;
     title: string;
@@ -88,6 +98,7 @@ function expiresIn(callback: PendingCallback, now: number): string {
 export function SystemStatusOverview({ status, now = Date.now() }: SystemStatusOverviewProps) {
   const pendingCallbacks = status?.pendingCallbacks?.recent ?? [];
   const failedNotifications = status?.failedNotifications?.recent ?? [];
+  const awaitingSunoTakeUrlReady = status?.awaitingSunoTakeUrlReady?.recent ?? [];
   const [replayingNotifyId, setReplayingNotifyId] = React.useState<string | null>(null);
   const [replayMessage, setReplayMessage] = React.useState<string | null>(null);
   const currentSong = status?.recentSong ?? (status?.autopilot.currentSongId
@@ -128,6 +139,15 @@ export function SystemStatusOverview({ status, now = Date.now() }: SystemStatusO
           <div className="eyebrow">対象 song</div>
           <strong>{currentSong?.songId ?? "-"}</strong>
           <div className="muted">{currentSong ? `${currentSong.title} · ${currentSong.status}` : "曲は未選択"}</div>
+        </div>
+        <div className={`item system-status-item ${awaitingSunoTakeUrlReady.length > 0 ? "needs-attention" : "is-ok"}`}>
+          <div className="eyebrow">Suno URL 採用待ち</div>
+          <strong>{status?.awaitingSunoTakeUrlReady?.count ?? 0}</strong>
+          <div className="muted">
+            {awaitingSunoTakeUrlReady[0]
+              ? `${awaitingSunoTakeUrlReady[0].songId} · ${awaitingSunoTakeUrlReady[0].title}`
+              : "採用待ち URL なし"}
+          </div>
         </div>
         <div className={`item system-status-item ${status?.sunoWorker.connected ? "is-ok" : "needs-attention"}`}>
           <div className="eyebrow">Suno worker</div>

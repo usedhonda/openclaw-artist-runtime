@@ -240,6 +240,22 @@ async function buildWorkspaceSummaries(workspaceRoot: string): Promise<Pick<Stat
   };
 }
 
+async function buildAwaitingSunoTakeUrlReady(workspaceRoot: string): Promise<NonNullable<StatusResponse["awaitingSunoTakeUrlReady"]>> {
+  const recent = (await listSongStates(workspaceRoot))
+    .filter((song) => song.status === "suno_take_url_ready")
+    .map((song) => ({
+      songId: song.songId,
+      title: song.title,
+      selectedTakeId: song.selectedTakeId,
+      urls: song.publicLinks,
+      updatedAt: song.updatedAt
+    }));
+  return {
+    count: recent.length,
+    recent: recent.slice(0, 5)
+  };
+}
+
 function importOutcomeTime(outcome?: { at: string }): number {
   if (!outcome?.at) {
     return 0;
@@ -902,9 +918,10 @@ export async function buildStatusResponse(config?: Partial<ArtistRuntimeConfig>)
     summarizePendingCallbackActions(mergedConfig.artist.workspaceRoot, 8),
     summarizeFailedNotifications(mergedConfig.artist.workspaceRoot, 8)
   ]);
-  const [musicSummary, distributionSummary] = await Promise.all([
+  const [musicSummary, distributionSummary, awaitingSunoTakeUrlReady] = await Promise.all([
     buildMusicSummary(mergedConfig),
-    buildDistributionSummary(mergedConfig, platforms)
+    buildDistributionSummary(mergedConfig, platforms),
+    buildAwaitingSunoTakeUrlReady(mergedConfig.artist.workspaceRoot)
   ]);
   const [recentDistributionEvents, platformStats, runtimeEventsLedger, telegramInbound] = await Promise.all([
     readDistributionEvents(mergedConfig.artist.workspaceRoot, 20),
@@ -965,6 +982,7 @@ export async function buildStatusResponse(config?: Partial<ArtistRuntimeConfig>)
     },
     pendingCallbacks,
     failedNotifications,
+    awaitingSunoTakeUrlReady,
     platforms,
     musicSummary,
     distributionSummary,

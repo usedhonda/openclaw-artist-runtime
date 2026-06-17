@@ -1145,6 +1145,16 @@ export interface StatusResponse {
       failedAt: string;
     }>;
   };
+  awaitingSunoTakeUrlReady?: {
+    count: number;
+    recent: Array<{
+      songId: string;
+      title: string;
+      selectedTakeId?: string;
+      urls: string[];
+      updatedAt?: string;
+    }>;
+  };
   platforms: Record<SocialPlatform, PlatformStatus>;
   musicSummary: MusicSummary;
   distributionSummary: DistributionSummary;

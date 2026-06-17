@@ -6,14 +6,16 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { ensureArtistWorkspace } from "../src/services/artistWorkspace";
 import { readSongState, updateSongState } from "../src/services/artistState";
 import { ArtistAutopilotService, writeAutopilotRunState } from "../src/services/autopilotService";
-import { registerCallbackAction } from "../src/services/callbackActionRegistry";
-import { DEFAULT_ADOPTION_DOWNLOAD_DELAY_MS, readAdoptionDownloadJobEntries } from "../src/services/sunoAdoptionDownloadJob";
+import { readCallbackActionEntries, registerCallbackAction } from "../src/services/callbackActionRegistry";
+import { composeProducerStatus } from "../src/services/producerStatusComposer";
+import { DEFAULT_ADOPTION_DOWNLOAD_DELAY_MS, readAdoptionDownloadJobEntries, rearmQueuedAdoptionDownloadJobs } from "../src/services/sunoAdoptionDownloadJob";
 import { createAndPersistSunoPromptPack } from "../src/services/sunoPromptPackFiles";
 import { readLatestSunoRun } from "../src/services/sunoRuns";
 import { routeTelegramCallback } from "../src/services/telegramCallbackHandler";
 import type { TelegramClient } from "../src/services/telegramClient";
 import { formatRuntimeEvent, TelegramNotifier } from "../src/services/telegramNotifier";
 import { getRuntimeEventBus, type RuntimeEvent } from "../src/services/runtimeEventBus";
+import { buildStatusResponse } from "../src/routes";
 
 const { connectorStatusMock, connectorCreateMock, connectorImportMock } = vi.hoisted(() => ({
   connectorStatusMock: vi.fn(),
@@ -236,6 +238,188 @@ describe("Suno take URL ready flow", () => {
     const sendMessage = client.sendMessage as unknown as ReturnType<typeof vi.fn>;
     expect(sendMessage.mock.calls.some((call) => String(call[1]).includes("音源ファイルは取れなかった。Suno URLは有効"))).toBe(true);
     expect(String(sendMessage.mock.calls.at(-1)?.[1])).toContain("https://suno.com/song/take-ready");
+  });
+
+  it("preserves archived status after a successful adoption download import and does not re-pick the song", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-06-16T00:00:00.000Z"));
+    const root = workspace();
+    await ensureArtistWorkspace(root);
+    await updateSongState(root, "song-url", {
+      title: "URL Gate",
+      status: "suno_take_url_ready",
+      selectedTakeId: "take-ready",
+      appendPublicLinks: ["https://suno.com/song/take-ready"]
+    });
+    await writeAcceptedRun(root);
+    connectorImportMock.mockResolvedValue({
+      runId: "run-ready",
+      urls: ["https://suno.com/song/take-ready"],
+      paths: ["songs/song-url/suno/take-ready.mp3"],
+      selectedTakeId: "take-ready"
+    });
+    const archive = await registerCallbackAction(root, {
+      action: "song_archive",
+      songId: "song-url",
+      selectedTakeId: "take-ready",
+      chatId: 123,
+      messageId: 77,
+      userId: 123,
+      now: Date.parse("2026-06-16T00:00:00.000Z")
+    });
+    await routeTelegramCallback({
+      root,
+      client: callbackClient(),
+      callbackQueryId: "archive-url",
+      data: `cb:${archive.callbackId}`,
+      fromUserId: 123,
+      chatId: 123,
+      messageId: 77,
+      now: Date.parse("2026-06-16T00:00:00.000Z")
+    });
+
+    await vi.advanceTimersByTimeAsync(DEFAULT_ADOPTION_DOWNLOAD_DELAY_MS);
+    await vi.waitFor(() => expect(connectorImportMock).toHaveBeenCalledTimes(1));
+    const song = await readSongState(root, "song-url");
+    expect(song).toMatchObject({
+      status: "archived",
+      selectedTakeId: "take-ready",
+      lastImportOutcome: expect.objectContaining({ runId: "run-ready", pathCount: 1 })
+    });
+    const state = await new ArtistAutopilotService().runCycle({
+      workspaceRoot: root,
+      config: {
+        artist: { workspaceRoot: root },
+        autopilot: { enabled: true, dryRun: false },
+        music: { suno: { driver: "playwright", submitMode: "live", authority: "auto_create_and_select_take" } },
+        telegram: { enabled: false },
+        songSpawn: { enabled: false }
+      }
+    });
+    expect(state.currentSongId).not.toBe("song-url");
+  });
+
+  it("re-arms queued adoption download jobs after a restart-equivalent timer loss", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-06-16T00:00:00.000Z"));
+    const root = workspace();
+    await ensureArtistWorkspace(root);
+    await updateSongState(root, "song-url", {
+      title: "URL Gate",
+      status: "suno_take_url_ready",
+      selectedTakeId: "take-ready",
+      appendPublicLinks: ["https://suno.com/song/take-ready"]
+    });
+    await writeAcceptedRun(root);
+    connectorImportMock.mockResolvedValue({
+      runId: "run-ready",
+      urls: ["https://suno.com/song/take-ready"],
+      paths: ["songs/song-url/suno/take-ready.mp3"],
+      selectedTakeId: "take-ready"
+    });
+    const queued = await registerCallbackAction(root, {
+      action: "song_archive",
+      songId: "song-url",
+      selectedTakeId: "take-ready",
+      chatId: 123,
+      messageId: 77,
+      userId: 123,
+      now: Date.parse("2026-06-16T00:00:00.000Z")
+    });
+    await routeTelegramCallback({
+      root,
+      client: callbackClient(),
+      callbackQueryId: "archive-url",
+      data: `cb:${queued.callbackId}`,
+      fromUserId: 123,
+      chatId: 123,
+      messageId: 77,
+      now: Date.parse("2026-06-16T00:00:00.000Z")
+    });
+    vi.clearAllTimers();
+    vi.setSystemTime(new Date("2026-06-16T00:11:00.000Z"));
+
+    const result = await rearmQueuedAdoptionDownloadJobs({ root, now: Date.parse("2026-06-16T00:11:00.000Z") });
+
+    expect(result).toMatchObject({ queued: 1, runNow: 1 });
+    await vi.waitFor(() => expect(connectorImportMock).toHaveBeenCalledTimes(1));
+    expect((await readAdoptionDownloadJobEntries(root)).at(-1)).toMatchObject({ status: "imported" });
+  });
+
+  it("schedules adoption downloads only for URL-ready archive callbacks and resolves sibling review callbacks", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-06-16T00:00:00.000Z"));
+    const root = workspace();
+    await ensureArtistWorkspace(root);
+    await updateSongState(root, "song-url", {
+      title: "URL Gate",
+      status: "take_selected",
+      selectedTakeId: "take-ready",
+      appendPublicLinks: ["https://suno.com/song/take-ready"]
+    });
+    await writeAcceptedRun(root);
+    const archive = await registerCallbackAction(root, {
+      action: "song_archive",
+      songId: "song-url",
+      selectedTakeId: "take-ready",
+      chatId: 123,
+      messageId: 77,
+      userId: 123
+    });
+    const discard = await registerCallbackAction(root, {
+      action: "song_discard",
+      songId: "song-url",
+      selectedTakeId: "take-ready",
+      chatId: 123,
+      messageId: 77,
+      userId: 123
+    });
+
+    await routeTelegramCallback({
+      root,
+      client: callbackClient(),
+      callbackQueryId: "archive-take-selected",
+      data: `cb:${archive.callbackId}`,
+      fromUserId: 123,
+      chatId: 123,
+      messageId: 77
+    });
+
+    await expect(readFile(join(root, "runtime", "suno-download-jobs.jsonl"), "utf8")).rejects.toThrow();
+    const entries = await readCallbackActionEntries(root);
+    expect(entries.find((entry) => entry.callbackId === archive.callbackId && entry.status === "applied")).toBeTruthy();
+    expect(entries.find((entry) => entry.callbackId === discard.callbackId && entry.status === "discarded")).toBeTruthy();
+  });
+
+  it("surfaces URL-ready adoption waits in /status composition and StatusResponse", async () => {
+    const root = workspace();
+    await ensureArtistWorkspace(root);
+    connectorStatusMock.mockResolvedValue({ state: "connected" });
+    await updateSongState(root, "song-url", {
+      title: "URL Gate",
+      status: "suno_take_url_ready",
+      selectedTakeId: "take-ready",
+      appendPublicLinks: ["https://suno.com/song/take-ready"]
+    });
+
+    await expect(composeProducerStatus(root)).resolves.toContain("Suno URL 採用待ち");
+    const status = await buildStatusResponse({ artist: { workspaceRoot: root } });
+    expect(status.awaitingSunoTakeUrlReady).toMatchObject({
+      count: 1,
+      recent: [expect.objectContaining({ songId: "song-url", urls: ["https://suno.com/song/take-ready"] })]
+    });
+  });
+
+  it("formats successful adoption download imports in producer-facing Japanese", async () => {
+    await expect(formatRuntimeEvent({
+      type: "suno_adoption_download_imported",
+      songId: "song-url",
+      runId: "run-ready",
+      selectedTakeId: "take-ready",
+      urls: ["https://suno.com/song/take-ready"],
+      paths: ["songs/song-url/suno/take-ready.mp3"],
+      timestamp: 1
+    })).resolves.toContain("音源ファイルも取れた");
   });
 
   it("does not schedule an adoption download when the producer discards the URL-ready song", async () => {

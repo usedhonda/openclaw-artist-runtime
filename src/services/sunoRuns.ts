@@ -38,6 +38,7 @@ export interface ImportSunoResultsInput {
   selectedTakeId?: string;
   resultRefs?: string[];
   config?: Partial<ArtistRuntimeConfig>;
+  preserveSongLifecycle?: boolean;
 }
 
 function hashPayload(value: unknown): string {
@@ -325,20 +326,32 @@ export async function importSunoResults(input: ImportSunoResultsInput): Promise<
   };
 
   await updateSongState(input.workspaceRoot, input.songId, {
-    status: "takes_imported",
-    reason: "Suno results imported",
+    status: input.preserveSongLifecycle ? undefined : "takes_imported",
+    reason: input.preserveSongLifecycle ? "Suno results imported after adoption" : "Suno results imported",
     selectedTakeId: input.selectedTakeId,
     appendPublicLinks: input.urls,
     lastImportOutcome
   });
   await new SunoBrowserWorker(input.workspaceRoot).supersedeImportOutcome(lastImportOutcome);
-  emitRuntimeEvent({
-    type: "take_imported",
-    songId: input.songId,
-    paths: input.resultRefs ?? [],
-    metadata: [],
-    timestamp: Date.now()
-  });
+  if (input.preserveSongLifecycle) {
+    emitRuntimeEvent({
+      type: "suno_adoption_download_imported",
+      songId: input.songId,
+      runId: input.runId,
+      urls: input.urls,
+      paths: input.resultRefs ?? [],
+      selectedTakeId: input.selectedTakeId,
+      timestamp: Date.now()
+    });
+  } else {
+    emitRuntimeEvent({
+      type: "take_imported",
+      songId: input.songId,
+      paths: input.resultRefs ?? [],
+      metadata: [],
+      timestamp: Date.now()
+    });
+  }
 
   return importedRecord;
 }

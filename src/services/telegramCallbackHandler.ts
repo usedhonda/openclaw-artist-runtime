@@ -1,7 +1,7 @@
 import { appendFile, mkdir } from "node:fs/promises";
 import { createHash } from "node:crypto";
 import { dirname, join } from "node:path";
-import { isResurfaceAllowedAction, markCallbackResolved, registerCallbackAction, resolveCallbackAction, type CallbackActionEntry, type CallbackActionStatus } from "./callbackActionRegistry.js";
+import { isResurfaceAllowedAction, markCallbackResolved, markSiblingCallbacksResolved, registerCallbackAction, resolveCallbackAction, type CallbackActionEntry, type CallbackActionStatus } from "./callbackActionRegistry.js";
 import { readSongState, updateSongState } from "./artistState.js";
 import { applyChangeSet } from "./changeSetApplier.js";
 import { handleProposalResponse } from "./conversationalSession.js";
@@ -23,6 +23,7 @@ import { stampCallback } from "./receiveHealthService.js";
 import { scheduleDownloadAfterAdoptionJob } from "./sunoAdoptionDownloadJob.js";
 
 export const STALE_CALLBACK_JA_REPLY = "このボタンはもう古い。 最新の通知から選び直して。";
+const SONG_REVIEW_SIBLING_ACTIONS = new Set(["song_archive", "song_discard"]);
 
 function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
@@ -409,6 +410,7 @@ export async function routeTelegramCallback(ctx: TelegramCallbackContext): Promi
   if (entry.action === "song_songbook_write" || entry.action === "song_skip" || entry.action === "song_archive" || entry.action === "song_discard") {
     await ctx.client.answerCallbackQuery(ctx.callbackQueryId, { text: "OK" });
     try {
+      const previousSong = entry.songId ? await readSongState(ctx.root, entry.songId).catch(() => undefined) : undefined;
       const actionResult = await handleSongPublishActionRequest({
         action: entry.action as SongPublishAction,
         root: ctx.root,
@@ -421,7 +423,15 @@ export async function routeTelegramCallback(ctx: TelegramCallbackContext): Promi
       const auditReason = actionResult.reason ?? actionResult.status;
       await markCallbackResolved(ctx.root, callbackId, { status: callbackStatus, reason: auditReason, now });
       await appendCallbackAudit(ctx.root, auditBase(ctx, callbackId, entry, callbackResult, auditReason));
-      if (entry.action === "song_archive" && actionResult.status === "applied" && entry.songId) {
+      if ((entry.action === "song_archive" || entry.action === "song_discard") && entry.songId) {
+        await markSiblingCallbacksResolved(ctx.root, entry, {
+          status: "discarded",
+          reason: `sibling_resolved_by:${entry.action}`,
+          now,
+          actions: SONG_REVIEW_SIBLING_ACTIONS
+        });
+      }
+      if (entry.action === "song_archive" && actionResult.status === "applied" && previousSong?.status === "suno_take_url_ready" && entry.songId) {
         await scheduleDownloadAfterAdoptionJob({
           root: ctx.root,
           songId: entry.songId,
