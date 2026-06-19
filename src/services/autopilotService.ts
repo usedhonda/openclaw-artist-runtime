@@ -1254,14 +1254,16 @@ export class ArtistAutopilotService {
           }
           const retryDecision = nextSunoRetryDecision(existing);
           if (retryDecision.action === "wait") {
-            emitRuntimeEvent({
-              type: "suno_generate_retry",
-              songId: song.songId,
-              reason: retryDecision.reason,
-              retryCount: existing.retryCount,
-              nextRetryAt: retryDecision.nextRetryAt,
-              timestamp: Date.now()
-            });
+            if (shouldEmitOperationalEpisode(existing, retryDecision.reason)) {
+              emitRuntimeEvent({
+                type: "suno_generate_retry",
+                songId: song.songId,
+                reason: retryDecision.reason,
+                retryCount: existing.retryCount,
+                nextRetryAt: retryDecision.nextRetryAt,
+                timestamp: Date.now()
+              });
+            }
             return writeStageState(input.workspaceRoot, existing, {
               ...baseState,
               currentSongId: song.songId,

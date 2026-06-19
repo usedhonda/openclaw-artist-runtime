@@ -5,7 +5,7 @@ import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import { ensureArtistWorkspace } from "../src/services/artistWorkspace";
 import { ensureSongState, updateSongState, writeSongBrief } from "../src/services/artistState";
-import { ArtistAutopilotService, shouldEmitOperationalEpisode } from "../src/services/autopilotService";
+import { ArtistAutopilotService, shouldEmitOperationalEpisode, writeAutopilotRunState } from "../src/services/autopilotService";
 import { getRuntimeEventBus, type RuntimeEvent } from "../src/services/runtimeEventBus";
 import { tryConsumeBudget } from "../src/services/sunoBudgetLedger";
 import { createAndPersistSunoPromptPack } from "../src/services/sunoPromptPackFiles";
@@ -80,6 +80,32 @@ describe("operational event dedup", () => {
 
     expect(events.filter((event) => event.type === "suno_budget_low")).toHaveLength(1);
     expect(events.filter((event) => event.type === "budget_exhausted")).toHaveLength(1);
+  });
+
+  it("emits suno generate retry only once while the retry wait reason is unchanged", async () => {
+    const root = workspace("artist-runtime-retry-dedup-");
+    await seedBudgetSong(root);
+    const lastRunAt = new Date().toISOString();
+    await writeAutopilotRunState(root, {
+      runId: "retry-run",
+      currentSongId: "budget-song",
+      stage: "suno_generation",
+      paused: false,
+      retryCount: 1,
+      cycleCount: 1,
+      updatedAt: lastRunAt,
+      lastRunAt
+    });
+    const events: RuntimeEvent[] = [];
+    const unsubscribe = getRuntimeEventBus().subscribe((event) => events.push(event));
+    const service = new ArtistAutopilotService();
+    const config = { artist: { workspaceRoot: root }, autopilot: { enabled: true, dryRun: true }, music: { suno: { driver: "playwright" as const } } };
+
+    await service.runCycle({ workspaceRoot: root, config });
+    await service.runCycle({ workspaceRoot: root, config });
+    unsubscribe();
+
+    expect(events.filter((event) => event.type === "suno_generate_retry")).toHaveLength(1);
   });
 
   it("classifies an unchanged asset-generation stall as the same operational episode", () => {
