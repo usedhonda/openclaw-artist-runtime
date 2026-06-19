@@ -203,17 +203,15 @@ describe("registration shells", () => {
     expect(recovery.diagnostics.dryRun).toBe(true);
     const consoleHtml = await producerConsoleHtml();
     expect(consoleHtml).toContain("Artist Runtime");
-    expect(consoleHtml).toContain("Run Cycle");
-    expect(consoleHtml).toContain("Config Editor");
-    expect(consoleHtml).toContain("Songs Per Week");
-    expect(consoleHtml).toContain("X Authority");
-    expect(consoleHtml).toContain("Instagram Authority");
-    expect(consoleHtml).toContain("TikTok Authority");
-    expect(consoleHtml).toContain("Suno Current Run");
-    expect(consoleHtml).toContain("Last Imported");
-    expect(consoleHtml).toContain("Last Create");
-    expect(consoleHtml).toContain("Last Import");
-    expect(consoleHtml).toContain("Dry-run");
+    expect(consoleHtml).toContain("Producer Room");
+    expect(consoleHtml).toContain("Artist is:");
+    expect(consoleHtml).toContain("You can:");
+    expect(consoleHtml).toContain("Room");
+    expect(consoleHtml).toContain("Songs");
+    expect(consoleHtml).toContain("Settings");
+    expect(consoleHtml).toContain("診断");
+    expect(consoleHtml).not.toContain("Run Cycle");
+    expect(consoleHtml).not.toContain("Config Editor");
     expect((await buildConfigResponse()).artist.artistId).toBe("artist");
 
     const rootHandler = registered.routeHandlers.get("/plugins/artist-runtime");

@@ -1,5 +1,5 @@
 import "./styles.css";
 import { createRoot } from "react-dom/client";
-import { App } from "./App";
+import { ProducerRoomApp } from "./ProducerRoomApp";
 
-createRoot(document.getElementById("root")!).render(<App />);
+createRoot(document.getElementById("root")!).render(<ProducerRoomApp />);

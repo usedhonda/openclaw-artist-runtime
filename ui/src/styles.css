@@ -134,6 +134,11 @@ textarea {
   margin-bottom: 16px;
 }
 
+.view-tabs a {
+  color: var(--ink);
+  text-decoration: none;
+}
+
 .tab-button {
   background: rgba(255, 255, 255, 0.64);
 }
@@ -433,6 +438,84 @@ textarea {
 
 .system-status-overview {
   grid-column: 1 / -1;
+}
+
+.producer-room-shell {
+  width: min(1040px, calc(100vw - 24px));
+}
+
+.producer-room-hero {
+  align-items: flex-end;
+}
+
+.producer-room-tabs {
+  margin-bottom: 10px;
+}
+
+.producer-room-footer {
+  margin-bottom: 16px;
+  font-size: 0.86rem;
+}
+
+.producer-room-footer a {
+  color: var(--muted);
+}
+
+.producer-room-grid {
+  gap: 14px;
+}
+
+.room-status-card h1 {
+  margin: 0.2rem 0 1rem;
+  font-size: clamp(2rem, 5vw, 4.5rem);
+  line-height: 0.92;
+}
+
+.room-status-card {
+  border-color: rgba(29, 106, 69, 0.35);
+}
+
+.room-status-paused,
+.room-status-suno_trouble {
+  border-color: rgba(153, 100, 0, 0.62);
+}
+
+.room-status-hard_stop,
+.room-status-reauth_required {
+  border-color: rgba(143, 32, 22, 0.62);
+}
+
+.room-grammar {
+  display: grid;
+  gap: 12px;
+  font-size: 1.05rem;
+}
+
+.room-grammar > div {
+  display: grid;
+  grid-template-columns: 110px minmax(0, 1fr);
+  gap: 12px;
+  align-items: center;
+}
+
+.grammar-label {
+  color: var(--accent);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  font-size: 0.76rem;
+}
+
+.room-note-card {
+  background: rgba(255, 255, 255, 0.58);
+}
+
+.debug-json {
+  overflow-x: auto;
+  margin: 0;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  padding: 12px;
+  background: rgba(255, 255, 255, 0.7);
 }
 
 .awaiting-decision-panel {
