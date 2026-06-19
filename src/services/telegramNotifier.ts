@@ -45,6 +45,7 @@ const TELEGRAM_SILENT_EVENT_TYPES: ReadonlySet<RuntimeEvent["type"]> = new Set([
   "theme_generated",
   "prompt_pack_char_count",
   "spawn_proposal_appended",
+  "autopilot_ticker_safe_recovery",
   "bird_cooldown_triggered",
   "error"
 ]);

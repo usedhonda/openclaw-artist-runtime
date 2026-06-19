@@ -21,6 +21,8 @@ describe("local gateway supervisor restart backoff", () => {
     expect(script).toContain("start_ticker_watcher()");
     expect(script).toContain("openclaw-ticker-watcher");
     expect(script).toContain("OPENCLAW_TICKER_WATCHER_STALE_MS");
+    expect(script).toContain("OPENCLAW_TICKER_WATCHER_STALE_MS:-1200000");
+    expect(script).toContain("normal autopilot tick interval");
     expect(script).toContain("OPENCLAW_TICKER_WATCHER_TOKEN");
     expect(script).toContain("telegram_api_reachable_for_watchdog()");
     expect(script).toContain("https://api.telegram.org");

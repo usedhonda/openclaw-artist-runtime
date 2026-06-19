@@ -38,7 +38,9 @@ watchdog_kill_backoff_seconds="${OPENCLAW_TELEGRAM_WATCHDOG_KILL_BACKOFF_SECONDS
 watchdog_kill_state="${OPENCLAW_LOCAL_WORKSPACE}/runtime/telegram-watchdog-kills.txt"
 ticker_watcher_enabled="${OPENCLAW_TICKER_WATCHER_ENABLED:-1}"
 ticker_watcher_interval_ms="${OPENCLAW_TICKER_WATCHER_INTERVAL_MS:-60000}"
-ticker_watcher_stale_ms="${OPENCLAW_TICKER_WATCHER_STALE_MS:-300000}"
+# Keep this above the normal autopilot tick interval (~6m). A shorter default
+# false-triggers safe recovery every cycle and floods Telegram through runtime events.
+ticker_watcher_stale_ms="${OPENCLAW_TICKER_WATCHER_STALE_MS:-1200000}"
 supervisor_heartbeat_interval="${OPENCLAW_SUPERVISOR_HEARTBEAT_INTERVAL:-15}"
 crash_tail_lines="${OPENCLAW_SUPERVISOR_CRASH_TAIL_LINES:-400}"
 supervisor_started_ms="$(node -e 'console.log(Date.now())' 2>/dev/null || date +%s000)"
