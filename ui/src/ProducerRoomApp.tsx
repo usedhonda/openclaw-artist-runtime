@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from "react";
+import React, { Suspense, useEffect, useRef, useState } from "react";
 import { buildConfigDraft, buildConfigUpdatePatch, validateConfigDraft, type ConfigDraft, type ConfigEditorSource } from "./configEditor";
 import { ErrorToastStack } from "./ErrorToast";
 import { AwaitingDecisionPanel, type AwaitingDecision } from "./components/AwaitingDecisionPanel";
@@ -19,6 +19,7 @@ import {
 const refreshIntervalMs = 5000;
 const apiBase = "/plugins/artist-runtime/api";
 const fetchTimeoutMs = 10_000;
+const LegacyConsole = React.lazy(() => import("./App").then((module) => ({ default: module.App })));
 
 type RoomView = "room" | "songs" | "settings" | "diagnostics";
 
@@ -430,17 +431,15 @@ export function SettingsView(props: {
   );
 }
 
-function DiagnosticsStub(props: { status: StatusResponse | null }) {
+export function DiagnosticsView() {
   return (
     <section className="single-column">
       <article className="panel">
         <div className="section-title">診断</div>
-        <p>旧 Console は Phase D でここへ移します。Room には内部操作の主導ボタンを出しません。</p>
-        <pre className="debug-json">{JSON.stringify({
-          stage: props.status?.autopilot.stage,
-          nextAction: props.status?.autopilot.nextAction,
-          currentSongId: props.status?.autopilot.currentSongId
-        }, null, 2)}</pre>
+        <p>旧 Console を診断用に読み込みます。Room / Songs / Settings には内部操作の主導ボタンを戻しません。</p>
+        <Suspense fallback={<div className="item muted">旧 Console を読み込み中。</div>}>
+          <LegacyConsole />
+        </Suspense>
       </article>
     </section>
   );
@@ -630,7 +629,7 @@ export function ProducerRoomApp() {
           onRefresh={refresh}
         />
       ) : null}
-      {activeView === "diagnostics" ? <DiagnosticsStub status={status} /> : null}
+      {activeView === "diagnostics" ? <DiagnosticsView /> : null}
       <ErrorToastStack toasts={errorToasts} onDismiss={(id) => setErrorToasts((current) => dismissErrorToast(current, id))} />
     </main>
   );

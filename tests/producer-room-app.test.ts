@@ -1,7 +1,8 @@
 import React from "../ui/node_modules/react/index.js";
 import { renderToStaticMarkup } from "../ui/node_modules/react-dom/server.node.js";
 import { describe, expect, it } from "vitest";
-import { RoomHeader, SettingsView, SongsView } from "../ui/src/ProducerRoomApp";
+import { runCycleFeedback } from "../ui/src/App";
+import { DiagnosticsView, RoomHeader, SettingsView, SongsView } from "../ui/src/ProducerRoomApp";
 import { buildConfigDraft, buildConfigUpdatePatch } from "../ui/src/configEditor";
 import type { DraftBoxNextActionSummary } from "../src/types";
 
@@ -140,5 +141,44 @@ describe("ProducerRoomApp Songs and Settings views", () => {
     expect(html).toContain("Platforms");
     expect(html).toContain("Save Settings");
     expect(html).toContain("frozen");
+  });
+});
+
+describe("ProducerRoomApp diagnostics", () => {
+  it("keeps the legacy console behind a lazy diagnostics boundary", () => {
+    const html = renderToStaticMarkup(React.createElement(DiagnosticsView));
+
+    expect(html).toContain("診断");
+    expect(html).toContain("旧 Console");
+    expect(html).not.toContain("Run Cycle");
+    expect(html).not.toContain("Config Editor");
+  });
+});
+
+describe("legacy console run-cycle feedback", () => {
+  it("surfaces skipped run-cycle outcomes as an actionable toast message", () => {
+    const feedback = runCycleFeedback({ tickerOutcome: "skipped:paused" });
+
+    expect(feedback.reason).toBe("run_cycle_skipped");
+    expect(feedback.message).toContain("paused");
+    expect(feedback.message).toContain("/resume");
+  });
+
+  it("surfaces ran-but-blocked outcomes", () => {
+    const feedback = runCycleFeedback({
+      tickerOutcome: "ran",
+      blockedReason: "lyrics_generation_degraded"
+    });
+
+    expect(feedback.reason).toBe("run_cycle_blocked");
+    expect(feedback.message).toContain("lyrics_generation_degraded");
+    expect(feedback.message).toContain("/resume");
+  });
+
+  it("confirms a clean run-cycle execution", () => {
+    const feedback = runCycleFeedback({ tickerOutcome: "ran" });
+
+    expect(feedback.reason).toBe("run_cycle_ran");
+    expect(feedback.message).toBe("サイクルを実行しました");
   });
 });
