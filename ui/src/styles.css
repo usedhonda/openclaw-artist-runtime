@@ -509,6 +509,53 @@ textarea {
   background: rgba(255, 255, 255, 0.58);
 }
 
+.song-ledger-list,
+.settings-sections {
+  display: grid;
+  gap: 12px;
+  margin-top: 12px;
+}
+
+.song-ledger-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 12px;
+  align-items: center;
+  width: 100%;
+  text-align: left;
+  border-radius: 16px;
+}
+
+.song-ledger-row > span {
+  display: grid;
+  gap: 4px;
+}
+
+.song-ledger-row.is-selected {
+  border-color: rgba(159, 79, 45, 0.7);
+  box-shadow: 0 8px 24px rgba(159, 79, 45, 0.12);
+}
+
+.status-pill {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid rgba(159, 79, 45, 0.28);
+  border-radius: 999px;
+  padding: 0.25rem 0.6rem;
+  background: rgba(255, 255, 255, 0.72);
+  color: var(--accent-dark);
+}
+
+.settings-section {
+  display: grid;
+  gap: 12px;
+  padding: 14px;
+  border: 1px solid rgba(216, 204, 189, 0.78);
+  border-radius: 18px;
+  background: rgba(255, 255, 255, 0.46);
+}
+
 .debug-json {
   overflow-x: auto;
   margin: 0;

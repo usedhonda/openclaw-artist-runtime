@@ -1,11 +1,20 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
+import { buildConfigDraft, buildConfigUpdatePatch, validateConfigDraft, type ConfigDraft, type ConfigEditorSource } from "./configEditor";
 import { ErrorToastStack } from "./ErrorToast";
 import { AwaitingDecisionPanel, type AwaitingDecision } from "./components/AwaitingDecisionPanel";
+import { SongDetailCard } from "./components/SongDetailCard";
 import { SongLifecycleTimelineCard } from "./components/SongLifecycleTimelineCard";
 import { SpawnProposalQueuePanel, type SpawnProposalQueueItem } from "./components/SpawnProposalQueuePanel";
 import { useHashRoute } from "./hooks/useHashRoute";
 import { dismissErrorToast, expireErrorToasts, pushErrorToast, type ErrorToast, type ErrorToastSource } from "../../src/services/errorToastQueue";
-import type { DraftBoxNextActionSummary } from "../../src/types";
+import {
+  instagramAuthorityModes,
+  sunoDriverModes,
+  sunoSubmitModes,
+  tiktokAuthorityModes,
+  xAuthorityModes,
+  type DraftBoxNextActionSummary
+} from "../../src/types";
 
 const refreshIntervalMs = 5000;
 const apiBase = "/plugins/artist-runtime/api";
@@ -33,6 +42,21 @@ type StatusResponse = {
     title: string;
     status: string;
   };
+};
+
+type ConfigResponse = ConfigEditorSource & {
+  artist: {
+    artistId: string;
+    workspaceRoot: string;
+  };
+};
+
+type SongSummary = {
+  songId: string;
+  title: string;
+  status: string;
+  runCount: number;
+  selectedTakeId?: string;
 };
 
 type CallbackActionsResponse = {
@@ -80,6 +104,7 @@ async function apiPost<T>(path: string, body: unknown = {}): Promise<T> {
 
 function viewFromHash(hash: string): RoomView {
   if (hash === "#songs") return "songs";
+  if (hash.startsWith("#song=")) return "songs";
   if (hash === "#settings") return "settings";
   if (hash === "#diagnostics") return "diagnostics";
   return "room";
@@ -243,13 +268,163 @@ function RoomViewPanel(props: {
   );
 }
 
-function StubPanel(props: { title: string; detail: string }) {
+function StatusPill(props: { status: string }) {
+  return <span className={`status-pill status-pill-${props.status.replace(/[^A-Za-z0-9_-]/g, "_")}`}>{props.status}</span>;
+}
+
+export function SongsView(props: {
+  songs: SongSummary[];
+  selectedSongId: string | null;
+  onSelectSong: (songId: string) => void;
+  onBack: () => void;
+}) {
+  const selected = props.selectedSongId;
   return (
-    <section className="single-column">
+    <section className="single-column songs-view">
       <article className="panel">
-        <div className="section-title">{props.title}</div>
-        <p>{props.detail}</p>
-        <div className="muted">Phase C で実装します。</div>
+        <div className="section-title">Songs</div>
+        <div className="muted">採用/破棄は Telegram の通知から。Console は作品の歩みを読む mirror です。</div>
+        {props.songs.length === 0 ? (
+          <div className="item muted">曲台帳はまだ空です。</div>
+        ) : (
+          <div className="song-ledger-list">
+            {props.songs.map((song) => (
+              <button
+                type="button"
+                className={`song-ledger-row${selected === song.songId ? " is-selected" : ""}`}
+                key={song.songId}
+                onClick={() => props.onSelectSong(song.songId)}
+              >
+                <span>
+                  <strong>{song.title || song.songId}</strong>
+                  <span className="muted">{song.songId} · run {song.runCount}</span>
+                </span>
+                <span>
+                  <StatusPill status={song.status} />
+                  {song.selectedTakeId ? <span className="muted">take {song.selectedTakeId}</span> : null}
+                </span>
+              </button>
+            ))}
+          </div>
+        )}
+      </article>
+      {selected ? <SongDetailCard key={selected} songId={selected} onBack={props.onBack} /> : null}
+      <SongLifecycleTimelineCard />
+    </section>
+  );
+}
+
+function NumberField(props: {
+  label: string;
+  value: string;
+  min: number;
+  max: number;
+  onChange: (value: string) => void;
+  note?: string;
+}) {
+  return (
+    <label>
+      <div className="eyebrow">{props.label}</div>
+      <input type="number" min={props.min} max={props.max} step={1} value={props.value} onChange={(event) => props.onChange(event.target.value)} />
+      {props.note ? <div className="muted">{props.note}</div> : null}
+    </label>
+  );
+}
+
+export function SettingsView(props: {
+  config: ConfigResponse | null;
+  draft: ConfigDraft | null;
+  dirty: boolean;
+  busy: boolean;
+  validationError: string | null;
+  onUpdateDraft: (update: Partial<ConfigDraft>) => void;
+  onSave: () => void;
+  onReset: () => void;
+  onRefresh: () => void;
+}) {
+  const draft = props.draft;
+  const globalArmHeld = Boolean(draft && !draft.distributionLiveGoArmed);
+
+  return (
+    <section className="single-column settings-view">
+      <article className="panel settings-panel">
+        <div className="section-title">Settings</div>
+        <div className="muted">platform / authority / budget / cadence / hard-stop を steer する場所です。</div>
+        {!props.config || !draft ? (
+          <div className="item muted">Loading config.</div>
+        ) : (
+          <div className="settings-sections">
+            <section className="settings-section">
+              <div className="section-title">Autopilot</div>
+              <label className="toggle"><input type="checkbox" checked={draft.autopilotEnabled} onChange={(event) => props.onUpdateDraft({ autopilotEnabled: event.target.checked })} />Autopilot enabled</label>
+              <label className="toggle"><input type="checkbox" checked={draft.dryRun} onChange={(event) => props.onUpdateDraft({ dryRun: event.target.checked })} />Dry-run safety</label>
+              <label className="toggle"><input type="checkbox" checked={draft.distributionLiveGoArmed} onChange={(event) => props.onUpdateDraft({ distributionLiveGoArmed: event.target.checked })} />Live-Go Arm (global)</label>
+              {globalArmHeld ? <div className="warning-banner">Global live-go arm is OFF. Platform arms stay held upstream.</div> : null}
+              <div className="field-grid">
+                <NumberField label="Songs Per Week" value={draft.songsPerWeek} min={0} max={21} onChange={(value) => props.onUpdateDraft({ songsPerWeek: value })} />
+                <NumberField label="Cycle Interval Minutes" value={draft.cycleIntervalMinutes} min={15} max={1440} onChange={(value) => props.onUpdateDraft({ cycleIntervalMinutes: value })} />
+              </div>
+            </section>
+            <section className="settings-section">
+              <div className="section-title">Suno Budget</div>
+              <div className="field-grid">
+                <NumberField label="Daily Credit Limit" value={draft.dailyCreditLimit} min={1} max={1000} onChange={(value) => props.onUpdateDraft({ dailyCreditLimit: value })} />
+                <NumberField label="Monthly Credit Limit" value={draft.monthlyCreditLimit} min={0} max={50000} onChange={(value) => props.onUpdateDraft({ monthlyCreditLimit: value })} note="0 means unlimited." />
+                <label>
+                  <div className="eyebrow">Suno Driver</div>
+                  <select value={draft.sunoDriver} onChange={(event) => props.onUpdateDraft({ sunoDriver: event.target.value as ConfigDraft["sunoDriver"] })}>
+                    {sunoDriverModes.map((mode) => <option key={mode} value={mode}>{mode}</option>)}
+                  </select>
+                </label>
+                <label>
+                  <div className="eyebrow">Suno Submit Mode</div>
+                  <select value={draft.sunoSubmitMode} onChange={(event) => props.onUpdateDraft({ sunoSubmitMode: event.target.value as ConfigDraft["sunoSubmitMode"] })}>
+                    {sunoSubmitModes.map((mode) => <option key={mode} value={mode}>{mode}</option>)}
+                  </select>
+                  {draft.sunoSubmitMode === "live" ? <div className="warning-banner">Live submit consumes real Suno credits.</div> : <div className="muted">skip = no Create click, live = real submit.</div>}
+                </label>
+              </div>
+            </section>
+            <section className="settings-section">
+              <div className="section-title">Platforms</div>
+              <div className="field-grid">
+                <label className={`platform-config${globalArmHeld ? " is-held" : ""}`}>
+                  <div className="toggle"><input type="checkbox" checked={draft.xEnabled} onChange={(event) => props.onUpdateDraft({ xEnabled: event.target.checked })} />X enabled</div>
+                  <div className="toggle"><input type="checkbox" checked={draft.xLiveGoArmed} onChange={(event) => props.onUpdateDraft({ xLiveGoArmed: event.target.checked })} />X live-go arm</div>
+                  <div className="eyebrow">X Authority</div>
+                  <select value={draft.xAuthority} onChange={(event) => props.onUpdateDraft({ xAuthority: event.target.value as ConfigDraft["xAuthority"] })}>
+                    {xAuthorityModes.map((mode) => <option key={mode} value={mode}>{mode}</option>)}
+                  </select>
+                </label>
+                <label className="platform-config is-frozen" title="凍結中">
+                  <div className="toggle"><input type="checkbox" checked={draft.instagramEnabled} onChange={(event) => props.onUpdateDraft({ instagramEnabled: event.target.checked })} />Instagram enabled</div>
+                  <div className="toggle"><input type="checkbox" checked={draft.instagramLiveGoArmed} disabled readOnly />Instagram live-go arm <span className="badge badge-frozen">frozen</span></div>
+                  <div className="eyebrow">Instagram Authority</div>
+                  <select value={draft.instagramAuthority} onChange={(event) => props.onUpdateDraft({ instagramAuthority: event.target.value as ConfigDraft["instagramAuthority"] })}>
+                    {instagramAuthorityModes.map((mode) => <option key={mode} value={mode}>{mode}</option>)}
+                  </select>
+                  <div className="muted">Instagram is frozen until operator review.</div>
+                </label>
+                <label className="platform-config is-frozen" title="アカウント未作成 / 凍結中">
+                  <div className="toggle"><input type="checkbox" checked={draft.tiktokEnabled} onChange={(event) => props.onUpdateDraft({ tiktokEnabled: event.target.checked })} />TikTok enabled</div>
+                  <div className="toggle"><input type="checkbox" checked={draft.tiktokLiveGoArmed} disabled readOnly />TikTok live-go arm <span className="badge badge-frozen">frozen</span></div>
+                  <div className="eyebrow">TikTok Authority</div>
+                  <select value={draft.tiktokAuthority} onChange={(event) => props.onUpdateDraft({ tiktokAuthority: event.target.value as ConfigDraft["tiktokAuthority"] })}>
+                    {tiktokAuthorityModes.map((mode) => <option key={mode} value={mode}>{mode}</option>)}
+                  </select>
+                  <div className="muted">TikTok stays frozen until the operator account exists.</div>
+                </label>
+              </div>
+            </section>
+            <div className="muted">artist {props.config.artist.artistId} · workspace {props.config.artist.workspaceRoot}</div>
+            {props.validationError ? <div className="field-error">{props.validationError}</div> : null}
+            <div className="inline-actions">
+              <button className="primary" type="button" disabled={props.busy || Boolean(props.validationError)} onClick={props.onSave}>Save Settings</button>
+              <button type="button" disabled={props.busy || !props.dirty} onClick={props.onReset}>Reset Draft</button>
+              <button type="button" disabled={props.busy} onClick={props.onRefresh}>Refresh</button>
+            </div>
+          </div>
+        )}
       </article>
     </section>
   );
@@ -273,8 +448,13 @@ function DiagnosticsStub(props: { status: StatusResponse | null }) {
 
 export function ProducerRoomApp() {
   const activeView = useRoomView();
-  const { selectedSongId } = useHashRoute();
+  const { selectedSongId, clearSong, selectSong } = useHashRoute();
   const [status, setStatus] = useState<StatusResponse | null>(null);
+  const [config, setConfig] = useState<ConfigResponse | null>(null);
+  const [configDraft, setConfigDraft] = useState<ConfigDraft | null>(null);
+  const [configDirty, setConfigDirty] = useState(false);
+  const configDirtyRef = useRef(false);
+  const [songs, setSongs] = useState<SongSummary[]>([]);
   const [awaitingDecisions, setAwaitingDecisions] = useState<CallbackActionsResponse>({ count: 0, callbacks: [] });
   const [spawnProposalQueue, setSpawnProposalQueue] = useState<SpawnProposalsResponse>({ count: 0, proposals: [] });
   const [busy, setBusy] = useState<string | null>(null);
@@ -287,12 +467,19 @@ export function ProducerRoomApp() {
 
   const refresh = async () => {
     try {
-      const [nextStatus, nextAwaitingDecisions, nextSpawnProposalQueue] = await Promise.all([
+      const [nextStatus, nextSongs, nextConfig, nextAwaitingDecisions, nextSpawnProposalQueue] = await Promise.all([
         apiGet<StatusResponse>("/status"),
+        apiGet<SongSummary[]>("/songs"),
+        apiGet<ConfigResponse>("/config"),
         apiGet<CallbackActionsResponse>("/callback-actions?status=pending&category=producer_decision"),
         apiGet<SpawnProposalsResponse>("/spawn-proposals?status=draft&limit=20")
       ]);
       setStatus(nextStatus);
+      setSongs(nextSongs);
+      setConfig(nextConfig);
+      if (!configDirtyRef.current) {
+        setConfigDraft(buildConfigDraft(nextConfig));
+      }
       setAwaitingDecisions(nextAwaitingDecisions);
       setSpawnProposalQueue(nextSpawnProposalQueue);
       setLastRefreshAt(Date.now());
@@ -357,7 +544,49 @@ export function ProducerRoomApp() {
     }
   };
 
+  const updateConfigDraft = (update: Partial<ConfigDraft>) => {
+    configDirtyRef.current = true;
+    setConfigDirty(true);
+    setConfigDraft((current) => current ? { ...current, ...update } : current);
+  };
+
+  const resetConfigDraft = () => {
+    if (!config) {
+      return;
+    }
+    configDirtyRef.current = false;
+    setConfigDirty(false);
+    setConfigDraft(buildConfigDraft(config));
+  };
+
+  const saveConfig = async () => {
+    if (!configDraft) {
+      return;
+    }
+    const validationError = validateConfigDraft(configDraft);
+    if (validationError) {
+      showErrorToast("config-patch", "config_validation_failed", validationError);
+      return;
+    }
+    setBusy("config");
+    try {
+      await apiPost("/config/update", {
+        patch: buildConfigUpdatePatch(configDraft)
+      });
+      configDirtyRef.current = false;
+      setConfigDirty(false);
+      await refresh();
+      showErrorToast("config-patch", "config_updated", "Settings updated.");
+    } catch (caughtError) {
+      const message = caughtError instanceof Error ? caughtError.message : String(caughtError);
+      showErrorToast("config-patch", "config_update_failed", message);
+    } finally {
+      setBusy(null);
+    }
+  };
+
   const summary = status?.autopilot.nextActionSummary ?? fallbackSummary(status);
+  const configValidationError = configDraft ? validateConfigDraft(configDraft) : null;
 
   return (
     <main className="console-shell producer-room-shell">
@@ -385,8 +614,22 @@ export function ProducerRoomApp() {
           onDecideSpawnProposal={decideSpawnProposal}
         />
       ) : null}
-      {activeView === "songs" ? <StubPanel title="Songs" detail="作品一覧と採用/破棄の整理面です。" /> : null}
-      {activeView === "settings" ? <StubPanel title="Settings" detail="platform / authority / budget / cadence / hard-stop の steer 面です。" /> : null}
+      {activeView === "songs" ? (
+        <SongsView songs={songs} selectedSongId={selectedSongId} onSelectSong={selectSong} onBack={clearSong} />
+      ) : null}
+      {activeView === "settings" ? (
+        <SettingsView
+          config={config}
+          draft={configDraft}
+          dirty={configDirty}
+          busy={busy !== null}
+          validationError={configValidationError}
+          onUpdateDraft={updateConfigDraft}
+          onSave={saveConfig}
+          onReset={resetConfigDraft}
+          onRefresh={refresh}
+        />
+      ) : null}
       {activeView === "diagnostics" ? <DiagnosticsStub status={status} /> : null}
       <ErrorToastStack toasts={errorToasts} onDismiss={(id) => setErrorToasts((current) => dismissErrorToast(current, id))} />
     </main>

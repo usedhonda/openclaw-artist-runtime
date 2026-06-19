@@ -1,7 +1,8 @@
 import React from "../ui/node_modules/react/index.js";
 import { renderToStaticMarkup } from "../ui/node_modules/react-dom/server.node.js";
 import { describe, expect, it } from "vitest";
-import { RoomHeader } from "../ui/src/ProducerRoomApp";
+import { RoomHeader, SettingsView, SongsView } from "../ui/src/ProducerRoomApp";
+import { buildConfigDraft, buildConfigUpdatePatch } from "../ui/src/configEditor";
 import type { DraftBoxNextActionSummary } from "../src/types";
 
 function summary(overrides: Partial<DraftBoxNextActionSummary>): DraftBoxNextActionSummary {
@@ -74,5 +75,70 @@ describe("ProducerRoomApp room header", () => {
     expect(html).toContain("歌詞AIの再認証が必要 (/resume では直りません)");
     expect(html).toContain("ai_provider_not_configured");
     expect(html).not.toContain("<button");
+  });
+});
+
+describe("ProducerRoomApp Songs and Settings views", () => {
+  it("renders the song ledger and selected song detail mirror", () => {
+    (globalThis as typeof globalThis & { React?: typeof React }).React = React;
+    const html = renderToStaticMarkup(
+      React.createElement(SongsView, {
+        selectedSongId: "song-001",
+        onSelectSong: () => undefined,
+        onBack: () => undefined,
+        songs: [
+          {
+            songId: "song-001",
+            title: "七万円のスクランブル",
+            status: "suno_take_url_ready",
+            runCount: 2,
+            selectedTakeId: "take-1"
+          }
+        ]
+      })
+    );
+
+    expect(html).toContain("Songs");
+    expect(html).toContain("七万円のスクランブル");
+    expect(html).toContain("suno_take_url_ready");
+    expect(html).toContain("採用/破棄は Telegram の通知から");
+  });
+
+  it("renders steer settings and builds a config update patch from the draft", () => {
+    const config = {
+      artist: { artistId: "artist", workspaceRoot: "/tmp/artist" },
+      music: { suno: { dailyCreditLimit: 4, monthlyCreditLimit: 40, driver: "mock" as const, submitMode: "skip" as const } },
+      autopilot: { enabled: true, dryRun: true, songsPerWeek: 3, cycleIntervalMinutes: 60 },
+      distribution: {
+        liveGoArmed: false,
+        platforms: {
+          x: { enabled: true, liveGoArmed: false, authority: "draft_only" as const },
+          instagram: { enabled: false, liveGoArmed: false, authority: "draft_only" as const },
+          tiktok: { enabled: false, liveGoArmed: false, authority: "draft_only" as const }
+        }
+      }
+    };
+    const draft = { ...buildConfigDraft(config), songsPerWeek: "5" };
+    const patch = buildConfigUpdatePatch(draft);
+    const html = renderToStaticMarkup(
+      React.createElement(SettingsView, {
+        config,
+        draft,
+        dirty: true,
+        busy: false,
+        validationError: null,
+        onUpdateDraft: () => undefined,
+        onSave: () => undefined,
+        onReset: () => undefined,
+        onRefresh: () => undefined
+      })
+    );
+
+    expect(patch.autopilot.songsPerWeek).toBe(5);
+    expect(html).toContain("Autopilot");
+    expect(html).toContain("Suno Budget");
+    expect(html).toContain("Platforms");
+    expect(html).toContain("Save Settings");
+    expect(html).toContain("frozen");
   });
 });
