@@ -972,14 +972,6 @@ export class ArtistAutopilotService {
       });
     }
     if (existing.hardStopReason) {
-      if (shouldEmitOperationalEpisode(existing, existing.hardStopReason)) {
-        emitRuntimeEvent({
-          type: "suno_hard_stop",
-          songId: existing.currentSongId,
-          reason: existing.hardStopReason,
-          timestamp: Date.now()
-        });
-      }
       return writeStageState(input.workspaceRoot, existing, {
         ...existing,
         stage: "failed_closed",
@@ -1468,12 +1460,19 @@ export class ArtistAutopilotService {
           return writeCompletedStage(input.workspaceRoot, existing, baseState, song.songId);
         }
         case "failed_closed": {
+          const reason = song.lastReason ?? "song marked failed";
+          emitRuntimeEvent({
+            type: "suno_hard_stop",
+            songId: song.songId,
+            reason,
+            timestamp: Date.now()
+          });
           return writeStageState(input.workspaceRoot, existing, {
             ...baseState,
             currentSongId: song.songId,
             stage: "failed_closed",
-            hardStopReason: song.lastReason ?? "song marked failed",
-            blockedReason: song.lastReason ?? "song marked failed"
+            hardStopReason: reason,
+            blockedReason: reason
           });
         }
         default:
@@ -1493,6 +1492,12 @@ export class ArtistAutopilotService {
         source: "autopilot",
         reason: message,
         songId: baseState.currentSongId,
+        timestamp: Date.now()
+      });
+      emitRuntimeEvent({
+        type: "suno_hard_stop",
+        songId: baseState.currentSongId,
+        reason: message,
         timestamp: Date.now()
       });
       return writeStageState(input.workspaceRoot, existing, {

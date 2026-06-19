@@ -1,11 +1,11 @@
 import { mkdtempSync } from "node:fs";
-import { access } from "node:fs/promises";
+import { access, mkdir, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import { ensureSongState, readSongState, updateSongState } from "../src/services/artistState";
 import { ensureArtistWorkspace } from "../src/services/artistWorkspace";
-import { ArtistAutopilotService, readAutopilotRunState, writeAutopilotRunState } from "../src/services/autopilotService";
+import { ArtistAutopilotService, resumeAutopilot, writeAutopilotRunState } from "../src/services/autopilotService";
 import { getRuntimeEventBus, type RuntimeEvent } from "../src/services/runtimeEventBus";
 
 async function pathExists(path: string): Promise<boolean> {
@@ -17,6 +17,16 @@ async function rootWithSong(songId: string, status: "brief" | "suno_running"): P
   await ensureArtistWorkspace(root);
   await ensureSongState(root, songId, "Contract Song");
   await updateSongState(root, songId, { status });
+  return root;
+}
+
+async function rootWithCachedSecretObservation(): Promise<string> {
+  const root = mkdtempSync(join(tmpdir(), "artist-runtime-run-cycle-contract-"));
+  await ensureArtistWorkspace(root);
+  const date = new Date(Date.now() + 9 * 60 * 60 * 1000).toISOString().slice(0, 10);
+  const observationsDir = join(root, "observations");
+  await mkdir(observationsDir, { recursive: true });
+  await writeFile(join(observationsDir, `${date}.md`), "TELEGRAM_BOT_TOKEN=abcd1234efgh5678\n", "utf8");
   return root;
 }
 
@@ -58,7 +68,7 @@ describe("autopilot runCycle contract", () => {
     expect(events.some((event) => event.type === "song_take_completed")).toBe(false);
   });
 
-  it("fails closed on a hard stop without advancing Suno or completion work", async () => {
+  it("keeps a persisted hard stop failed-closed without advancing Suno or completion work", async () => {
     const root = await rootWithSong("hard-stop-song", "suno_running");
     await writeAutopilotRunState(root, {
       runId: "hard-stop-run",
@@ -85,23 +95,13 @@ describe("autopilot runCycle contract", () => {
       blockedReason: "selector mismatch"
     });
     expect(await readSongState(root, "hard-stop-song")).toMatchObject({ status: "suno_running" });
-    expect(events.filter((event) => event.type === "suno_hard_stop")).toHaveLength(1);
+    expect(events.filter((event) => event.type === "suno_hard_stop")).toHaveLength(0);
     expect(events.some((event) => event.type === "suno_generate_retry")).toBe(false);
     expect(events.some((event) => event.type === "song_take_completed")).toBe(false);
   });
 
-  it("emits Suno hard-stop notifications once per resolved episode", async () => {
-    const root = await rootWithSong("hard-stop-song", "suno_running");
-    await writeAutopilotRunState(root, {
-      runId: "hard-stop-run",
-      currentSongId: "hard-stop-song",
-      stage: "suno_generation",
-      paused: false,
-      hardStopReason: "selector mismatch",
-      retryCount: 1,
-      cycleCount: 2,
-      updatedAt: "2026-06-11T00:00:00.000Z"
-    });
+  it("emits Suno hard-stop notifications once per resolved real failure episode", async () => {
+    const root = await rootWithCachedSecretObservation();
     const events: RuntimeEvent[] = [];
     const unsubscribe = getRuntimeEventBus().subscribe((event) => events.push(event));
     const service = new ArtistAutopilotService();
@@ -116,14 +116,7 @@ describe("autopilot runCycle contract", () => {
     });
     expect(events.filter((event) => event.type === "suno_hard_stop")).toHaveLength(1);
 
-    const stuck = await readAutopilotRunState(root);
-    await writeAutopilotRunState(root, {
-      ...stuck,
-      blockedReason: undefined,
-      lastError: undefined,
-      stage: "suno_generation",
-      hardStopReason: "selector mismatch"
-    });
+    await resumeAutopilot(root);
     await service.runCycle({
       workspaceRoot: root,
       config: { artist: { workspaceRoot: root }, autopilot: { enabled: true, dryRun: true }, songSpawn: { enabled: false } }
