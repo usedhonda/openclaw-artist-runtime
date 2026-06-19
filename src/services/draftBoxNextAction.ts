@@ -123,7 +123,7 @@ export async function composeDraftBoxNextAction(
       draftCount: drafts.length,
       buildingCount: 0,
       nextAction: "次: 草稿箱から「作る」を押す。",
-      stateKey: `draft_idle:${drafts.map((proposal) => proposal.proposalId).sort().join(",")}`,
+      stateKey: `draft_idle:count:${drafts.length}`,
       title: titleFromProposal(drafts[0])
     };
   }

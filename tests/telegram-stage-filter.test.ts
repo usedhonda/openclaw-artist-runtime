@@ -33,6 +33,7 @@ const SILENT_EVENTS: RuntimeEvent[] = [
   { type: "autopilot_state_changed", enabled: true, paused: false, timestamp: 1 },
   { type: "theme_generated", theme: "x", reason: "y", timestamp: 1 },
   { type: "autopilot_ticker_safe_recovery", outcome: "triggered", timestamp: 1 },
+  { type: "theme_starvation", source: "observation_empty", details: "empty", timestamp: 1 },
   { type: "bird_cooldown_triggered", reason: "rate", cooldownUntil: "2026-05-06T00:00:00Z", timestamp: 1 },
   { type: "error", source: "autopilot", reason: "boom", timestamp: 1 }
 ];

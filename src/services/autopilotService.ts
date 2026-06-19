@@ -22,7 +22,7 @@ import { selectTake } from "./takeSelection.js";
 import { evaluateSunoTakeSelection } from "./sunoTakeSelector.js";
 import { emitRuntimeEvent } from "./runtimeEventBus.js";
 import { resetIfNewDay } from "./sunoBudgetLedger.js";
-import { reserveSunoGenerationBudget } from "./sunoBudgetGuard.js";
+import { reserveSunoGenerationBudget, type SunoBudgetGuardResult } from "./sunoBudgetGuard.js";
 import { classifySunoGenerateFailure, nextSunoRetryDecision } from "./sunoRetryHandler.js";
 import { collectObservations, type XObservationContext } from "./xObservationCollector.js";
 import { collectNewsObservations } from "./newsObservationCollector.js";
@@ -137,6 +137,38 @@ function releaseAfterSunoTakeUrlReady(baseState: AutopilotRunState): AutopilotRu
     lastError: undefined,
     lastSuccessfulStage: "suno_generation"
   };
+}
+
+export function shouldEmitOperationalEpisode(existing: AutopilotRunState, marker: string): boolean {
+  return existing.blockedReason !== marker && existing.lastError !== marker;
+}
+
+function budgetWindowBlockedReason(budget: SunoBudgetGuardResult): string {
+  const reason = budget.reason ?? "daily Suno budget exhausted";
+  return `budget_exhausted:${reason}:${budget.state.used}/${budget.state.limit}`;
+}
+
+function emitSunoBudgetBlockedIfNeeded(existing: AutopilotRunState, songId: string, budget: SunoBudgetGuardResult): string {
+  const reason = budget.reason ?? "daily Suno budget exhausted";
+  const marker = budgetWindowBlockedReason(budget);
+  if (shouldEmitOperationalEpisode(existing, marker)) {
+    emitRuntimeEvent({
+      type: "suno_budget_low",
+      songId,
+      reason: budget.reason ?? "daily Suno budget low",
+      limit: budget.state.limit,
+      used: budget.state.used,
+      timestamp: Date.now()
+    });
+    emitRuntimeEvent({
+      type: "budget_exhausted",
+      reason,
+      limit: budget.state.limit,
+      used: budget.state.used,
+      timestamp: Date.now()
+    });
+  }
+  return marker;
 }
 
 async function hasProducerSpawnApproval(root: string, songId: string): Promise<boolean> {
@@ -1197,27 +1229,13 @@ export class ArtistAutopilotService {
           if (isMockSunoGenerationBypass(config)) {
             const budget = await reserveSunoGenerationBudget(input.workspaceRoot, 1);
             if (!budget.ok) {
-              emitRuntimeEvent({
-                type: "suno_budget_low",
-                songId: song.songId,
-                reason: budget.reason ?? "daily Suno budget low",
-                limit: budget.state.limit,
-                used: budget.state.used,
-                timestamp: Date.now()
-              });
-              emitRuntimeEvent({
-                type: "budget_exhausted",
-                reason: budget.reason ?? "daily Suno budget exhausted",
-                limit: budget.state.limit,
-                used: budget.state.used,
-                timestamp: Date.now()
-              });
+              const budgetBlockedReason = emitSunoBudgetBlockedIfNeeded(existing, song.songId, budget);
               return writeStageState(input.workspaceRoot, existing, {
                 ...baseState,
                 currentSongId: song.songId,
                 stage: "suno_generation",
-                blockedReason: budget.reason,
-                lastError: budget.reason,
+                blockedReason: budgetBlockedReason,
+                lastError: budgetBlockedReason,
                 lastSuccessfulStage: existing.lastSuccessfulStage,
                 cycleCount: existing.cycleCount + 1
               });
@@ -1285,27 +1303,13 @@ export class ArtistAutopilotService {
           }
           const budget = await reserveSunoGenerationBudget(input.workspaceRoot, 1);
           if (!budget.ok) {
-            emitRuntimeEvent({
-              type: "suno_budget_low",
-              songId: song.songId,
-              reason: budget.reason ?? "daily Suno budget low",
-              limit: budget.state.limit,
-              used: budget.state.used,
-              timestamp: Date.now()
-            });
-            emitRuntimeEvent({
-              type: "budget_exhausted",
-              reason: budget.reason ?? "daily Suno budget exhausted",
-              limit: budget.state.limit,
-              used: budget.state.used,
-              timestamp: Date.now()
-            });
+            const budgetBlockedReason = emitSunoBudgetBlockedIfNeeded(existing, song.songId, budget);
             return writeStageState(input.workspaceRoot, existing, {
               ...baseState,
               currentSongId: song.songId,
               stage: "suno_generation",
-              blockedReason: budget.reason,
-              lastError: budget.reason,
+              blockedReason: budgetBlockedReason,
+              lastError: budgetBlockedReason,
               lastSuccessfulStage: existing.lastSuccessfulStage,
               cycleCount: existing.cycleCount + 1
             });
@@ -1351,18 +1355,20 @@ export class ArtistAutopilotService {
         case "take_selection": {
           const decision = await evaluateSunoTakeSelection(input.workspaceRoot, song.songId);
           if (decision.status === "pending") {
-            emitRuntimeEvent({
-              type: "take_select_pending",
-              songId: song.songId,
-              reason: decision.reason,
-              timestamp: Date.now()
-            });
-            emitRuntimeEvent({
-              type: "take_selection_stalled",
-              songId: song.songId,
-              reason: decision.reason,
-              timestamp: Date.now()
-            });
+            if (shouldEmitOperationalEpisode(existing, decision.reason)) {
+              emitRuntimeEvent({
+                type: "take_select_pending",
+                songId: song.songId,
+                reason: decision.reason,
+                timestamp: Date.now()
+              });
+              emitRuntimeEvent({
+                type: "take_selection_stalled",
+                songId: song.songId,
+                reason: decision.reason,
+                timestamp: Date.now()
+              });
+            }
             return writeStageState(input.workspaceRoot, existing, {
               ...baseState,
               currentSongId: song.songId,
@@ -1391,17 +1397,20 @@ export class ArtistAutopilotService {
             await prepareSocialAssets({ workspaceRoot: input.workspaceRoot, songId: song.songId, config });
           } catch (error) {
             const reason = error instanceof Error ? error.message : String(error);
-            emitRuntimeEvent({
-              type: "asset_generation_stalled",
-              songId: song.songId,
-              reason,
-              timestamp: Date.now()
-            });
+            const blockedReason = `asset_generation_stalled:${reason}`;
+            if (shouldEmitOperationalEpisode(existing, blockedReason)) {
+              emitRuntimeEvent({
+                type: "asset_generation_stalled",
+                songId: song.songId,
+                reason,
+                timestamp: Date.now()
+              });
+            }
             return writeStageState(input.workspaceRoot, existing, {
               ...baseState,
               currentSongId: song.songId,
               stage: "asset_generation",
-              blockedReason: `asset_generation_stalled:${reason}`,
+              blockedReason,
               lastError: reason,
               cycleCount: existing.cycleCount + 1
             });

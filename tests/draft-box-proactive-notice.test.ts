@@ -7,7 +7,7 @@ import { ensureSongState } from "../src/services/artistState";
 import { writeAutopilotRunState } from "../src/services/autopilotService";
 import { draftBoxProactiveNoticeLedgerPath, emitDraftBoxProactiveNoticeIfNeeded } from "../src/services/draftBoxProactiveNotice";
 import { getRuntimeEventBus, type RuntimeEvent } from "../src/services/runtimeEventBus";
-import { appendSpawnProposal } from "../src/services/spawnProposalQueue";
+import { appendSpawnProposal, markSpawnProposalDismissed } from "../src/services/spawnProposalQueue";
 import { formatRuntimeEvent, TelegramNotifier } from "../src/services/telegramNotifier";
 import type { AutopilotRunState, SpawnProposal } from "../src/types";
 
@@ -63,6 +63,31 @@ describe("draft box proactive notices", () => {
       draftCount: 1
     });
     expect(await readFile(draftBoxProactiveNoticeLedgerPath(root), "utf8")).toContain("draft_idle");
+  });
+
+  it("does not renotify draft idle when proposal membership churns at the same count", async () => {
+    const root = await workspace();
+    await appendSpawnProposal(root, proposal("spawn_a", "安全圏の芝"));
+    await appendSpawnProposal(root, proposal("spawn_b", "ロビーの時計"));
+    const events: RuntimeEvent[] = [];
+    const unsubscribe = getRuntimeEventBus().subscribe((event) => events.push(event));
+    const state: AutopilotRunState = {
+      stage: "completed",
+      paused: false,
+      retryCount: 0,
+      cycleCount: 1,
+      updatedAt: "2026-06-01T00:00:00.000Z"
+    };
+
+    expect(await emitDraftBoxProactiveNoticeIfNeeded(root, state)).toBe(true);
+    await markSpawnProposalDismissed(root, "spawn_a");
+    await appendSpawnProposal(root, proposal("spawn_c", "火葬場の出口"));
+    expect(await emitDraftBoxProactiveNoticeIfNeeded(root, state)).toBe(false);
+    unsubscribe();
+
+    const notices = events.filter((event): event is Extract<RuntimeEvent, { type: "artist_proactive_notice" }> => event.type === "artist_proactive_notice");
+    expect(notices).toHaveLength(1);
+    expect(notices[0].stateKey).toBe("draft_idle:count:2");
   });
 
   it("notifies once when Suno is disconnected or timing out", async () => {
