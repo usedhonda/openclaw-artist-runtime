@@ -62,6 +62,11 @@ const SELF_HEAL_SOURCES: ReadonlySet<string> = new Set([
   "autopilot_ticker_stall",
   "stale_queue_cleanup"
 ]);
+const SELF_HEAL_DEDUP_WINDOW_MS = 60 * 60 * 1000;
+
+function selfHealDedupKey(event: Extract<RuntimeEvent, { type: "error" }>): string {
+  return `${event.source}:${event.reason}`;
+}
 
 function formatSelfHealText(event: Extract<RuntimeEvent, { type: "error" }>): string {
   const label = event.source === "stale_queue_cleanup"
@@ -88,6 +93,7 @@ export class TelegramNotifier {
     reject: (error: unknown) => void;
   }> = [];
   private spawnFlushTimer: ReturnType<typeof setTimeout> | undefined;
+  private readonly recentSelfHealNotifications = new Map<string, number>();
 
   constructor(private readonly options: TelegramNotifierOptions) {
     this.client = new TelegramClient(options.token, options.fetchImpl);
@@ -122,6 +128,13 @@ export class TelegramNotifier {
 
   async notify(event: RuntimeEvent): Promise<void> {
     if (event.type === "error" && SELF_HEAL_SOURCES.has(event.source) && isSelfHealNotifyEnabled()) {
+      const key = selfHealDedupKey(event);
+      const now = Date.now();
+      const lastSentAt = this.recentSelfHealNotifications.get(key);
+      if (lastSentAt !== undefined && now - lastSentAt < SELF_HEAL_DEDUP_WINDOW_MS) {
+        return;
+      }
+      this.recentSelfHealNotifications.set(key, now);
       await this.client.sendMessage(this.options.chatId, formatSelfHealText(event));
       return;
     }

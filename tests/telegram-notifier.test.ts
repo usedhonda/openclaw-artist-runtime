@@ -29,6 +29,17 @@ describe("TelegramNotifier", () => {
     vi.unstubAllEnvs();
   });
 
+  it("dedupes repeated self-heal notifications in the same window", async () => {
+    vi.stubEnv("OPENCLAW_SELF_HEAL_NOTIFY", "on");
+    const fetchImpl = vi.fn().mockResolvedValue(jsonResponse({ ok: true, result: { message_id: 1, chat: { id: 123 } } }));
+    const notifier = new TelegramNotifier({ token: "token", chatId: 123, fetchImpl });
+    await notifier.notify({ type: "error", source: "autopilot_ticker_stall", reason: "stale 12m", timestamp: 1 });
+    await notifier.notify({ type: "error", source: "autopilot_ticker_stall", reason: "stale 12m", timestamp: 2 });
+    await notifier.notify({ type: "error", source: "autopilot_ticker_stall", reason: "stale 18m", timestamp: 3 });
+    expect(fetchImpl).toHaveBeenCalledTimes(2);
+    vi.unstubAllEnvs();
+  });
+
   it("stays silent on self-heal events when the flag is off", async () => {
     const fetchImpl = vi.fn().mockResolvedValue(jsonResponse({ ok: true }));
     const notifier = new TelegramNotifier({ token: "token", chatId: 123, fetchImpl });
