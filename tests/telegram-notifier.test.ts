@@ -1,4 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
+import { mkdtempSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { RuntimeEventBus } from "../src/services/runtimeEventBus";
 import { formatRuntimeEvent, TelegramNotifier } from "../src/services/telegramNotifier";
 
@@ -113,7 +116,7 @@ describe("TelegramNotifier", () => {
     })).resolves.toContain("(URL なし)");
   });
 
-  it("sends runtime events through TelegramClient with a mock fetch", async () => {
+  it("does not send non-signal runtime events through TelegramClient", async () => {
     const fetchImpl = vi.fn().mockResolvedValue(jsonResponse({
       ok: true,
       result: {
@@ -126,12 +129,35 @@ describe("TelegramNotifier", () => {
 
     await notifier.notify({ type: "take_imported", songId: "song-001", paths: ["a.mp3"], metadata: [], timestamp: 1 });
 
-    expect(fetchImpl).toHaveBeenCalledTimes(1);
-    expect(fetchImpl.mock.calls[0][0]).toContain("/sendMessage");
-    expect(JSON.parse(fetchImpl.mock.calls[0][1].body as string)).toMatchObject({
-      chat_id: 123,
-      text: "Take imported: song-001 (1 path(s))"
-    });
+    expect(fetchImpl).not.toHaveBeenCalled();
+  });
+
+  it("sends the four producer-room signal events and preserves inline buttons", async () => {
+    const root = mkdtempSync(join(tmpdir(), "artist-runtime-signal-notify-"));
+    const fetchImpl = vi.fn().mockResolvedValue(jsonResponse({
+      ok: true,
+      result: {
+        message_id: 1,
+        chat: { id: 123 },
+        text: "ok"
+      }
+    }));
+    const notifier = new TelegramNotifier({ token: "token", chatId: 123, workspaceRoot: root, fetchImpl });
+    const brief = { songId: "spawn-x", title: "t", brief: "b", lyricsTheme: "l", mood: "m", tempo: "120 BPM", duration: "2:30", styleNotes: "s", sourceText: "x", createdAt: "2026-05-06T00:00:00Z" };
+
+    await notifier.notify({ type: "song_spawn_proposed", brief, reason: "ok", candidateSongId: "spawn-x", timestamp: 1 });
+    await notifier.notify({ type: "prompt_pack_ready", songId: "song-001", title: "t", lyricsExcerpt: "l", mood: "m", tempo: "120 BPM", styleNotes: "s", timestamp: 2 });
+    await notifier.notify({ type: "suno_take_url_ready", songId: "song-001", runId: "run-1", urls: ["https://suno.com/song/a"], timestamp: 3 });
+    await notifier.notify({ type: "song_take_completed", songId: "song-001", urls: ["https://suno.com/song/a"], timestamp: 4 });
+
+    const sendCalls = fetchImpl.mock.calls.filter((call) => String(call[0]).includes("/sendMessage"));
+    const markupCalls = fetchImpl.mock.calls.filter((call) => String(call[0]).includes("/editMessageReplyMarkup"));
+    expect(sendCalls).toHaveLength(4);
+    expect(markupCalls).toHaveLength(4);
+    expect(markupCalls.map((call) => String((call[1] as RequestInit).body)).join("\n")).toContain("採用");
+    expect(markupCalls.map((call) => String((call[1] as RequestInit).body)).join("\n")).toContain("破棄");
+    expect(markupCalls.map((call) => String((call[1] as RequestInit).body)).join("\n")).toContain("作る");
+    expect(markupCalls.map((call) => String((call[1] as RequestInit).body)).join("\n")).toContain("Suno 生成へ");
   });
 
   it("can subscribe to the runtime event bus", async () => {
@@ -147,7 +173,7 @@ describe("TelegramNotifier", () => {
     const notifier = new TelegramNotifier({ token: "token", chatId: 123, fetchImpl });
     const unsubscribe = notifier.subscribe(bus);
 
-    bus.emit({ type: "take_imported", songId: "song-001", paths: ["a.mp3"], metadata: [], timestamp: 1 });
+    bus.emit({ type: "song_take_completed", songId: "song-001", urls: ["https://suno.com/song/a"], timestamp: 1 });
     await vi.waitFor(() => expect(fetchImpl).toHaveBeenCalledTimes(1));
     unsubscribe();
 

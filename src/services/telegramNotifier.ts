@@ -38,21 +38,65 @@ export interface TelegramNotifierOptions {
   dashboardBaseUrl?: string;
 }
 
-const TELEGRAM_SILENT_EVENT_TYPES: ReadonlySet<RuntimeEvent["type"]> = new Set([
-  "observation_collected",
-  "autopilot_stage_changed",
-  "autopilot_state_changed",
-  "theme_generated",
-  "prompt_pack_char_count",
-  "spawn_proposal_appended",
-  "autopilot_ticker_safe_recovery",
-  "theme_starvation",
-  "bird_cooldown_triggered",
-  "error"
+const TELEGRAM_SIGNAL_EVENT_TYPES: ReadonlySet<RuntimeEvent["type"]> = new Set([
+  "song_spawn_proposed",
+  "prompt_pack_ready",
+  "suno_take_url_ready",
+  "song_take_completed"
 ]);
 
+const HARD_STOP_REASON_PATTERNS: Array<{ category: string; pattern: RegExp; message: string }> = [
+  {
+    category: "login",
+    pattern: /(?:login|session|auth|reauth|manual[_ -]?handoff)/i,
+    message: "Suno のログインが切れた。再ログインして /resume すると曲が再開する。"
+  },
+  {
+    category: "captcha",
+    pattern: /captcha/i,
+    message: "Suno が CAPTCHA で止まった。画面で確認して /resume すると曲が再開する。"
+  },
+  {
+    category: "payment",
+    pattern: /(?:payment|credit)/i,
+    message: "Suno の支払い/credit 確認で止まった。Suno 側を確認して /resume して。"
+  },
+  {
+    category: "ui_mismatch",
+    pattern: /(?:ui[_ -]?mismatch|selector[_ -]?mismatch)/i,
+    message: "Suno の画面が変わった。状態を確認して /resume すると曲が再開する。"
+  }
+];
+
+function hardStopCategory(reason: string): string | undefined {
+  return HARD_STOP_REASON_PATTERNS.find((entry) => entry.pattern.test(reason))?.category;
+}
+
+function hardStopMessage(reason: string): string {
+  return HARD_STOP_REASON_PATTERNS.find((entry) => entry.pattern.test(reason))?.message
+    ?? "Suno が手動確認で止まった。状態を確認して /resume すると曲が再開する。";
+}
+
+function isSunoErrorSource(source: string): boolean {
+  return /suno/i.test(source);
+}
+
+function isActionableSunoHardStop(event: RuntimeEvent): event is Extract<RuntimeEvent, { type: "suno_hard_stop" | "error" }> {
+  if (event.type === "suno_hard_stop") {
+    return hardStopCategory(event.reason) !== undefined;
+  }
+  if (event.type === "error") {
+    return isSunoErrorSource(event.source) && hardStopCategory(event.reason) !== undefined;
+  }
+  return false;
+}
+
+export function isTelegramSignalEvent(event: RuntimeEvent): boolean {
+  return TELEGRAM_SIGNAL_EVENT_TYPES.has(event.type) || isActionableSunoHardStop(event);
+}
+
 export function isTelegramSilentEvent(event: RuntimeEvent): boolean {
-  return TELEGRAM_SILENT_EVENT_TYPES.has(event.type);
+  return !isTelegramSignalEvent(event);
 }
 
 // Plan v10.56 Phase 4: autonomous self-heal events surfaced to Telegram (opt-in).
@@ -80,6 +124,18 @@ function formatSelfHealText(event: Extract<RuntimeEvent, { type: "error" }>): st
   ].filter(Boolean).join("\n");
 }
 
+function actionableHardStopKey(event: Extract<RuntimeEvent, { type: "suno_hard_stop" | "error" }>): string {
+  const source = event.type === "error" ? event.source : "suno_hard_stop";
+  return `${event.type}:${source}:${event.songId ?? "(none)"}:${hardStopCategory(event.reason) ?? "manual"}`;
+}
+
+function formatActionableHardStopText(event: Extract<RuntimeEvent, { type: "suno_hard_stop" | "error" }>): string {
+  return [
+    hardStopMessage(event.reason),
+    event.songId ? `song: ${event.songId}` : undefined
+  ].filter(Boolean).join(" ");
+}
+
 function logNotifySideEffectFailure(context: string, error: unknown): void {
   const reason = error instanceof Error ? error.message : String(error);
   console.error(`[telegram-notify] ${context} failed: ${reason}`);
@@ -94,6 +150,7 @@ export class TelegramNotifier {
   }> = [];
   private spawnFlushTimer: ReturnType<typeof setTimeout> | undefined;
   private readonly recentSelfHealNotifications = new Map<string, number>();
+  private readonly sentActionableHardStops = new Set<string>();
 
   constructor(private readonly options: TelegramNotifierOptions) {
     this.client = new TelegramClient(options.token, options.fetchImpl);
@@ -138,7 +195,16 @@ export class TelegramNotifier {
       await this.client.sendMessage(this.options.chatId, formatSelfHealText(event));
       return;
     }
-    if (isTelegramSilentEvent(event)) return;
+    if (isActionableSunoHardStop(event)) {
+      const key = actionableHardStopKey(event);
+      if (this.sentActionableHardStops.has(key)) {
+        return;
+      }
+      this.sentActionableHardStops.add(key);
+      await this.client.sendMessage(this.options.chatId, formatActionableHardStopText(event));
+      return;
+    }
+    if (!isTelegramSignalEvent(event)) return;
     if (event.type === "song_spawn_proposed") {
       return this.enqueueSongSpawnNotification(event);
     }
@@ -154,27 +220,8 @@ export class TelegramNotifier {
     if (event.type === "suno_take_url_ready") {
       await this.attachSunoTakeUrlReadyButtons(event, sent.message_id);
     }
-    if (event.type === "distribution_change_detected") {
-      await this.attachDistributionButtons(event, sent.message_id, text)
-        .catch((error) => logNotifySideEffectFailure("attachDistributionButtons", error));
-    }
-    if (event.type === "artist_pulse_drafted") {
-      await this.attachDailyVoiceButtons(event, sent.message_id)
-        .catch((error) => logNotifySideEffectFailure("attachDailyVoiceButtons", error));
-    }
     if (event.type === "prompt_pack_ready") {
       await this.attachPromptPackReadyButtons(event, sent.message_id);
-    }
-    if (event.type === "lyrics_generation_degraded") {
-      await this.attachLyricsDegradedButtons(event, sent.message_id);
-    }
-    if (event.type === "planning_skeleton_incomplete") {
-      await this.attachPlanningSkeletonButtons(event, sent.message_id, text)
-        .catch((error) => logNotifySideEffectFailure("attachPlanningSkeletonButtons", error));
-    }
-    if (event.type === "take_select_low_score") {
-      await this.attachTakeSelectButtons(event, sent.message_id)
-        .catch((error) => logNotifySideEffectFailure("attachTakeSelectButtons", error));
     }
   }
 

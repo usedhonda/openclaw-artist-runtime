@@ -142,7 +142,7 @@ describe("draft box proactive notices", () => {
     expect(text).toContain("次: Suno 接続を整える");
   });
 
-  it("runs a startup check when Telegram notifier subscribes to an already stuck runtime", async () => {
+  it("keeps startup proactive checks silent in Telegram", async () => {
     const root = await workspace();
     await ensureSongState(root, "spawn_timeout", "ハンズ前、解散");
     await writeAutopilotRunState(root, {
@@ -162,11 +162,9 @@ describe("draft box proactive notices", () => {
     const bus = getRuntimeEventBus();
     const unsubscribe = new TelegramNotifier({ token: "token", chatId: 123, workspaceRoot: root, fetchImpl }).subscribe(bus);
 
-    await vi.waitFor(() => expect(fetchImpl).toHaveBeenCalledTimes(1));
+    await new Promise((resolve) => setTimeout(resolve, 0));
     unsubscribe();
 
-    const body = JSON.parse(String(fetchImpl.mock.calls[0][1].body)) as { text: string };
-    expect(body.text).toContain("Suno に今つながってない");
-    expect(body.text).toContain("次: Suno 接続を整える");
+    expect(fetchImpl).not.toHaveBeenCalled();
   });
 });

@@ -48,9 +48,9 @@ describe("Telegram silent-event filter (Plan v10.12)", () => {
   it("does not classify human-relevant events as silent", () => {
     const noisy: RuntimeEvent[] = [
       { type: "song_take_completed", songId: "song-001", urls: ["https://suno.com/song/a"], timestamp: 1 },
-      { type: "take_imported", songId: "song-001", paths: ["a.mp3"], metadata: [], timestamp: 1 },
-      { type: "suno_generate_retry", songId: "song-001", reason: "transient", retryCount: 1, timestamp: 1 },
-      { type: "suno_generate_failed", songId: "song-001", reason: "fatal", retryCount: 3, timestamp: 1 },
+      { type: "prompt_pack_ready", songId: "song-001", title: "t", lyricsExcerpt: "l", mood: "m", tempo: "120 BPM", styleNotes: "s", timestamp: 1 },
+      { type: "suno_take_url_ready", songId: "song-001", runId: "run-1", urls: ["https://suno.com/song/a"], timestamp: 1 },
+      { type: "suno_hard_stop", songId: "song-001", reason: "login_required", timestamp: 1 },
       { type: "song_spawn_proposed", brief: { songId: "spawn_x", title: "t", brief: "b", lyricsTheme: "l", mood: "m", tempo: "t", duration: "d", styleNotes: "s", sourceText: "x", createdAt: "2026-05-06T00:00:00Z" }, reason: "ok", candidateSongId: "spawn_x", timestamp: 1 }
     ];
     for (const event of noisy) {
@@ -69,15 +69,14 @@ describe("Telegram silent-event filter (Plan v10.12)", () => {
     expect(fetchImpl).not.toHaveBeenCalled();
   });
 
-  it("notify() still sends Telegram for non-silent events", async () => {
+  it("notify() still sends Telegram for signal events", async () => {
     const fetchImpl = vi.fn(sendOk);
     const notifier = new TelegramNotifier({ token: "token", chatId: 123, fetchImpl });
 
     await notifier.notify({
-      type: "take_imported",
+      type: "song_take_completed",
       songId: "song-001",
-      paths: ["a.mp3"],
-      metadata: [],
+      urls: ["https://suno.com/song/a"],
       timestamp: 1
     });
 

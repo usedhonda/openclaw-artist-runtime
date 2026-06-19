@@ -11,7 +11,7 @@ function jsonResponse(body: unknown): Response {
 }
 
 describe("autopilot to Telegram notifier e2e", () => {
-  it("pushes a producer-facing runtime event through RuntimeEventBus to TelegramNotifier with mock fetch", async () => {
+    it("pushes a producer-facing signal event through RuntimeEventBus to TelegramNotifier with mock fetch", async () => {
     const bus = getRuntimeEventBus();
     bus.clearForTest();
     const fetchImpl = vi.fn().mockResolvedValue(jsonResponse({
@@ -22,15 +22,15 @@ describe("autopilot to Telegram notifier e2e", () => {
 
     try {
       bus.emit({
-        type: "artist_presence",
-        trigger: "observation_high_score",
-        text: "ゆずるさん、いま見えたものがある。",
+        type: "song_take_completed",
+        songId: "song-001",
+        urls: ["https://suno.com/song/a"],
         timestamp: 1
       });
 
       await vi.waitFor(() => expect(fetchImpl).toHaveBeenCalled());
       const payloads = fetchImpl.mock.calls.map((call) => JSON.parse(call[1].body as string) as { text: string });
-      expect(payloads.some((payload) => payload.text.includes("ゆずるさん、いま見えたものがある。"))).toBe(true);
+      expect(payloads.some((payload) => payload.text.includes("song-001"))).toBe(true);
       expect(payloads.every((payload) => payload.text.includes("publish"))).toBe(false);
     } finally {
       unsubscribe();

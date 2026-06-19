@@ -34,13 +34,9 @@ describe("R10 telegram notifier wireup boundary", () => {
       TELEGRAM_OWNER_USER_IDS: "123"
     } as NodeJS.ProcessEnv);
     getRuntimeEventBus().emit({
-      type: "artist_pulse_drafted",
-      voiceKind: "musing",
-      draftText: "低い雲だけ見てる。",
-      draftHash: "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
-      charCount: 10,
-      sourceFragments: [],
-      createdAt: "2026-04-30T00:00:00.000Z",
+      type: "song_take_completed",
+      songId: "song-001",
+      urls: ["https://suno.com/song/a"],
       timestamp: Date.now()
     });
     await vi.waitFor(() => expect(fetch).toHaveBeenCalled());

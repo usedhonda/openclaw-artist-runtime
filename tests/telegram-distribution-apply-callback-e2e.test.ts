@@ -1,4 +1,4 @@
-import { mkdtempSync, readFileSync } from "node:fs";
+import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it, vi } from "vitest";
@@ -35,7 +35,7 @@ async function prepareWorkspace(): Promise<string> {
 }
 
 describe("telegram distribution apply callbacks", () => {
-  it("attaches distribution apply buttons and applies SONGBOOK link from callback", async () => {
+  it("keeps distribution detections out of Telegram and does not mint apply buttons", async () => {
     const root = await prepareWorkspace();
     const proposal = proposalForDetection({
       songId: "where-it-played",
@@ -44,19 +44,8 @@ describe("telegram distribution apply callbacks", () => {
       url: "https://open.spotify.com/track/abc",
       detectedAt: "2026-04-29T00:00:00.000Z"
     });
-    const fetchImpl = vi
-      .fn()
-      .mockResolvedValueOnce(telegramResponse({ message_id: 77, chat: { id: 123 } }))
-      .mockResolvedValueOnce(telegramResponse(true));
-    const notifier = new TelegramNotifier({
-      token: "token",
-      chatId: 123,
-      workspaceRoot: root,
-      aiReviewProvider: "mock",
-      fetchImpl
-    });
-
-    await notifier.notify({
+    const fetchImpl = vi.fn();
+    await new TelegramNotifier({ token: "token", chatId: 123, workspaceRoot: root, aiReviewProvider: "mock", fetchImpl }).notify({
       type: "distribution_change_detected",
       songId: "where-it-played",
       platform: "spotify",
@@ -67,45 +56,11 @@ describe("telegram distribution apply callbacks", () => {
     });
 
     const actions = await readCallbackActionEntries(root);
-    const apply = actions.find((entry) => entry.action === "dist_apply");
-    expect(apply).toMatchObject({ proposalId: proposal.id, songId: "where-it-played", platform: "spotify", messageId: 77, userId: 123 });
-    const markupCall = fetchImpl.mock.calls.find((call) => String(call[0]).includes("/editMessageReplyMarkup"));
-    expect(markupCall).toBeTruthy();
-    const markupPayload = JSON.parse(String((markupCall?.[1] as RequestInit).body)) as { reply_markup: { inline_keyboard: Array<Array<{ text: string; callback_data: string }>> } };
-    expect(markupPayload.reply_markup.inline_keyboard[0]).toEqual([
-      { text: "配信記録に反映", callback_data: `cb:${apply?.callbackId}` },
-      { text: "保留", callback_data: `cb:${actions.find((entry) => entry.action === "dist_skip")?.callbackId}` }
-    ]);
-
-    const client = callbackClient();
-    const result = await routeTelegramCallback({
-      root,
-      client,
-      callbackQueryId: "callback-apply",
-      data: `cb:${apply?.callbackId}`,
-      fromUserId: 123,
-      chatId: 123,
-      messageId: 77
-    });
-
-    expect(result).toMatchObject({ result: "applied", reason: "applied" });
-    expect(readFileSync(join(root, "artist", "SONGBOOK.md"), "utf8")).toContain("https://open.spotify.com/track/abc");
-    expect(client.editMessageReplyMarkup).toHaveBeenCalledWith(123, 77, { inline_keyboard: [] });
-    expect(client.sendMessage).toHaveBeenCalledWith(123, expect.stringContaining("Applied ✓ spotify for where-it-played"), undefined);
-
-    const duplicate = await routeTelegramCallback({
-      root,
-      client,
-      callbackQueryId: "callback-apply-again",
-      data: `cb:${apply?.callbackId}`,
-      fromUserId: 123,
-      chatId: 123,
-      messageId: 77
-    });
-    expect(duplicate).toMatchObject({ result: "duplicate", reason: "already_applied" });
+    expect(fetchImpl).not.toHaveBeenCalled();
+    expect(actions.some((entry) => entry.action === "dist_apply" || entry.action === "dist_skip")).toBe(false);
   });
 
-  it("skips a distribution proposal without touching SONGBOOK", async () => {
+  it("keeps distribution skip prompts out of Telegram", async () => {
     const root = await prepareWorkspace();
     const proposal = proposalForDetection({
       songId: "where-it-played",
@@ -114,16 +69,8 @@ describe("telegram distribution apply callbacks", () => {
       url: "https://music.apple.com/jp/album/where-it-played/123?i=456",
       detectedAt: "2026-04-29T00:00:00.000Z"
     });
-    const notifier = new TelegramNotifier({
-      token: "token",
-      chatId: 123,
-      workspaceRoot: root,
-      aiReviewProvider: "mock",
-      fetchImpl: vi.fn()
-        .mockResolvedValueOnce(telegramResponse({ message_id: 88, chat: { id: 123 } }))
-        .mockResolvedValueOnce(telegramResponse(true))
-    });
-    await notifier.notify({
+    const fetchImpl = vi.fn();
+    await new TelegramNotifier({ token: "token", chatId: 123, workspaceRoot: root, aiReviewProvider: "mock", fetchImpl }).notify({
       type: "distribution_change_detected",
       songId: "where-it-played",
       platform: "appleMusic",
@@ -132,20 +79,10 @@ describe("telegram distribution apply callbacks", () => {
       proposal,
       timestamp: Date.parse("2026-04-29T00:00:00.000Z")
     });
-    const skip = (await readCallbackActionEntries(root)).find((entry) => entry.action === "dist_skip");
 
-    const result = await routeTelegramCallback({
-      root,
-      client: callbackClient(),
-      callbackQueryId: "callback-skip",
-      data: `cb:${skip?.callbackId}`,
-      fromUserId: 123,
-      chatId: 123,
-      messageId: 88
-    });
-
-    expect(result).toMatchObject({ result: "discarded", reason: "discarded" });
-    expect(readFileSync(join(root, "artist", "SONGBOOK.md"), "utf8")).not.toContain("music.apple.com");
+    const actions = await readCallbackActionEntries(root);
+    expect(fetchImpl).not.toHaveBeenCalled();
+    expect(actions.some((entry) => entry.action === "dist_apply" || entry.action === "dist_skip")).toBe(false);
   });
 
   it("expires old distribution callback actions", async () => {

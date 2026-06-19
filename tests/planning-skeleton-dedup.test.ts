@@ -6,6 +6,7 @@ import { ensureArtistWorkspace } from "../src/services/artistWorkspace";
 import { ArtistAutopilotService, readAutopilotRunState, writeAutopilotRunState } from "../src/services/autopilotService";
 import { readCallbackActionEntries } from "../src/services/callbackActionRegistry";
 import { getRuntimeEventBus } from "../src/services/runtimeEventBus";
+import type { RuntimeEvent } from "../src/services/runtimeEventBus";
 import { ensureSongState, writeSongBrief } from "../src/services/artistState";
 import { TelegramNotifier } from "../src/services/telegramNotifier";
 
@@ -40,9 +41,9 @@ describe("planning_skeleton_incomplete dedup", () => {
 
   it("emits only one planning_skeleton_incomplete event for the same song across consecutive cycles", async () => {
     const root = await planningWorkspace();
-    const fetchImpl = vi.fn()
-      .mockResolvedValueOnce(telegramResponse({ message_id: 88, chat: { id: 123 } }))
-      .mockResolvedValueOnce(telegramResponse(true));
+    const events: RuntimeEvent[] = [];
+    const collect = getRuntimeEventBus().subscribe((event) => events.push(event));
+    const fetchImpl = vi.fn().mockResolvedValue(telegramResponse({ message_id: 88, chat: { id: 123 } }));
     const notifier = new TelegramNotifier({ token: "token", chatId: 123, workspaceRoot: root, aiReviewProvider: "mock", fetchImpl });
     const unsubscribe = notifier.subscribe(getRuntimeEventBus());
 
@@ -52,14 +53,13 @@ describe("planning_skeleton_incomplete dedup", () => {
       config: { autopilot: { enabled: true, dryRun: true }, telegram: { enabled: true } },
       observationRunner: async () => ({ stdout: "planning observation" })
     });
-    await vi.waitFor(async () => {
-      expect((await readCallbackActionEntries(root)).some((entry) => entry.action === "planning_skeleton_apply")).toBe(true);
-    });
+    await new Promise((resolve) => setTimeout(resolve, 0));
 
     expect(firstState.suspendedAt).toBe("planning_skeleton_pending");
     const entriesAfterFirst = await readCallbackActionEntries(root);
     const planningProposalsAfterFirst = entriesAfterFirst.filter((entry) => entry.action === "planning_skeleton_apply").length;
-    expect(planningProposalsAfterFirst).toBe(1);
+    expect(planningProposalsAfterFirst).toBe(0);
+    expect(events.filter((event) => event.type === "planning_skeleton_incomplete")).toHaveLength(1);
 
     const secondState = await service.runCycle({
       workspaceRoot: root,
@@ -70,8 +70,10 @@ describe("planning_skeleton_incomplete dedup", () => {
 
     const entriesAfterSecond = await readCallbackActionEntries(root);
     const planningProposalsAfterSecond = entriesAfterSecond.filter((entry) => entry.action === "planning_skeleton_apply").length;
-    expect(planningProposalsAfterSecond).toBe(1);
+    expect(planningProposalsAfterSecond).toBe(0);
+    expect(events.filter((event) => event.type === "planning_skeleton_incomplete")).toHaveLength(1);
 
+    collect();
     unsubscribe();
   });
 

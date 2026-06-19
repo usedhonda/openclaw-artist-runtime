@@ -38,7 +38,7 @@ describe("telegram notifier service wireup", () => {
     vi.restoreAllMocks();
   });
 
-  it("subscribes TelegramNotifier and forwards artist pulse drafts", async () => {
+  it("subscribes TelegramNotifier but keeps artist pulse drafts silent", async () => {
     const fetchImpl = telegramFetch();
     vi.stubGlobal("fetch", fetchImpl);
     const workspaceRoot = root();
@@ -55,9 +55,8 @@ describe("telegram notifier service wireup", () => {
       timestamp: Date.now()
     });
 
-    await vi.waitFor(() => expect(fetchImpl).toHaveBeenCalledWith(expect.stringContaining("/sendMessage"), expect.any(Object)));
-    expect(JSON.parse(String((fetchImpl.mock.calls[0][1] as RequestInit).body)).text).toContain("💭 つぶやき draft");
-    await vi.waitFor(() => expect(fetchImpl).toHaveBeenCalledWith(expect.stringContaining("/editMessageReplyMarkup"), expect.any(Object)));
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(fetchImpl).not.toHaveBeenCalled();
   });
 
   it("forwards song spawn proposals to Telegram", async () => {

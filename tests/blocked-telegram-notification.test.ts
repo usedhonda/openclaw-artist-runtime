@@ -2,8 +2,6 @@ import { describe, expect, it, vi } from "vitest";
 import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { isCriticalNotificationEvent } from "../src/services/failedNotifyLedger";
-import { readCallbackActionEntries } from "../src/services/callbackActionRegistry";
 import { isTelegramSilentEvent, formatRuntimeEvent, TelegramNotifier } from "../src/services/telegramNotifier";
 import type { RuntimeEvent } from "../src/services/runtimeEventBus";
 
@@ -12,7 +10,7 @@ function telegramResponse(result: unknown): Response {
 }
 
 describe("blocked runtime events Telegram delivery", () => {
-  const blockedEvents: RuntimeEvent[] = [
+  const operationalEvents: RuntimeEvent[] = [
     {
       type: "planning_skeleton_incomplete",
       songId: "song-026",
@@ -32,28 +30,29 @@ describe("blocked runtime events Telegram delivery", () => {
     { type: "suno_create_failed", songId: "song-026", reason: "playwright_live_timeout", retryCount: 1, timestamp: 1 },
     { type: "suno_generate_retry", songId: "song-026", reason: "suno_worker_not_ready", retryCount: 1, timestamp: 1 },
     { type: "suno_generate_failed", songId: "song-026", reason: "playwright_live_timeout", retryCount: 3, timestamp: 1 },
-    { type: "suno_hard_stop", songId: "song-026", reason: "captcha", timestamp: 1 },
     { type: "take_selection_stalled", songId: "song-026", reason: "no imported takes", timestamp: 1 },
     { type: "asset_generation_stalled", songId: "song-026", reason: "asset render failed", timestamp: 1 },
     { type: "artist_proactive_notice", trigger: "suno_trouble", message: "Suno に今つながってない、または timeout で詰まってる。整えて。", nextAction: "次: Suno 接続を整える。戻ったら自動で続きから確認する。", draftCount: 2, buildingCount: 1, songId: "song-026", title: "Matrix Jury", reason: "playwright_live_timeout", stateKey: "suno_trouble:song-026:playwright_live_timeout", timestamp: 1 }
   ];
 
-  it("does not silence blocked events and records failed delivery for replay", () => {
-    for (const event of blockedEvents) {
-      expect(isTelegramSilentEvent(event), event.type).toBe(false);
-      expect(isCriticalNotificationEvent(event), event.type).toBe(true);
+  it("keeps operational blocked events silent in Telegram", async () => {
+    const fetchImpl = vi.fn().mockResolvedValue(telegramResponse({ message_id: 77, chat: { id: 123 } }));
+    const notifier = new TelegramNotifier({ token: "token", chatId: 123, fetchImpl });
+    for (const event of operationalEvents) {
+      expect(isTelegramSilentEvent(event), event.type).toBe(true);
+      await notifier.notify(event);
     }
+    expect(fetchImpl).not.toHaveBeenCalled();
   });
 
-  it("formats blocked events as producer-readable Japanese status", async () => {
-    const texts = await Promise.all(blockedEvents.map((event) => formatRuntimeEvent(event)));
+  it("keeps operational event formatters available for status and console surfaces", async () => {
+    const texts = await Promise.all(operationalEvents.map((event) => formatRuntimeEvent(event)));
     expect(texts.join("\n")).not.toMatch(/Runtime error|Suno generate retry|Suno generate failed/);
     expect(texts.join("\n")).toContain("song-026");
     expect(texts.join("\n")).toContain("─────");
   });
 
-  it("formats degraded lyrics as Japanese recovery text and attaches redraft/discard buttons", async () => {
-    const root = mkdtempSync(join(tmpdir(), "artist-runtime-degraded-notify-"));
+  it("keeps degraded lyrics formatter available but does not push it to Telegram", async () => {
     const event: RuntimeEvent = {
       type: "lyrics_generation_degraded",
       songId: "song-lyrics",
@@ -69,15 +68,27 @@ describe("blocked runtime events Telegram delivery", () => {
     expect(text).toContain("歌詞を作り直す");
     expect(text).toContain("破棄");
 
-    const fetchImpl = vi.fn()
-      .mockResolvedValueOnce(telegramResponse({ message_id: 77, chat: { id: 123 } }))
-      .mockResolvedValueOnce(telegramResponse(true));
+    const root = mkdtempSync(join(tmpdir(), "artist-runtime-degraded-notify-"));
+    const fetchImpl = vi.fn().mockResolvedValue(telegramResponse({ message_id: 77, chat: { id: 123 } }));
     await new TelegramNotifier({ token: "token", chatId: 123, workspaceRoot: root, fetchImpl }).notify(event);
-    const entries = await readCallbackActionEntries(root);
-    const markupCall = fetchImpl.mock.calls.find((call) => String(call[0]).includes("/editMessageReplyMarkup"));
-    const markupBody = String((markupCall?.[1] as RequestInit).body);
-    expect(entries.map((entry) => entry.action).sort()).toEqual(["lyrics_redraft", "song_discard"].sort());
-    expect(markupBody).toContain("歌詞を作り直す");
-    expect(markupBody).toContain("破棄");
+    expect(fetchImpl).not.toHaveBeenCalled();
+  });
+
+  it("sends actionable Suno hard-stops once and keeps transient timeout/network silent", async () => {
+    const fetchImpl = vi.fn().mockImplementation(() => Promise.resolve(telegramResponse({ message_id: 77, chat: { id: 123 } })));
+    const notifier = new TelegramNotifier({ token: "token", chatId: 123, fetchImpl });
+    await notifier.notify({ type: "suno_hard_stop", songId: "song-026", reason: "session_expired", timestamp: 1 });
+    await notifier.notify({ type: "suno_hard_stop", songId: "song-026", reason: "session_expired", timestamp: 2 });
+    await notifier.notify({ type: "suno_hard_stop", songId: "song-026", reason: "playwright_live_timeout", timestamp: 3 });
+    await notifier.notify({ type: "error", source: "suno_worker", songId: "song-027", reason: "captcha_required", timestamp: 4 });
+    await notifier.notify({ type: "error", source: "suno_worker", songId: "song-028", reason: "ECONNRESET", timestamp: 5 });
+
+    expect(fetchImpl).toHaveBeenCalledTimes(2);
+    const texts = fetchImpl.mock.calls.map((call) => JSON.parse(String((call[1] as RequestInit).body)).text as string);
+    expect(texts[0]).toContain("Suno のログインが切れた");
+    expect(texts[0]).toContain("song-026");
+    expect(texts[1]).toContain("CAPTCHA");
+    expect(texts.join("\n")).not.toContain("playwright_live_timeout");
+    expect(texts.join("\n")).not.toContain("ECONNRESET");
   });
 });

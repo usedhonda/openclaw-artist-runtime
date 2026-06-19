@@ -26,13 +26,11 @@ function promptPackEvent(songId = "spawn_c6ad5e"): Extract<RuntimeEvent, { type:
   };
 }
 
-function degradedLyricsEvent(songId = "spawn_616e01"): Extract<RuntimeEvent, { type: "lyrics_generation_degraded" }> {
+function actionableHardStopEvent(songId = "spawn_616e01"): Extract<RuntimeEvent, { type: "suno_hard_stop" }> {
   return {
-    type: "lyrics_generation_degraded",
+    type: "suno_hard_stop",
     songId,
-    reason: "lyrics_generation_degraded: provider fallback response",
-    detail: "provider fallback response",
-    repairNotes: ["provider fallback response"],
+    reason: "session_expired",
     timestamp: 1779500000000
   };
 }
@@ -105,7 +103,7 @@ describe("failed-notify ledger", () => {
     });
   });
 
-  it("records failed degraded-lyrics recovery delivery in failed-notify ledger", async () => {
+  it("records failed actionable hard-stop delivery in failed-notify ledger", async () => {
     process.env.OPENCLAW_TELEGRAM_RETRY_MAX = "1";
     process.env.OPENCLAW_TELEGRAM_RETRY_BASE_MS = "1";
     const root = await mkdtemp(join(tmpdir(), "artist-runtime-notifier-failed-degraded-"));
@@ -118,15 +116,15 @@ describe("failed-notify ledger", () => {
     });
     notifier.subscribe(bus);
 
-    bus.emit(degradedLyricsEvent());
+    bus.emit(actionableHardStopEvent());
 
     await vi.waitFor(async () => {
       const raw = await readFile(failedNotifyLedgerPath(root), "utf8");
-      expect(raw).toContain("lyrics_generation_degraded");
+      expect(raw).toContain("suno_hard_stop");
     });
     const failed = await listUnreplayedFailedNotifications(root);
     expect(failed[0]).toMatchObject({
-      eventType: "lyrics_generation_degraded",
+      eventType: "suno_hard_stop",
       songId: "spawn_616e01",
       attempts: 1
     });
