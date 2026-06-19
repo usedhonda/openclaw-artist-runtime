@@ -118,6 +118,18 @@ export OPENCLAW_DEBUG_CALLBACK_DISPATCH="${OPENCLAW_DEBUG_CALLBACK_DISPATCH:-on}
 # spawn_proposal_ready gate に到達させるための必須 enable。
 export OPENCLAW_SONG_SPAWN_ENABLED=on
 
+# Cadence rebalance (御大 2026-06-19「X 投稿ばかりで曲が来ない」): song spawn was
+# 24h vs X pulse 12h, so X arrived 2x as often AND songs were skipped on AI-proposer
+# fallback. Make songs dominant: spawn every 12h (floor), pulse every 24h.
+export OPENCLAW_SONG_SPAWN_HOURS="${OPENCLAW_SONG_SPAWN_HOURS:-12}"
+export OPENCLAW_ARTIST_PULSE_HOURS="${OPENCLAW_ARTIST_PULSE_HOURS:-24}"
+
+# Ticker watcher stale threshold (御大 2026-06-19 flood): default 300s (5min) was
+# SHORTER than the autopilot's ~6min tick interval, so the watcher false-fired a
+# "safe tick" every cycle and spammed Telegram with recovery notices. Raise to 20min
+# so it only fires on a genuine multi-cycle stall, not the normal inter-tick gap.
+export OPENCLAW_TICKER_WATCHER_STALE_MS="${OPENCLAW_TICKER_WATCHER_STALE_MS:-1200000}"
+
 # Gateway supervisor Telegram-network watchdog. Default-on (2026-06-16): the
 # gateway's own stall-restart loop could not recover an 8h getUpdates wedge on
 # Jun 15 (inbound receive silently dead while outbound still worked), so the
