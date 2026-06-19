@@ -124,11 +124,6 @@ function formatSelfHealText(event: Extract<RuntimeEvent, { type: "error" }>): st
   ].filter(Boolean).join("\n");
 }
 
-function actionableHardStopKey(event: Extract<RuntimeEvent, { type: "suno_hard_stop" | "error" }>): string {
-  const source = event.type === "error" ? event.source : "suno_hard_stop";
-  return `${event.type}:${source}:${event.songId ?? "(none)"}:${hardStopCategory(event.reason) ?? "manual"}`;
-}
-
 function formatActionableHardStopText(event: Extract<RuntimeEvent, { type: "suno_hard_stop" | "error" }>): string {
   return [
     hardStopMessage(event.reason),
@@ -150,7 +145,6 @@ export class TelegramNotifier {
   }> = [];
   private spawnFlushTimer: ReturnType<typeof setTimeout> | undefined;
   private readonly recentSelfHealNotifications = new Map<string, number>();
-  private readonly sentActionableHardStops = new Set<string>();
 
   constructor(private readonly options: TelegramNotifierOptions) {
     this.client = new TelegramClient(options.token, options.fetchImpl);
@@ -196,11 +190,6 @@ export class TelegramNotifier {
       return;
     }
     if (isActionableSunoHardStop(event)) {
-      const key = actionableHardStopKey(event);
-      if (this.sentActionableHardStops.has(key)) {
-        return;
-      }
-      this.sentActionableHardStops.add(key);
       await this.client.sendMessage(this.options.chatId, formatActionableHardStopText(event));
       return;
     }

@@ -5,7 +5,7 @@ import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import { ensureSongState, readSongState, updateSongState } from "../src/services/artistState";
 import { ensureArtistWorkspace } from "../src/services/artistWorkspace";
-import { ArtistAutopilotService, writeAutopilotRunState } from "../src/services/autopilotService";
+import { ArtistAutopilotService, readAutopilotRunState, writeAutopilotRunState } from "../src/services/autopilotService";
 import { getRuntimeEventBus, type RuntimeEvent } from "../src/services/runtimeEventBus";
 
 async function pathExists(path: string): Promise<boolean> {
@@ -88,5 +88,48 @@ describe("autopilot runCycle contract", () => {
     expect(events.filter((event) => event.type === "suno_hard_stop")).toHaveLength(1);
     expect(events.some((event) => event.type === "suno_generate_retry")).toBe(false);
     expect(events.some((event) => event.type === "song_take_completed")).toBe(false);
+  });
+
+  it("emits Suno hard-stop notifications once per resolved episode", async () => {
+    const root = await rootWithSong("hard-stop-song", "suno_running");
+    await writeAutopilotRunState(root, {
+      runId: "hard-stop-run",
+      currentSongId: "hard-stop-song",
+      stage: "suno_generation",
+      paused: false,
+      hardStopReason: "selector mismatch",
+      retryCount: 1,
+      cycleCount: 2,
+      updatedAt: "2026-06-11T00:00:00.000Z"
+    });
+    const events: RuntimeEvent[] = [];
+    const unsubscribe = getRuntimeEventBus().subscribe((event) => events.push(event));
+    const service = new ArtistAutopilotService();
+
+    await service.runCycle({
+      workspaceRoot: root,
+      config: { artist: { workspaceRoot: root }, autopilot: { enabled: true, dryRun: true }, songSpawn: { enabled: false } }
+    });
+    await service.runCycle({
+      workspaceRoot: root,
+      config: { artist: { workspaceRoot: root }, autopilot: { enabled: true, dryRun: true }, songSpawn: { enabled: false } }
+    });
+    expect(events.filter((event) => event.type === "suno_hard_stop")).toHaveLength(1);
+
+    const stuck = await readAutopilotRunState(root);
+    await writeAutopilotRunState(root, {
+      ...stuck,
+      blockedReason: undefined,
+      lastError: undefined,
+      stage: "suno_generation",
+      hardStopReason: "selector mismatch"
+    });
+    await service.runCycle({
+      workspaceRoot: root,
+      config: { artist: { workspaceRoot: root }, autopilot: { enabled: true, dryRun: true }, songSpawn: { enabled: false } }
+    });
+    unsubscribe();
+
+    expect(events.filter((event) => event.type === "suno_hard_stop")).toHaveLength(2);
   });
 });

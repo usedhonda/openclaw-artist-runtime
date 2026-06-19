@@ -74,7 +74,7 @@ describe("blocked runtime events Telegram delivery", () => {
     expect(fetchImpl).not.toHaveBeenCalled();
   });
 
-  it("sends actionable Suno hard-stops once and keeps transient timeout/network silent", async () => {
+  it("sends actionable Suno hard-stops and keeps transient timeout/network silent", async () => {
     const fetchImpl = vi.fn().mockImplementation(() => Promise.resolve(telegramResponse({ message_id: 77, chat: { id: 123 } })));
     const notifier = new TelegramNotifier({ token: "token", chatId: 123, fetchImpl });
     await notifier.notify({ type: "suno_hard_stop", songId: "song-026", reason: "session_expired", timestamp: 1 });
@@ -83,11 +83,12 @@ describe("blocked runtime events Telegram delivery", () => {
     await notifier.notify({ type: "error", source: "suno_worker", songId: "song-027", reason: "captcha_required", timestamp: 4 });
     await notifier.notify({ type: "error", source: "suno_worker", songId: "song-028", reason: "ECONNRESET", timestamp: 5 });
 
-    expect(fetchImpl).toHaveBeenCalledTimes(2);
+    expect(fetchImpl).toHaveBeenCalledTimes(3);
     const texts = fetchImpl.mock.calls.map((call) => JSON.parse(String((call[1] as RequestInit).body)).text as string);
     expect(texts[0]).toContain("Suno のログインが切れた");
     expect(texts[0]).toContain("song-026");
-    expect(texts[1]).toContain("CAPTCHA");
+    expect(texts[1]).toContain("Suno のログインが切れた");
+    expect(texts[2]).toContain("CAPTCHA");
     expect(texts.join("\n")).not.toContain("playwright_live_timeout");
     expect(texts.join("\n")).not.toContain("ECONNRESET");
   });

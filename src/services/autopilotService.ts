@@ -972,12 +972,14 @@ export class ArtistAutopilotService {
       });
     }
     if (existing.hardStopReason) {
-      emitRuntimeEvent({
-        type: "suno_hard_stop",
-        songId: existing.currentSongId,
-        reason: existing.hardStopReason,
-        timestamp: Date.now()
-      });
+      if (shouldEmitOperationalEpisode(existing, existing.hardStopReason)) {
+        emitRuntimeEvent({
+          type: "suno_hard_stop",
+          songId: existing.currentSongId,
+          reason: existing.hardStopReason,
+          timestamp: Date.now()
+        });
+      }
       return writeStageState(input.workspaceRoot, existing, {
         ...existing,
         stage: "failed_closed",
