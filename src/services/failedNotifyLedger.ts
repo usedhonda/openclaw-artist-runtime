@@ -4,7 +4,7 @@ import { dirname, join } from "node:path";
 import { secretLikePattern } from "./personaMigrator.js";
 import type { RuntimeEvent } from "./runtimeEventBus.js";
 
-export type FailedNotifyStatus = "failed" | "replayed" | "replay_failed";
+export type FailedNotifyStatus = "failed" | "replayed" | "replay_failed" | "aged_out";
 
 export interface FailedNotifyEntry {
   notifyId: string;
@@ -150,6 +150,7 @@ export async function listUnreplayedFailedNotifications(
   const limit = Math.max(0, options.limit ?? 20);
   return latestByNotifyId(await readFailedNotifyEntries(root))
     .filter((entry) => entry.status !== "replayed")
+    .filter((entry) => entry.status !== "aged_out")
     .filter((entry) => !Number.isFinite(sinceMs) || Date.parse(entry.failedAt) >= sinceMs)
     .sort((left, right) => right.failedAt.localeCompare(left.failedAt))
     .slice(0, limit)
@@ -180,6 +181,20 @@ export async function appendFailedNotifyReplayRecord(
     attempts: result.ok ? source.attempts : source.attempts + 1,
     replayedAt: (result.now ?? new Date()).toISOString(),
     replayError: result.ok ? undefined : ((result.error as Error)?.message ?? String(result.error))
+  };
+  return appendFailedNotifyEntry(root, entry);
+}
+
+export async function appendFailedNotifyAgedOutRecord(
+  root: string,
+  source: FailedNotifyEntry,
+  input: { maxAgeMs: number; now?: Date }
+): Promise<FailedNotifyEntry> {
+  const entry: FailedNotifyEntry = {
+    ...source,
+    status: "aged_out",
+    replayedAt: (input.now ?? new Date()).toISOString(),
+    replayError: `failed_notify_replay_aged_out:${input.maxAgeMs}ms`
   };
   return appendFailedNotifyEntry(root, entry);
 }

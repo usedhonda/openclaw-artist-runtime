@@ -43,6 +43,12 @@ function positiveIntegerFromEnv(env: NodeJS.ProcessEnv, name: string, fallback: 
   return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
 }
 
+function positiveHoursFromEnvMs(env: NodeJS.ProcessEnv, name: string, fallbackHours: number): number {
+  const parsed = Number.parseFloat(env[name] ?? "");
+  const hours = Number.isFinite(parsed) && parsed >= 0 ? parsed : fallbackHours;
+  return Math.round(hours * 60 * 60 * 1000);
+}
+
 function adoptionDownloadClient(token: string): { sendMessage(chatId: number, text: string): Promise<unknown> } {
   return {
     async sendMessage(chatId, text) {
@@ -131,7 +137,8 @@ export async function startTelegramNotifierFromEnv(env: NodeJS.ProcessEnv = proc
       token,
       aiReviewProvider: config.aiReview.provider,
       dashboardBaseUrl,
-      intervalMs: positiveIntegerFromEnv(env, "OPENCLAW_FAILED_NOTIFY_REPLAY_INTERVAL_MS", 60_000)
+      intervalMs: positiveIntegerFromEnv(env, "OPENCLAW_FAILED_NOTIFY_REPLAY_INTERVAL_MS", 60_000),
+      maxAgeMs: positiveHoursFromEnvMs(env, "OPENCLAW_FAILED_NOTIFY_REPLAY_MAX_AGE_HOURS", 6)
     });
   }
   const primaryChatId = Number(ownerIds[0]);

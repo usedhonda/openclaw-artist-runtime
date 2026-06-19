@@ -1,5 +1,6 @@
 import type { AiReviewProvider } from "../types.js";
 import {
+  appendFailedNotifyAgedOutRecord,
   appendFailedNotifyReplayRecord,
   type FailedNotifyEntry,
   isCriticalNotificationEvent,
@@ -16,18 +17,21 @@ export interface FailedNotifyReplayWorkerOptions {
   fetchImpl?: TelegramNotifierOptions["fetchImpl"];
   intervalMs?: number;
   limit?: number;
+  maxAgeMs?: number;
 }
 
 export interface FailedNotifyReplayResult {
   attempted: number;
   replayed: number;
   failed: number;
+  agedOut: number;
   skipped: number;
   deliveryIds: string[];
 }
 
 const DEFAULT_REPLAY_INTERVAL_MS = 60 * 1000;
 const DEFAULT_REPLAY_LIMIT = 10;
+const DEFAULT_REPLAY_MAX_AGE_MS = 6 * 60 * 60 * 1000;
 
 function latestByNotifyId(entries: FailedNotifyEntry[]): FailedNotifyEntry[] {
   const latest = new Map<string, FailedNotifyEntry>();
@@ -46,6 +50,7 @@ function replayCandidates(entries: FailedNotifyEntry[], limit: number): FailedNo
   const candidates: FailedNotifyEntry[] = [];
   for (const entry of latestByNotifyId(entries)
     .filter((item) => item.status !== "replayed")
+    .filter((item) => item.status !== "aged_out")
     .filter((item) => isCriticalNotificationEvent(item.eventPayload))
     .sort((left, right) => left.failedAt.localeCompare(right.failedAt))) {
     const deliveryId = deliveryIdFor(entry);
@@ -59,6 +64,11 @@ function replayCandidates(entries: FailedNotifyEntry[], limit: number): FailedNo
     }
   }
   return candidates;
+}
+
+function isAgedOut(entry: FailedNotifyEntry, now: Date, maxAgeMs: number): boolean {
+  const failedAtMs = Date.parse(entry.failedAt);
+  return Number.isFinite(failedAtMs) && now.getTime() - failedAtMs > maxAgeMs;
 }
 
 async function notifyEntry(options: FailedNotifyReplayWorkerOptions, entry: FailedNotifyEntry): Promise<void> {
@@ -75,16 +85,24 @@ async function notifyEntry(options: FailedNotifyReplayWorkerOptions, entry: Fail
 export async function replayFailedNotificationsOnce(options: FailedNotifyReplayWorkerOptions): Promise<FailedNotifyReplayResult> {
   const entries = await readFailedNotifyEntries(options.root);
   const candidates = replayCandidates(entries, Math.max(1, options.limit ?? DEFAULT_REPLAY_LIMIT));
+  const now = new Date();
+  const maxAgeMs = Math.max(0, options.maxAgeMs ?? DEFAULT_REPLAY_MAX_AGE_MS);
   const result: FailedNotifyReplayResult = {
     attempted: 0,
     replayed: 0,
     failed: 0,
+    agedOut: 0,
     skipped: 0,
     deliveryIds: []
   };
   for (const entry of candidates) {
     const deliveryId = deliveryIdFor(entry);
     result.deliveryIds.push(deliveryId);
+    if (isAgedOut(entry, now, maxAgeMs)) {
+      await appendFailedNotifyAgedOutRecord(options.root, entry, { maxAgeMs, now });
+      result.agedOut += 1;
+      continue;
+    }
     result.attempted += 1;
     try {
       await notifyEntry(options, entry);
@@ -95,7 +113,10 @@ export async function replayFailedNotificationsOnce(options: FailedNotifyReplayW
       result.failed += 1;
     }
   }
-  result.skipped = Math.max(0, latestByNotifyId(entries).filter((entry) => entry.status !== "replayed").length - candidates.length);
+  result.skipped = Math.max(0, latestByNotifyId(entries)
+    .filter((entry) => entry.status !== "replayed")
+    .filter((entry) => entry.status !== "aged_out")
+    .length - candidates.length);
   return result;
 }
 

@@ -834,7 +834,7 @@ export async function proposeSpawn(root: string, options: ProposeSpawnOptions = 
   fallback.sources = sourcesFromExcerpts(obsData.excerpts ?? []);
   const provider = options.aiReviewProvider ?? "mock";
   const mockReason = composeReasonInArtistVoice({ artistMd, soulMd, fingerprint, observation, brief: fallback });
-  const raw = provider === "mock"
+  let raw = provider === "mock"
     ? [
       "spawn: yes",
       `title: ${fallback.title}`,
@@ -863,14 +863,22 @@ export async function proposeSpawn(root: string, options: ProposeSpawnOptions = 
       activeQueueContext: options.activeQueueContext
     }), { provider });
   // v10.67 flood guard: a provider fallback echo ("Mock provider fallback (...)" /
-  // not-configured) is not artist output. Building the deterministic template brief
-  // from it floods Telegram with near-identical junk proposals while the provider is
-  // unreachable (2026-06-11: 19 proposals in 2h). Skip this tick entirely; the next
-  // tick retries against a healthy provider. The explicit mock provider (dev path)
-  // keeps its deterministic brief above.
+  // not-configured) is not artist output. Do not parse the echoed prompt. Instead,
+  // fall back to the deterministic observation-anchored brief and let the spawn
+  // rate limiter suppress repeats while the provider is unhealthy.
   if (provider !== "mock" && (isAiNotConfiguredResponse(raw) || isAiProviderMockFallbackResponse(raw))) {
-    console.warn("[song-spawn] AI proposer returned a fallback response; skipping spawn proposal this tick");
-    return null;
+    console.warn("[song-spawn] AI proposer returned a fallback response; using deterministic fallback proposal");
+    raw = [
+      "spawn: yes",
+      `title: ${fallback.title}`,
+      `brief: ${fallback.brief}`,
+      `lyricsTheme: ${fallback.lyricsTheme}`,
+      `mood: ${fallback.mood}`,
+      `tempo: ${fallback.tempo}`,
+      `duration: ${fallback.duration}`,
+      `style: ${fallback.styleNotes}`,
+      `reason: ${mockReason}`
+    ].join("\n");
   }
   const safeRaw = secretLikePattern.test(raw) ? "" : raw;
   const parsed = briefFromAi(safeRaw, fallback, now, pitchContext);

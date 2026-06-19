@@ -200,6 +200,35 @@ describe("failed-notify ledger", () => {
     await expect(listUnreplayedFailedNotifications(root)).resolves.toHaveLength(0);
   });
 
+  it("replay worker ages out stale critical notifications instead of replaying old producer actions", async () => {
+    const root = await mkdtemp(join(tmpdir(), "artist-runtime-replay-aged-out-"));
+    const failed = await appendFailedNotification(root, {
+      event: promptPackEvent(),
+      chatId: 123,
+      error: new Error("fetch failed"),
+      attempts: 3,
+      now: new Date(Date.now() - 7 * 60 * 60 * 1000)
+    });
+    if (!failed) throw new Error("failed entry not created");
+    const fetchImpl = vi.fn().mockResolvedValue(telegramOk());
+
+    await expect(replayFailedNotificationsOnce({
+      root,
+      token: "token",
+      fetchImpl,
+      maxAgeMs: 6 * 60 * 60 * 1000
+    })).resolves.toMatchObject({
+      attempted: 0,
+      replayed: 0,
+      failed: 0,
+      agedOut: 1,
+      deliveryIds: [failed.deliveryId]
+    });
+    expect(fetchImpl).not.toHaveBeenCalled();
+    expect(await latestFailedNotifyEntry(root, failed.notifyId)).toMatchObject({ status: "aged_out" });
+    await expect(listUnreplayedFailedNotifications(root)).resolves.toHaveLength(0);
+  });
+
   it("replay worker suppresses duplicate sends for the same deliveryId", async () => {
     const root = await mkdtemp(join(tmpdir(), "artist-runtime-replay-dedup-"));
     const first = await appendFailedNotification(root, {

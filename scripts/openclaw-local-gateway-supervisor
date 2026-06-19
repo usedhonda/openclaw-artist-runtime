@@ -31,6 +31,11 @@ watchdog_interval="${OPENCLAW_TELEGRAM_WATCHDOG_INTERVAL:-30}"
 watchdog_tail_lines="${OPENCLAW_TELEGRAM_WATCHDOG_TAIL_LINES:-300}"
 watchdog_threshold="${OPENCLAW_TELEGRAM_WATCHDOG_THRESHOLD:-10}"
 watchdog_grace_seconds="${OPENCLAW_TELEGRAM_WATCHDOG_GRACE_SECONDS:-90}"
+watchdog_probe_timeout_seconds="${OPENCLAW_TELEGRAM_WATCHDOG_PROBE_TIMEOUT_SECONDS:-5}"
+watchdog_kill_limit="${OPENCLAW_TELEGRAM_WATCHDOG_KILL_LIMIT:-3}"
+watchdog_kill_window_seconds="${OPENCLAW_TELEGRAM_WATCHDOG_KILL_WINDOW_SECONDS:-900}"
+watchdog_kill_backoff_seconds="${OPENCLAW_TELEGRAM_WATCHDOG_KILL_BACKOFF_SECONDS:-300}"
+watchdog_kill_state="${OPENCLAW_LOCAL_WORKSPACE}/runtime/telegram-watchdog-kills.txt"
 ticker_watcher_enabled="${OPENCLAW_TICKER_WATCHER_ENABLED:-1}"
 ticker_watcher_interval_ms="${OPENCLAW_TICKER_WATCHER_INTERVAL_MS:-60000}"
 ticker_watcher_stale_ms="${OPENCLAW_TICKER_WATCHER_STALE_MS:-300000}"
@@ -92,6 +97,36 @@ restart_delay_for_crashes() {
     delay="${restart_delay_base_seconds}"
   fi
   printf '%s\n' "${delay}"
+}
+
+telegram_api_reachable_for_watchdog() {
+  curl -sS -I --max-time "${watchdog_probe_timeout_seconds}" "https://api.telegram.org" >/dev/null 2>&1
+}
+
+recent_watchdog_kill_count() {
+  local now_epoch cutoff
+  now_epoch="$(date +%s)"
+  cutoff=$((now_epoch - watchdog_kill_window_seconds))
+  if [[ ! -f "${watchdog_kill_state}" ]]; then
+    printf '0\n'
+    return
+  fi
+  awk -v cutoff="${cutoff}" '($1 ~ /^[0-9]+$/ && $1 >= cutoff) { count += 1 } END { print count + 0 }' "${watchdog_kill_state}" 2>/dev/null
+}
+
+record_watchdog_kill() {
+  local now_epoch cutoff tmp_path
+  now_epoch="$(date +%s)"
+  cutoff=$((now_epoch - watchdog_kill_window_seconds))
+  mkdir -p "$(dirname "${watchdog_kill_state}")"
+  tmp_path="${watchdog_kill_state}.$$"
+  if [[ -f "${watchdog_kill_state}" ]]; then
+    awk -v cutoff="${cutoff}" '($1 ~ /^[0-9]+$/ && $1 >= cutoff) { print $1 }' "${watchdog_kill_state}" >"${tmp_path}" 2>/dev/null
+  else
+    : >"${tmp_path}"
+  fi
+  printf '%s\n' "${now_epoch}" >>"${tmp_path}"
+  mv "${tmp_path}" "${watchdog_kill_state}" 2>/dev/null || true
 }
 
 write_supervisor_heartbeat() {
@@ -173,7 +208,19 @@ watchdog_loop() {
       | grep -cE '(\[telegram\].*(ENETUNREACH|UND_ERR_CONNECT_TIMEOUT)|Error: connect ENETUNREACH|Error: connect UND_ERR_CONNECT_TIMEOUT)' 2>/dev/null)
     recent_count="${recent_count:-0}"
     if [[ "${recent_count}" -ge "${watchdog_threshold}" ]]; then
-      watchdog_log_line "telegram polling stuck (errors=${recent_count} in last ${watchdog_tail_lines} lines), killing child pid=${target_pid}"
+      if ! telegram_api_reachable_for_watchdog; then
+        watchdog_log_line "telegram polling errors=${recent_count} but api.telegram.org unreachable; suppressing kill for pid=${target_pid}"
+        continue
+      fi
+      local recent_kills
+      recent_kills="$(recent_watchdog_kill_count)"
+      if [[ "${recent_kills}" -ge "${watchdog_kill_limit}" ]]; then
+        watchdog_log_line "telegram polling stuck but watchdog kill limit reached (kills=${recent_kills}/${watchdog_kill_limit} window=${watchdog_kill_window_seconds}s); backing off ${watchdog_kill_backoff_seconds}s for pid=${target_pid}"
+        sleep "${watchdog_kill_backoff_seconds}"
+        continue
+      fi
+      watchdog_log_line "telegram polling stuck (errors=${recent_count} in last ${watchdog_tail_lines} lines; api reachable; kills=${recent_kills}/${watchdog_kill_limit}), killing child pid=${target_pid}"
+      record_watchdog_kill
       mkdir -p "$(dirname "${watchdog_flag}")"
       date +%s >"${watchdog_flag}"
       kill -TERM "${target_pid}" 2>/dev/null

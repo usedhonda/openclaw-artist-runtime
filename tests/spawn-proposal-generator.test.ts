@@ -8,6 +8,7 @@ import { ensureArtistWorkspace } from "../src/services/artistWorkspace";
 import { getRuntimeEventBus, type RuntimeEvent } from "../src/services/runtimeEventBus";
 import { appendSpawnProposal, clearSpawnProposalQueueCacheForTest } from "../src/services/spawnProposalQueue";
 import { proposeSpawn } from "../src/services/songSpawnProposer";
+import { readSongSpawnState } from "../src/services/songSpawnRateLimiter";
 import type { SpawnProposal } from "../src/types";
 
 const { callAiProviderMock } = vi.hoisted(() => ({
@@ -112,6 +113,22 @@ describe("spawn proposal generator queue integration", () => {
     expect(state.blockedReason).toBe("spawn_proposal_ready");
     expect(events.some((event) => event.type === "spawn_proposal_skip_queue_full")).toBe(false);
     expect(events.some((event) => event.type === "song_spawn_proposed")).toBe(true);
+  });
+
+  it("marks the spawn rate limiter when autopilot appends a draft proposal", async () => {
+    process.env.OPENCLAW_SONG_SPAWN_ENABLED = "on";
+    callAiProviderMock.mockResolvedValue(aiOutput("夜のコピー機", "コピー機の夜を、若者の疲れとして切る。"));
+    const root = await workspace();
+    getRuntimeEventBus().clearForTest();
+
+    await new ArtistAutopilotService().runCycle({
+      workspaceRoot: root,
+      config: { artist: { workspaceRoot: root }, aiReview: { provider: "openai-codex" }, autopilot: { enabled: true, dryRun: true }, songSpawn: { enabled: true } }
+    });
+
+    await expect(readSongSpawnState(root)).resolves.toMatchObject({
+      lastSpawnAt: expect.any(String)
+    });
   });
 
   it("passes activeQueueContext into the AI prompt as a negative angle section", async () => {

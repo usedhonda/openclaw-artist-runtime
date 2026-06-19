@@ -34,7 +34,7 @@ import { applyRuntimeEnvOverrides, getArtistPulseIntervalHours, getSongSpawnInte
 import { proposeSpawn, type ActiveQueueContextEntry } from "./songSpawnProposer.js";
 import { appendSpawnProposal, listBuildingSpawnProposals, listPendingSpawnProposals, markSpawnProposalDone } from "./spawnProposalQueue.js";
 import { buildCascadeTrace } from "./cascadeTrace.js";
-import { shouldSpawn } from "./songSpawnRateLimiter.js";
+import { markSpawned, shouldSpawn } from "./songSpawnRateLimiter.js";
 import { validatePlanningFiles } from "./planningSkeletonValidator.js";
 import { applyChangeSet } from "./changeSetApplier.js";
 import { syncSongbookFromITunes } from "./songbookSyncer.js";
@@ -300,6 +300,7 @@ async function runIdeaQueueLane(
     }
     const voiceTop = await composeVoiceTopOnly("propose", root, undefined, [], { runId: proposal.candidateSongId }).catch(() => undefined);
     await appendSpawnProposal(root, spawnProposalRecordFromGenerated(proposal, voiceTop));
+    await markSpawned(root);
     emitRuntimeEvent({
       type: "song_spawn_proposed",
       brief: proposal.brief,

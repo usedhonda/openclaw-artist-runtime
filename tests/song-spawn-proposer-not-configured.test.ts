@@ -34,12 +34,11 @@ describe("song spawn proposer not-configured fallback", () => {
     callAiProviderMock.mockReset();
   });
 
-  // v10.67 flood guard: a provider fallback echo must not become a proposal at all.
-  // The old behavior built a deterministic template brief instead, which flooded
-  // Telegram with near-identical junk while the provider was unreachable
-  // (2026-06-11: 19 proposals in 2h). Skipping the tick is the fix; a healthy
-  // provider on a later tick produces the real proposal.
-  it("skips the proposal entirely when the provider is not configured", async () => {
+  // The provider fallback echo must not become a proposal. When the provider is
+  // unhealthy, the runtime falls back to the deterministic observation-anchored
+  // brief, while autopilot marks the spawn rate limiter on append to prevent
+  // proposal floods.
+  it("uses deterministic fallback instead of the provider echo when the provider is not configured", async () => {
     callAiProviderMock.mockResolvedValue("AI provider 'openai-codex' is not configured. No external model call was made.");
 
     const proposal = await proposeSpawn(await workspace(), {
@@ -47,10 +46,11 @@ describe("song spawn proposer not-configured fallback", () => {
       now: new Date("2026-05-08T00:00:00.000Z")
     });
 
-    expect(proposal).toBeNull();
+    expect(proposal?.brief.title).toMatch(/[ぁ-ん一-龠]/);
+    expect(proposal?.reason).not.toContain("AI provider");
   });
 
-  it("skips the proposal when the provider call fails and echoes a mock fallback", async () => {
+  it("uses deterministic fallback when the provider call fails and echoes a mock fallback", async () => {
     callAiProviderMock.mockResolvedValue("Mock provider fallback (request failed): spawn prompt echo …");
 
     const proposal = await proposeSpawn(await workspace(), {
@@ -58,6 +58,7 @@ describe("song spawn proposer not-configured fallback", () => {
       now: new Date("2026-05-08T00:00:00.000Z")
     });
 
-    expect(proposal).toBeNull();
+    expect(proposal?.spawn).toBe(true);
+    expect(proposal?.reason).not.toContain("Mock provider fallback");
   });
 });
