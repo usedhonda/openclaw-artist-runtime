@@ -897,7 +897,7 @@ export async function buildStatusResponse(config?: Partial<ArtistRuntimeConfig>)
   const sunoWorker = withRecentSongImportOutcome(rawSunoWorker, workspaceStatus.recentSong);
   const draftBoxAction = await composeDraftBoxNextAction(mergedConfig.artist.workspaceRoot).catch(() => undefined);
   const autopilotStatus = draftBoxAction
-    ? { ...autopilot, nextAction: draftBoxAction.nextAction }
+    ? { ...autopilot, nextAction: draftBoxAction.nextAction, nextActionSummary: draftBoxAction }
     : autopilot;
   const platforms = await buildPlatformStatuses(mergedConfig);
   const alerts = await collectAlerts(mergedConfig.artist.workspaceRoot, sunoWorker, platforms, mergedConfig);

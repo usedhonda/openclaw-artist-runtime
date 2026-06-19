@@ -1005,6 +1005,7 @@ export interface AutopilotStatus {
   dryRun: boolean;
   stage: AutopilotStage;
   nextAction: string;
+  nextActionSummary?: DraftBoxNextActionSummary;
   currentRunId?: string;
   currentSongId?: string;
   suspendedAt?: AutopilotRunState["suspendedAt"];
@@ -1014,6 +1015,27 @@ export interface AutopilotStatus {
   blockedReason?: string | null;
   lastError?: string | null;
   retryCount?: number;
+}
+
+export type DraftBoxNextActionKind =
+  | "suno_trouble"
+  | "building"
+  | "draft_idle"
+  | "empty"
+  | "paused"
+  | "hard_stop"
+  | "reauth_required";
+
+export interface DraftBoxNextActionSummary {
+  kind: DraftBoxNextActionKind;
+  currentLine: string;
+  draftCount: number;
+  buildingCount: number;
+  nextAction: string;
+  stateKey: string;
+  songId?: string;
+  title?: string;
+  reason?: string;
 }
 
 export interface AutopilotRunState {

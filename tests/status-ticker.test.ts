@@ -153,6 +153,36 @@ describe("status ticker and reply simulation routes", () => {
     expect(status.autopilot.pausedReason).toContain("awaiting producer review");
   });
 
+  it("surfaces structured reauth-required next action in /api/status", async () => {
+    const root = mkdtempSync(join(tmpdir(), "artist-runtime-status-reauth-"));
+    await ensureArtistWorkspace(root);
+    await mkdir(join(root, "runtime"), { recursive: true });
+    await writeFile(join(root, "runtime", "autopilot-state.json"), `${JSON.stringify({
+      stage: "paused",
+      paused: true,
+      pausedReason: "lyrics_generation_degraded: ai_provider_not_configured: 歌詞AIのトークン失効/未設定 — 再認証が必要",
+      blockedReason: "lyrics_generation_degraded: ai_provider_not_configured: 歌詞AIのトークン失効/未設定 — 再認証が必要",
+      retryCount: 1,
+      cycleCount: 17,
+      updatedAt: "2026-06-19T00:00:00.000Z",
+      runId: "auto_reauth",
+      currentSongId: "spawn_reauth"
+    }, null, 2)}\n`, "utf8");
+
+    const status = await buildStatusResponse({
+      artist: { workspaceRoot: root },
+      autopilot: { enabled: true, dryRun: false }
+    });
+
+    expect(status.autopilot.nextAction).toBe("次: 歌詞AIの再認証が必要。/resume では直りません");
+    expect(status.autopilot.nextActionSummary).toMatchObject({
+      kind: "reauth_required",
+      currentLine: "今: 歌詞AIのトークンが失効し制作が止まっている",
+      nextAction: "次: 歌詞AIの再認証が必要。/resume では直りません",
+      songId: "spawn_reauth"
+    });
+  });
+
   it("surfaces armed global and X platform live-go state in /api/status", async () => {
     const root = mkdtempSync(join(tmpdir(), "artist-runtime-status-live-go-"));
     await ensureArtistWorkspace(root);

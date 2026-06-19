@@ -1,27 +1,7 @@
 import { readAutopilotState } from "./autopilotRecovery.js";
 import { readSongState } from "./artistState.js";
 import { loadSpawnProposalQueue } from "./spawnProposalQueue.js";
-import type { AutopilotRunState, SpawnProposal } from "../types.js";
-
-export type DraftBoxNextActionKind =
-  | "suno_trouble"
-  | "building"
-  | "draft_idle"
-  | "empty"
-  | "paused"
-  | "hard_stop";
-
-export interface DraftBoxNextActionSummary {
-  kind: DraftBoxNextActionKind;
-  currentLine: string;
-  draftCount: number;
-  buildingCount: number;
-  nextAction: string;
-  stateKey: string;
-  songId?: string;
-  title?: string;
-  reason?: string;
-}
+import type { AutopilotRunState, DraftBoxNextActionSummary, SpawnProposal } from "../types.js";
 
 const SUNO_TROUBLE_PATTERN = /(?:playwright_live_timeout|timeout|suno_generate_retry|suno_worker_not_connected|suno_worker_not_ready|disconnected|ECONNRESET|ENETUNREACH|EAI_AGAIN|fetch failed)/i;
 
@@ -37,6 +17,11 @@ function troubleReason(state: AutopilotRunState): string | undefined {
   const raw = [state.blockedReason, state.lastError, state.hardStopReason].filter(Boolean).join(" ");
   if (state.stage !== "suno_generation" && !SUNO_TROUBLE_PATTERN.test(raw)) return undefined;
   return SUNO_TROUBLE_PATTERN.test(raw) ? raw : undefined;
+}
+
+function reauthRequiredReason(state: AutopilotRunState): string | undefined {
+  const values = [state.blockedReason, state.lastError, state.pausedReason].filter(Boolean) as string[];
+  return values.find((value) => value.includes("ai_provider_not_configured"));
 }
 
 function troubleStatePart(reason: string | undefined): string {
@@ -59,6 +44,7 @@ export async function composeDraftBoxNextAction(
   const building = buildings.find((proposal) => proposal.proposalId === state.currentSongId) ?? buildings[0];
   const song = state.currentSongId ? await readSongState(root, state.currentSongId).catch(() => undefined) : undefined;
   const title = song?.title ?? titleFromProposal(building);
+  const reauthReason = reauthRequiredReason(state);
   const reason = troubleReason(state);
 
   if (state.hardStopReason) {
@@ -72,6 +58,20 @@ export async function composeDraftBoxNextAction(
       songId: state.currentSongId,
       title,
       reason: state.hardStopReason
+    };
+  }
+
+  if (reauthReason) {
+    return {
+      kind: "reauth_required",
+      currentLine: "今: 歌詞AIのトークンが失効し制作が止まっている",
+      draftCount: drafts.length,
+      buildingCount: buildings.length,
+      nextAction: "次: 歌詞AIの再認証が必要。/resume では直りません",
+      stateKey: `reauth_required:${safeStatePart(state.currentSongId)}:${safeStatePart(reauthReason)}`,
+      songId: state.currentSongId,
+      title,
+      reason: reauthReason
     };
   }
 

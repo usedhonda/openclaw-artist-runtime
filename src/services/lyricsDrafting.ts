@@ -1,7 +1,7 @@
 import { mkdir, readdir, readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import type { AiReviewProvider, ArtistRuntimeConfig } from "../types.js";
-import { isAiProviderMockFallbackResponse, callAiProvider } from "./aiProviderClient.js";
+import { isAiNotConfiguredResponse, isAiProviderMockFallbackResponse, callAiProvider } from "./aiProviderClient.js";
 import { readArtistMind, updateSongState } from "./artistState.js";
 import { appendPromptLedger, createPromptLedgerEntry, getSongPromptLedgerPath } from "./promptLedger.js";
 import { repairLyricsV55 } from "./lyricsRepair.js";
@@ -163,7 +163,9 @@ async function composeLyricsDraft(input: DraftLyricsInput, title: string, briefT
     const raw = provider === "mock" ? mockStructuredDraft(title, briefText) : await callAiProvider(prompt, { provider });
     assertSafe("response", raw);
     if (isAiProviderMockFallbackResponse(raw)) {
-      repairNotes = ["provider fallback response"];
+      repairNotes = isAiNotConfiguredResponse(raw)
+        ? ["ai_provider_not_configured: 歌詞AIのトークン失効/未設定 — 再認証が必要"]
+        : ["provider fallback response"];
       continue;
     }
     const parsed = parseDraft(raw, title);

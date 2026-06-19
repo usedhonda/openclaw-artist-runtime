@@ -95,4 +95,26 @@ describe("draft box next action", () => {
     expect(summary.currentLine).toContain("Suno 生成で詰まっている");
     expect(summary.nextAction).toContain("Suno 接続を整える");
   });
+
+  it("surfaces lyrics AI auth expiry before the generic paused action", async () => {
+    const root = await workspace();
+    await ensureSongState(root, "spawn_auth", "認証の曲");
+    await writeAutopilotRunState(root, {
+      currentSongId: "spawn_auth",
+      stage: "paused",
+      paused: true,
+      pausedReason: "lyrics_generation_degraded: ai_provider_not_configured: 歌詞AIのトークン失効/未設定 — 再認証が必要",
+      blockedReason: "lyrics_generation_degraded: ai_provider_not_configured: 歌詞AIのトークン失効/未設定 — 再認証が必要",
+      retryCount: 1,
+      cycleCount: 2,
+      updatedAt: "2026-06-01T00:00:00.000Z"
+    });
+
+    const summary = await composeDraftBoxNextAction(root);
+
+    expect(summary.kind).toBe("reauth_required");
+    expect(summary.currentLine).toContain("歌詞AIのトークンが失効");
+    expect(summary.nextAction).toBe("次: 歌詞AIの再認証が必要。/resume では直りません");
+    expect(summary.nextAction).not.toContain("/resume で再開");
+  });
 });

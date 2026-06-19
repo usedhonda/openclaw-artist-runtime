@@ -71,7 +71,7 @@ describe("AI lyrics drafting", () => {
     expect(readFileSync(join(root, "songs", "song-001", "mood-hint.txt"), "utf8")).toContain("observed urban unease");
   });
 
-  it("marks degraded lyrics and stops when the provider only returns fallback text", async () => {
+  it("marks degraded lyrics and stops with reauth-required reason when the provider is not configured", async () => {
     const root = await workspace();
     const events: RuntimeEvent[] = [];
     const unsubscribe = getRuntimeEventBus().subscribe((event) => events.push(event));
@@ -87,8 +87,8 @@ describe("AI lyrics drafting", () => {
         type: "lyrics_generation_degraded",
         songId: "song-001",
         reason: expect.stringContaining("lyrics_generation_degraded:"),
-        detail: expect.stringContaining("provider fallback response"),
-        repairNotes: ["provider fallback response"]
+        detail: expect.stringContaining("ai_provider_not_configured"),
+        repairNotes: ["ai_provider_not_configured: 歌詞AIのトークン失効/未設定 — 再認証が必要"]
       });
     } finally {
       unsubscribe();
