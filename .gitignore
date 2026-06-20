@@ -21,3 +21,5 @@ package-lock.json
 /HEARTBEAT.md
 /SOUL.md
 /runtime/
+/logs/
+/observations/
