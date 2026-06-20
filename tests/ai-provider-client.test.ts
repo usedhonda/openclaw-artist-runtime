@@ -2,15 +2,47 @@ import { mkdir, writeFile } from "node:fs/promises";
 import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { afterEach, describe, expect, it, vi } from "vitest";
-import { callAiProvider } from "../src/services/aiProviderClient";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { callAiProvider, decodeJwtExpMs } from "../src/services/aiProviderClient";
 import { proposePersonaFields } from "../src/services/personaProposer";
 
 function makeRoot(): string {
   return mkdtempSync(join(tmpdir(), "artist-runtime-ai-provider-"));
 }
 
-async function writeOpenClawAuthFixture(root: string): Promise<{ configPath: string; authProfilesPath: string }> {
+function encodeBase64Url(value: string): string {
+  return Buffer.from(value, "utf8").toString("base64url");
+}
+
+function makeJwt(expSeconds: number): string {
+  return [
+    encodeBase64Url(JSON.stringify({ alg: "none", typ: "JWT" })),
+    encodeBase64Url(JSON.stringify({ exp: expSeconds })),
+    "signature"
+  ].join(".");
+}
+
+async function writeCodexCliAuthFixture(root: string, accessToken: string): Promise<void> {
+  await mkdir(root, { recursive: true });
+  await writeFile(
+    join(root, "auth.json"),
+    `${JSON.stringify({
+      auth_mode: "chatgpt",
+      tokens: {
+        access_token: accessToken,
+        account_id: "acct_fixture",
+        id_token: "id_fixture",
+        refresh_token: "refresh_fixture"
+      }
+    })}\n`,
+    "utf8"
+  );
+}
+
+async function writeOpenClawAuthFixture(
+  root: string,
+  options: { access?: string; expires?: number } = {}
+): Promise<{ configPath: string; authProfilesPath: string }> {
   await mkdir(root, { recursive: true });
   const configPath = join(root, "openclaw.json");
   const authProfilesPath = join(root, "auth-profiles.json");
@@ -30,8 +62,8 @@ async function writeOpenClawAuthFixture(root: string): Promise<{ configPath: str
         "openai-codex:test@example.invalid": {
           type: "oauth",
           provider: "openai-codex",
-          access: "placeholder-access",
-          expires: Date.now() + 60_000
+          access: options.access ?? "placeholder-access",
+          expires: options.expires ?? Date.now() + 60_000
         }
       }
     })}\n`,
@@ -39,6 +71,10 @@ async function writeOpenClawAuthFixture(root: string): Promise<{ configPath: str
   );
   return { configPath, authProfilesPath };
 }
+
+beforeEach(() => {
+  vi.stubEnv("OPENCLAW_CODEX_AUTH_FROM_CLI", "off");
+});
 
 afterEach(() => {
   vi.unstubAllEnvs();
@@ -85,6 +121,142 @@ describe("ai provider client", () => {
       store: false
     });
     expect(body.input[0].content[0].text).toBe("artistName: draft this");
+  });
+
+  it("prefers fresh Codex CLI auth over a local OpenClaw auth profile", async () => {
+    const root = makeRoot();
+    const codexHome = join(root, "codex-home");
+    const liveToken = makeJwt(Math.floor(Date.now() / 1000) + 3600);
+    await writeCodexCliAuthFixture(codexHome, liveToken);
+    const { configPath, authProfilesPath } = await writeOpenClawAuthFixture(root, { access: "static-access" });
+    vi.stubEnv("OPENCLAW_CODEX_AUTH_FROM_CLI", "on");
+    vi.stubEnv("CODEX_HOME", codexHome);
+    const fetchImpl = vi.fn(async () =>
+      new Response(JSON.stringify({ output_text: "artistName: Live Codex (origin: model)" }), {
+        status: 200,
+        headers: { "content-type": "application/json" }
+      })
+    );
+
+    const result = await callAiProvider("artistName: draft this", {
+      provider: "openai-codex",
+      configPath,
+      authProfilesPath,
+      fetchImpl
+    });
+
+    expect(result).toBe("artistName: Live Codex (origin: model)");
+    expect(fetchImpl.mock.calls[0][1]?.headers).toMatchObject({
+      authorization: `Bearer ${liveToken}`
+    });
+  });
+
+  it("falls back to a fresh OpenClaw profile when the Codex CLI token is expired", async () => {
+    const root = makeRoot();
+    const codexHome = join(root, "codex-home");
+    await writeCodexCliAuthFixture(codexHome, makeJwt(Math.floor(Date.now() / 1000) - 60));
+    const { configPath, authProfilesPath } = await writeOpenClawAuthFixture(root, { access: "static-access" });
+    vi.stubEnv("OPENCLAW_CODEX_AUTH_FROM_CLI", "on");
+    vi.stubEnv("CODEX_HOME", codexHome);
+    const fetchImpl = vi.fn(async () =>
+      new Response(JSON.stringify({ output_text: "artistName: Static Fallback (origin: model)" }), {
+        status: 200,
+        headers: { "content-type": "application/json" }
+      })
+    );
+
+    const result = await callAiProvider("artistName: draft this", {
+      provider: "openai-codex",
+      configPath,
+      authProfilesPath,
+      fetchImpl
+    });
+
+    expect(result).toBe("artistName: Static Fallback (origin: model)");
+    expect(fetchImpl.mock.calls[0][1]?.headers).toMatchObject({
+      authorization: "Bearer static-access"
+    });
+  });
+
+  it("returns not configured when both Codex CLI and OpenClaw profiles are expired", async () => {
+    const root = makeRoot();
+    const codexHome = join(root, "codex-home");
+    await writeCodexCliAuthFixture(codexHome, makeJwt(Math.floor(Date.now() / 1000) - 60));
+    const { configPath, authProfilesPath } = await writeOpenClawAuthFixture(root, {
+      access: "static-access",
+      expires: Date.now() - 60_000
+    });
+    vi.stubEnv("OPENCLAW_CODEX_AUTH_FROM_CLI", "on");
+    vi.stubEnv("CODEX_HOME", codexHome);
+    const fetchImpl = vi.fn();
+
+    const result = await callAiProvider("field: draft", {
+      provider: "openai-codex",
+      configPath,
+      authProfilesPath,
+      fetchImpl: fetchImpl as unknown as typeof fetch
+    });
+
+    expect(result).toContain("not configured");
+    expect(fetchImpl).not.toHaveBeenCalled();
+  });
+
+  it("uses the OpenClaw profile when Codex CLI auth is absent", async () => {
+    const root = makeRoot();
+    const codexHome = join(root, "codex-home");
+    const { configPath, authProfilesPath } = await writeOpenClawAuthFixture(root, { access: "static-access" });
+    vi.stubEnv("OPENCLAW_CODEX_AUTH_FROM_CLI", "on");
+    vi.stubEnv("CODEX_HOME", codexHome);
+    const fetchImpl = vi.fn(async () =>
+      new Response(JSON.stringify({ output_text: "artistName: Static Missing CLI (origin: model)" }), {
+        status: 200,
+        headers: { "content-type": "application/json" }
+      })
+    );
+
+    const result = await callAiProvider("artistName: draft this", {
+      provider: "openai-codex",
+      configPath,
+      authProfilesPath,
+      fetchImpl
+    });
+
+    expect(result).toBe("artistName: Static Missing CLI (origin: model)");
+    expect(fetchImpl.mock.calls[0][1]?.headers).toMatchObject({
+      authorization: "Bearer static-access"
+    });
+  });
+
+  it("honors OPENCLAW_CODEX_AUTH_FROM_CLI=off", async () => {
+    const root = makeRoot();
+    const codexHome = join(root, "codex-home");
+    await writeCodexCliAuthFixture(codexHome, makeJwt(Math.floor(Date.now() / 1000) + 3600));
+    const { configPath, authProfilesPath } = await writeOpenClawAuthFixture(root, { access: "static-access" });
+    vi.stubEnv("OPENCLAW_CODEX_AUTH_FROM_CLI", "off");
+    vi.stubEnv("CODEX_HOME", codexHome);
+    const fetchImpl = vi.fn(async () =>
+      new Response(JSON.stringify({ output_text: "artistName: Static Disabled CLI (origin: model)" }), {
+        status: 200,
+        headers: { "content-type": "application/json" }
+      })
+    );
+
+    const result = await callAiProvider("artistName: draft this", {
+      provider: "openai-codex",
+      configPath,
+      authProfilesPath,
+      fetchImpl
+    });
+
+    expect(result).toBe("artistName: Static Disabled CLI (origin: model)");
+    expect(fetchImpl.mock.calls[0][1]?.headers).toMatchObject({
+      authorization: "Bearer static-access"
+    });
+  });
+
+  it("decodes JWT exp values from Codex CLI access tokens", () => {
+    expect(decodeJwtExpMs(makeJwt(1234))).toBe(1234000);
+    expect(decodeJwtExpMs("not-a-jwt")).toBeUndefined();
   });
 
   it("keeps parsing JSON response payloads for unit-level transport mocks", async () => {

@@ -1,4 +1,5 @@
 import { readFile } from "node:fs/promises";
+import { homedir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import type { AiReviewProvider } from "../types.js";
 import { getOpenClawAuthProfilesPath, getOpenClawConfigPath } from "./runtimeConfig.js";
@@ -41,6 +42,13 @@ interface ResolvedCodexProfile {
   expires?: number;
 }
 
+interface CodexCliAuthShape {
+  auth_mode?: unknown;
+  tokens?: {
+    access_token?: unknown;
+  };
+}
+
 const openAiCodexResponsesUrl = "https://chatgpt.com/backend-api/codex/responses";
 const defaultCodexModel = "gpt-5.5";
 const providerPromptSecretPattern = /(bot\d+:[A-Za-z0-9_-]{30,}|(?:API[_ -]?KEY|COOKIE|CREDENTIAL|PASSWORD|SECRET)\s*[=:]\s*\S+)/i;
@@ -73,6 +81,37 @@ function notConfigured(provider: AiReviewProvider): string {
 
 function isCodexProvider(provider: AiReviewProvider): boolean {
   return provider === "openai-codex";
+}
+
+function isCodexCliAuthDisabled(): boolean {
+  const value = process.env.OPENCLAW_CODEX_AUTH_FROM_CLI?.trim().toLowerCase();
+  return value === "off" || value === "0" || value === "false";
+}
+
+function base64UrlDecode(value: string): string | undefined {
+  try {
+    const normalized = value.replace(/-/g, "+").replace(/_/g, "/");
+    const padded = normalized.padEnd(normalized.length + ((4 - normalized.length % 4) % 4), "=");
+    return Buffer.from(padded, "base64").toString("utf8");
+  } catch {
+    return undefined;
+  }
+}
+
+export function decodeJwtExpMs(token: string): number | undefined {
+  const payload = token.split(".")[1];
+  if (!payload) {
+    return undefined;
+  }
+  const decoded = base64UrlDecode(payload);
+  if (!decoded) {
+    return undefined;
+  }
+  const parsed = parseJson(decoded);
+  if (!isRecord(parsed) || typeof parsed.exp !== "number" || !Number.isFinite(parsed.exp)) {
+    return undefined;
+  }
+  return parsed.exp * 1000;
 }
 
 function parseJson(value: string): unknown {
@@ -125,6 +164,31 @@ async function readFirstJson<T>(paths: string[]): Promise<{ path: string; value:
     }
   }
   return undefined;
+}
+
+export async function readCodexCliAccess(): Promise<ResolvedCodexProfile | undefined> {
+  if (isCodexCliAuthDisabled()) {
+    return undefined;
+  }
+  const codexHome = process.env.CODEX_HOME?.trim() || join(homedir(), ".codex");
+  const raw = await readFile(join(codexHome, "auth.json"), "utf8").catch(() => undefined);
+  if (!raw) {
+    return undefined;
+  }
+  const parsed = parseJson(raw);
+  if (!isRecord(parsed)) {
+    return undefined;
+  }
+  const auth = parsed as CodexCliAuthShape;
+  const accessToken = auth.tokens?.access_token;
+  if (auth.auth_mode !== "chatgpt" || typeof accessToken !== "string" || !accessToken.trim()) {
+    return undefined;
+  }
+  return {
+    profileId: "codex-cli:live",
+    accessToken,
+    expires: decodeJwtExpMs(accessToken)
+  };
 }
 
 function resolveModel(config: OpenClawConfigShape | undefined, explicit?: string): string {
@@ -180,6 +244,13 @@ async function resolveCodexAuth(options: AiProviderCallOptions): Promise<{
   profile?: ResolvedCodexProfile;
 }> {
   const configRead = await readFirstJson<OpenClawConfigShape>(candidateConfigPaths(options.configPath));
+  const cliProfile = await readCodexCliAccess();
+  if (cliProfile && (!cliProfile.expires || cliProfile.expires > Date.now())) {
+    return {
+      model: resolveModel(configRead?.value, options.model),
+      profile: cliProfile
+    };
+  }
   const authRead = await readFirstJson<AuthProfilesShape>(
     candidateAuthProfilePaths(options.authProfilesPath, configRead?.path)
   );
