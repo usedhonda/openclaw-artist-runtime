@@ -89,8 +89,8 @@ export async function readLyricsKnowledgeDigest(): Promise<string> {
 }
 
 export function buildLyricsDraftingPrompt(input: BuildLyricsPromptInput): string {
-  const lyricsBoxLimit = input.lyricsBoxLimit ?? 1250;
-  const lyricBodyLimit = input.lyricBodyLimit ?? Math.max(200, lyricsBoxLimit - 260);
+  const lyricsBoxLimit = input.lyricsBoxLimit ?? 4800;
+  const lyricBodyLimit = input.lyricBodyLimit ?? Math.max(200, Math.min(2600, lyricsBoxLimit - 900));
   const durationPlan = DEFAULT_USED_HONDA_DURATION_PLAN;
   return [
     "Write lyrics for used::honda from the provided raw material.",

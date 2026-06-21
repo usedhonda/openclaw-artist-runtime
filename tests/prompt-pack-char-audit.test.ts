@@ -21,35 +21,35 @@ describe("prompt pack character audit", () => {
     });
 
     const metadata = JSON.parse(readFileSync(join(result.artifactPaths.snapshotDir, "metadata.json"), "utf8")) as {
-      charCounts: { style: number; lyrics: number; title: number; styleZone: string; lyricsZone: string; titleZone: string };
+      charCounts: { style: number; lyrics: number; title: number; styleZone: string; lyricsZone: string; titleZone: string; submittedPayloadChars: number; effectiveLyricsBoxLimit: number; plannedBars: number };
     };
     expect(metadata.charCounts.style).toBeGreaterThanOrEqual(800);
     expect(metadata.charCounts.style).toBeLessThanOrEqual(1000);
-    expect(metadata.charCounts.lyrics).toBeLessThan(1500);
-    expect(metadata.charCounts.lyrics).toBeLessThanOrEqual(3000);
+    expect(metadata.charCounts.lyrics).toBeLessThan(metadata.charCounts.submittedPayloadChars);
+    expect(metadata.charCounts.submittedPayloadChars).toBeLessThanOrEqual(metadata.charCounts.effectiveLyricsBoxLimit);
     expect(metadata.charCounts.title).toBe("Character Gate".length);
     expect(metadata.charCounts.styleZone).toBe("sweet");
-    expect(metadata.charCounts.lyricsZone).toBe("short");
+    expect(metadata.charCounts.lyricsZone).toMatch(/underused|near_max/);
+    expect(metadata.charCounts.plannedBars).toBe(80);
   });
 
-  it("warns validation when lyrics fall below the preferred floor", () => {
+  it("warns validation when submitted payload leaves box budget underused", () => {
     const validation = validateSunoPromptPack({
       songId: "song-short",
       songTitle: "Short Gate",
-      style: "too short",
+      style: "s".repeat(800),
       exclude: "generic reverb",
       yamlLyrics: "gender: male",
-      payload: { lyrics: "短い" },
+      payload: { lyrics: "短い", payloadYaml: "# META (hints; do not sing)\n=== LYRICS START (do not sing tags) ===\n短い\n=== LYRICS END ===" },
       artistSnapshotHash: "a",
       currentStateHash: "b",
       payloadHash: "c",
       knowledgePackHash: "d"
     });
 
-    expect(validation.valid).toBe(false);
-    expect(validation.errors.join("\n")).toContain("styleAndFeel length out of range");
+    expect(validation.valid).toBe(true);
     expect(validation.errors.join("\n")).not.toContain("lyrics length out of range");
-    expect(validation.warnings.join("\n")).toContain("lyrics length below preferred floor");
+    expect(validation.warnings.join("\n")).toContain("payloadYaml leaves Suno lyrics box budget underused");
   });
 
   it("stops the prompt-pack pipeline when YAML would exceed the effective Suno box", async () => {

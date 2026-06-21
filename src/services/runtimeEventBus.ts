@@ -9,7 +9,7 @@ export type RuntimeEvent =
   | { type: "song_take_completed"; songId: string; selectedTakeId?: string; urls: string[]; observationSummary?: ObservationSummary; actor?: "manual_notify_retrigger"; timestamp: number }
   | { type: "suno_adoption_download_imported"; songId: string; runId: string; urls: string[]; paths: string[]; selectedTakeId?: string; timestamp: number }
   | { type: "prompt_pack_ready"; songId: string; title: string; lyricsExcerpt: string; mood: string; tempo: string; styleNotes: string; voiceTop?: string; timestamp: number }
-  | { type: "prompt_pack_char_count"; songId: string; style: number; lyrics: number; title: number; styleZone: string; lyricsZone: string; titleZone: string; timestamp: number }
+  | { type: "prompt_pack_char_count"; songId: string; style: number; lyrics: number; title: number; styleZone: string; lyricsZone: string; titleZone: string; bareLyricsChars?: number; markerChars?: number; submittedPayloadChars?: number; effectiveLyricsBoxLimit?: number; plannedBars?: number; durationTargetSeconds?: number; timestamp: number }
   | { type: "theme_generated"; theme: string; reason: string; timestamp: number }
   | { type: "suno_budget_low"; songId?: string; reason: string; limit: number; used: number; timestamp: number }
   | { type: "lyrics_generation_degraded"; songId: string; reason: string; detail?: string; repairNotes?: string[]; timestamp: number }

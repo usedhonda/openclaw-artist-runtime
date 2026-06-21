@@ -21,7 +21,7 @@ function hashText(value: string): string {
   return createHash("sha256").update(value).digest("hex");
 }
 
-function buildPayload(input: CreateSunoPromptPackInput, style: string, exclude: string, yamlLyrics: string, sliders: SunoSliders): Record<string, unknown> {
+function buildPayload(input: CreateSunoPromptPackInput, style: string, exclude: string, yamlLyrics: string, sliders: SunoSliders, lyricsBoxLimit: number): Record<string, unknown> {
   const lyricsBody = extractLyricsBody(yamlLyrics);
   const languageWarnings = [
     ...lintJapaneseLyricsEnglishFragments(lyricsBody).map((warning) => `english_fragment:${warning.token}:line_${warning.line}`),
@@ -38,7 +38,7 @@ function buildPayload(input: CreateSunoPromptPackInput, style: string, exclude: 
     payloadYaml: yamlLyrics,
     lyricsYaml: yamlLyrics,
     sliders,
-    promptCharCounts: promptCharCounts(input.songTitle, style, lyricsBody),
+    promptCharCounts: promptCharCounts(input.songTitle, style, lyricsBody, yamlLyrics, lyricsBoxLimit),
     languageWarnings
   };
 }
@@ -48,16 +48,24 @@ function artistDefaultVocalGender(artistSnapshot: string): "male" | "female" | "
   return (match?.[1]?.toLowerCase() as "male" | "female" | "neutral" | undefined) ?? "male";
 }
 
-function promptCharCounts(title: string, style: string, lyrics: string) {
+function promptCharCounts(title: string, style: string, lyrics: string, payloadYaml: string, lyricsBoxLimit: number) {
   const styleLength = style.length;
   const lyricsLength = lyrics.length;
   const titleLength = title.length;
+  const submittedPayloadChars = payloadYaml.length;
+  const markerChars = Math.max(0, submittedPayloadChars - lyricsLength);
   return {
     style: styleLength,
     lyrics: lyricsLength,
     title: titleLength,
+    bareLyricsChars: lyricsLength,
+    markerChars,
+    submittedPayloadChars,
+    effectiveLyricsBoxLimit: lyricsBoxLimit,
+    plannedBars: DEFAULT_USED_HONDA_DURATION_PLAN.totalPlannedBars,
+    durationTargetSeconds: DEFAULT_USED_HONDA_DURATION_PLAN.targetSeconds,
     styleZone: styleLength < 800 ? "short" : styleLength > 1000 ? "overflow" : "sweet",
-    lyricsZone: lyricsLength < 1500 ? "short" : lyricsLength > 3000 ? "overflow" : lyricsLength <= 2400 ? "sweet" : "range",
+    lyricsZone: submittedPayloadChars > lyricsBoxLimit ? "overflow" : submittedPayloadChars < lyricsBoxLimit * 0.8 ? "underused" : "near_max",
     titleZone: titleLength < 4 ? "short" : titleLength > 80 ? "overflow" : "sweet"
   };
 }
@@ -120,7 +128,7 @@ export function createSunoPromptPack(input: CreateSunoPromptPackInput): SunoProm
     durationPlan
   });
   const sliders = buildSlidersV55({ genre, moodHint: input.moodHint });
-  const payload = buildPayload({ ...input, lyricsText, bpm, vocalGender }, style, exclude, yamlLyrics, sliders);
+  const payload = buildPayload({ ...input, lyricsText, bpm, vocalGender }, style, exclude, yamlLyrics, sliders, lyricsBoxLimit);
   const payloadHash = hashText(JSON.stringify(payload));
   const promptHash = hashText(`${style}\n${exclude}\n${yamlLyrics}`);
   const artistSnapshotHash = hashText(input.artistSnapshot);
@@ -212,7 +220,7 @@ export async function createSunoPromptPackWithAi(
     durationPlan
   });
   const sliders = buildSlidersV55({ genre, moodHint: input.moodHint });
-  const payload = buildPayload({ ...input, lyricsText, bpm, vocalGender }, styleResult.total, excludeResult.text, yamlLyrics, sliders);
+  const payload = buildPayload({ ...input, lyricsText, bpm, vocalGender }, styleResult.total, excludeResult.text, yamlLyrics, sliders, lyricsBoxLimit);
   const payloadHash = hashText(JSON.stringify(payload));
   const promptHash = hashText(`${styleResult.total}\n${excludeResult.text}\n${yamlLyrics}`);
   const artistSnapshotHash = hashText(input.artistSnapshot);

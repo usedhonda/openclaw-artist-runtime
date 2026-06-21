@@ -146,6 +146,12 @@ export async function createAndPersistSunoPromptPack(input: PersistSunoPromptPac
     styleZone: string;
     lyricsZone: string;
     titleZone: string;
+    bareLyricsChars?: number;
+    markerChars?: number;
+    submittedPayloadChars?: number;
+    effectiveLyricsBoxLimit?: number;
+    plannedBars?: number;
+    durationTargetSeconds?: number;
   } }).promptCharCounts;
   if (charCounts) {
     emitRuntimeEvent({

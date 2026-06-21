@@ -138,7 +138,7 @@ function parseDraft(raw: string, fallbackTitle: string): LyricsDraft | undefined
 }
 
 function lyricBodyLimitForSunoBox(boxLimit: number): number {
-  return Math.max(200, boxLimit - 260);
+  return Math.max(200, Math.min(2600, boxLimit - 900));
 }
 
 async function composeLyricsDraft(input: DraftLyricsInput, title: string, briefText: string): Promise<LyricsDraft> {

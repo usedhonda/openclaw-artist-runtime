@@ -28,16 +28,17 @@ function input(lyrics: string) {
 
 describe("Suno YAML dynamic budget", () => {
   it("classifies lyrics length into four budget levels", () => {
-    expect(computeBudgetLevel("あ".repeat(4300))).toBe("minimal");
-    expect(computeBudgetLevel("あ".repeat(4000))).toBe("normal");
-    expect(computeBudgetLevel("あ".repeat(3400))).toBe("expanded");
-    expect(computeBudgetLevel("あ".repeat(3000))).toBe("max");
+    expect(computeBudgetLevel("あ".repeat(4300), 4800)).toBe("minimal");
+    expect(computeBudgetLevel("あ".repeat(3800), 4800)).toBe("normal");
+    expect(computeBudgetLevel("あ".repeat(3000), 4800)).toBe("expanded");
+    expect(computeBudgetLevel("あ".repeat(2200), 4800)).toBe("max");
   });
 
   it("uses minimal YAML when lyrics leave almost no metadata budget", () => {
-    const yaml = buildYaml(input("あ".repeat(4300)));
-    expect(yaml.length).toBeLessThanOrEqual(4500);
+    const yaml = buildYaml({ ...input("あ".repeat(4300)), lyricsBoxLimit: 4800 });
+    expect(yaml.length).toBeLessThanOrEqual(4800);
     expect(yaml).not.toContain("vocals:");
+    expect(yaml).toContain("duration_plan:");
     expect(yaml).toContain("LYRICS END");
   });
 
@@ -57,31 +58,32 @@ describe("Suno YAML dynamic budget", () => {
   });
 
   it("uses expanded typed fields and max cues when budget allows", () => {
-    const expanded = buildYaml(input("あ".repeat(3400)));
-    expect(expanded).toContain("parts:");
+    const expanded = buildYaml({ ...input("あ".repeat(3000)), lyricsBoxLimit: 4800 });
+    expect(expanded).toContain("sections:");
     expect(expanded).toContain("- keep consonants clear");
     expect(expanded).toContain("- avoid theatrical belting");
-    expect(expanded).not.toContain("cues:");
+    expect(expanded).toContain("cues:");
 
-    const max = buildYaml(input("あ".repeat(3000)));
+    const max = buildYaml({ ...input("あ".repeat(2200)), lyricsBoxLimit: 4800 });
+    expect(max).toContain("parts:");
     expect(max).toContain("cues:");
     expect(max).toContain("- Hook: wider");
   });
 
   it("throws instead of slicing lyrics when even minimal YAML overflows", () => {
-    expect(() => buildYaml(input("あ".repeat(4480)))).toThrow("YAML overflow");
+    expect(() => buildYaml({ ...input("あ".repeat(4780)), lyricsBoxLimit: 4800 })).toThrow("YAML overflow");
   });
 
   it("keeps lyrics intact and shrinks META to fit an explicit Suno box limit", () => {
     const lyrics = "あ".repeat(760);
-    const yaml = buildYaml({ ...input(lyrics), lyricsBoxLimit: 980 });
-    expect(yaml.length).toBeLessThanOrEqual(980);
+    const yaml = buildYaml({ ...input(lyrics), lyricsBoxLimit: 1250 });
+    expect(yaml.length).toBeLessThanOrEqual(1250);
     expect(yaml).toContain(lyrics);
     expect(yaml).toContain("# META (hints; do not sing)");
     expect(yaml).not.toContain("vocals:");
   });
 
   it("fails closed when lyrics plus minimal META cannot fit an explicit Suno box limit", () => {
-    expect(() => buildYaml({ ...input("あ".repeat(820)), lyricsBoxLimit: 900 })).toThrow("YAML overflow");
+    expect(() => buildYaml({ ...input("あ".repeat(1120)), lyricsBoxLimit: 1250 })).toThrow("YAML overflow");
   });
 });

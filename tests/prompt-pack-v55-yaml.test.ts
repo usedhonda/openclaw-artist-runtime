@@ -51,7 +51,7 @@ describe("Suno V5.5 YAML builder", () => {
   it("throws on overflow instead of destructively truncating lyrics", () => {
     expect(() => buildYaml({
       title: "Long Signal",
-      lyrics: "長".repeat(4480),
+      lyrics: "長".repeat(4780),
       meta: { vibe: "long civic dread" }
     })).toThrow("YAML overflow");
   });

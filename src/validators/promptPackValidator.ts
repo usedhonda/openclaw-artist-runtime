@@ -1,8 +1,50 @@
 import type { SunoPromptPack, SunoPromptPackValidation } from "../types.js";
 import { getSunoLyricsLimit } from "../services/runtimeConfig.js";
+import { extractLyricsBody } from "../services/lyricsExtraction.js";
+import { DEFAULT_USED_HONDA_DURATION_PLAN } from "../suno-production/durationPlan.js";
 
 function sunoLyricsBoxLimit(): number {
   return getSunoLyricsLimit();
+}
+
+function headerLabels(lyrics: string): string[] {
+  return lyrics
+    .split(/\r?\n/)
+    .map((line) => line.trim().match(/^\[([^\]]+)\]$/)?.[1]?.split(" - ")[0]?.trim())
+    .filter((label): label is string => Boolean(label));
+}
+
+function plannedBarsFromHeaders(lyrics: string): number {
+  return lyrics
+    .split(/\r?\n/)
+    .map((line) => Number.parseInt(line.match(/^\[[^\]]*?\b(\d+)\s+bars\b/i)?.[1] ?? "", 10))
+    .filter((value) => Number.isFinite(value))
+    .reduce((sum, value) => sum + value, 0);
+}
+
+function validateDurationPlanStructure(payloadYaml: string, warnings: string[]): void {
+  if (!payloadYaml.includes("duration_plan:") && !payloadYaml.includes("LYRICS START")) {
+    return;
+  }
+  const plan = DEFAULT_USED_HONDA_DURATION_PLAN;
+  const lyrics = extractLyricsBody(payloadYaml);
+  const labels = headerLabels(lyrics);
+  const sectionCount = labels.length;
+  const prehookCount = labels.filter((label) => /^pre[-\s]?hook/i.test(label) || /^pre[-\s]?chorus/i.test(label)).length;
+  const hookRepeatCount = labels.filter((label) => /^(?:hook|chorus)(?:\s+\d+)?$/i.test(label) || /^final\s+(?:hook|chorus)$/i.test(label)).length;
+  const plannedBars = plannedBarsFromHeaders(lyrics);
+  if (sectionCount < plan.sectionPlan.length) {
+    warnings.push(`duration_plan_section_count_below_plan: ${sectionCount}/${plan.sectionPlan.length}`);
+  }
+  if (prehookCount < 2) {
+    warnings.push(`duration_plan_prehook_count_below_plan: ${prehookCount}/2`);
+  }
+  if (hookRepeatCount < plan.chorusPolicy.physicalRepeats) {
+    warnings.push(`duration_plan_hook_repeats_below_plan: ${hookRepeatCount}/${plan.chorusPolicy.physicalRepeats}`);
+  }
+  if (plannedBars > 0 && plannedBars < plan.totalPlannedBars) {
+    warnings.push(`duration_plan_planned_bars_below_plan: ${plannedBars}/${plan.totalPlannedBars}`);
+  }
 }
 
 export function validateSunoPromptPack(pack: Partial<SunoPromptPack>): SunoPromptPackValidation {
@@ -32,18 +74,15 @@ export function validateSunoPromptPack(pack: Partial<SunoPromptPack>): SunoPromp
   if (!pack.payload) {
     errors.push("missing payload");
   } else {
-    const lyrics = typeof pack.payload.lyrics === "string" ? pack.payload.lyrics : "";
-    if (lyrics.length < 1500) {
-      warnings.push(`lyrics length below preferred floor: ${lyrics.length}`);
-    }
-    if (lyrics.length > 3000) {
-      errors.push(`lyrics length out of range: ${lyrics.length}`);
-    }
     const payloadYaml = typeof pack.payload.payloadYaml === "string" ? pack.payload.payloadYaml : "";
     const lyricsLimit = sunoLyricsBoxLimit();
     if (payloadYaml.length > lyricsLimit) {
       errors.push(`payloadYaml length exceeds Suno lyrics box limit: ${payloadYaml.length}/${lyricsLimit}`);
     }
+    if (payloadYaml && payloadYaml.length < Math.floor(lyricsLimit * 0.8)) {
+      warnings.push(`payloadYaml leaves Suno lyrics box budget underused: ${payloadYaml.length}/${lyricsLimit}`);
+    }
+    validateDurationPlanStructure(payloadYaml, warnings);
     const warningsValue = (pack.payload as { languageWarnings?: unknown }).languageWarnings;
     if (Array.isArray(warningsValue) && warningsValue.length > 0) {
       warnings.push(...warningsValue.map(String));

@@ -245,7 +245,7 @@ export function getTelegramArtistReportTimeoutMs(env: NodeJS.ProcessEnv = proces
   return positiveInteger(env.OPENCLAW_TELEGRAM_ARTIST_REPORT_TIMEOUT_MS);
 }
 
-export const DEFAULT_SUNO_LYRICS_BOX_LIMIT = 1250;
+export const DEFAULT_SUNO_LYRICS_BOX_LIMIT = 4800;
 
 export function effectiveLyricsBoxLimit(
   options: { configuredLimit?: number; domMaxLength?: number } = {},
@@ -256,7 +256,7 @@ export function effectiveLyricsBoxLimit(
   if (domMaxLength && domMaxLength > 0) {
     return Math.min(configuredLimit ?? domMaxLength, domMaxLength);
   }
-  return Math.min(configuredLimit ?? DEFAULT_SUNO_LYRICS_BOX_LIMIT, DEFAULT_SUNO_LYRICS_BOX_LIMIT);
+  return configuredLimit ?? DEFAULT_SUNO_LYRICS_BOX_LIMIT;
 }
 
 export function getSunoLyricsLimit(env: NodeJS.ProcessEnv = process.env): number {

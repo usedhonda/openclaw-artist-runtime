@@ -107,17 +107,47 @@ export function prepareSunoLyrics(
     .trim();
 }
 
-export function computeBudgetLevel(lyrics: string, lyricsBoxLimit = 4500): YamlBudgetLevel {
+export function computeBudgetLevel(lyrics: string, lyricsBoxLimit = 4800): YamlBudgetLevel {
   const margin = lyricsBoxLimit - lyrics.length - 40;
-  if (margin <= 200) return "minimal";
-  if (margin <= 600) return "normal";
-  if (margin <= 1200) return "expanded";
+  if (margin <= 500) return "minimal";
+  if (margin <= 1100) return "normal";
+  if (margin <= 1800) return "expanded";
   return "max";
 }
 
 function takeByLevel<T>(items: T[], level: YamlBudgetLevel): T[] {
   const count = level === "normal" ? 1 : level === "expanded" ? 2 : items.length;
   return items.slice(0, count);
+}
+
+function durationPlanMetaLines(plan: DurationPlan, level: YamlBudgetLevel): string[] {
+  if (level === "minimal") {
+    return [
+      "duration_plan:",
+      `  target_seconds: ${plan.targetSeconds}`,
+      `  planned_bars: ${plan.totalPlannedBars}`
+    ];
+  }
+  const lines = [
+    "duration_plan:",
+    `  template: ${plan.templateId}`,
+    `  target_seconds: ${plan.targetSeconds}`,
+    `  target_range: ${plan.minSeconds}-${plan.maxSeconds}`,
+    `  planned_bars: ${plan.totalPlannedBars}`,
+    `  bpm_target: ${plan.bpm.target}`,
+    `  no_double_time: ${plan.bpm.noDoubleTimeVocal ? "true" : "false"}`,
+    `  hook_repeats: ${plan.chorusPolicy.physicalRepeats}`,
+    `  final_hook: ${plan.chorusPolicy.finalChorusMode}`
+  ];
+  if (level === "expanded" || level === "max") {
+    lines.push("  sections:");
+    for (const section of plan.sectionPlan) {
+      lines.push(
+        `    - ${section.label}: ${section.bars} bars; ${section.lineTarget}; ${section.modifier}`
+      );
+    }
+  }
+  return lines;
 }
 
 function renderYaml(input: BuildYamlInput, level: YamlBudgetLevel): string {
@@ -131,9 +161,12 @@ function renderYaml(input: BuildYamlInput, level: YamlBudgetLevel): string {
   ]);
   const rules = vocalRules(input.vocals);
   const parts = vocalParts(input.vocals);
+  const durationPlan = input.durationPlan ?? DEFAULT_USED_HONDA_DURATION_PLAN;
+  const cues = input.cues?.map((item) => cleanLine(item, "")).filter(Boolean) ?? [];
   const lines = level === "minimal" ? [
     "# META (hints; do not sing)",
     `title: ${cleanLine(input.title, "untitled")}`,
+    `form: ${cleanLine(input.meta.form, durationPlan.form)}`,
     `tempo: ${cleanLine(input.meta.tempo, "124")}`,
     `language: ${cleanLine(input.meta.language, "ja")}`
   ] : [
@@ -143,13 +176,21 @@ function renderYaml(input: BuildYamlInput, level: YamlBudgetLevel): string {
     `tempo: ${cleanLine(input.meta.tempo, "124")}`,
     `key: ${cleanLine(input.meta.key, "minor")}`,
     `signature: ${cleanLine(input.meta.signature, "4/4")}`,
-    `form: ${cleanLine(input.meta.form, DEFAULT_USED_HONDA_DURATION_PLAN.form)}`,
+    `form: ${cleanLine(input.meta.form, durationPlan.form)}`,
     `vibe: ${cleanLine(input.meta.vibe, "observational dusk")}`,
     `language: ${cleanLine(input.meta.language, "ja")}`
   ];
+  lines.push("", ...durationPlanMetaLines(durationPlan, level));
   if (level !== "minimal") {
+    if (cues.length) {
+      lines.push("", "cues:");
+      const cueCount = level === "normal" ? Math.min(2, cues.length) : cues.length;
+      for (const cue of cues.slice(0, cueCount)) {
+        lines.push(`  - ${cue}`);
+      }
+    }
     lines.push("", "vocals:");
-    if (level === "expanded" || level === "max") {
+    if (level === "max") {
       lines.push("  parts:");
       for (const part of parts) {
         lines.push(`    - id: ${part.id}`, `      gender: ${part.gender ?? "male"}`, `      tone: ${part.tone}`);
@@ -168,17 +209,11 @@ function renderYaml(input: BuildYamlInput, level: YamlBudgetLevel): string {
       lines.push(`  - ${note}`);
     }
   }
-  if (level === "max" && input.cues?.length) {
-    lines.push("", "cues:");
-    for (const cue of input.cues.map((item) => cleanLine(item, "")).filter(Boolean)) {
-      lines.push(`  - ${cue}`);
-    }
-  }
   return [...lines, "", "=== LYRICS START (do not sing tags) ===", input.lyrics.trim(), "=== LYRICS END ==="].join("\n");
 }
 
 export function buildYaml(input: BuildYamlInput): string {
-  const lyricsBoxLimit = input.lyricsBoxLimit ?? 4500;
+  const lyricsBoxLimit = input.lyricsBoxLimit ?? 4800;
   const durationPlan = input.durationPlan ?? DEFAULT_USED_HONDA_DURATION_PLAN;
   const leadGender = typeof input.vocals === "string" ? "male" : input.vocals?.parts?.find((part) => part.id === "lead")?.gender ?? "male";
   const preparedInput = {
