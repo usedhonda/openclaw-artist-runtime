@@ -485,6 +485,7 @@ async function importPendingSunoGeneration(
     urls: result.urls,
     selectedTakeId: result.selectedTakeId,
     resultRefs: result.paths ?? [],
+    metadata: result.metadata,
     config
   });
   return { imported: true };

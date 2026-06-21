@@ -278,6 +278,15 @@ describe("PlaywrightSunoDriver create", () => {
       runId: "run-003",
       reason: PLAYWRIGHT_CREATE_CARD_REASON,
       urls: ["https://suno.com/song/new-1", "https://suno.com/song/new-2"],
+      lyricsTelemetry: {
+        bareLyricsChars: 8,
+        markerChars: 0,
+        submittedPayloadChars: 8,
+        effectiveLyricsBoxLimit: 4800,
+        textareaMaxLength: undefined,
+        textareaReadbackChars: 8,
+        readbackMatches: true
+      },
       dryRun: false
     });
     expect(page.clicks).toContain("button[aria-label=\"Create song\"]");
@@ -340,6 +349,15 @@ describe("PlaywrightSunoDriver create", () => {
       runId: "run-003b",
       reason: PLAYWRIGHT_CREATE_CARD_REASON,
       urls: ["https://suno.com/song/new-card-1"],
+      lyricsTelemetry: {
+        bareLyricsChars: 8,
+        markerChars: 0,
+        submittedPayloadChars: 8,
+        effectiveLyricsBoxLimit: 4800,
+        textareaMaxLength: undefined,
+        textareaReadbackChars: 8,
+        readbackMatches: true
+      },
       dryRun: false
     });
     expect(page.clicks).toContain("button[aria-label=\"Create song\"]");

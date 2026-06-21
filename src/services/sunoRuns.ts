@@ -7,6 +7,7 @@ import type {
   ArtistRuntimeConfig,
   PromptLedgerEntry,
   SunoArtifactIndexEntry,
+  SunoImportedAssetMetadata,
   SunoRunRecord,
   SunoRunStatus
 } from "../types.js";
@@ -22,6 +23,7 @@ import {
 import { emitRuntimeEvent } from "./runtimeEventBus.js";
 import { SunoBrowserWorker } from "./sunoBrowserWorker.js";
 import { extractSunoTakeId } from "./takeAttributionGuard.js";
+import { DEFAULT_USED_HONDA_DURATION_PLAN } from "../suno-production/durationPlan.js";
 
 export interface GenerateSunoRunInput {
   workspaceRoot: string;
@@ -37,6 +39,7 @@ export interface ImportSunoResultsInput {
   urls: string[];
   selectedTakeId?: string;
   resultRefs?: string[];
+  metadata?: SunoImportedAssetMetadata[];
   config?: Partial<ArtistRuntimeConfig>;
   preserveSongLifecycle?: boolean;
 }
@@ -97,6 +100,13 @@ function toRunStatus(allowed: boolean, dryRun: boolean, accepted: boolean): Suno
     return "accepted";
   }
   return "failed";
+}
+
+function generatedDurationSec(metadata: SunoImportedAssetMetadata[] | undefined): number | undefined {
+  const durations = (metadata ?? [])
+    .map((asset) => asset.durationSec)
+    .filter((value): value is number => typeof value === "number" && Number.isFinite(value) && value > 0);
+  return durations.length > 0 ? Math.max(...durations) : undefined;
 }
 
 async function appendLedgerEntries(path: string, entries: PromptLedgerEntry[]): Promise<void> {
@@ -199,7 +209,10 @@ export async function generateSunoRun(input: GenerateSunoRunInput): Promise<Suno
       : await connector.create({
           dryRun: config.autopilot.dryRun,
           authority: config.music.suno.authority,
-          payload
+          payload,
+          songId: input.songId,
+          runId: provisionalRunId,
+          payloadHash
         })
     : undefined;
   const finalRunId = createResult?.runId ?? provisionalRunId;
@@ -213,6 +226,7 @@ export async function generateSunoRun(input: GenerateSunoRunInput): Promise<Suno
     status: toRunStatus(authorityDecision.allowed, config.autopilot.dryRun, createResult?.accepted ?? false),
     dryRun: config.autopilot.dryRun,
     urls: createResult?.urls ?? [],
+    lyricsTelemetry: createResult?.lyricsTelemetry,
     error: createResult?.accepted === false
       ? { name: "SunoCreateBlocked", message: createResult.reason }
       : undefined
@@ -273,6 +287,12 @@ export async function importSunoResults(input: ImportSunoResultsInput): Promise<
     selectedTakeId: input.selectedTakeId,
     resultRefs: input.resultRefs ?? []
   };
+  const previousRun = await readAllSunoRuns(input.workspaceRoot, input.songId)
+    .then((runs) => runs.find((run) => run.runId === input.runId))
+    .catch(() => undefined);
+  const previousTelemetry = previousRun?.lyricsTelemetry;
+  const durationSec = generatedDurationSec(input.metadata);
+  const durationDeltaSec = durationSec === undefined ? undefined : durationSec - DEFAULT_USED_HONDA_DURATION_PLAN.targetSeconds;
   const resultsDir = join(input.workspaceRoot, "songs", input.songId, "suno");
   const latestResultsPath = join(resultsDir, "latest-results.json");
   const versionedResultsPath = join(resultsDir, `${input.runId}.results.json`);
@@ -295,7 +315,10 @@ export async function importSunoResults(input: ImportSunoResultsInput): Promise<
     payloadHash: hashPayload(payload),
     status: "imported",
     dryRun: config.autopilot.dryRun,
-    urls: input.urls
+    urls: input.urls,
+    lyricsTelemetry: previousTelemetry,
+    generatedDurationSec: durationSec,
+    durationDeltaSec
   };
 
   await appendPromptLedger(
@@ -319,9 +342,12 @@ export async function importSunoResults(input: ImportSunoResultsInput): Promise<
     urlCount: input.urls.length,
     pathCount: input.resultRefs?.length ?? 0,
     paths: input.resultRefs ?? [],
+    metadata: input.metadata,
     failedUrls: [],
     reason: "Suno results imported",
     at: importedAt,
+    generatedDurationSec: durationSec,
+    durationDeltaSec,
     dryRun: config.autopilot.dryRun
   };
 
@@ -348,7 +374,7 @@ export async function importSunoResults(input: ImportSunoResultsInput): Promise<
       type: "take_imported",
       songId: input.songId,
       paths: input.resultRefs ?? [],
-      metadata: [],
+      metadata: input.metadata ?? [],
       timestamp: Date.now()
     });
   }

@@ -122,6 +122,7 @@ export async function runDownloadAfterAdoptionJob(input: AdoptionDownloadJobInpu
     urls: result.urls,
     selectedTakeId: result.selectedTakeId,
     resultRefs: result.paths ?? [],
+    metadata: result.metadata,
     config: input.config,
     preserveSongLifecycle: true
   });

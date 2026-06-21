@@ -15,6 +15,7 @@ import type {
   SunoWorkerState,
   SunoWorkerStatus
 } from "../types.js";
+import { DEFAULT_USED_HONDA_DURATION_PLAN } from "../suno-production/durationPlan.js";
 import { DEFAULT_SUNO_PROFILE_PATH, PlaywrightSunoDriver } from "./sunoPlaywrightDriver.js";
 import { DEFAULT_SUNO_PROFILE_STALE_DAYS, detectStaleProfile } from "./sunoProfileLifecycle.js";
 import { isSunoLiveDisabled, isSunoLiveEnabled, sunoChromeProfileDest } from "./runtimeConfig.js";
@@ -60,6 +61,13 @@ function logSunoWorkerSideEffectFailure(context: string, error: unknown): void {
 
 function now(): string {
   return new Date().toISOString();
+}
+
+function generatedDurationSec(metadata: SunoImportResult["metadata"]): number | undefined {
+  const durations = (metadata ?? [])
+    .map((asset) => asset.durationSec)
+    .filter((value): value is number => typeof value === "number" && Number.isFinite(value) && value > 0);
+  return durations.length > 0 ? Math.max(...durations) : undefined;
 }
 
 function isHardStopState(state: SunoWorkerState): state is Extract<SunoWorkerState, "login_challenge" | "captcha" | "payment_prompt" | "ui_mismatch" | "quota_exhausted"> {
@@ -498,6 +506,7 @@ export class SunoBrowserWorker {
         accepted: result.accepted,
         reason: result.reason,
         at: now(),
+        lyricsTelemetry: result.lyricsTelemetry,
         dryRun: result.dryRun ?? dryRun
       }
     });
@@ -600,6 +609,8 @@ export class SunoBrowserWorker {
 
     const result = await driver.importResults({ runId, urls });
     const failedUrls = inferFailedImportUrls(urls, result);
+    const durationSec = generatedDurationSec(result.metadata);
+    const durationDeltaSec = durationSec === undefined ? undefined : durationSec - DEFAULT_USED_HONDA_DURATION_PLAN.targetSeconds;
     await this.transition({
       state: "connected",
       connected: true,
@@ -616,6 +627,8 @@ export class SunoBrowserWorker {
         failedUrls,
         reason: result.reason,
         at: result.importedAt ?? now(),
+        generatedDurationSec: durationSec,
+        durationDeltaSec,
         dryRun: result.dryRun
       }
     });

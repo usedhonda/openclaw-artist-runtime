@@ -477,9 +477,12 @@ export interface SongStateImportOutcome {
   urlCount: number;
   pathCount?: number;
   paths?: string[];
+  metadata?: SunoImportedAssetMetadata[];
   failedUrls?: SunoImportFailedUrl[];
   reason?: string;
   at: string;
+  generatedDurationSec?: number;
+  durationDeltaSec?: number;
   dryRun?: boolean;
 }
 
@@ -808,6 +811,7 @@ export interface SunoWorkerStatus {
     accepted: boolean;
     reason: string;
     at: string;
+    lyricsTelemetry?: SunoLyricsSubmitTelemetry;
     dryRun?: boolean;
   };
   lastImportOutcome?: {
@@ -819,6 +823,8 @@ export interface SunoWorkerStatus {
     failedUrls?: SunoImportFailedUrl[];
     reason?: string;
     at: string;
+    generatedDurationSec?: number;
+    durationDeltaSec?: number;
     dryRun?: boolean;
   };
 }
@@ -858,6 +864,7 @@ export interface SunoCreateResult {
   reason: string;
   urls: string[];
   pendingTakeUrl?: string;
+  lyricsTelemetry?: SunoLyricsSubmitTelemetry;
   dryRun?: boolean;
 }
 
@@ -888,6 +895,16 @@ export interface SunoImportedAssetMetadata {
   durationSec?: number;
 }
 
+export interface SunoLyricsSubmitTelemetry {
+  bareLyricsChars?: number;
+  markerChars?: number;
+  submittedPayloadChars: number;
+  effectiveLyricsBoxLimit: number;
+  textareaMaxLength?: number;
+  textareaReadbackChars?: number;
+  readbackMatches: boolean;
+}
+
 export interface SunoRunRecord {
   runId: string;
   songId: string;
@@ -898,6 +915,9 @@ export interface SunoRunRecord {
   status: SunoRunStatus;
   dryRun: boolean;
   urls: string[];
+  lyricsTelemetry?: SunoLyricsSubmitTelemetry;
+  generatedDurationSec?: number;
+  durationDeltaSec?: number;
   error?: SerializedError;
 }
 

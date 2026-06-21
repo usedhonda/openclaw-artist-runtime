@@ -6,13 +6,15 @@ import type {
   SunoImportRequest,
   SunoImportResult,
   SunoImportedAssetMetadata,
+  SunoLyricsSubmitTelemetry,
   SunoSubmitMode
 } from "../types.js";
 import type { SunoBrowserDriver, SunoBrowserDriverProbe } from "./sunoBrowserWorker.js";
 import type { BrowserContext, Locator, Page } from "playwright";
 import { captureSunoFailure, resolveSunoFailureLogsDir } from "./sunoFailureSnapshot.js";
-import { isSunoCdpEnabled, sunoBrowserArgs, sunoBrowserChannel, sunoCdpEndpoint, sunoChromeExecutablePath } from "./runtimeConfig.js";
+import { effectiveLyricsBoxLimit, isSunoCdpEnabled, sunoBrowserArgs, sunoBrowserChannel, sunoCdpEndpoint, sunoChromeExecutablePath } from "./runtimeConfig.js";
 import { checkSunoBrowserBinaryHealth, isSunoBrowserLaunchFailure, reinstallPlaywrightChromium } from "./sunoBinaryHealthCheck.js";
+import { extractLyricsBody } from "./lyricsExtraction.js";
 
 export const DEFAULT_SUNO_PROFILE_PATH = ".openclaw-browser-profiles/suno";
 export const SUNO_CREATE_URL = "https://suno.com/create";
@@ -115,6 +117,7 @@ export class PlaywrightSunoDriver implements SunoBrowserDriver {
     let opened: OpenedSunoContext | undefined;
     let page: Page | undefined;
     const runId = request.runId ?? `playwright_${Date.now().toString(36)}`;
+    let lyricsTelemetry: SunoLyricsSubmitTelemetry | undefined;
 
     try {
       opened = await this.openContext();
@@ -134,7 +137,7 @@ export class PlaywrightSunoDriver implements SunoBrowserDriver {
       const title = this.readPayloadText(payload.songName);
       const baselineCreateUrls = new Set(await this.readCreateCardSongUrls(page));
 
-      await this.fillCreateForm(page, { lyrics, style, exclude, instrumental, title });
+      lyricsTelemetry = await this.fillCreateForm(page, { lyrics, style, exclude, instrumental, title });
 
       if (this.submitMode === "skip") {
         return {
@@ -142,6 +145,7 @@ export class PlaywrightSunoDriver implements SunoBrowserDriver {
           runId,
           reason: PLAYWRIGHT_CREATE_SKIPPED_REASON,
           urls: [],
+          lyricsTelemetry,
           dryRun: request.dryRun
         };
       }
@@ -153,6 +157,7 @@ export class PlaywrightSunoDriver implements SunoBrowserDriver {
           runId,
           reason: PLAYWRIGHT_TITLE_REQUIRED_REASON,
           urls: [],
+          lyricsTelemetry,
           dryRun: request.dryRun
         };
       }
@@ -166,6 +171,7 @@ export class PlaywrightSunoDriver implements SunoBrowserDriver {
           runId,
           reason: generated.reason ?? PLAYWRIGHT_CREATE_CARD_REASON,
           urls: generated.urls,
+          lyricsTelemetry,
           dryRun: request.dryRun
         };
       }
@@ -176,6 +182,7 @@ export class PlaywrightSunoDriver implements SunoBrowserDriver {
         runId,
         reason: PLAYWRIGHT_LIVE_TIMEOUT_REASON,
         urls: [],
+        lyricsTelemetry,
         dryRun: request.dryRun
       };
     } catch (error) {
@@ -185,6 +192,7 @@ export class PlaywrightSunoDriver implements SunoBrowserDriver {
           runId,
           reason: PLAYWRIGHT_DRIVER_NOT_INSTALLED_DETAIL,
           urls: [],
+          lyricsTelemetry,
           dryRun: request.dryRun
         };
       }
@@ -196,6 +204,7 @@ export class PlaywrightSunoDriver implements SunoBrowserDriver {
         runId,
         reason: `${classifiedReason}: ${this.errorMessage(error)}`,
         urls: [],
+        lyricsTelemetry,
         dryRun: request.dryRun
       };
     } finally {
@@ -457,10 +466,11 @@ export class PlaywrightSunoDriver implements SunoBrowserDriver {
       instrumental: boolean;
       title?: string;
     }
-  ): Promise<void> {
+  ): Promise<SunoLyricsSubmitTelemetry | undefined> {
+    let lyricsTelemetry: SunoLyricsSubmitTelemetry | undefined;
     if (input.lyrics) {
       await this.ensureLyricsMode(page);
-      await this.fillTextAndAssert(page.locator('textarea[data-testid="lyrics-textarea"]'), "lyrics", input.lyrics);
+      lyricsTelemetry = await this.fillLyricsTextAndMeasure(page.locator('textarea[data-testid="lyrics-textarea"]'), input.lyrics);
     }
 
     if (input.style) {
@@ -505,9 +515,26 @@ export class PlaywrightSunoDriver implements SunoBrowserDriver {
         await button.click();
       }
     }
+
+    return lyricsTelemetry;
   }
 
-  private async fillTextAndAssert(locator: Locator, fieldName: string, expected: string): Promise<void> {
+  private async fillLyricsTextAndMeasure(locator: Locator, expected: string): Promise<SunoLyricsSubmitTelemetry> {
+    const result = await this.fillTextAndAssert(locator, "lyrics", expected);
+    const bareLyricsChars = extractLyricsBody(expected).length;
+    const submittedPayloadChars = expected.length;
+    return {
+      bareLyricsChars,
+      markerChars: Math.max(0, submittedPayloadChars - bareLyricsChars),
+      submittedPayloadChars,
+      effectiveLyricsBoxLimit: effectiveLyricsBoxLimit({ domMaxLength: result.maxLength }),
+      textareaMaxLength: result.maxLength,
+      textareaReadbackChars: result.reflected.length,
+      readbackMatches: result.reflected === expected
+    };
+  }
+
+  private async fillTextAndAssert(locator: Locator, fieldName: string, expected: string): Promise<{ reflected: string; maxLength?: number }> {
     const locatorWithOptionalMethods = locator as unknown as { first?: () => Locator };
     const field = locatorWithOptionalMethods.first ? locatorWithOptionalMethods.first() : locator;
     const fieldWithOptionalMethods = field as unknown as {
@@ -525,10 +552,25 @@ export class PlaywrightSunoDriver implements SunoBrowserDriver {
     }
 
     let reflected = "";
+    let maxLength: number | undefined;
     for (let attempt = 0; attempt < 2; attempt += 1) {
+      if (fieldName === "lyrics" && fieldWithOptionalMethods.evaluate) {
+        maxLength = await fieldWithOptionalMethods.evaluate((element) => {
+          if (element instanceof HTMLTextAreaElement || element instanceof HTMLInputElement) {
+            return element.maxLength > 0 ? element.maxLength : undefined;
+          }
+          return undefined;
+        }, undefined);
+        const effectiveLimit = effectiveLyricsBoxLimit({ domMaxLength: maxLength });
+        if (expected.length > effectiveLimit) {
+          throw new Error(
+            `lyrics_payload_truncated_before_submit: payload exceeds Suno lyrics textarea limit; expectedLength=${expected.length} effectiveLimit=${effectiveLimit} textareaMaxLength=${maxLength ?? "unknown"}`
+          );
+        }
+      }
       await field.fill(expected);
       if (!fieldWithOptionalMethods.evaluate) {
-        return;
+        return { reflected: expected };
       }
 
       reflected = await fieldWithOptionalMethods.evaluate((element, _value) => {
@@ -541,10 +583,10 @@ export class PlaywrightSunoDriver implements SunoBrowserDriver {
       }, expected);
 
       if (fieldName === "lyrics" && reflected === expected) {
-        return;
+        return { reflected, maxLength };
       }
       if (fieldName !== "lyrics" && (reflected.startsWith(expected) || (reflected.length > 0 && expected.startsWith(reflected)))) {
-        return;
+        return { reflected, maxLength };
       }
     }
 

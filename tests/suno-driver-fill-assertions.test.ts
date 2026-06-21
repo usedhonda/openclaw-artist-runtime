@@ -53,6 +53,9 @@ function createLocator(selector: string, page: ReturnType<typeof pageMock>) {
     count: vi.fn(async () => page.counts[selector] ?? (selector === lyricsSelector ? 1 : 0)),
     getAttribute: vi.fn(async (name: string) => (name === "aria-pressed" ? (page.attributes[selector] ?? null) : null)),
     evaluate: vi.fn(async (_fn: (element: unknown, value?: string) => string, value?: string) => {
+      if (value === undefined) {
+        return page.maxLengths[selector] ?? undefined;
+      }
       page.dispatches.push({ selector, value: value ?? "" });
       return page.values[selector] ?? "";
     }),
@@ -80,6 +83,7 @@ function pageMock(url = SUNO_CREATE_URL) {
     counts: {
       [lyricsSelector]: 1
     } as Record<string, number>,
+    maxLengths: {} as Record<string, number | undefined>,
     reflectionSequences: {} as Record<string, string[]>,
     fills: [] as Array<{ selector: string; value: string }>,
     waits: [] as string[],
@@ -198,7 +202,7 @@ describe("PlaywrightSunoDriver fill assertions", () => {
     });
 
     expect(result.reason).toBe(PLAYWRIGHT_CREATE_SKIPPED_REASON);
-    expect(extractLyricsBodyMock).not.toHaveBeenCalled();
+    expect(extractLyricsBodyMock).toHaveBeenCalledWith("line one\nline two");
     expect(page.waits).toEqual(
       expect.arrayContaining([lyricsSelector, styleSelector, titleSelector, excludeSelector, instrumentalSelector])
     );
@@ -208,6 +212,35 @@ describe("PlaywrightSunoDriver fill assertions", () => {
     expect(page.fills).toContainEqual({ selector: excludeSelector, value: "polished arena pop" });
     expect(page.dispatches.filter((entry) => entry.selector === lyricsSelector)).toHaveLength(2);
     expect(page.clicks).toContain(instrumentalSelector);
+    expect(page.clicks).not.toContain(createSelector);
+  });
+
+  it("records textarea maxLength and lyrics read-back telemetry before submit", async () => {
+    const page = pageMock();
+    page.maxLengths[lyricsSelector] = 5000;
+    extractLyricsBodyMock.mockImplementation((value: string) => value.replace(/^# META.*?\n/s, ""));
+    launchPersistentContextMock.mockResolvedValue(contextMock([page]));
+
+    const payloadYaml = "# META (hints; do not sing)\nform: full\n=== LYRICS START (do not sing tags) ===\n[Intro]\nline one\n=== LYRICS END ===";
+    const result = await new PlaywrightSunoDriver(".profile", "skip").create({
+      dryRun: false,
+      authority: "auto_create_and_select_take",
+      runId: "lyrics-telemetry",
+      payload: {
+        payloadYaml
+      }
+    });
+
+    expect(result.reason).toBe(PLAYWRIGHT_CREATE_SKIPPED_REASON);
+    expect(result.lyricsTelemetry).toEqual({
+      bareLyricsChars: payloadYaml.replace(/^# META.*?\n/s, "").length,
+      markerChars: payloadYaml.length - payloadYaml.replace(/^# META.*?\n/s, "").length,
+      submittedPayloadChars: payloadYaml.length,
+      effectiveLyricsBoxLimit: 5000,
+      textareaMaxLength: 5000,
+      textareaReadbackChars: payloadYaml.length,
+      readbackMatches: true
+    });
     expect(page.clicks).not.toContain(createSelector);
   });
 
