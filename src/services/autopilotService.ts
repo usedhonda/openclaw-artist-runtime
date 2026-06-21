@@ -421,7 +421,14 @@ async function importPendingSunoGeneration(
     return undefined;
   }
 
-  const runId = workerStatus?.currentRunId ?? latestRun?.runId;
+  // Prefer the song's own accepted run id. This import is scoped to one songId,
+  // but worker.currentRunId is global: once the lane advances to the next song
+  // while this song's takes are still pending, falling back to worker.currentRunId
+  // mismatches latestRun (urls=[]) and wedges on "waiting for Suno result import"
+  // forever (cross-song attribution wedge).
+  const runId = hasAcceptedRun && latestRun?.runId
+    ? latestRun.runId
+    : workerStatus?.currentRunId ?? latestRun?.runId;
   if (!runId) {
     return { imported: false, reason: "suno_import_missing_run_id" };
   }
@@ -481,6 +488,38 @@ async function importPendingSunoGeneration(
     config
   });
   return { imported: true };
+}
+
+// Songs at "suno_take_url_ready" are excluded from currentSong() selection, so once
+// the lane advances to the next song their accepted Suno run would never be imported
+// by the per-current-song stage machine. Sweep them each cycle and import by their
+// own songId so pending takes always complete regardless of the current lane.
+async function sweepPendingTakeImports(root: string, config: ArtistRuntimeConfig): Promise<void> {
+  const songs = await listSongStates(root).catch(() => [] as SongState[]);
+  for (const song of songs) {
+    if (song.status !== "suno_take_url_ready") {
+      continue;
+    }
+    const result = await importPendingSunoGeneration(root, song.songId, config).catch((error) => {
+      emitRuntimeEvent({
+        type: "error",
+        source: "suno_pending_import_sweep",
+        reason: error instanceof Error ? error.message : String(error),
+        songId: song.songId,
+        timestamp: Date.now()
+      });
+      return undefined;
+    });
+    if (result && !result.imported && result.reason) {
+      emitRuntimeEvent({
+        type: "error",
+        source: "suno_pending_import_sweep",
+        reason: result.reason,
+        songId: song.songId,
+        timestamp: Date.now()
+      });
+    }
+  }
 }
 
 export async function readAutopilotRunState(root: string): Promise<AutopilotRunState> {
@@ -1025,6 +1064,8 @@ export class ArtistAutopilotService {
         });
       });
     }
+
+    await sweepPendingTakeImports(input.workspaceRoot, config);
 
     const song = await currentSong(input.workspaceRoot, existing.currentSongId);
     const suppressedRestartStaleError = await suppressRestartStaleError(
