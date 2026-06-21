@@ -85,7 +85,7 @@ describe("Suno double-entry submission", () => {
     expect(submitted).toBe(pack.yamlLyrics);
     expect(submitted).toContain("# META (hints; do not sing)");
     expect(submitted).toContain("=== LYRICS START (do not sing tags) ===");
-    expect(submitted).toContain("[Verse 1 - tight flow, restrained backing, mid-range male vocal]");
+    expect(submitted).toContain("[Verse 1 - 16 bars, spacious rap phrasing, no double-time, mid-range male vocal]");
     expect(submitted?.length).toBeLessThanOrEqual(5000);
     expect(String(pack.payload.lyrics)).not.toContain("# META");
     expect(String(pack.payload.lyrics)).not.toContain("LYRICS START");

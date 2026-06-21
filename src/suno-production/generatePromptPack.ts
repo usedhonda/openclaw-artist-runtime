@@ -11,6 +11,11 @@ import { buildSliders as buildSlidersV55 } from "./buildSliders.js";
 import { buildStyle as buildStyleV55 } from "./buildStyle.js";
 import { synthesizeStyle } from "./buildStyle.js";
 import { buildYaml as buildYamlV55 } from "./buildYaml.js";
+import {
+  DEFAULT_USED_HONDA_DURATION_PLAN,
+  durationPlanCues,
+  durationPlanProductionNotes
+} from "./durationPlan.js";
 
 function hashText(value: string): string {
   return createHash("sha256").update(value).digest("hex");
@@ -60,7 +65,8 @@ function promptCharCounts(title: string, style: string, lyrics: string) {
 export function createSunoPromptPack(input: CreateSunoPromptPackInput): SunoPromptPack {
   const lyricsText = normalizeAsciiNumbersToHiragana(repairCommandLeak(input.lyricsText).trim());
   const genre = `${input.artistReason} ${input.moodHint ?? ""}`;
-  const bpm = input.bpm ?? 124;
+  const durationPlan = DEFAULT_USED_HONDA_DURATION_PLAN;
+  const bpm = input.bpm ?? durationPlan.bpm.target;
   const vocalGender = input.vocalGender ?? artistDefaultVocalGender(input.artistSnapshot);
   const lyricsBoxLimit = getSunoLyricsLimit();
   const styleResult = buildStyleV55({
@@ -85,7 +91,7 @@ export function createSunoPromptPack(input: CreateSunoPromptPackInput): SunoProm
       tempo: bpm,
       key: "minor",
       signature: "4/4",
-      form: "intro-verse-hook-verse-bridge-verse-hook-outro",
+      form: durationPlan.form,
       vibe: input.moodHint ?? "observational dusk",
       language: "ja"
     },
@@ -96,10 +102,12 @@ export function createSunoPromptPack(input: CreateSunoPromptPackInput): SunoProm
       ],
       rules: [
         "keep doubles restrained and intelligible",
-        "let consonants stay forward over bass movement"
+        "let consonants stay forward over bass movement",
+        "no double-time vocal; leave breath between lines"
       ]
     },
     production_notes: [
+      ...durationPlanProductionNotes(durationPlan),
       "bass forward, restrained drums, no novelty genre pivot",
       "leave enough midrange space for dense Japanese phrasing"
     ],
@@ -107,8 +115,9 @@ export function createSunoPromptPack(input: CreateSunoPromptPackInput): SunoProm
       "original lyrics and style only; no source-name imitation",
       "metadata describes delivery; lyrics body remains the singable text"
     ],
-    cues: ["Intro: sparse texture before groove; Hook: widen rhythm without crowd noise"],
-    lyricsBoxLimit
+    cues: durationPlanCues(durationPlan),
+    lyricsBoxLimit,
+    durationPlan
   });
   const sliders = buildSlidersV55({ genre, moodHint: input.moodHint });
   const payload = buildPayload({ ...input, lyricsText, bpm, vocalGender }, style, exclude, yamlLyrics, sliders);
@@ -149,7 +158,8 @@ export async function createSunoPromptPackWithAi(
 ): Promise<SunoPromptPack> {
   const lyricsText = repairCommandLeak(input.lyricsText).trim();
   const genre = `${input.artistReason} ${input.moodHint ?? ""}`;
-  const bpm = input.bpm ?? 124;
+  const durationPlan = DEFAULT_USED_HONDA_DURATION_PLAN;
+  const bpm = input.bpm ?? durationPlan.bpm.target;
   const vocalGender = input.vocalGender ?? artistDefaultVocalGender(input.artistSnapshot);
   const lyricsBoxLimit = getSunoLyricsLimit();
   const styleResult = await synthesizeStyle({
@@ -173,7 +183,7 @@ export async function createSunoPromptPackWithAi(
       tempo: bpm,
       key: "minor",
       signature: "4/4",
-      form: "intro-verse-hook-verse-bridge-verse-hook-outro",
+      form: durationPlan.form,
       vibe: input.moodHint ?? "observational dusk",
       language: "ja"
     },
@@ -184,10 +194,12 @@ export async function createSunoPromptPackWithAi(
       ],
       rules: [
         "keep doubles restrained and intelligible",
-        "let consonants stay forward over bass movement"
+        "let consonants stay forward over bass movement",
+        "no double-time vocal; leave breath between lines"
       ]
     },
     production_notes: [
+      ...durationPlanProductionNotes(durationPlan),
       "bass forward, restrained drums, no novelty genre pivot",
       "leave enough midrange space for dense Japanese phrasing"
     ],
@@ -195,8 +207,9 @@ export async function createSunoPromptPackWithAi(
       "original lyrics and style only; no source-name imitation",
       "metadata describes delivery; lyrics body remains the singable text"
     ],
-    cues: ["Intro: sparse texture before groove; Hook: widen rhythm without crowd noise"],
-    lyricsBoxLimit
+    cues: durationPlanCues(durationPlan),
+    lyricsBoxLimit,
+    durationPlan
   });
   const sliders = buildSlidersV55({ genre, moodHint: input.moodHint });
   const payload = buildPayload({ ...input, lyricsText, bpm, vocalGender }, styleResult.total, excludeResult.text, yamlLyrics, sliders);

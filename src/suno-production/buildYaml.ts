@@ -1,3 +1,9 @@
+import {
+  DEFAULT_USED_HONDA_DURATION_PLAN,
+  findDurationPlanSection,
+  type DurationPlan
+} from "./durationPlan.js";
+
 export type YamlBudgetLevel = "minimal" | "normal" | "expanded" | "max";
 
 export interface BuildYamlMeta {
@@ -30,6 +36,7 @@ export interface BuildYamlInput {
   notes?: string | string[];
   cues?: string[];
   lyricsBoxLimit?: number;
+  durationPlan?: DurationPlan;
 }
 
 function cleanLine(value: string | number | undefined, fallback: string): string {
@@ -67,27 +74,35 @@ function vocalParts(value: BuildYamlVocals | undefined): BuildYamlVocalPart[] {
   })) ?? [{ id: "lead", tone: "close, dry, intimate", gender: "male" }];
 }
 
-function decorateBareHeader(line: string, gender: "male" | "female" | "neutral"): string {
-  const match = line.match(/^\[(Intro|Verse|Hook|Chorus|Bridge|Outro|Pre-Chorus)(\s+\d+)?\]$/i);
+function canonicalDurationLabel(label: string, index: string): string {
+  const cleanIndex = index.trim();
+  if (/^final\s+(?:hook|chorus)$/i.test(label)) return "Final Hook";
+  if (/^pre[-\s]?chorus$/i.test(label)) return cleanIndex ? `Pre-Hook ${cleanIndex}` : "Pre-Hook";
+  if (/^pre[-\s]?hook$/i.test(label)) return cleanIndex ? `Pre-Hook ${cleanIndex}` : "Pre-Hook";
+  if (/^chorus$/i.test(label)) return cleanIndex ? `Hook ${cleanIndex}` : "Hook";
+  return cleanIndex ? `${label} ${cleanIndex}` : label;
+}
+
+function decorateBareHeader(line: string, gender: "male" | "female" | "neutral", plan: DurationPlan): string {
+  const match = line.match(/^\[(Intro|Verse|Hook|Chorus|Bridge|Outro|Pre-Chorus|Pre-Hook|Final Hook|Final Chorus)(\s+\d+)?\]$/i);
   if (!match) return line;
   const label = match[1];
   const index = match[2] ?? "";
-  const lower = label.toLowerCase();
   const voice = gender === "female" ? "close female lead" : gender === "neutral" ? "dry lead" : "mid-range male vocal";
-  const modifier = lower.includes("verse")
-    ? `tight flow, restrained backing, ${voice}`
-    : lower.includes("hook") || lower.includes("chorus")
-      ? `short refrain, narrow doubles, ${voice}`
-      : lower.includes("bridge")
-        ? `reduced drums, breath room, ${voice}`
-        : `sparse texture, ${voice}`;
-  return `[${label}${index} - ${modifier}]`;
+  const canonical = canonicalDurationLabel(label, index);
+  const section = findDurationPlanSection(canonical, plan);
+  if (!section) return line;
+  return `[${canonical} - ${section.modifier}, ${voice}]`;
 }
 
-export function prepareSunoLyrics(lyrics: string, gender: "male" | "female" | "neutral" = "male"): string {
+export function prepareSunoLyrics(
+  lyrics: string,
+  gender: "male" | "female" | "neutral" = "male",
+  plan: DurationPlan = DEFAULT_USED_HONDA_DURATION_PLAN
+): string {
   return lyrics
     .split(/\r?\n/)
-    .map((line) => decorateBareHeader(line.trimEnd(), gender))
+    .map((line) => decorateBareHeader(line.trimEnd(), gender, plan))
     .join("\n")
     .trim();
 }
@@ -128,7 +143,7 @@ function renderYaml(input: BuildYamlInput, level: YamlBudgetLevel): string {
     `tempo: ${cleanLine(input.meta.tempo, "124")}`,
     `key: ${cleanLine(input.meta.key, "minor")}`,
     `signature: ${cleanLine(input.meta.signature, "4/4")}`,
-    `form: ${cleanLine(input.meta.form, "intro-verse-hook-verse-bridge-verse-hook-outro")}`,
+    `form: ${cleanLine(input.meta.form, DEFAULT_USED_HONDA_DURATION_PLAN.form)}`,
     `vibe: ${cleanLine(input.meta.vibe, "observational dusk")}`,
     `language: ${cleanLine(input.meta.language, "ja")}`
   ];
@@ -164,10 +179,15 @@ function renderYaml(input: BuildYamlInput, level: YamlBudgetLevel): string {
 
 export function buildYaml(input: BuildYamlInput): string {
   const lyricsBoxLimit = input.lyricsBoxLimit ?? 4500;
+  const durationPlan = input.durationPlan ?? DEFAULT_USED_HONDA_DURATION_PLAN;
   const leadGender = typeof input.vocals === "string" ? "male" : input.vocals?.parts?.find((part) => part.id === "lead")?.gender ?? "male";
   const preparedInput = {
     ...input,
-    lyrics: prepareSunoLyrics(input.lyrics, leadGender)
+    meta: {
+      ...input.meta,
+      form: input.meta.form ?? durationPlan.form
+    },
+    lyrics: prepareSunoLyrics(input.lyrics, leadGender, durationPlan)
   };
   const levels: YamlBudgetLevel[] = ["minimal", "normal", "expanded", "max"];
   const start = levels.indexOf(computeBudgetLevel(preparedInput.lyrics, lyricsBoxLimit));
