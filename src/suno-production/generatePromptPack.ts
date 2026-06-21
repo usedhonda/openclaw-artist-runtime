@@ -8,7 +8,11 @@ import { validateSunoPromptPack } from "../validators/promptPackValidator.js";
 import { buildExclude as buildExcludeV55 } from "./buildExclude.js";
 import { synthesizeExclude } from "./buildExclude.js";
 import { buildSliders as buildSlidersV55 } from "./buildSliders.js";
-import { buildStyle as buildStyleV55 } from "./buildStyle.js";
+import {
+  CANONICAL_STYLE_HARD_MAX_CHARS,
+  CANONICAL_STYLE_TARGET_MAX_CHARS,
+  buildStyle as buildStyleV55
+} from "./buildStyle.js";
 import { synthesizeStyle } from "./buildStyle.js";
 import { buildYaml as buildYamlV55 } from "./buildYaml.js";
 import {
@@ -64,7 +68,7 @@ function promptCharCounts(title: string, style: string, lyrics: string, payloadY
     effectiveLyricsBoxLimit: lyricsBoxLimit,
     plannedBars: DEFAULT_USED_HONDA_DURATION_PLAN.totalPlannedBars,
     durationTargetSeconds: DEFAULT_USED_HONDA_DURATION_PLAN.targetSeconds,
-    styleZone: styleLength < 800 ? "short" : styleLength > 1000 ? "overflow" : "sweet",
+    styleZone: styleLength > CANONICAL_STYLE_HARD_MAX_CHARS ? "overflow" : styleLength > CANONICAL_STYLE_TARGET_MAX_CHARS ? "long" : styleLength < 40 ? "short" : "sweet",
     lyricsZone: submittedPayloadChars > lyricsBoxLimit ? "overflow" : submittedPayloadChars < lyricsBoxLimit * 0.8 ? "underused" : "near_max",
     titleZone: titleLength < 4 ? "short" : titleLength > 80 ? "overflow" : "sweet"
   };

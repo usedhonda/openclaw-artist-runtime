@@ -666,7 +666,7 @@ export interface PromptPackCharCounts {
   effectiveLyricsBoxLimit?: number;
   plannedBars?: number;
   durationTargetSeconds?: number;
-  styleZone: "sweet" | "short" | "overflow";
+  styleZone: "sweet" | "short" | "long" | "overflow";
   lyricsZone: "underused" | "near_max" | "overflow";
   titleZone: "sweet" | "short" | "overflow";
 }

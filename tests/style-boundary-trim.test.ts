@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { buildStyle } from "../src/suno-production/buildStyle";
+import { CANONICAL_STYLE_TARGET_MAX_CHARS, buildStyle } from "../src/suno-production/buildStyle";
 
 describe("style boundary trim", () => {
   it("trims over-limit style text at a phrase boundary instead of cutting words", () => {
@@ -22,8 +22,9 @@ describe("style boundary trim", () => {
         "Keep the vocal close, male, dry, and managerially restrained while each section changes texture without a pop lift."
     });
 
-    expect(result.total.length).toBeLessThanOrEqual(1000);
+    expect(result.total.length).toBeLessThanOrEqual(CANONICAL_STYLE_TARGET_MAX_CHARS);
     expect(result.total).not.toContain("managerially restrained while\ncivic pressure behind glass");
-    expect(result.total).toMatch(/\n-\s[A-Za-z][^\n]+\ncivic pressure behind glass$/);
+    expect(result.total).toContain("civic pressure behind glass");
+    expect(result.total).not.toMatch(/managerially restrained whi\s/);
   });
 });

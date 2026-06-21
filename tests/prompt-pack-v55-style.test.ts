@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { buildStyle } from "../src/suno-production/buildStyle";
+import { CANONICAL_STYLE_CORE_MAX_CHARS, CANONICAL_STYLE_TARGET_MAX_CHARS, buildStyle } from "../src/suno-production/buildStyle";
 import {
   STYLE_SYNTHESIS_KNOWLEDGE_REFERENCES,
   STYLE_SYNTHESIS_SYSTEM_PROMPT,
@@ -7,7 +7,7 @@ import {
 } from "../src/suno-production/styleSynthesisPrompt";
 
 describe("Suno V5.5 style builder", () => {
-  it("builds dense style guidance with short core tags and vibe anchors", () => {
+  it("builds canonical short style guidance with genre and mood anchors", () => {
     const result = buildStyle({
       genre: "nu-jazz rap",
       bpm: 132,
@@ -18,23 +18,17 @@ describe("Suno V5.5 style builder", () => {
       performanceDirection: "Keep the delivery close and restrained, with the hook carrying the repeated image instead of a big pop lift."
     });
 
-    expect(result.coreTags.length).toBeLessThanOrEqual(120);
-    expect(result.total.length).toBeGreaterThanOrEqual(800);
-    expect(result.total.length).toBeLessThanOrEqual(1000);
-    expect(result.coreTags.startsWith("civic dread")).toBe(true);
+    expect(result.coreTags.length).toBeLessThanOrEqual(CANONICAL_STYLE_CORE_MAX_CHARS);
+    expect(result.total.length).toBeLessThanOrEqual(CANONICAL_STYLE_TARGET_MAX_CHARS);
+    expect(result.coreTags.startsWith("nu-jazz rap")).toBe(true);
     expect(result.coreTags).toContain("BPM 132");
     expect(result.coreTags).toContain("civic dread");
-    expect(result.total.startsWith("# Style\n\ncivic dread")).toBe(true);
-    expect(result.total.endsWith("civic dread")).toBe(true);
-    expect(result.total).toContain("Genre & Era");
+    expect(result.total.startsWith("# Style\n")).toBe(true);
+    expect(result.total).toContain("nu-jazz rap");
     expect(result.total).toContain("Instruments");
-    expect(result.total).toContain("Mix Vision");
     expect(result.total).toContain("Texture");
-    expect(result.total).toContain("Vocal Production");
-    expect(result.total).toContain("Arrangement Notes");
-    expect(result.total).toContain("Performance Direction");
-    expect(result.total).toContain("Knowledge Vocabulary");
-    expect(result.total).toContain("wide stereo");
+    expect(result.total).toContain("Performance");
+    expect(result.total).not.toContain("Knowledge Vocabulary");
   });
 
   it("repairs prose-like style input into comma tags", () => {
@@ -64,15 +58,15 @@ describe("Suno V5.5 style builder", () => {
     ["edm", "cold warehouse pulse"],
     ["post-punk", "concrete hallway dread"],
     ["rap", "dry street sarcasm"]
-  ])("renders dense template for %s", (genre, vibe) => {
+  ])("renders canonical template for %s", (genre, vibe) => {
     const result = buildStyle({ genre, vibe, moodHint: vibe });
 
-    expect(result.total.length).toBeGreaterThanOrEqual(800);
-    expect(result.total.length).toBeLessThanOrEqual(1000);
-    expect(result.coreTags.length).toBeLessThanOrEqual(120);
-    expect(result.total.startsWith(`# Style\n\n${vibe}`)).toBe(true);
-    expect(result.total.endsWith(vibe)).toBe(true);
-    expect(result.total).toContain("Knowledge Vocabulary");
+    expect(result.total.length).toBeLessThanOrEqual(CANONICAL_STYLE_TARGET_MAX_CHARS);
+    expect(result.coreTags.length).toBeLessThanOrEqual(CANONICAL_STYLE_CORE_MAX_CHARS);
+    expect(result.total.startsWith("# Style\n")).toBe(true);
+    expect(result.total).toContain(genre);
+    expect(result.total).toContain(vibe);
+    expect(result.total).not.toContain("Knowledge Vocabulary");
   });
 
   it("exposes mygpts-derived style synthesis prompt guidance with catalog attribution", async () => {
@@ -87,5 +81,8 @@ describe("Suno V5.5 style builder", () => {
     expect(STYLE_SYNTHESIS_SYSTEM_PROMPT).toContain("style_catalog.md");
     expect(STYLE_SYNTHESIS_KNOWLEDGE_REFERENCES).toContain("style_catalog.md");
     expect(prompt.user).toContain("Rhodes and sax");
+    expect(prompt.user).toContain("core <=120 characters");
+    expect(prompt.user).toContain("total target <=400 characters");
+    expect(prompt.user).not.toContain("below 800");
   });
 });

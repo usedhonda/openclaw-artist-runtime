@@ -18,9 +18,13 @@ describe("style synthesis prompt", () => {
     expect(STYLE_ANALYZER_SYSTEM_PROMPT).toContain("Performance direction");
     expect(STYLE_ANALYZER_SYSTEM_PROMPT).toContain("style_catalog.md");
     expect(STYLE_ANALYZER_SYSTEM_PROMPT).toContain("CC BY-NC 4.0");
+    expect(prompt.system).toContain("total <=400 characters");
+    expect(prompt.system).toContain("Do not pad");
     expect(STYLE_SYNTHESIS_KNOWLEDGE_REFERENCES).toContain("style_catalog.md");
     expect(STYLE_SYNTHESIS_KNOWLEDGE_REFERENCES).toContain("master_reference.md");
     expect(prompt.user).toContain("Rhodes, sax, upright bass");
+    expect(prompt.user).toContain("core <=120 characters");
+    expect(prompt.user).not.toContain("below 800");
   });
 
   it("falls back to deterministic style tags in mock mode while preserving brief instruments", async () => {

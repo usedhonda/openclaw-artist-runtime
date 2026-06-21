@@ -29,9 +29,9 @@ describe("Suno V5.5 BPM source of truth", () => {
     const style = readFileSync(result.artifactPaths.styleLatest, "utf8");
     const yaml = readFileSync(result.artifactPaths.yamlLatest, "utf8");
     const payload = readFileSync(result.artifactPaths.payloadLatest, "utf8");
-    expect(style).toContain("- BPM: 142");
+    expect(style).toContain("BPM 142");
     expect(yaml).toContain("tempo: 142");
-    expect(payload).toContain("BPM: 142");
+    expect(payload).toContain("BPM 142");
     expect(payload).not.toContain("tempo: 124");
   });
 });

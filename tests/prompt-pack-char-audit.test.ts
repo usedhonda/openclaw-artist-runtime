@@ -5,6 +5,7 @@ import { describe, expect, it, vi } from "vitest";
 import { readSongState } from "../src/services/artistState";
 import { getRuntimeEventBus, type RuntimeEvent } from "../src/services/runtimeEventBus";
 import { createAndPersistSunoPromptPack } from "../src/services/sunoPromptPackFiles";
+import { CANONICAL_STYLE_TARGET_MAX_CHARS } from "../src/suno-production/buildStyle";
 import { validateSunoPromptPack } from "../src/validators/promptPackValidator";
 
 describe("prompt pack character audit", () => {
@@ -23,8 +24,8 @@ describe("prompt pack character audit", () => {
     const metadata = JSON.parse(readFileSync(join(result.artifactPaths.snapshotDir, "metadata.json"), "utf8")) as {
       charCounts: { style: number; lyrics: number; title: number; styleZone: string; lyricsZone: string; titleZone: string; submittedPayloadChars: number; effectiveLyricsBoxLimit: number; plannedBars: number };
     };
-    expect(metadata.charCounts.style).toBeGreaterThanOrEqual(800);
-    expect(metadata.charCounts.style).toBeLessThanOrEqual(1000);
+    expect(metadata.charCounts.style).toBeGreaterThan(80);
+    expect(metadata.charCounts.style).toBeLessThanOrEqual(CANONICAL_STYLE_TARGET_MAX_CHARS);
     expect(metadata.charCounts.lyrics).toBeLessThan(metadata.charCounts.submittedPayloadChars);
     expect(metadata.charCounts.submittedPayloadChars).toBeLessThanOrEqual(metadata.charCounts.effectiveLyricsBoxLimit);
     expect(metadata.charCounts.title).toBe("Character Gate".length);
@@ -37,7 +38,7 @@ describe("prompt pack character audit", () => {
     const validation = validateSunoPromptPack({
       songId: "song-short",
       songTitle: "Short Gate",
-      style: "s".repeat(800),
+      style: "nu-jazz rap, dry civic pulse, BPM 142, mid-range male rap vocal",
       exclude: "generic reverb",
       yamlLyrics: "gender: male",
       payload: { lyrics: "短い", payloadYaml: "# META (hints; do not sing)\n=== LYRICS START (do not sing tags) ===\n短い\n=== LYRICS END ===" },

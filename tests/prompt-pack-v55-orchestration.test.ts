@@ -4,6 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { createSunoPromptPack } from "../src/suno-production/generatePromptPack";
+import { CANONICAL_STYLE_TARGET_MAX_CHARS } from "../src/suno-production/buildStyle";
 import { createAndPersistSunoPromptPack } from "../src/services/sunoPromptPackFiles";
 import { validateNoCommandLeak } from "../src/services/lyricsValidator";
 
@@ -31,9 +32,9 @@ describe("Suno V5.5 prompt pack orchestration", () => {
     });
 
     expect(pack.lyricsBundle?.lyricsText).toBe(lyrics);
-    expect(pack.style.length).toBeGreaterThanOrEqual(800);
-    expect(pack.style.length).toBeLessThanOrEqual(1000);
-    expect(pack.style).toContain("Knowledge Vocabulary");
+    expect(pack.style.length).toBeLessThanOrEqual(CANONICAL_STYLE_TARGET_MAX_CHARS);
+    expect(pack.style).toContain("civic dread pulse");
+    expect(pack.style).not.toContain("Knowledge Vocabulary");
     expect(pack.exclude.length).toBeLessThanOrEqual(200);
     expect(pack.yamlLyrics.length).toBeLessThanOrEqual(4000);
     expect(pack.yamlLyrics).toContain("LYRICS START");
@@ -106,9 +107,9 @@ describe("Suno V5.5 prompt pack orchestration", () => {
     expect(result.artifactPaths.excludeLatest.endsWith("songs/song-010/suno/exclude.md")).toBe(true);
     expect(result.artifactPaths.yamlLatest.endsWith("songs/song-010/suno/yaml-suno.md")).toBe(true);
     expect(result.artifactPaths.lyricsSunoLatest.endsWith("songs/song-010/suno/lyrics-suno.md")).toBe(true);
-    expect(style.length).toBeGreaterThanOrEqual(801);
-    expect(style.length).toBeLessThanOrEqual(1001);
-    expect(style).toContain("Knowledge Vocabulary");
+    expect(style.length).toBeLessThanOrEqual(CANONICAL_STYLE_TARGET_MAX_CHARS + 1);
+    expect(style).toContain("civic dread pulse");
+    expect(style).not.toContain("Knowledge Vocabulary");
     expect(exclude.length).toBeLessThanOrEqual(201);
     expect(yaml).toContain("LYRICS START");
     expect(lyricsSuno).toContain("[Verse 1 - tight civic flow]");

@@ -1,6 +1,11 @@
 import type { SunoPromptPack, SunoPromptPackValidation } from "../types.js";
 import { getSunoLyricsLimit } from "../services/runtimeConfig.js";
 import { extractLyricsBody } from "../services/lyricsExtraction.js";
+import {
+  CANONICAL_STYLE_CORE_MAX_CHARS,
+  CANONICAL_STYLE_HARD_MAX_CHARS,
+  CANONICAL_STYLE_TARGET_MAX_CHARS
+} from "../suno-production/buildStyle.js";
 import { DEFAULT_USED_HONDA_DURATION_PLAN } from "../suno-production/durationPlan.js";
 
 function sunoLyricsBoxLimit(): number {
@@ -20,6 +25,13 @@ function plannedBarsFromHeaders(lyrics: string): number {
     .map((line) => Number.parseInt(line.match(/^\[[^\]]*?\b(\d+)\s+bars\b/i)?.[1] ?? "", 10))
     .filter((value) => Number.isFinite(value))
     .reduce((sum, value) => sum + value, 0);
+}
+
+function styleCoreLine(style: string): string | undefined {
+  return style
+    .split(/\r?\n/)
+    .map((line) => line.replace(/^[-*]\s*/, "").trim())
+    .filter((line) => line && !/^#\s*Style\b/i.test(line))[0];
 }
 
 function validateDurationPlanStructure(payloadYaml: string, warnings: string[]): void {
@@ -60,8 +72,17 @@ export function validateSunoPromptPack(pack: Partial<SunoPromptPack>): SunoPromp
   }
   if (!pack.style) {
     errors.push("missing style");
-  } else if (pack.style.length < 800 || pack.style.length > 1000) {
-    errors.push(`styleAndFeel length out of range: ${pack.style.length}`);
+  } else {
+    const coreLine = styleCoreLine(pack.style);
+    if (pack.style.length > CANONICAL_STYLE_HARD_MAX_CHARS) {
+      errors.push(`styleAndFeel length exceeds hard cap: ${pack.style.length}/${CANONICAL_STYLE_HARD_MAX_CHARS}`);
+    }
+    if ((coreLine?.length ?? 0) > CANONICAL_STYLE_CORE_MAX_CHARS) {
+      errors.push(`styleAndFeel core exceeds canonical cap: ${coreLine?.length}/${CANONICAL_STYLE_CORE_MAX_CHARS}`);
+    }
+    if (pack.style.length > CANONICAL_STYLE_TARGET_MAX_CHARS) {
+      warnings.push(`styleAndFeel exceeds canonical target: ${pack.style.length}/${CANONICAL_STYLE_TARGET_MAX_CHARS}`);
+    }
   }
   if (!pack.exclude) {
     errors.push("missing exclude");

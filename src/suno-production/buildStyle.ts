@@ -3,7 +3,10 @@ import { callAiProvider, isAiProviderMockFallbackResponse } from "../services/ai
 import { buildStyleSynthesisPrompt } from "./styleSynthesisPrompt.js";
 import { KNOWLEDGE_BUNDLE } from "./knowledge-bundle.js";
 import { STYLE_TEMPLATES, type Genre } from "./styleTemplates.js";
-import { styleFillerFragments } from "./styleFillerLibrary.js";
+
+export const CANONICAL_STYLE_CORE_MAX_CHARS = 120;
+export const CANONICAL_STYLE_TARGET_MAX_CHARS = 400;
+export const CANONICAL_STYLE_HARD_MAX_CHARS = 1000;
 
 export interface BuildStyleInput {
   artistProfile?: string;
@@ -58,7 +61,7 @@ function fitTags(tags: string[], max: number): string {
 }
 
 function fitPhrase(value: string, max: number): string {
-  return compact(value).slice(0, max).trim();
+  return trimAtPhraseBoundary(compact(value), max);
 }
 
 function trimAtPhraseBoundary(text: string, maxLength: number): string {
@@ -106,27 +109,23 @@ function inferInstruments(input: BuildStyleInput): string[] {
 }
 
 export function buildStyle(input: BuildStyleInput): BuildStyleResult {
-  const vibe = fitPhrase(input.vibe ?? inferMood(input), 96);
+  const vibe = fitPhrase(input.vibe ?? inferMood(input), 40);
   const genre = inferGenre(input);
   const template = STYLE_TEMPLATES[genre] ?? STYLE_TEMPLATES.default;
   const bpm = Math.round(input.bpm ?? 124);
-  const genreLine = template.genreLine.replace(/\b\d{2,3}\s*BPM\b/gi, `${bpm} BPM`);
   const instruments = input.instruments ?? inferInstruments(input);
   const gender = input.vocalGender ?? "male";
   const vocalDescriptor = input.vocalDescriptor ?? (gender === "female" ? "close dry female vocal" : gender === "neutral" ? "close dry neutral lead vocal" : "mid-range male rap vocal");
   const tags = uniq([
-    vibe,
     genre,
+    vibe,
     `BPM ${bpm}`,
-    input.key ?? "minor key",
-    inferMood(input),
     vocalDescriptor,
     ...(instruments.length > 0 ? instruments : template.instruments).slice(0, 3),
-    input.mixKeyword ?? "intimate mix",
-    vibe
+    input.mixKeyword ?? "intimate mix"
   ]);
-  const coreTags = fitTags(tags, 120);
-  const direction = trimAtPhraseBoundary(compact(input.performanceDirection ?? "Keep performance restrained, intelligible, and image-led; avoid arena-pop exaggeration."), 72);
+  const coreTags = fitTags(tags, CANONICAL_STYLE_CORE_MAX_CHARS);
+  const direction = trimAtPhraseBoundary(compact(input.performanceDirection ?? "Keep performance restrained, intelligible, and image-led; no double-time vocal."), 76);
   const injectedInstruments = uniq([...instruments, ...template.instruments]).slice(0, 5);
   const vocabulary = [
     "wide stereo",
@@ -135,57 +134,28 @@ export function buildStyle(input: BuildStyleInput): BuildStyleResult {
     "bass-heavy",
     "full arrangement"
   ].filter((term) => KNOWLEDGE_BUNDLE["style_catalog.md"].toLowerCase().includes(term));
-  const render = (arrangement: string[], fillers: string[]) => [
+  const render = (includeArrangement: boolean, includeTexture: boolean) => [
     "# Style",
     "",
-    vibe,
-    "",
-    `- Genre & Era: ${genreLine}`,
-    `- Vocal Production: ${vocalDescriptor}, ${template.vocalProduction.join(", ")}`,
-    `- Mood: ${inferMood(input)}, ${vibe}`,
-    `- Instruments: ${injectedInstruments.join(", ")}`,
-    `- BPM: ${bpm}`,
-    `- Key: ${input.key ?? "minor key"}`,
-    "- Signature: 4/4",
-    `- Mix Vision: ${template.mixVision.join(", ")}`,
-    "- Era: 2000s NY underground to modern Brooklyn lineage",
-    `- Texture: ${template.texture.join(", ")}`,
-    `- Knowledge Vocabulary: ${vocabulary.join(", ")}`,
-    `- Arrangement Notes: ${arrangement.join("; ")}`,
-    `- Performance Direction: ${direction}`,
-    ...fillers.map((fragment) => `- ${fragment}`),
-    "",
-    vibe
-  ].join("\n");
-  const arrangement = [...template.arrangementNotes];
-  const fillers: string[] = [];
-  let total = render(arrangement, fillers);
-  const padding = [
-    "Keep each section specific rather than generic",
-    "let instruments answer the lyric image",
-    "preserve vocal intelligibility over density",
-    "keep the final hook wider without crowd noise"
-  ];
-  while (total.length < 800 && padding.length > 0) {
-    arrangement.push(padding.shift() as string);
-    total = render(arrangement, fillers);
+    coreTags,
+    `- Performance: ${direction}`,
+    `- Instruments: ${trimAtPhraseBoundary(injectedInstruments.join(", "), 92)}`,
+    `- Texture: ${trimAtPhraseBoundary(uniq([...template.texture, ...template.mixVision, ...vocabulary]).slice(0, 3).join(", "), 96)}`,
+    includeArrangement ? `- Arrangement: ${trimAtPhraseBoundary(template.arrangementNotes.slice(0, 2).join("; "), 112)}` : undefined,
+    includeTexture ? `- Production: ${trimAtPhraseBoundary(template.vocalProduction.slice(0, 2).join(", "), 78)}` : undefined
+  ].filter((line): line is string => Boolean(line)).join("\n");
+  let total = render(true, true);
+  if (total.length > CANONICAL_STYLE_TARGET_MAX_CHARS) {
+    total = render(false, true);
   }
-  for (const fragment of styleFillerFragments()) {
-    if (total.length >= 900) break;
-    fillers.push(fragment);
-    total = render(arrangement, fillers);
+  if (total.length > CANONICAL_STYLE_TARGET_MAX_CHARS) {
+    total = render(false, false);
   }
-  while (total.length > 1000 && arrangement.length > 1) {
-    arrangement.pop();
-    total = render(arrangement, fillers);
+  if (total.length > CANONICAL_STYLE_TARGET_MAX_CHARS) {
+    total = trimAtPhraseBoundary(total, CANONICAL_STYLE_TARGET_MAX_CHARS);
   }
-  while (total.length > 1000 && fillers.length > 0) {
-    fillers.pop();
-    total = render(arrangement, fillers);
-  }
-  if (total.length > 1000) {
-    const suffix = `\n${vibe}`;
-    total = `${trimAtPhraseBoundary(total, 1000 - suffix.length)}${suffix}`;
+  if (total.length > CANONICAL_STYLE_HARD_MAX_CHARS) {
+    total = trimAtPhraseBoundary(total, CANONICAL_STYLE_HARD_MAX_CHARS);
   }
   return { coreTags, performanceDirection: direction, total };
 }
@@ -199,14 +169,17 @@ function normalizeAiStyle(raw: string): BuildStyleResult | undefined {
   if (!text || isAiProviderMockFallbackResponse(text)) {
     return undefined;
   }
-  const total = text.slice(0, 1000);
+  let total = trimAtPhraseBoundary(text, CANONICAL_STYLE_HARD_MAX_CHARS);
+  if (total.length > CANONICAL_STYLE_TARGET_MAX_CHARS) {
+    total = trimAtPhraseBoundary(total, CANONICAL_STYLE_TARGET_MAX_CHARS);
+  }
   const coreSource = text
     .split(/\r?\n/)
     .map((line) => line.replace(/^[-*]\s*/, "").trim())
     .filter((line) => line && !/^#/.test(line))
     .join(", ");
-  const coreTags = fitTags(splitTags(coreSource), 120);
-  return { coreTags: coreTags || fitTags(splitTags(total), 120), total };
+  const coreTags = fitTags(splitTags(coreSource), CANONICAL_STYLE_CORE_MAX_CHARS);
+  return { coreTags: coreTags || fitTags(splitTags(total), CANONICAL_STYLE_CORE_MAX_CHARS), total };
 }
 
 export async function synthesizeStyle(input: BuildStyleInput, options: StyleAiSynthesisOptions = {}): Promise<BuildStyleResult> {

@@ -5,7 +5,7 @@ import { describe, expect, it } from "vitest";
 import { KNOWLEDGE_BUNDLE, KNOWLEDGE_FILES } from "../src/suno-production/knowledge-bundle.js";
 import { readLyricsKnowledgeDigest } from "../src/services/lyricsDraftingPrompt.js";
 import { readStyleKnowledgeDigest } from "../src/suno-production/styleSynthesisPrompt.js";
-import { buildStyle } from "../src/suno-production/buildStyle.js";
+import { CANONICAL_STYLE_TARGET_MAX_CHARS, buildStyle } from "../src/suno-production/buildStyle.js";
 import { buildYaml, computeBudgetLevel } from "../src/suno-production/buildYaml.js";
 import { buildExclude } from "../src/suno-production/buildExclude.js";
 import { isCommandLeakLine } from "../src/services/lyricsValidator.js";
@@ -33,12 +33,12 @@ describe("Plan v10.7 distribution smoke", () => {
     expect(digest).toMatch(/##\s+style_catalog\.md/);
   });
 
-  it("buildStyle reaches the 800-1000 char dense band for every supported genre", () => {
+  it("buildStyle stays in the canonical short band for every supported genre", () => {
     const genres = ["nu-jazz rap", "alternative pop", "edm", "post-punk", "rap"];
     for (const genre of genres) {
       const result = buildStyle({ genre, vibe: "observational dusk", bpm: 124 });
-      expect(result.total.length, genre).toBeGreaterThanOrEqual(800);
-      expect(result.total.length, genre).toBeLessThanOrEqual(1000);
+      expect(result.total.length, genre).toBeGreaterThan(80);
+      expect(result.total.length, genre).toBeLessThanOrEqual(CANONICAL_STYLE_TARGET_MAX_CHARS);
     }
   });
 
