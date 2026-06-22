@@ -93,7 +93,7 @@ describe("spawn proposal generator queue integration", () => {
     vi.restoreAllMocks();
   });
 
-  it("keeps generating draft ideas even when three drafts already exist", async () => {
+  it("does not generate a new draft while any draft proposal is waiting", async () => {
     process.env.OPENCLAW_SONG_SPAWN_ENABLED = "on";
     callAiProviderMock.mockResolvedValue(aiOutput("四つ目の草稿", "三つの草稿とは別角度で、コピー機の夜を切る。"));
     const root = await workspace();
@@ -110,9 +110,10 @@ describe("spawn proposal generator queue integration", () => {
     });
     unsubscribe();
 
-    expect(state.blockedReason).toBe("spawn_proposal_ready");
+    expect(state.blockedReason).toBe("song_spawn_waiting_for_proposal");
     expect(events.some((event) => event.type === "spawn_proposal_skip_queue_full")).toBe(false);
-    expect(events.some((event) => event.type === "song_spawn_proposed")).toBe(true);
+    expect(events.some((event) => event.type === "song_spawn_proposed")).toBe(false);
+    expect(callAiProviderMock).not.toHaveBeenCalled();
   });
 
   it("marks the spawn rate limiter when autopilot appends a draft proposal", async () => {

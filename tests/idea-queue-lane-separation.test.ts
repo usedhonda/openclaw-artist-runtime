@@ -131,7 +131,7 @@ describe("idea queue lane separation during producer review", () => {
     expect(events.some((event) => event.type === "song_take_completed")).toBe(false);
   });
 
-  it("releases a stale producer review lane and keeps draft generation unbounded on the next cycle", async () => {
+  it("releases a stale producer review lane and does not stack another draft while one is waiting", async () => {
     process.env.OPENCLAW_SONG_SPAWN_ENABLED = "on";
     vi.useFakeTimers();
     vi.setSystemTime(new Date("2026-05-28T12:00:00.000Z"));
@@ -174,12 +174,10 @@ describe("idea queue lane separation during producer review", () => {
       suspendedAt: undefined,
       blockedReason: undefined
     });
-    expect(draftState).toMatchObject({
-      blockedReason: "spawn_proposal_ready"
-    });
+    expect(draftState.blockedReason).toBe("song_spawn_waiting_for_proposal");
     expect(draftState.currentSongId).toBeUndefined();
-    expect((await loadSpawnProposalQueue(root)).filter((entry) => entry.status === "draft")).toHaveLength(4);
+    expect((await loadSpawnProposalQueue(root)).filter((entry) => entry.status === "draft")).toHaveLength(3);
     expect(events.some((event) => event.type === "spawn_proposal_skip_queue_full")).toBe(false);
-    expect(events.some((event) => event.type === "song_spawn_proposed")).toBe(true);
+    expect(events.some((event) => event.type === "song_spawn_proposed")).toBe(false);
   });
 });

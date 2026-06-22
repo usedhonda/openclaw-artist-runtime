@@ -404,20 +404,14 @@ export class TelegramNotifier {
 
   private async notifySongSpawnBatch(events: Array<Extract<RuntimeEvent, { type: "song_spawn_proposed" }>>): Promise<void> {
     if (events.length === 0) return;
-    if (events.length === 1) {
-      const [event] = events;
-      const text = await formatRuntimeEvent(event, {
-        workspaceRoot: this.options.workspaceRoot,
-        aiReviewProvider: this.options.aiReviewProvider,
-        dashboardBaseUrl: this.options.dashboardBaseUrl
-      });
-      const sent = await this.client.sendMessage(this.options.chatId, text);
-      await this.attachSongSpawnButtons(event, sent.message_id);
-      return;
-    }
-    const text = await formatSongSpawnDigest(events);
+    const event = events.at(-1)!;
+    const text = await formatRuntimeEvent(event, {
+      workspaceRoot: this.options.workspaceRoot,
+      aiReviewProvider: this.options.aiReviewProvider,
+      dashboardBaseUrl: this.options.dashboardBaseUrl
+    });
     const sent = await this.client.sendMessage(this.options.chatId, text);
-    await this.attachSongSpawnDigestButtons(events, sent.message_id);
+    await this.attachSongSpawnButtons(event, sent.message_id);
   }
 
   private async attachSongSpawnButtons(event: Extract<RuntimeEvent, { type: "song_spawn_proposed" }>, messageId: number): Promise<void> {
@@ -462,54 +456,6 @@ export class TelegramNotifier {
         { text: buttonVoiceLabels.songSpawn.skip, callback_data: `cb:${skip.callbackId}` },
         { text: buttonVoiceLabels.songSpawn.edit, callback_data: `cb:${edit.callbackId}` }
       ]]
-    });
-  }
-
-  private async attachSongSpawnDigestButtons(events: Array<Extract<RuntimeEvent, { type: "song_spawn_proposed" }>>, messageId: number): Promise<void> {
-    if (!isInlineButtonsEnabled() || !this.options.workspaceRoot || typeof this.options.chatId !== "number") {
-      return;
-    }
-    const rows = await Promise.all(events.map(async (event) => {
-      const [inject, skip, edit] = await Promise.all([
-        registerCallbackAction(this.options.workspaceRoot!, {
-          action: "song_spawn_inject",
-          proposalId: event.candidateSongId,
-          songId: event.candidateSongId,
-          commissionBrief: event.brief,
-          spawnReason: event.reason,
-          chatId: this.options.chatId as number,
-          messageId,
-          userId: this.options.chatId as number
-        }),
-        registerCallbackAction(this.options.workspaceRoot!, {
-          action: "song_spawn_skip",
-          proposalId: event.candidateSongId,
-          songId: event.candidateSongId,
-          commissionBrief: event.brief,
-          spawnReason: event.reason,
-          chatId: this.options.chatId as number,
-          messageId,
-          userId: this.options.chatId as number
-        }),
-        registerCallbackAction(this.options.workspaceRoot!, {
-          action: "song_spawn_edit",
-          proposalId: event.candidateSongId,
-          songId: event.candidateSongId,
-          commissionBrief: event.brief,
-          spawnReason: event.reason,
-          chatId: this.options.chatId as number,
-          messageId,
-          userId: this.options.chatId as number
-        })
-      ]);
-      return [
-        { text: buttonVoiceLabels.songSpawn.inject, callback_data: `cb:${inject.callbackId}` },
-        { text: buttonVoiceLabels.songSpawn.skip, callback_data: `cb:${skip.callbackId}` },
-        { text: buttonVoiceLabels.songSpawn.edit, callback_data: `cb:${edit.callbackId}` }
-      ];
-    }));
-    await this.client.editMessageReplyMarkup(this.options.chatId, messageId, {
-      inline_keyboard: rows
     });
   }
 
@@ -931,35 +877,6 @@ function formatSpawnBriefVoiceDetail(brief: Extract<RuntimeEvent, { type: "song_
     `『${brief.title}』、${humanizeTempo(brief.tempo)}、${humanizeMood(brief.mood)}${humanizeDuration(brief.duration)}。これで合ってる気がする。`,
     cleanReason
   ].join("\n");
-}
-
-async function formatSongSpawnDigest(events: Array<Extract<RuntimeEvent, { type: "song_spawn_proposed" }>>): Promise<string> {
-  const lines = [
-    `アイデアが ${events.length} 件、並んでます。`,
-    "今はまだ Suno には投げない。進めるものだけ選んで。",
-    "",
-    TELEGRAM_SECTION_DIVIDER
-  ];
-  for (const [index, event] of events.entries()) {
-    const top = (event.voiceTop ?? event.brief.title).split(/\r?\n/).map((line) => line.trim()).find(Boolean) ?? event.brief.title;
-    const trace = buildCascadeTrace({
-      songId: event.candidateSongId,
-      title: event.brief.title,
-      artistVoice: top,
-      lyricsTheme: event.brief.lyricsTheme,
-      styleLayer: event.brief.styleNotes,
-      observationSummary: event.observationSummary,
-      commissionSources: event.brief.sources
-    });
-    lines.push(
-      `${index + 1}. ${event.brief.title}`,
-      `voice: ${top}`,
-      `theme: ${event.brief.lyricsTheme}`,
-      formatTelegramCascadeTrace(trace),
-      ""
-    );
-  }
-  return lines.join("\n").trim();
 }
 
 async function readSongCompletionContext(event: Extract<RuntimeEvent, { type: "song_take_completed" }>, workspaceRoot?: string): Promise<{ title: string; observationSummary?: ObservationSummary }> {

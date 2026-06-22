@@ -322,6 +322,9 @@ async function runIdeaQueueLane(
       return;
     }
     const pendingProposals = await listPendingSpawnProposals(root);
+    if (pendingProposals.length > 0) {
+      return;
+    }
     const proposal = await proposeSpawn(root, {
       aiReviewProvider: config.aiReview.provider,
       activeQueueContext: activeQueueContextFromProposals(pendingProposals),

@@ -76,8 +76,8 @@ function requestBody(call: unknown[]): Record<string, unknown> {
   return JSON.parse(String((call[1] as RequestInit).body));
 }
 
-describe("spawn proposal digest", () => {
-  it("sends same-tick spawn proposals as one digest with one button row per proposal", async () => {
+describe("spawn proposal notification", () => {
+  it("collapses same-tick spawn proposals to the latest single proposal notification", async () => {
     const root = workspace();
     const fetchImpl = vi.fn()
       .mockResolvedValueOnce(telegramResponse({ message_id: 77, chat: { id: 123 } }))
@@ -91,23 +91,19 @@ describe("spawn proposal digest", () => {
 
     expect(fetchImpl).toHaveBeenCalledTimes(2);
     const sendBody = requestBody(fetchImpl.mock.calls[0]);
-    expect(sendBody.text).toContain("アイデアが 2 件、並んでます。");
-    expect(sendBody.text).toContain("1. ハンズ前、解散");
-    expect(sendBody.text).toContain("2. 地下鉄のコピー機");
+    expect(sendBody.text).not.toContain("アイデアが 2 件、並んでます。");
+    expect(sendBody.text).not.toContain("ハンズ前、解散");
+    expect(sendBody.text).toContain("地下鉄のコピー機");
     expect(sendBody.text).toContain("行程 trace:");
 
     const markup = requestBody(fetchImpl.mock.calls[1]).reply_markup as { inline_keyboard: Array<Array<{ text: string }>> };
-    expect(markup.inline_keyboard).toHaveLength(2);
+    expect(markup.inline_keyboard).toHaveLength(1);
     expect(markup.inline_keyboard.map((row) => row.map((button) => button.text))).toEqual([
-      ["作る", "保留する", "修正する"],
       ["作る", "保留する", "修正する"]
     ]);
     expect((await readCallbackActionEntries(root)).map((entry) => entry.action).sort()).toEqual([
       "song_spawn_edit",
-      "song_spawn_edit",
       "song_spawn_inject",
-      "song_spawn_inject",
-      "song_spawn_skip",
       "song_spawn_skip"
     ]);
   });
