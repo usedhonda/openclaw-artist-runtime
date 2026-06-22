@@ -103,6 +103,25 @@ describe("spawnProposalQueue", () => {
     expect((await readFile(spawnProposalLedgerPath(root), "utf8")).trim().split("\n")).toHaveLength(5);
   });
 
+  it("can dismiss older draft backlog while keeping the newest draft pending", async () => {
+    const root = workspace();
+
+    await appendSpawnProposal(root, proposal("p1"));
+    await appendSpawnProposal(root, proposal("p2"));
+    await appendSpawnProposal(root, proposal("p3"));
+    await markSpawnProposalDismissed(root, "p1");
+    await markSpawnProposalDismissed(root, "p2");
+    clearSpawnProposalQueueCacheForTest();
+
+    expect((await listPendingSpawnProposals(root)).map((entry) => entry.proposalId)).toEqual(["p3"]);
+    expect((await loadSpawnProposalQueue(root)).map((entry) => [entry.proposalId, entry.status])).toEqual([
+      ["p1", "dismissed"],
+      ["p2", "dismissed"],
+      ["p3", "draft"]
+    ]);
+    expect((await readFile(spawnProposalLedgerPath(root), "utf8")).trim().split("\n")).toHaveLength(5);
+  });
+
   it("normalizes old queue statuses into draft-box statuses on load", async () => {
     const root = workspace();
     await appendSpawnProposal(root, { ...proposal("p1"), status: "pending" as never });
