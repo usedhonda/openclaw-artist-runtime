@@ -25,7 +25,7 @@ describe("songbook syncer", () => {
       "| id | title | status | publicLinks |\n| --- | --- | --- | --- |\n| where-it-played | Where It Played | scheduled | - |\n"
     );
 
-    const result = await syncSongbookFromITunes(root, { fetchImpl: fetchTracks() });
+    const result = await syncSongbookFromITunes(root, { artistId: "123456789", fetchImpl: fetchTracks() });
     const songbook = readFileSync(join(root, "artist", "SONGBOOK.md"), "utf8");
     const backups = result.backups?.entries ?? [];
 

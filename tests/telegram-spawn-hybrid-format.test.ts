@@ -31,7 +31,7 @@ describe("telegram spawn hybrid format", () => {
     expect(text.split("\n").slice(0, 5)).toEqual([
       "素案を思いついた。草稿箱に入れた。",
       "",
-      "ゆずるさん、今日は外の観察が薄い。",
+      "プロデューサー、今日は外の観察が薄い。",
       "俺の中に残っている今の違和感だけで、まず話す。",
       ""
     ]);
@@ -50,7 +50,7 @@ describe("telegram spawn hybrid format", () => {
       timestamp: 1
     });
 
-    expect(text).toContain("voice: ゆずるさん、次の曲の話をしたい。");
+    expect(text).toContain("voice: プロデューサー、次の曲の話をしたい。");
     expect(text).toContain("行程 trace:");
   });
 });

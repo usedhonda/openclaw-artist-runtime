@@ -1,15 +1,13 @@
-import { readFileSync } from "node:fs";
-import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import {
   detectEnding,
   validateAgainstVoiceContract
 } from "../src/services/voiceContractValidator";
 import { parseVoiceFingerprint } from "../src/services/voiceFingerprintParser";
+import { POPULATED_SOUL_MD } from "./helpers/populatedArtistFixtures";
 
 function loadFingerprint() {
-  const soul = readFileSync(join(__dirname, "..", "workspace-template", "SOUL.md"), "utf8");
-  return parseVoiceFingerprint(soul);
+  return parseVoiceFingerprint(POPULATED_SOUL_MD);
 }
 
 describe("voiceContractValidator", () => {
@@ -65,7 +63,7 @@ describe("voiceContractValidator", () => {
 
   it("passes producer callname check when callname is present", () => {
     const fingerprint = loadFingerprint();
-    const result = validateAgainstVoiceContract("ゆずるさん、これ刺さるか?", {
+    const result = validateAgainstVoiceContract("プロデューサー、これ刺さるか?", {
       fingerprint,
       requiredCallname: true
     });

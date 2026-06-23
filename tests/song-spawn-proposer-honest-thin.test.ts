@@ -1,8 +1,9 @@
-import { mkdtempSync, readFileSync } from "node:fs";
+import { mkdtempSync } from "node:fs";
 import { mkdir, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { POPULATED_ARTIST_MD, POPULATED_SOUL_MD } from "./helpers/populatedArtistFixtures";
 
 const { callAiProviderMock } = vi.hoisted(() => ({
   callAiProviderMock: vi.fn()
@@ -41,15 +42,14 @@ function expectThin(value: string): void {
 
 async function completeWorkspace(): Promise<string> {
   const root = mkdtempSync(join(tmpdir(), "artist-runtime-spawn-density-full-"));
-  const templateRoot = join(__dirname, "..", "workspace-template");
   await mkdir(join(root, "observations"), { recursive: true });
   await mkdir(join(root, "runtime"), { recursive: true });
   await Promise.all([
-    writeFile(join(root, "SOUL.md"), readFileSync(join(templateRoot, "SOUL.md"), "utf8"), "utf8"),
-    writeFile(join(root, "ARTIST.md"), readFileSync(join(templateRoot, "ARTIST.md"), "utf8"), "utf8"),
-    writeFile(join(root, "IDENTITY.md"), readFileSync(join(templateRoot, "IDENTITY.md"), "utf8"), "utf8"),
-    writeFile(join(root, "INNER.md"), readFileSync(join(templateRoot, "INNER.md"), "utf8"), "utf8"),
-    writeFile(join(root, "PRODUCER.md"), readFileSync(join(templateRoot, "PRODUCER.md"), "utf8"), "utf8")
+    writeFile(join(root, "SOUL.md"), POPULATED_SOUL_MD, "utf8"),
+    writeFile(join(root, "ARTIST.md"), POPULATED_ARTIST_MD, "utf8"),
+    writeFile(join(root, "IDENTITY.md"), "# IDENTITY.md\n\nArtist name: Fixture Artist\n", "utf8"),
+    writeFile(join(root, "INNER.md"), "# INNER.md\n\nConfigured inner context.\n", "utf8"),
+    writeFile(join(root, "PRODUCER.md"), "# PRODUCER.md\n\nConfigured producer context.\n", "utf8")
   ]);
   await writeFile(
     join(root, "observations", "2026-05-10.md"),
@@ -65,9 +65,8 @@ async function thinWorkspace(kind: "source" | "mood"): Promise<string> {
   await mkdir(join(root, "observations"), { recursive: true });
   await mkdir(join(root, "runtime"), { recursive: true });
   if (kind === "source") {
-    const templateRoot = join(__dirname, "..", "workspace-template");
-    await writeFile(join(root, "SOUL.md"), readFileSync(join(templateRoot, "SOUL.md"), "utf8"), "utf8");
-    await writeFile(join(root, "ARTIST.md"), readFileSync(join(templateRoot, "ARTIST.md"), "utf8"), "utf8");
+    await writeFile(join(root, "SOUL.md"), POPULATED_SOUL_MD, "utf8");
+    await writeFile(join(root, "ARTIST.md"), POPULATED_ARTIST_MD, "utf8");
     await writeFile(join(root, "observations", "2026-05-10.md"), "薄い観察だけが残っている。\n", "utf8");
   } else {
     await writeFile(join(root, "SOUL.md"), "mood: observational\n", "utf8");

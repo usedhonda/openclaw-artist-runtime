@@ -8,7 +8,7 @@ import {
 } from "../src/suno-production/knowledge-bundle.js";
 
 const knowledgeDir = join(process.cwd(), "src", "suno-production", "knowledge");
-const attribution = "<!-- Source: /Users/usedhonda/projects/docs/sunomanual (CC BY-NC 4.0, Copyright 2025-2026 usedhonda) -->";
+const attribution = "<!-- Source: sunomanual (CC BY-NC 4.0, Copyright 2025-2026 usedhonda) -->";
 
 const expectedKnowledgeFiles: readonly KnowledgeFile[] = [
   "README.md",

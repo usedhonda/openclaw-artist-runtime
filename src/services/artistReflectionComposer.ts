@@ -57,7 +57,7 @@ async function readPersona(root: string | undefined): Promise<{
   ending: string;
   motif: string;
 }> {
-  if (!root) return { callname: "producer", firstPerson: "俺", ending: "だ。", motif: "今の違和感" };
+  if (!root) return { callname: "プロデューサー", firstPerson: "俺", ending: "だ。", motif: "今の違和感" };
   const context = await readArtistVoiceContext(root).catch(() => null);
   const soul = context?.soulMd ?? "";
   const artist = context?.artistMd ?? "";
@@ -65,7 +65,7 @@ async function readPersona(root: string | undefined): Promise<{
   const motifs = extractPersonaMotifs([artist, soul, context?.identityMd ?? "", context?.innerMd ?? "", context?.producerMd ?? ""].join("\n"));
   const motif = motifs.themes[0] ?? motifs.vocabulary[0] ?? motifs.geographies[0] ?? "今の違和感";
   return {
-    callname: fingerprint?.producerCallname?.trim() || "producer",
+    callname: fingerprint?.producerCallname?.trim() || "プロデューサー",
     firstPerson: fingerprint?.firstPerson?.trim() || "俺",
     ending: fingerprint?.sentenceEndings?.[0]?.trim() || "だ。",
     motif

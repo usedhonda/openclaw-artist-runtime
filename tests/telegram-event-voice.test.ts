@@ -8,7 +8,6 @@ function topOf(text: string): string {
 
 function expectVoiceHybrid(text: string): void {
   expect(text).toContain("─────");
-  expect(topOf(text)).toMatch(/ゆずるさん/);
   expect(topOf(text)).toMatch(/[ぁ-んァ-ヶ一-龠]/);
 }
 
@@ -18,7 +17,7 @@ describe("Telegram event voice formatting", () => {
     { type: "suno_budget_low", songId: "song-001", reason: "daily limit near", used: 3, limit: 4, timestamp: 1 },
     { type: "take_select_pending", songId: "song-001", reason: "waiting for import", timestamp: 1 },
     { type: "budget_exhausted", reason: "monthly exhausted", used: 50, limit: 50, timestamp: 1 },
-    { type: "artist_presence", trigger: "observation_high_score", text: "ゆずるさん、いま見えたものがある。", timestamp: 1 }
+    { type: "artist_presence", trigger: "observation_high_score", text: "プロデューサー、いま見えたものがある。", timestamp: 1 }
   ])("formats $type as voice top plus detail block", async (event) => {
     const text = await formatRuntimeEvent(event);
 

@@ -353,7 +353,7 @@ function pitchSlots(context: PitchDensityContext): { theme: string; place: strin
     place: firstJapanesePhrase(motifs.geographies, "街"),
     object: firstPhrase(motifs.vocabulary, firstPhrase(motifs.themes, "ざらつき")),
     sound: firstJapanesePhrase(motifs.sound, "低いベース"),
-    callname: context.fingerprint.producerCallname ?? "producer",
+    callname: context.fingerprint.producerCallname ?? "プロデューサー",
     observation: firstLine(context.observation, "観察の切れ端")
   };
 }
@@ -771,7 +771,7 @@ function composeReasonFromBrief(
   fingerprint: VoiceFingerprintBundle,
   context: PitchDensityContext
 ): string | undefined {
-  const callname = fingerprint.producerCallname ?? "producer";
+  const callname = fingerprint.producerCallname ?? "プロデューサー";
   const title = brief.title?.trim();
   const briefSummary = (brief.brief ?? "").replace(/[。.]+\s*$/u, "").trim().slice(0, 90);
   if (!title || !briefSummary) return undefined;
