@@ -6,7 +6,8 @@ export const defaultArtistRuntimeConfig: ArtistRuntimeConfig = {
     mode: "public_artist",
     artistId: "artist",
     profilePath: "ARTIST.md",
-    workspaceRoot: "."
+    workspaceRoot: ".",
+    identity: {}
   },
   autopilot: {
     enabled: true,

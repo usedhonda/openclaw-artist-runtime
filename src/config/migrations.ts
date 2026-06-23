@@ -45,7 +45,8 @@ export function mockV2ToV3RenamePattern(config: ConfigRecord): ConfigRecord {
       mode: "public_artist",
       artistId: legacyArtistId,
       profilePath: "ARTIST.md",
-      workspaceRoot: "."
+      workspaceRoot: ".",
+      identity: {}
     };
     delete next["legacyArtistId"];
   }

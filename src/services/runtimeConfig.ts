@@ -3,7 +3,9 @@ import { dirname, join } from "node:path";
 import { defaultArtistRuntimeConfig } from "../config/defaultConfig.js";
 import { migrateConfig } from "../config/migrations.js";
 import { applyConfigDefaults, validateConfig } from "../config/schema.js";
-import type { ArtistRuntimeConfig } from "../types.js";
+import type { ArtistIdentity, ArtistRuntimeConfig } from "../types.js";
+import { readArtistPersonaSummary } from "./personaFileBuilder.js";
+import { parseVoiceFingerprint } from "./voiceFingerprintParser.js";
 
 function configOverridePath(root: string): string {
   return join(root, "runtime", "config-overrides.json");
@@ -81,6 +83,39 @@ export async function readResolvedConfig(root: string): Promise<ArtistRuntimeCon
 export function resolveDefaultWorkspaceRoot(): string {
   const envWorkspace = process.env.OPENCLAW_LOCAL_WORKSPACE?.trim();
   return envWorkspace || defaultArtistRuntimeConfig.artist.workspaceRoot;
+}
+
+const DEFAULT_ARTIST_NAME = "Unnamed OpenClaw Artist";
+const DEFAULT_PRODUCER_CALLNAME = "producer";
+
+function cleanIdentityValue(value: unknown): string | undefined {
+  if (typeof value !== "string") return undefined;
+  const trimmed = value.trim();
+  return trimmed.length > 0 ? trimmed : undefined;
+}
+
+function cleanFallbackArtistName(value: unknown): string | undefined {
+  const cleaned = cleanIdentityValue(value);
+  return cleaned && cleaned !== "Unknown artist" ? cleaned : undefined;
+}
+
+export async function getArtistIdentity(root: string): Promise<ArtistIdentity> {
+  const config = await readResolvedConfig(root);
+  const configName = cleanIdentityValue(config.artist.identity.displayName);
+  const configProducer = cleanIdentityValue(config.artist.identity.producerCallname);
+  if (configName && configProducer) {
+    return { artistName: configName, producerCallname: configProducer };
+  }
+
+  const [artistSummary, soulMd] = await Promise.all([
+    readArtistPersonaSummary(root).catch(() => undefined),
+    readFile(join(root, "SOUL.md"), "utf8").catch(() => "")
+  ]);
+  const fingerprint = soulMd ? parseVoiceFingerprint(soulMd) : undefined;
+  return {
+    artistName: configName ?? cleanFallbackArtistName(artistSummary?.artistName) ?? DEFAULT_ARTIST_NAME,
+    producerCallname: configProducer ?? cleanIdentityValue(fingerprint?.producerCallname) ?? DEFAULT_PRODUCER_CALLNAME
+  };
 }
 
 export function isPersonaProposerEnabled(env: NodeJS.ProcessEnv = process.env): boolean {

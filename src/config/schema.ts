@@ -150,7 +150,7 @@ export function validateConfig(config: unknown): ValidationResult<ArtistRuntimeC
     if (!isRecord(config.artist)) {
       errors.push("config.artist must be an object");
     } else {
-      validateKnownKeys("config.artist", config.artist, ["mode", "artistId", "profilePath", "workspaceRoot"], errors);
+      validateKnownKeys("config.artist", config.artist, ["mode", "artistId", "profilePath", "workspaceRoot", "identity"], errors);
       if (!("mode" in config.artist)) {
         errors.push("config.artist.mode is required when config.artist is present");
       } else if (config.artist.mode !== "public_artist") {
@@ -164,6 +164,19 @@ export function validateConfig(config: unknown): ValidationResult<ArtistRuntimeC
       }
       if ("workspaceRoot" in config.artist && typeof config.artist.workspaceRoot !== "string") {
         errors.push("config.artist.workspaceRoot must be a string");
+      }
+      if ("identity" in config.artist) {
+        if (!isRecord(config.artist.identity)) {
+          errors.push("config.artist.identity must be an object");
+        } else {
+          validateKnownKeys("config.artist.identity", config.artist.identity, ["displayName", "producerCallname"], errors);
+          if ("displayName" in config.artist.identity && typeof config.artist.identity.displayName !== "string") {
+            errors.push("config.artist.identity.displayName must be a string");
+          }
+          if ("producerCallname" in config.artist.identity && typeof config.artist.identity.producerCallname !== "string") {
+            errors.push("config.artist.identity.producerCallname must be a string");
+          }
+        }
       }
     }
   }

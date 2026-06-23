@@ -74,6 +74,17 @@ export interface ArtistConfig {
   artistId: string;
   profilePath: string;
   workspaceRoot: string;
+  identity: ArtistIdentityConfig;
+}
+
+export interface ArtistIdentityConfig {
+  displayName?: string;
+  producerCallname?: string;
+}
+
+export interface ArtistIdentity {
+  artistName: string;
+  producerCallname: string;
 }
 
 export interface AutopilotConfig {
