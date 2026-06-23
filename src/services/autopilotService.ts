@@ -46,6 +46,7 @@ import {
   findTakeAttributionCollisions
 } from "./takeAttributionGuard.js";
 import { emitDraftBoxProactiveNoticeIfNeeded } from "./draftBoxProactiveNotice.js";
+import { readPersonaSetupStatus } from "./personaSetupDetector.js";
 
 export function isPublishBlockedByDryRun(
   result: Pick<SocialPublishResult, "accepted" | "dryRun">,
@@ -319,6 +320,10 @@ async function runIdeaQueueLane(
   let emitted = false;
   await shouldSpawn(root, { minIntervalHours: getSongSpawnIntervalHours(process.env, config) }).then(async (allowed) => {
     if (!allowed) {
+      return;
+    }
+    const personaSetup = await readPersonaSetupStatus(root);
+    if (personaSetup.needsSetup) {
       return;
     }
     const pendingProposals = await listPendingSpawnProposals(root);

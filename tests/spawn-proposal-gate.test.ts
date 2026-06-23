@@ -103,6 +103,35 @@ describe("spawn proposal approval gate", () => {
     expect(eventCount).toBe(1);
   });
 
+  it("does not create a spawn proposal while the artist template still needs setup", async () => {
+    process.env.OPENCLAW_SONG_SPAWN_ENABLED = "on";
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-05-24T15:00:00.000Z"));
+    const root = mkdtempSync(join(tmpdir(), "artist-runtime-spawn-setup-gate-"));
+    await ensureArtistWorkspace(root);
+    await mkdir(join(root, "observations"), { recursive: true });
+    await writeFile(join(root, "observations", "news-2026-05-25.md"), [
+      "# News Observations 2026-05-25",
+      "",
+      "- text: \"夜の駅前で広告だけが残っている\"",
+      "  source: \"fixture news\"",
+      "  url: \"https://example.com/news\"",
+      "  motifMatch: \"駅前/広告\"",
+      "  motifScore: 9"
+    ].join("\n"), "utf8");
+    const events: RuntimeEvent[] = [];
+    const unsubscribe = getRuntimeEventBus().subscribe((event) => events.push(event));
+    const service = new ArtistAutopilotService();
+
+    await service.runCycle({
+      workspaceRoot: root,
+      config: { artist: { workspaceRoot: root }, autopilot: { enabled: true, dryRun: true }, songSpawn: { enabled: true } }
+    });
+    unsubscribe();
+
+    expect(events.filter((event) => event.type === "song_spawn_proposed")).toHaveLength(0);
+  });
+
   it("clears spawn_proposal_ready only when the producer presses the GO callback", async () => {
     process.env.OPENCLAW_SONG_SPAWN_ENABLED = "on";
     const root = await seedWorkspace();

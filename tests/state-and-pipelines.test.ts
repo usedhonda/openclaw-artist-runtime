@@ -30,8 +30,8 @@ describe("artist state", () => {
     const connectSuno = status.setupReadiness.checklist.find((item) => item.id === "connect_suno");
 
     expect(status.setupReadiness.readyForAutopilot).toBe(false);
-    expect(status.setupReadiness.nextRecommendedAction).toBe("Choose platforms");
-    expect(createArtist?.state).toBe("complete");
+    expect(status.setupReadiness.nextRecommendedAction).toBe("Create artist");
+    expect(createArtist?.state).toBe("pending");
     expect(choosePlatforms?.state).toBe("pending");
     expect(connectSuno?.state).toBe("pending");
   });

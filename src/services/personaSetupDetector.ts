@@ -19,7 +19,7 @@ export interface PersonaSetupDetectorOptions {
   templateArtistPath?: string;
 }
 
-const artistNameTbdPattern = /(^|\n)\s*Artist name:\s*TBD\s*(\n|$)/i;
+const artistNameTbdPattern = /(^|\n)\s*Artist name:\s*(?:TBD|Unnamed OpenClaw Artist)?\s*(\n|$)/i;
 const sunoProfileNameTbdPattern = /(^|\n)\s*name:\s*TBD\s*(\n|$)/i;
 
 function markerPath(root: string): string {

@@ -28,6 +28,7 @@ import { listPendingSpawnProposals } from "../services/spawnProposalQueue.js";
 import { buildEffectiveDryRunMap, resolvePlatformSocialDryRun } from "../services/socialDryRunResolver.js";
 import { readDistributionDetectionState } from "../services/songDistributionPoller.js";
 import { secretLikePattern } from "../services/personaMigrator.js";
+import { readPersonaSetupStatus } from "../services/personaSetupDetector.js";
 import { STATUS_SUNO_ARTIFACT_LIMIT } from "../services/sunoArtifacts.js";
 import { SunoBudgetTracker } from "../services/sunoBudget.js";
 import { readBudgetDetail as readSunoDailyBudgetDetail, readBudgetState as readSunoDailyBudgetState } from "../services/sunoBudgetLedger.js";
@@ -348,12 +349,13 @@ async function buildSetupReadiness(
   const enabledPlatforms = (Object.entries(config.distribution.platforms) as Array<[SocialPlatform, ArtistRuntimeConfig["distribution"]["platforms"][SocialPlatform]]>)
     .filter(([, platformConfig]) => platformConfig.enabled)
     .map(([platform]) => platform);
-  const artistProfileReady = await Promise.all([
+  const [artistFilesReady, personaSetupStatus] = await Promise.all([
     fileHasContent(join(workspaceRoot, "ARTIST.md")),
     fileHasContent(join(workspaceRoot, "SOUL.md")),
     fileHasContent(join(workspaceRoot, "artist", "SOCIAL_VOICE.md")),
     fileHasContent(join(workspaceRoot, "artist", "RELEASE_POLICY.md"))
-  ]).then((values) => values.every(Boolean));
+  ]).then((values) => values.every(Boolean)).then(async (filesReady) => [filesReady, await readPersonaSetupStatus(workspaceRoot)] as const);
+  const artistProfileReady = artistFilesReady && !personaSetupStatus.needsSetup;
   const selectedPlatformsConnected = enabledPlatforms.length > 0 && enabledPlatforms.every((platform) => platforms[platform].connected);
   const budgetsReady = config.autopilot.cycleIntervalMinutes > 0
     && config.autopilot.songsPerWeek > 0
@@ -378,7 +380,9 @@ async function buildSetupReadiness(
       state: artistProfileReady ? "complete" : "pending",
       detail: artistProfileReady
         ? "ARTIST.md, SOUL.md, SOCIAL_VOICE, and RELEASE_POLICY are present."
-        : "Finish the artist constitution and voice files in the workspace template."
+        : personaSetupStatus.needsSetup
+          ? `Finish artist setup: ${personaSetupStatus.reasons.join(", ")}.`
+          : "Finish the artist constitution and voice files in the workspace template."
     },
     {
       id: "choose_platforms",

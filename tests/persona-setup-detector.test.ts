@@ -43,6 +43,17 @@ describe("persona setup detector", () => {
     expect(status.reasons).toEqual(expect.arrayContaining(["artist_name_tbd", "suno_profile_name_tbd"]));
   });
 
+  it("requires setup when the artist name placeholder is still empty", async () => {
+    const root = makeRoot();
+    await writeCompletedMarker(root);
+    await writeFile(join(root, "ARTIST.md"), "# ARTIST.md\n\nArtist name: \n", "utf8");
+
+    const status = await readPersonaSetupStatus(root);
+
+    expect(status.needsSetup).toBe(true);
+    expect(status.reasons).toContain("artist_name_tbd");
+  });
+
   it("treats a completion marker plus customized ARTIST.md as complete", async () => {
     const root = makeRoot();
     await writeCompletedMarker(root);
