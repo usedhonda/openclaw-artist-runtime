@@ -23,7 +23,7 @@ import {
 import { emitRuntimeEvent } from "./runtimeEventBus.js";
 import { SunoBrowserWorker } from "./sunoBrowserWorker.js";
 import { extractSunoTakeId } from "./takeAttributionGuard.js";
-import { DEFAULT_USED_HONDA_DURATION_PLAN } from "../suno-production/durationPlan.js";
+import { getDurationPlan } from "../suno-production/durationPlan.js";
 
 export interface GenerateSunoRunInput {
   workspaceRoot: string;
@@ -292,7 +292,8 @@ export async function importSunoResults(input: ImportSunoResultsInput): Promise<
     .catch(() => undefined);
   const previousTelemetry = previousRun?.lyricsTelemetry;
   const durationSec = generatedDurationSec(input.metadata);
-  const durationDeltaSec = durationSec === undefined ? undefined : durationSec - DEFAULT_USED_HONDA_DURATION_PLAN.targetSeconds;
+  const durationPlan = getDurationPlan();
+  const durationDeltaSec = durationSec === undefined ? undefined : durationSec - durationPlan.targetSeconds;
   const resultsDir = join(input.workspaceRoot, "songs", input.songId, "suno");
   const latestResultsPath = join(resultsDir, "latest-results.json");
   const versionedResultsPath = join(resultsDir, `${input.runId}.results.json`);

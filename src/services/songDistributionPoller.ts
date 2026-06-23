@@ -4,7 +4,7 @@ import type { ChangeSetProposal } from "./freeformChangesetProposer.js";
 import { listSongStates } from "./artistState.js";
 import { secretLikePattern } from "./personaMigrator.js";
 import { emitRuntimeEvent } from "./runtimeEventBus.js";
-import { getSpotifyBearerToken } from "./runtimeConfig.js";
+import { getArtistIdentity, getSpotifyBearerToken } from "./runtimeConfig.js";
 
 export type DistributionPlatform = "unitedMasters" | "spotify" | "appleMusic";
 
@@ -45,9 +45,9 @@ export interface SongDistributionPollResult {
   state: DistributionDetectionState;
 }
 
-const defaultAppleMusicArtistId = "1889924232";
+const defaultAppleMusicArtistId = "";
 const defaultAppleMusicLocale = "jp";
-const defaultUnitedMastersProfileUrl = "https://unitedmasters.com/used-honda";
+const defaultUnitedMastersProfileUrl = "";
 
 function statePath(root: string): string {
   return join(root, "runtime", "distribution-detection.json");
@@ -148,6 +148,9 @@ async function fetchText(fetchImpl: typeof fetch, url: string, init?: RequestIni
 
 async function pollUnitedMasters(fetchImpl: typeof fetch, title: string, options: SongDistributionPollerOptions): Promise<string | undefined> {
   const url = options.unitedMastersProfileUrl ?? defaultUnitedMastersProfileUrl;
+  if (!url) {
+    return undefined;
+  }
   const text = await fetchText(fetchImpl, url);
   return findUrlNearTitle(text, title, "unitedMasters");
 }
@@ -166,6 +169,9 @@ async function pollSpotify(fetchImpl: typeof fetch, title: string, artistName: s
 
 async function pollAppleMusic(fetchImpl: typeof fetch, title: string, options: SongDistributionPollerOptions): Promise<string | undefined> {
   const artistId = options.appleMusicArtistId ?? defaultAppleMusicArtistId;
+  if (!artistId) {
+    return undefined;
+  }
   const locale = options.appleMusicLocale ?? defaultAppleMusicLocale;
   const text = await fetchText(fetchImpl, `https://itunes.apple.com/lookup?id=${encodeURIComponent(artistId)}&entity=song&limit=200&country=${encodeURIComponent(locale)}`);
   const parsed = JSON.parse(text) as { results?: Array<{ wrapperType?: string; trackName?: string; trackViewUrl?: string }> };
@@ -235,7 +241,7 @@ export async function pollSongDistribution(root: string, options: SongDistributi
   const warnings: string[] = [];
   const detections: SongDistributionDetection[] = [];
   const songs = (await listSongStates(root)).filter((song) => song.status === "scheduled");
-  const artistName = "used::honda";
+  const artistName = (await getArtistIdentity(root)).artistName;
 
   for (const song of songs) {
     const checks: Array<[DistributionPlatform, Promise<string | undefined>]> = [

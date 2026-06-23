@@ -9,7 +9,7 @@ import { validateLyricsV55 } from "./lyricsValidator.js";
 import { secretLikePattern } from "./personaMigrator.js";
 import { emitRuntimeEvent } from "./runtimeEventBus.js";
 import { buildLyricsDraftingPrompt, readLyricsKnowledgeDigest } from "./lyricsDraftingPrompt.js";
-import { getSunoLyricsLimit } from "./runtimeConfig.js";
+import { getArtistIdentity, getSunoLyricsLimit } from "./runtimeConfig.js";
 
 export interface DraftLyricsInput {
   workspaceRoot: string;
@@ -145,6 +145,7 @@ async function composeLyricsDraft(input: DraftLyricsInput, title: string, briefT
   const provider = input.aiReviewProvider ?? input.config?.aiReview?.provider ?? "mock";
   const mind = await readArtistMind(input.workspaceRoot);
   const knowledgeDigest = await readLyricsKnowledgeDigest();
+  const identity = await getArtistIdentity(input.workspaceRoot);
   const lyricsBoxLimit = getSunoLyricsLimit();
   const lyricBodyLimit = lyricBodyLimitForSunoBox(lyricsBoxLimit);
   let repairNotes: string[] = [];
@@ -157,7 +158,8 @@ async function composeLyricsDraft(input: DraftLyricsInput, title: string, briefT
       knowledgeDigest,
       repairNotes,
       lyricsBoxLimit,
-      lyricBodyLimit
+      lyricBodyLimit,
+      artistName: identity.artistName
     });
     assertSafe("input", prompt);
     const raw = provider === "mock" ? mockStructuredDraft(title, briefText) : await callAiProvider(prompt, { provider });

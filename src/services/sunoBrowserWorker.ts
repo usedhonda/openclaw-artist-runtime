@@ -15,7 +15,7 @@ import type {
   SunoWorkerState,
   SunoWorkerStatus
 } from "../types.js";
-import { DEFAULT_USED_HONDA_DURATION_PLAN } from "../suno-production/durationPlan.js";
+import { getDurationPlan } from "../suno-production/durationPlan.js";
 import { DEFAULT_SUNO_PROFILE_PATH, PlaywrightSunoDriver } from "./sunoPlaywrightDriver.js";
 import { DEFAULT_SUNO_PROFILE_STALE_DAYS, detectStaleProfile } from "./sunoProfileLifecycle.js";
 import { isSunoLiveDisabled, isSunoLiveEnabled, sunoChromeProfileDest } from "./runtimeConfig.js";
@@ -610,7 +610,8 @@ export class SunoBrowserWorker {
     const result = await driver.importResults({ runId, urls });
     const failedUrls = inferFailedImportUrls(urls, result);
     const durationSec = generatedDurationSec(result.metadata);
-    const durationDeltaSec = durationSec === undefined ? undefined : durationSec - DEFAULT_USED_HONDA_DURATION_PLAN.targetSeconds;
+    const durationPlan = getDurationPlan();
+    const durationDeltaSec = durationSec === undefined ? undefined : durationSec - durationPlan.targetSeconds;
     await this.transition({
       state: "connected",
       connected: true,

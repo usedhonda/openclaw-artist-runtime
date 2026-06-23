@@ -1,6 +1,6 @@
 import {
-  DEFAULT_USED_HONDA_DURATION_PLAN,
   findDurationPlanSection,
+  getDurationPlan,
   type DurationPlan
 } from "./durationPlan.js";
 
@@ -98,7 +98,7 @@ function decorateBareHeader(line: string, gender: "male" | "female" | "neutral",
 export function prepareSunoLyrics(
   lyrics: string,
   gender: "male" | "female" | "neutral" = "male",
-  plan: DurationPlan = DEFAULT_USED_HONDA_DURATION_PLAN
+  plan: DurationPlan = getDurationPlan()
 ): string {
   return lyrics
     .split(/\r?\n/)
@@ -161,7 +161,7 @@ function renderYaml(input: BuildYamlInput, level: YamlBudgetLevel): string {
   ]);
   const rules = vocalRules(input.vocals);
   const parts = vocalParts(input.vocals);
-  const durationPlan = input.durationPlan ?? DEFAULT_USED_HONDA_DURATION_PLAN;
+  const durationPlan = input.durationPlan ?? getDurationPlan();
   const cues = input.cues?.map((item) => cleanLine(item, "")).filter(Boolean) ?? [];
   const lines = level === "minimal" ? [
     "# META (hints; do not sing)",
@@ -214,7 +214,7 @@ function renderYaml(input: BuildYamlInput, level: YamlBudgetLevel): string {
 
 export function buildYaml(input: BuildYamlInput): string {
   const lyricsBoxLimit = input.lyricsBoxLimit ?? 4800;
-  const durationPlan = input.durationPlan ?? DEFAULT_USED_HONDA_DURATION_PLAN;
+  const durationPlan = input.durationPlan ?? getDurationPlan();
   const leadGender = typeof input.vocals === "string" ? "male" : input.vocals?.parts?.find((part) => part.id === "lead")?.gender ?? "male";
   const preparedInput = {
     ...input,

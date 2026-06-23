@@ -6,7 +6,7 @@ import {
   CANONICAL_STYLE_HARD_MAX_CHARS,
   CANONICAL_STYLE_TARGET_MAX_CHARS
 } from "../suno-production/buildStyle.js";
-import { DEFAULT_USED_HONDA_DURATION_PLAN } from "../suno-production/durationPlan.js";
+import { getDurationPlan } from "../suno-production/durationPlan.js";
 
 function sunoLyricsBoxLimit(): number {
   return getSunoLyricsLimit();
@@ -38,7 +38,7 @@ function validateDurationPlanStructure(payloadYaml: string, warnings: string[]):
   if (!payloadYaml.includes("duration_plan:") && !payloadYaml.includes("LYRICS START")) {
     return;
   }
-  const plan = DEFAULT_USED_HONDA_DURATION_PLAN;
+  const plan = getDurationPlan();
   const lyrics = extractLyricsBody(payloadYaml);
   const labels = headerLabels(lyrics);
   const sectionCount = labels.length;

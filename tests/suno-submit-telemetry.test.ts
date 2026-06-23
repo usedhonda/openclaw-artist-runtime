@@ -3,7 +3,7 @@ import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
-import { DEFAULT_USED_HONDA_DURATION_PLAN } from "../src/suno-production/durationPlan";
+import { getDurationPlan } from "../src/suno-production/durationPlan";
 import { buildSunoStatusResponse } from "../src/routes";
 import { ensureArtistWorkspace } from "../src/services/artistWorkspace";
 import { createSongIdea } from "../src/services/songIdeation";
@@ -12,6 +12,7 @@ import type { SunoLyricsSubmitTelemetry, SunoRunRecord } from "../src/types";
 
 describe("Suno submit telemetry ledger", () => {
   it("carries lyrics submit telemetry into imported runs and records generated duration for status export", async () => {
+    const durationPlan = getDurationPlan();
     const root = mkdtempSync(join(tmpdir(), "artist-runtime-suno-submit-telemetry-"));
     await ensureArtistWorkspace(root);
     const song = await createSongIdea({
@@ -71,7 +72,7 @@ describe("Suno submit telemetry ledger", () => {
 
     expect(imported.lyricsTelemetry).toEqual(telemetry);
     expect(imported.generatedDurationSec).toBe(207);
-    expect(imported.durationDeltaSec).toBe(207 - DEFAULT_USED_HONDA_DURATION_PLAN.targetSeconds);
+    expect(imported.durationDeltaSec).toBe(207 - durationPlan.targetSeconds);
 
     const runs = await readAllSunoRuns(root, song.songId);
     expect(runs.find((run) => run.status === "imported")).toMatchObject({
@@ -79,7 +80,7 @@ describe("Suno submit telemetry ledger", () => {
       status: "imported",
       lyricsTelemetry: telemetry,
       generatedDurationSec: 207,
-      durationDeltaSec: 207 - DEFAULT_USED_HONDA_DURATION_PLAN.targetSeconds
+      durationDeltaSec: 207 - durationPlan.targetSeconds
     });
 
     const status = await buildSunoStatusResponse({
@@ -89,7 +90,7 @@ describe("Suno submit telemetry ledger", () => {
       runId,
       lyricsTelemetry: telemetry,
       generatedDurationSec: 207,
-      durationDeltaSec: 207 - DEFAULT_USED_HONDA_DURATION_PLAN.targetSeconds
+      durationDeltaSec: 207 - durationPlan.targetSeconds
     });
   });
 });

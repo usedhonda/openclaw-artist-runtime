@@ -1,7 +1,7 @@
 import { KNOWLEDGE_BUNDLE, type KnowledgeFile } from "../suno-production/knowledge-bundle.js";
 import {
-  DEFAULT_USED_HONDA_DURATION_PLAN,
-  formatDurationPlanForPrompt
+  formatDurationPlanForPrompt,
+  getDurationPlan
 } from "../suno-production/durationPlan.js";
 
 export const LYRICS_WRITER_INSTRUCTIONS_ATTRIBUTION =
@@ -45,6 +45,7 @@ export interface BuildLyricsPromptInput {
   repairNotes?: string[];
   lyricsBoxLimit?: number;
   lyricBodyLimit?: number;
+  artistName?: string;
 }
 
 function truncate(value: string, max = 8000): string {
@@ -91,9 +92,10 @@ export async function readLyricsKnowledgeDigest(): Promise<string> {
 export function buildLyricsDraftingPrompt(input: BuildLyricsPromptInput): string {
   const lyricsBoxLimit = input.lyricsBoxLimit ?? 4800;
   const lyricBodyLimit = input.lyricBodyLimit ?? Math.max(200, Math.min(2600, lyricsBoxLimit - 900));
-  const durationPlan = DEFAULT_USED_HONDA_DURATION_PLAN;
+  const durationPlan = getDurationPlan();
+  const artistName = input.artistName?.trim() || "the configured artist";
   return [
-    "Write lyrics for used::honda from the provided raw material.",
+    `Write lyrics for ${artistName} from the provided raw material.`,
     "Use the attributed lyrics-writer system source as the craft policy for this draft.",
     LYRICS_WRITER_INSTRUCTIONS_ATTRIBUTION,
     "",

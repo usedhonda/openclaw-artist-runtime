@@ -11,7 +11,7 @@ export interface DurationPlanSection {
 
 export interface DurationPlan {
   version: "duration_plan_v1";
-  templateId: "used_honda_nu_jazz_rap_full_v1";
+  templateId: string;
   targetSeconds: number;
   minSeconds: number;
   maxSeconds: number;
@@ -32,9 +32,9 @@ export interface DurationPlan {
   sectionPlan: DurationPlanSection[];
 }
 
-export const DEFAULT_USED_HONDA_DURATION_PLAN: DurationPlan = {
+const DEFAULT_DURATION_PLAN: DurationPlan = {
   version: "duration_plan_v1",
-  templateId: "used_honda_nu_jazz_rap_full_v1",
+  templateId: "default_nu_jazz_rap_full_v1",
   targetSeconds: 195,
   minSeconds: 180,
   maxSeconds: 210,
@@ -139,16 +139,20 @@ export const DEFAULT_USED_HONDA_DURATION_PLAN: DurationPlan = {
   ]
 };
 
+export function getDurationPlan(): DurationPlan {
+  return DEFAULT_DURATION_PLAN;
+}
+
 function normalizeSectionLabel(value: string): string {
   return value.toLowerCase().replace(/[\s_-]+/g, "");
 }
 
-export function findDurationPlanSection(label: string, plan: DurationPlan = DEFAULT_USED_HONDA_DURATION_PLAN): DurationPlanSection | undefined {
+export function findDurationPlanSection(label: string, plan: DurationPlan = getDurationPlan()): DurationPlanSection | undefined {
   const normalized = normalizeSectionLabel(label);
   return plan.sectionPlan.find((section) => normalizeSectionLabel(section.label) === normalized);
 }
 
-export function formatDurationPlanForPrompt(plan: DurationPlan = DEFAULT_USED_HONDA_DURATION_PLAN): string {
+export function formatDurationPlanForPrompt(plan: DurationPlan = getDurationPlan()): string {
   return [
     `DurationPlan ${plan.version}/${plan.templateId}: target ${plan.targetSeconds}s (${plan.minSeconds}-${plan.maxSeconds}s), acceptable ${plan.acceptableMinSeconds}-${plan.acceptableMaxSeconds}s.`,
     `Tempo: ${plan.bpm.target} BPM, allowed ${plan.bpm.min}-${plan.bpm.max} BPM, no double-time vocal: ${plan.bpm.noDoubleTimeVocal ? "yes" : "no"}.`,
@@ -159,11 +163,11 @@ export function formatDurationPlanForPrompt(plan: DurationPlan = DEFAULT_USED_HO
   ].join("\n");
 }
 
-export function durationPlanCues(plan: DurationPlan = DEFAULT_USED_HONDA_DURATION_PLAN): string[] {
+export function durationPlanCues(plan: DurationPlan = getDurationPlan()): string[] {
   return plan.sectionPlan.map((section) => `${section.label}: ${section.bars} bars, ${section.modifier}`);
 }
 
-export function durationPlanProductionNotes(plan: DurationPlan = DEFAULT_USED_HONDA_DURATION_PLAN): string[] {
+export function durationPlanProductionNotes(plan: DurationPlan = getDurationPlan()): string[] {
   return [
     `target ${plan.targetSeconds}s with ${plan.totalPlannedBars} planned bars; do not compress sections`,
     `keep vocal pacing spacious at ${plan.bpm.target} BPM and avoid double-time delivery`,

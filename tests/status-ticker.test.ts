@@ -6,7 +6,7 @@ import { join } from "node:path";
 import { Readable } from "node:stream";
 import { beforeEach, describe, expect, it } from "vitest";
 import { buildStatusResponse, registerRoutes } from "../src/routes";
-import { DEFAULT_USED_HONDA_DURATION_PLAN } from "../src/suno-production/durationPlan";
+import { getDurationPlan } from "../src/suno-production/durationPlan";
 import { resetAutopilotTickerForTest, AutopilotTicker } from "../src/services/autopilotTicker";
 import { ensureArtistWorkspace } from "../src/services/artistWorkspace";
 import { patchResolvedConfig } from "../src/services/runtimeConfig";
@@ -380,6 +380,7 @@ describe("status ticker and reply simulation routes", () => {
       artist: { workspaceRoot: root }
     });
 
+    const durationPlan = getDurationPlan();
     expect(status.sunoWorker.lastImportOutcome).toMatchObject({
       runId: "run-status-meta",
       urlCount: 1,
@@ -395,7 +396,7 @@ describe("status ticker and reply simulation routes", () => {
         }
       ],
       generatedDurationSec: 187,
-      durationDeltaSec: 187 - DEFAULT_USED_HONDA_DURATION_PLAN.targetSeconds
+      durationDeltaSec: 187 - durationPlan.targetSeconds
     });
   });
 

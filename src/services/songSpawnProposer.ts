@@ -1,7 +1,7 @@
 import { createHash } from "node:crypto";
 import { readdir, readFile } from "node:fs/promises";
 import { join } from "node:path";
-import type { AiReviewProvider, CascadeTraceSource, CommissionBrief, CommissionBriefSource, ObservationSummary, SongSpawnProposal, SongState } from "../types.js";
+import type { AiReviewProvider, ArtistIdentity, CascadeTraceSource, CommissionBrief, CommissionBriefSource, ObservationSummary, SongSpawnProposal, SongState } from "../types.js";
 import { callAiProvider, isAiNotConfiguredResponse, isAiProviderMockFallbackResponse } from "./aiProviderClient.js";
 import { composeArtistFallback } from "./artistVoiceComposer.js";
 import { listSongStates } from "./artistState.js";
@@ -10,6 +10,7 @@ import { extractPersonaMotifs, extractTagSet, pickWeightedMotif } from "./person
 import { secretLikePattern } from "./personaMigrator.js";
 import { emitRuntimeEvent } from "./runtimeEventBus.js";
 import { readBudgetState } from "./sunoBudgetLedger.js";
+import { getArtistIdentity } from "./runtimeConfig.js";
 import { validateAgainstVoiceContract } from "./voiceContractValidator.js";
 import { isVoiceFingerprintReady, parseVoiceFingerprint, type VoiceFingerprintBundle } from "./voiceFingerprintParser.js";
 import { readObservationsReport } from "./xObservationCollector.js";
@@ -581,12 +582,13 @@ function buildPrompt(context: {
   budgetRemaining: number;
   recentThemes: RecentSpawnTheme[];
   fingerprint: VoiceFingerprintBundle;
+  identity: ArtistIdentity;
   observationExcerpts?: ObservationExcerpt[];
   cascadeSeed: string;
   activeQueueContext?: ActiveQueueContextEntry[];
 }): string {
   const lines: string[] = [
-    "System: あなたは used::honda 本人。 producer に新曲を提案する artist として一人称で書く。",
+    `System: あなたは ${context.identity.artistName} 本人。 producer に新曲を提案する artist として一人称で書く。`,
     "Decision: 観察と heartbeat から、 今 新曲を始めるべきか判断する。 不十分なら spawn: no。",
     // Plan v10.38 Phase E: explicit material policy. Observation is the trigger
     // and main material (e.g. today's LUUP incident + the X reaction around it),
@@ -609,7 +611,7 @@ function buildPrompt(context: {
     "tempo: <'artist decides' or '142 BPM'>",
     "duration: <'2:45' 等>",
     "style: <english spec keywords + instrumentation roles. 最低 3 要素。例: \"thick bass on low register, restrained hi-hats, vocals nestled between instruments, sparse arrangement, breathing space\">",
-    "reason: <**日本語のみ**、 artist 一人称口語、 producer に話しかける 1 行 (e.g. \"" + (context.fingerprint.producerCallname ?? "ゆずる") + "、 〜の街を切るやつ、 刺さる\")>",
+    "reason: <**日本語のみ**、 artist 一人称口語、 producer に話しかける 1 行 (e.g. \"" + (context.identity.producerCallname ?? context.fingerprint.producerCallname) + "、 〜の街を切るやつ、 刺さる\")>",
     "sources: <Today's Topic から実際に使った観察 entry を最低 1 件、 最大 5 件、 改行区切りで列挙。 各行は `- kind:<x|news> url:<https://...> author:<@user or source label> quote:<本文を 60 字以内で抜粋>` の形式。 use していない entry は書かない、 捏造禁止>",
     "",
     ...buildVoiceContractLines(context.fingerprint),
@@ -826,6 +828,7 @@ export async function proposeSpawn(root: string, options: ProposeSpawnOptions = 
   assertSafe("input", inputContext);
 
   const fingerprint = parseVoiceFingerprint(soulMd);
+  const identity = await getArtistIdentity(root);
   const pitchContext = { observation, artistMd, soulMd, fingerprint };
   const fallback = buildBrief({ observation, artistMd, soulMd, fingerprint, budgetRemaining, now });
   // Plan v10.38 Phase F hallucination guard: stamp the fallback brief with
@@ -858,6 +861,7 @@ export async function proposeSpawn(root: string, options: ProposeSpawnOptions = 
       budgetRemaining,
       recentThemes,
       fingerprint,
+      identity,
       observationExcerpts: obsData.excerpts,
       cascadeSeed: fallback.songId,
       activeQueueContext: options.activeQueueContext

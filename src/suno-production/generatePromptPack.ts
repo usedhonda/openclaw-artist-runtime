@@ -16,9 +16,9 @@ import {
 import { synthesizeStyle } from "./buildStyle.js";
 import { buildYaml as buildYamlV55 } from "./buildYaml.js";
 import {
-  DEFAULT_USED_HONDA_DURATION_PLAN,
   durationPlanCues,
-  durationPlanProductionNotes
+  durationPlanProductionNotes,
+  getDurationPlan
 } from "./durationPlan.js";
 
 function hashText(value: string): string {
@@ -53,6 +53,7 @@ function artistDefaultVocalGender(artistSnapshot: string): "male" | "female" | "
 }
 
 function promptCharCounts(title: string, style: string, lyrics: string, payloadYaml: string, lyricsBoxLimit: number) {
+  const durationPlan = getDurationPlan();
   const styleLength = style.length;
   const lyricsLength = lyrics.length;
   const titleLength = title.length;
@@ -66,8 +67,8 @@ function promptCharCounts(title: string, style: string, lyrics: string, payloadY
     markerChars,
     submittedPayloadChars,
     effectiveLyricsBoxLimit: lyricsBoxLimit,
-    plannedBars: DEFAULT_USED_HONDA_DURATION_PLAN.totalPlannedBars,
-    durationTargetSeconds: DEFAULT_USED_HONDA_DURATION_PLAN.targetSeconds,
+    plannedBars: durationPlan.totalPlannedBars,
+    durationTargetSeconds: durationPlan.targetSeconds,
     styleZone: styleLength > CANONICAL_STYLE_HARD_MAX_CHARS ? "overflow" : styleLength > CANONICAL_STYLE_TARGET_MAX_CHARS ? "long" : styleLength < 40 ? "short" : "sweet",
     lyricsZone: submittedPayloadChars > lyricsBoxLimit ? "overflow" : submittedPayloadChars < lyricsBoxLimit * 0.8 ? "underused" : "near_max",
     titleZone: titleLength < 4 ? "short" : titleLength > 80 ? "overflow" : "sweet"
@@ -77,7 +78,7 @@ function promptCharCounts(title: string, style: string, lyrics: string, payloadY
 export function createSunoPromptPack(input: CreateSunoPromptPackInput): SunoPromptPack {
   const lyricsText = normalizeAsciiNumbersToHiragana(repairCommandLeak(input.lyricsText).trim());
   const genre = `${input.artistReason} ${input.moodHint ?? ""}`;
-  const durationPlan = DEFAULT_USED_HONDA_DURATION_PLAN;
+  const durationPlan = getDurationPlan();
   const bpm = input.bpm ?? durationPlan.bpm.target;
   const vocalGender = input.vocalGender ?? artistDefaultVocalGender(input.artistSnapshot);
   const lyricsBoxLimit = getSunoLyricsLimit();
@@ -170,7 +171,7 @@ export async function createSunoPromptPackWithAi(
 ): Promise<SunoPromptPack> {
   const lyricsText = repairCommandLeak(input.lyricsText).trim();
   const genre = `${input.artistReason} ${input.moodHint ?? ""}`;
-  const durationPlan = DEFAULT_USED_HONDA_DURATION_PLAN;
+  const durationPlan = getDurationPlan();
   const bpm = input.bpm ?? durationPlan.bpm.target;
   const vocalGender = input.vocalGender ?? artistDefaultVocalGender(input.artistSnapshot);
   const lyricsBoxLimit = getSunoLyricsLimit();

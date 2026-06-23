@@ -12,7 +12,7 @@ export interface ITunesArtistLookupOptions {
   fetchImpl?: typeof fetch;
 }
 
-const defaultArtistId = "1889924232";
+const defaultArtistId = "";
 const defaultLocale = "jp";
 
 export function normalizeSongTitle(value: string): string {
@@ -21,6 +21,9 @@ export function normalizeSongTitle(value: string): string {
 
 export async function lookupITunesArtistTracks(options: ITunesArtistLookupOptions = {}): Promise<ITunesTrack[]> {
   const artistId = options.artistId ?? defaultArtistId;
+  if (!artistId) {
+    return [];
+  }
   const locale = options.locale ?? defaultLocale;
   const response = await (options.fetchImpl ?? fetch)(
     `https://itunes.apple.com/lookup?id=${encodeURIComponent(artistId)}&entity=song&limit=200&country=${encodeURIComponent(locale)}`

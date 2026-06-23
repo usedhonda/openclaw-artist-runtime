@@ -49,6 +49,10 @@ type ConfigResponse = ConfigEditorSource & {
   artist: {
     artistId: string;
     workspaceRoot: string;
+    identity?: {
+      displayName?: string;
+      producerCallname?: string;
+    };
   };
 };
 
@@ -586,12 +590,13 @@ export function ProducerRoomApp() {
 
   const summary = status?.autopilot.nextActionSummary ?? fallbackSummary(status);
   const configValidationError = configDraft ? validateConfigDraft(configDraft) : null;
+  const artistDisplayName = config?.artist.identity?.displayName?.trim() || "Artist";
 
   return (
     <main className="console-shell producer-room-shell">
       <header className="hero producer-room-hero">
         <div>
-          <div className="eyebrow">used::honda Artist Runtime</div>
+          <div className="eyebrow">{artistDisplayName} Artist Runtime</div>
           <h1>Producer Room</h1>
           <div className="hero-copy">迷ったら、ここだけ見る。必要な操作は blocked 時に 1 つだけ出す。</div>
         </div>
