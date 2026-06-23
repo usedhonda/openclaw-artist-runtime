@@ -12,6 +12,8 @@ import {
   writePersonaCompletionMarker
 } from "./personaFileBuilder.js";
 import { buildSoulPersonaBlock, readSoulPersonaSummary, soulPersonaBlockEnd, soulPersonaBlockStart } from "./soulFileBuilder.js";
+import { patchResolvedConfig, readResolvedConfig } from "./runtimeConfig.js";
+import { parseVoiceFingerprint } from "./voiceFingerprintParser.js";
 
 export interface PersonaMigratePlan {
   artistBackupPath: string;
@@ -121,7 +123,36 @@ function migrationValues(value: string, fallback = "TBD"): string {
 }
 
 function proposedDraftValue(drafts: PersonaMigrateDraft[], field: PersonaField): string | undefined {
-  return drafts.find((draft) => draft.field === field && draft.status === "proposed")?.value;
+  const value = drafts.find((draft) => draft.field === field && draft.status === "proposed")?.value?.trim();
+  return value || undefined;
+}
+
+function configuredIdentityValue(value: string | undefined): string | undefined {
+  const trimmed = value?.trim();
+  return trimmed && trimmed !== "TBD" && trimmed !== "Unknown artist" && trimmed !== "Unnamed OpenClaw Artist" ? trimmed : undefined;
+}
+
+async function syncMigratedIdentityConfig(root: string): Promise<void> {
+  const [artistSummary, soulContents] = await Promise.all([
+    readArtistPersonaSummary(root),
+    readFile(soulPath(root), "utf8").catch(() => "")
+  ]);
+  const displayName = configuredIdentityValue(artistSummary.artistName);
+  const producerCallname = configuredIdentityValue(parseVoiceFingerprint(soulContents).producerCallname ?? undefined);
+  if (!displayName && !producerCallname) {
+    return;
+  }
+  const current = await readResolvedConfig(root);
+  await patchResolvedConfig(root, {
+    artist: {
+      ...current.artist,
+      identity: {
+        ...current.artist.identity,
+        ...(displayName ? { displayName } : {}),
+        ...(producerCallname ? { producerCallname } : {})
+      }
+    }
+  });
 }
 
 async function buildMigratedArtist(root: string, drafts: PersonaMigrateDraft[] = []): Promise<string> {
@@ -349,6 +380,7 @@ export async function planPersonaMigrate(root: string, options: PersonaMigrateOp
 
 export async function executePersonaMigrate(root: string, plan: PersonaMigratePlan): Promise<void> {
   if (plan.warnings.includes("already migrated")) {
+    await syncMigratedIdentityConfig(root);
     return;
   }
   const [artist, soul] = await Promise.all([buildMigratedArtist(root, plan.proposedDrafts), buildMigratedSoul(root, plan.proposedDrafts)]);
@@ -365,6 +397,7 @@ export async function executePersonaMigrate(root: string, plan: PersonaMigratePl
     writeFile(soulPath(root), soul.endsWith("\n") ? soul : `${soul}\n`, "utf8")
   ]);
   await writePersonaCompletionMarker(root);
+  await syncMigratedIdentityConfig(root);
 }
 
 export function formatPersonaMigratePlan(plan: PersonaMigratePlan): string {

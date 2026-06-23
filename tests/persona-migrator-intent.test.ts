@@ -6,6 +6,7 @@ import { describe, expect, it } from "vitest";
 import { formatPersonaMigratePlan, executePersonaMigrate, planPersonaMigrate } from "../src/services/personaMigrator";
 import { artistPersonaBlockStart, readArtistPersonaSummary } from "../src/services/personaFileBuilder";
 import { readSoulPersonaSummary, soulPersonaBlockStart } from "../src/services/soulFileBuilder";
+import { readResolvedConfig } from "../src/services/runtimeConfig";
 
 function makeRoot(): string {
   return mkdtempSync(join(tmpdir(), "artist-runtime-persona-migrate-intent-"));
@@ -52,6 +53,11 @@ async function writePersonaWithMissingFields(root: string): Promise<void> {
       "",
       "# SOUL.md",
       "",
+      "## Producer (relationship in music-making)",
+      "",
+      "### Producer call",
+      "- producer_callname: Producer",
+      "",
       "Keep the operator close, but do not turn soft."
     ].join("\n"),
     "utf8"
@@ -86,6 +92,7 @@ describe("persona migrate operator intent", () => {
     const soul = await readFile(join(root, "SOUL.md"), "utf8");
     const artistSummary = await readArtistPersonaSummary(root);
     const soulSummary = await readSoulPersonaSummary(root);
+    const config = await readResolvedConfig(root);
 
     expect(artist).toContain(artistPersonaBlockStart);
     expect(soul).toContain(soulPersonaBlockStart);
@@ -95,6 +102,7 @@ describe("persona migrate operator intent", () => {
     expect(artistSummary.socialVoice).toBe("短く, 刺さるように, 過剰な売り込みは避ける");
     expect(soulSummary.conversationTone).toBe("御大に対しては率直、ぶっきらぼう、必要なら反論");
     expect(soulSummary.refusalStyle).toBe("できないことは「できない」と即答、言い訳しない");
+    expect(config.artist.identity).toMatchObject({ displayName: "Intent Artist", producerCallname: "Producer" });
     expect(soul).toContain("custom imported soul header");
   });
 
