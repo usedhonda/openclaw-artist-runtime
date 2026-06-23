@@ -2,28 +2,26 @@ import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { isVoiceFingerprintReady, parseVoiceFingerprint } from "../src/services/voiceFingerprintParser";
+import { POPULATED_SOUL_MD } from "./helpers/populatedArtistFixtures";
 
 /**
  * Plan v10.10 Phase G: persona file integrity contract
  *
- * Both workspace-template/ (shipped to operators) and the live workspace
- * (when present) must hold a SOUL.md whose voice fingerprint is ready.
- * If a future contributor lets the persona regress to TBD, this contract
- * blocks the build before machinery starts emitting voice fingerprint
- * fail-closed errors at runtime.
+ * workspace-template/ is now intentionally generic for distribution.
+ * The live workspace, once populated, must still hold a ready SOUL.md.
  */
 
 const TEMPLATE_ROOT = join(__dirname, "..", "workspace-template");
 const LIVE_ROOT = join(__dirname, "..", ".local", "openclaw", "workspace");
 
 describe("persona file integrity contract", () => {
-  it("workspace-template/SOUL.md is voice-fingerprint ready", () => {
+  it("workspace-template/SOUL.md stays generic until setup", () => {
     const soul = readFileSync(join(TEMPLATE_ROOT, "SOUL.md"), "utf8");
     const bundle = parseVoiceFingerprint(soul);
     const readiness = isVoiceFingerprintReady(bundle);
 
-    expect(readiness.ok).toBe(true);
-    expect(readiness.missing).toEqual([]);
+    expect(readiness.ok).toBe(false);
+    expect(readiness.missing.length).toBeGreaterThan(0);
   });
 
   it("workspace-template carries the 5-file persona schema", () => {
@@ -34,9 +32,8 @@ describe("persona file integrity contract", () => {
     expect(existsSync(join(TEMPLATE_ROOT, "PRODUCER.md"))).toBe(true);
   });
 
-  it("workspace-template/SOUL.md exposes producer call info and 10+ forbidden phrases", () => {
-    const soul = readFileSync(join(TEMPLATE_ROOT, "SOUL.md"), "utf8");
-    const bundle = parseVoiceFingerprint(soul);
+  it("a populated SOUL.md exposes producer call info and 10+ forbidden phrases", () => {
+    const bundle = parseVoiceFingerprint(POPULATED_SOUL_MD);
 
     expect(bundle.producerCallname).not.toBeNull();
     expect(bundle.firstPerson).not.toBeNull();

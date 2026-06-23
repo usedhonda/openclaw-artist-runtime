@@ -19,6 +19,9 @@ function extractDefaults(schema: JsonSchema, root: JsonSchema): unknown {
     const refKey = schema.$ref.replace("#/$defs/", "");
     return extractDefaults(root.$defs?.[refKey] ?? {}, root);
   }
+  if (schema.default !== undefined) {
+    return schema.default;
+  }
   if (schema.properties) {
     const result: Record<string, unknown> = {};
     for (const [key, value] of Object.entries(schema.properties)) {
@@ -29,7 +32,7 @@ function extractDefaults(schema: JsonSchema, root: JsonSchema): unknown {
     }
     return result;
   }
-  return schema.default;
+  return undefined;
 }
 
 describe("config schema", () => {

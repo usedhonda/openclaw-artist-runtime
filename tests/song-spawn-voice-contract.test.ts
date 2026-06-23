@@ -1,10 +1,11 @@
 import { mkdtempSync } from "node:fs";
-import { mkdir, readFile, writeFile } from "node:fs/promises";
+import { mkdir, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { proposeSpawn } from "../src/services/songSpawnProposer";
 import { parseVoiceFingerprint } from "../src/services/voiceFingerprintParser";
+import { POPULATED_ARTIST_MD, POPULATED_SOUL_MD } from "./helpers/populatedArtistFixtures";
 
 /**
  * Plan v10.11 Phase D-AB:
@@ -18,20 +19,11 @@ async function workspace(): Promise<string> {
   await mkdir(join(root, "observations"), { recursive: true });
   await mkdir(join(root, "runtime"), { recursive: true });
 
-  const templateRoot = join(__dirname, "..", "workspace-template");
-  const [soul, artist, identity, inner, producer] = await Promise.all([
-    readFile(join(templateRoot, "SOUL.md"), "utf8"),
-    readFile(join(templateRoot, "ARTIST.md"), "utf8"),
-    readFile(join(templateRoot, "IDENTITY.md"), "utf8"),
-    readFile(join(templateRoot, "INNER.md"), "utf8"),
-    readFile(join(templateRoot, "PRODUCER.md"), "utf8")
-  ]);
-
-  await writeFile(join(root, "SOUL.md"), soul, "utf8");
-  await writeFile(join(root, "ARTIST.md"), artist, "utf8");
-  await writeFile(join(root, "IDENTITY.md"), identity, "utf8");
-  await writeFile(join(root, "INNER.md"), inner, "utf8");
-  await writeFile(join(root, "PRODUCER.md"), producer, "utf8");
+  await writeFile(join(root, "SOUL.md"), POPULATED_SOUL_MD, "utf8");
+  await writeFile(join(root, "ARTIST.md"), POPULATED_ARTIST_MD, "utf8");
+  await writeFile(join(root, "IDENTITY.md"), "# IDENTITY.md\n\nConfigured test artist.\n", "utf8");
+  await writeFile(join(root, "INNER.md"), "# INNER.md\n\nKeep observation concrete.\n", "utf8");
+  await writeFile(join(root, "PRODUCER.md"), "# PRODUCER.md\n\nProducer steers; artist chooses.\n", "utf8");
 
   await writeFile(
     join(root, "observations", "2026-05-05.md"),
@@ -66,11 +58,9 @@ describe("spawn proposer voice-contract (Plan v10.11)", () => {
     expect(proposal?.reason.length).toBeLessThan(200);
   });
 
-  it("workspace-template SOUL.md exposes producer_callname for the spawn voice", async () => {
+  it("populated SOUL.md exposes producer_callname for the spawn voice", async () => {
     // Sanity check: if this fails, downstream voice anchoring is impossible.
-    const templateRoot = join(__dirname, "..", "workspace-template");
-    const soul = await readFile(join(templateRoot, "SOUL.md"), "utf8");
-    const fingerprint = parseVoiceFingerprint(soul);
+    const fingerprint = parseVoiceFingerprint(POPULATED_SOUL_MD);
     expect(fingerprint.producerCallname).not.toBeNull();
     expect(fingerprint.firstPerson).not.toBeNull();
   });

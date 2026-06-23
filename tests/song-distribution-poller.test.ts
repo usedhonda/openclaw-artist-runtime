@@ -35,6 +35,8 @@ describe("song distribution poller", () => {
     const result = await pollSongDistribution(root, {
       fetchImpl,
       spotifyBearerToken: "mock-token",
+      unitedMastersProfileUrl: "https://unitedmasters.com/artist/example",
+      appleMusicArtistId: "123456789",
       now: new Date("2026-04-29T01:00:00.000Z")
     });
     unsubscribe();

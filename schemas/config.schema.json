@@ -28,6 +28,21 @@
         "workspaceRoot": {
           "type": "string",
           "default": "."
+        },
+        "identity": {
+          "type": "object",
+          "additionalProperties": false,
+          "default": {},
+          "properties": {
+            "displayName": {
+              "type": "string",
+              "default": ""
+            },
+            "producerCallname": {
+              "type": "string",
+              "default": ""
+            }
+          }
         }
       },
       "required": [

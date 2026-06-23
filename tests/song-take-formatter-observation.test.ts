@@ -32,7 +32,7 @@ describe("song take formatter observation source", () => {
 
     expect(message).toContain("─────");
     const top = message.split("─────")[0];
-    expect(top).toContain("ゆずるさん");
+    expect(top).not.toContain("ゆずるさん");
     expect(top).toContain("old live houses disappear under identical signs");
     expect(top).toContain("自分の都市観察と、いまの静かな違和感を、ここに繋いだ");
     expect(top).toContain("これ、どう聞こえる?");

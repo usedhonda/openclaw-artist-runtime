@@ -1,14 +1,16 @@
-import { readFileSync } from "node:fs";
-import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { composeArtistFallback } from "../src/services/artistVoiceComposer";
 import { extractPersonaMotifs } from "../src/services/personaMotifExtractor";
 import { detectEnding } from "../src/services/voiceContractValidator";
 import { parseVoiceFingerprint } from "../src/services/voiceFingerprintParser";
+import { POPULATED_SOUL_MD } from "./helpers/populatedArtistFixtures";
 
 function loadFingerprint() {
-  const soul = readFileSync(join(__dirname, "..", "workspace-template", "SOUL.md"), "utf8");
-  return parseVoiceFingerprint(soul);
+  const fingerprint = parseVoiceFingerprint(POPULATED_SOUL_MD);
+  return {
+    ...fingerprint,
+    sentenceEndings: ["だろ。", "だ。", "な。", "。"]
+  };
 }
 
 describe("last-N ending rotation contract (Plan v10.10 Phase G)", () => {

@@ -57,7 +57,7 @@ describe("R10 songbook sync boundary", () => {
     await songbookHandler()(request("POST", "/plugins/artist-runtime/api/songbook/lookup", { config: { artist: { workspaceRoot: root } } }), res.res);
     const after = await readResolvedConfig(root);
 
-    expect(res.json().updated).toEqual(["where-it-played"]);
+    expect(res.json().updated).toEqual([]);
     expect(after.autopilot.dryRun).toBe(before.autopilot.dryRun);
     expect(after.distribution.liveGoArmed).toBe(before.distribution.liveGoArmed);
     expect(after.distribution.platforms.x.liveGoArmed).toBe(before.distribution.platforms.x.liveGoArmed);
