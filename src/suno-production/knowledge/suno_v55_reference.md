@@ -1,4 +1,4 @@
-<!-- Source: /Users/usedhonda/projects/docs/sunomanual (CC BY-NC 4.0, Copyright 2025-2026 usedhonda) -->
+<!-- Source: sunomanual (CC BY-NC 4.0, Copyright 2025-2026 usedhonda) -->
 
 # Suno AI V5/V5.5 Reference Guide
 
@@ -262,7 +262,7 @@ Annotation text is NOT sung — it's a production instruction to Suno.
 
 ### Song Duration Control (length levers)
 
-Suno has **no seconds field** — duration is an emergent property of structure, not a setting. Cross-project corpus testing (artist-runtime / used::honda, 2026-06) quantified what actually moves it.
+Suno has **no seconds field** — duration is an emergent property of structure, not a setting. Cross-project corpus testing (artist-runtime field corpus, 2026-06) quantified what actually moves it.
 
 - **Lyric body length ≠ duration.** Body char count (excluding YAML META) correlates with final duration at only **r≈0.11** — effectively uncorrelated. "More lyrics = longer song" is false. Worse: very long bodies (5000-7000 chars) get **compressed/truncated** down to 40-76 seconds; a ~1300-char body reliably yields 2-2.5 minutes.
 - **What actually drives length:** section count + bar hints (`[Verse - 16 bars]`) + **physical chorus re-show** (write the chorus out ~3×, don't rely on the model to repeat) + pacing + BPM. See `song_structures.md` patterns A-H: 6-section patterns land "under 2 min", 9-section (3-verse) patterns run long.
@@ -271,7 +271,7 @@ Suno has **no seconds field** — duration is an emergent property of structure,
 - **Syllable contrast is also a length lever.** Varying syllable count between sections (Verse 8-10 → Chorus 5-7) sharpens Suno's section-boundary recognition (see `song_structures.md` energy-curve principle, `lyric_craft.md` §5), so all sections actually render instead of being merged/skipped — protecting length, not just singability.
 - **Extend is a weak length lever.** Build length in the first generation via structure. Extend drags tempo and pulls unresolved loops forward (see `Ending Control Workflow` above).
 
-Confidence: medium-high (r≈0.11 and the truncation thresholds are corpus-quantified; the Style-bloat mechanism is synthesized from `Bracket Theory` + `Lyrics-as-Control-Panel` and field-confirmed). Source: artist-runtime corpus (used::honda) + community Bracket Theory.
+Confidence: medium-high (r≈0.11 and the truncation thresholds are corpus-quantified; the Style-bloat mechanism is synthesized from `Bracket Theory` + `Lyrics-as-Control-Panel` and field-confirmed). Source: artist-runtime field corpus + community Bracket Theory.
 
 ### Studio Stem Duet Workflow
 - For "real" duets, do not force the first generation to sing both roles at once.

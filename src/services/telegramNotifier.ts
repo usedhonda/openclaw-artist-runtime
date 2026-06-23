@@ -791,7 +791,7 @@ function buildSongCompletionInspirationTop(title: string, summary?: ObservationS
   const theme = inferThemeFromSummary(summary);
   const angle = inferAngleFromSummary(summary);
   return [
-    `ゆずるさん、${geo}で @${author} が「${quote}」って書いてたのを見たんだ。`,
+    `${geo}で @${author} が「${quote}」って書いてたのを見たんだ。`,
     `${motivation}が刺さって、${theme}を${angle}で抜いた。`,
     "これ、どう聞こえる?"
   ].join("\n");
@@ -1208,14 +1208,14 @@ async function formatRuntimeEventRaw(
     case "theme_generated":
       return hybridEventReport(
         event,
-        `ゆずるさん、${event.theme}で行く。`,
+        `${event.theme}で行く。`,
         [`theme: ${event.theme}`, `reason: ${event.reason}`].join("\n"),
         options
       );
     case "suno_budget_low":
       return hybridEventReport(
         event,
-        `ゆずるさん、残り ${event.used}/${event.limit}。ペース落とす。`,
+        `残り ${event.used}/${event.limit}。ペース落とす。`,
         [`songId: ${event.songId ?? "(none)"}`, `used: ${event.used}`, `limit: ${event.limit}`, `reason: ${event.reason}`].join("\n"),
         options
       );
@@ -1269,7 +1269,7 @@ async function formatRuntimeEventRaw(
     case "take_select_pending":
       return hybridEventReport(
         event,
-        "ゆずるさん、take の選別、ちょっと待ってる。",
+        "take の選別、ちょっと待ってる。",
         [`songId: ${event.songId}`, `reason: ${event.reason}`].join("\n"),
         options
       );
@@ -1294,7 +1294,7 @@ async function formatRuntimeEventRaw(
     case "budget_exhausted":
       return hybridEventReport(
         event,
-        "ゆずるさん、今日は予算切れ。明日に。",
+        "今日は予算切れ。明日に。",
         [`used: ${event.used}`, `limit: ${event.limit}`, `reason: ${event.reason}`].join("\n"),
         options
       );
@@ -1407,7 +1407,7 @@ async function formatRuntimeEventRaw(
       ].join("\n");
     }
     case "prompt_pack_ready": {
-      const artistVoice = event.voiceTop ?? "ゆずるさん、歌詞こんな感じ。Suno 行く?";
+      const artistVoice = event.voiceTop ?? "歌詞こんな感じ。Suno 行く?";
       const charCountLine = await promptPackCharCountLine(options.workspaceRoot, event.songId);
       const trace = buildCascadeTrace({
         songId: event.songId,

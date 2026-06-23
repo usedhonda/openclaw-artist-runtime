@@ -8,7 +8,7 @@ export interface ExcludeSynthesisPrompt {
 }
 
 export const EXCLUDE_SYNTHESIS_PROMPT_SOURCE =
-  "Source: /Users/usedhonda/projects/docs/sunomanual/mygpts/style-analyzer/instructions.md (CC BY-NC 4.0, Copyright 2025-2026 usedhonda)";
+  "Source: sunomanual/mygpts/style-analyzer/instructions.md (CC BY-NC 4.0, Copyright 2025-2026 usedhonda)";
 
 export const EXCLUDE_SYNTHESIS_KNOWLEDGE_REFERENCES = [
   "suno_v55_reference.md",

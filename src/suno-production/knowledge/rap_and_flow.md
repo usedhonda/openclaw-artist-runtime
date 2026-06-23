@@ -1,4 +1,4 @@
-<!-- Source: /Users/usedhonda/projects/docs/sunomanual (CC BY-NC 4.0, Copyright 2025-2026 usedhonda) -->
+<!-- Source: sunomanual (CC BY-NC 4.0, Copyright 2025-2026 usedhonda) -->
 
 # ラップとフロー — 韻・ケイデンス・日本語ラップ設計
 

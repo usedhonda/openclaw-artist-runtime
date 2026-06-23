@@ -15,8 +15,12 @@ elif command -v nc >/dev/null 2>&1 && nc -z "$cdp_host" "$cdp_port" >/dev/null 2
   echo "warning: TCP port $cdp_port is reachable; Chrome launch may hit a CDP port conflict" >&2
 fi
 
-exec /Applications/Google\ Chrome.app/Contents/MacOS/Google\ Chrome \
-  --user-data-dir="/Users/usedhonda/projects/openclaw/artist-runtime/.openclaw-browser-profiles/suno-cdp" \
+runtime_root="${OPENCLAW_ARTIST_RUNTIME_ROOT:-$(cd "$(dirname "$0")/.." && pwd)}"
+chrome_executable="${OPENCLAW_SUNO_CHROME_EXECUTABLE:-/Applications/Google Chrome.app/Contents/MacOS/Google Chrome}"
+profile_dir="${OPENCLAW_SUNO_CHROME_PROFILE_DEST:-${runtime_root}/.openclaw-browser-profiles/suno-cdp}"
+
+exec "$chrome_executable" \
+  --user-data-dir="$profile_dir" \
   --profile-directory=Default \
   --remote-debugging-address=127.0.0.1 \
   --remote-debugging-port=9222 \

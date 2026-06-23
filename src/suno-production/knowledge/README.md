@@ -2,11 +2,11 @@
 
 This directory vendors the seven-file Suno knowledge bundle from:
 
-`/Users/usedhonda/projects/docs/sunomanual/skills/suno/knowledge/`
+`sunomanual/skills/suno/knowledge/`
 
 Each copied knowledge file starts with this attribution comment:
 
-`<!-- Source: /Users/usedhonda/projects/docs/sunomanual (CC BY-NC 4.0, Copyright 2025-2026 usedhonda) -->`
+`<!-- Source: sunomanual (CC BY-NC 4.0, Copyright 2025-2026 usedhonda) -->`
 
 ## License And Attribution
 
