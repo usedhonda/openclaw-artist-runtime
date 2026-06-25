@@ -4,10 +4,12 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
+  buildMotifNewsSearchUrls,
   collectNewsObservations,
   parseNewsObservationFile,
   readTodayNewsObservations
 } from "../src/services/newsObservationCollector";
+import { extractPersonaMotifs } from "../src/services/personaMotifExtractor";
 
 const originalRssUrls = process.env.OPENCLAW_NEWS_RSS_URLS;
 
@@ -69,6 +71,18 @@ describe("news observation collector", () => {
     expect(result.reason).toContain("OPENCLAW_NEWS_RSS_URLS");
   });
 
+  it("builds Google News search RSS URLs from persona motifs", () => {
+    const motifs = extractPersonaMotifs("## Lyrics\n- テーマ: 社会風刺\n- テーマ: 再開発\n## Geographies\n六本木\n");
+    const urls = buildMotifNewsSearchUrls(motifs);
+    expect(urls).toHaveLength(1);
+    expect(urls[0]).toContain("https://news.google.com/rss/search?");
+    expect(decodeURIComponent(urls[0])).toContain("六本木");
+    expect(decodeURIComponent(urls[0])).toContain("社会風刺");
+    expect(decodeURIComponent(urls[0])).toContain("再開発");
+    expect(decodeURIComponent(urls[0])).toContain(" OR ");
+    expect(urls[0]).toContain("ceid=JP:ja");
+  });
+
   it("parses RSS 2.0 items and writes a daily cache", async () => {
     const root = workspace();
     process.env.OPENCLAW_NEWS_RSS_URLS = "https://example.test/rss.xml";
@@ -76,7 +90,6 @@ describe("news observation collector", () => {
 
     const result = await collectNewsObservations(root, {
       now: new Date("2026-05-23T01:00:00.000Z"),
-      personaText: "themes: 社会風刺、再開発、文化の均質化\ngeo: 渋谷、六本木\n",
       fetcher
     });
 
@@ -105,7 +118,6 @@ describe("news observation collector", () => {
 
     const result = await collectNewsObservations(root, {
       now: new Date("2026-05-23T01:00:00.000Z"),
-      personaText: "themes: 経営者、ロビイング\ngeo: 新宿\n",
       fetcher
     });
     expect(result.status).toBe("collected");
@@ -137,8 +149,11 @@ describe("news observation collector", () => {
 
   it("scores entries against persona motifs so news related to ARTIST.md rises", async () => {
     const root = workspace();
-    process.env.OPENCLAW_NEWS_RSS_URLS = "https://example.test/rss.xml";
-    const fetcher = vi.fn(async () => rssSample);
+    const fetcher = vi.fn(async (url: string) => {
+      expect(url).toContain("news.google.com/rss/search");
+      expect(decodeURIComponent(url)).toContain("六本木");
+      return rssSample;
+    });
 
     const result = await collectNewsObservations(root, {
       now: new Date("2026-05-23T01:00:00.000Z"),

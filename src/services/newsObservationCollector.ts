@@ -1,11 +1,12 @@
 // Plan v10.38 Phase B: news observation collector.
 //
-// Pulls RSS feeds opt-in via OPENCLAW_NEWS_RSS_URLS, parses item / entry tags
+// Builds Google News search RSS feeds from persona motifs, falls back to
+// OPENCLAW_NEWS_RSS_URLS when motifs are unavailable, parses item / entry tags
 // for RSS 2.0 and Atom, scores entries against the same persona motif bundle
 // the X collector uses, and writes a daily cache under
 // `<workspace>/observations/news-YYYY-MM-DD.md`. The cache schema mirrors
 // the X observation cache so songSpawnProposer can merge both streams when
-// picking today's primary motivation. Default is no-op (no env, no feeds).
+// picking today's primary motivation.
 
 import { mkdir, readFile, stat, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
@@ -13,6 +14,7 @@ import { secretLikePattern } from "./personaMigrator.js";
 import { getNewsRssUrls } from "./runtimeConfig.js";
 import {
   extractPersonaMotifs,
+  topQueryKeywords,
   type PersonaMotifBundle
 } from "./personaMotifExtractor.js";
 import { rankObservations, summarizeMatches } from "./xObservationScorer.js";
@@ -55,6 +57,23 @@ function newsCachePath(root: string, now = new Date()): string {
 
 function rssUrlsFromEnv(): string[] {
   return getNewsRssUrls().slice(0, maxFeedsPerRun);
+}
+
+function googleNewsSearchRssUrl(query: string): string {
+  return `https://news.google.com/rss/search?q=${encodeURIComponent(query)}&hl=ja&gl=JP&ceid=JP:ja`;
+}
+
+export function buildMotifNewsSearchUrls(motifs: PersonaMotifBundle, limit = 5): string[] {
+  const keywords = topQueryKeywords(motifs, limit);
+  if (keywords.length === 0) return [];
+  return [googleNewsSearchRssUrl(keywords.join(" OR "))];
+}
+
+function newsRssUrlsForRun(motifs: PersonaMotifBundle): string[] {
+  const envUrls = rssUrlsFromEnv();
+  const motifUrls = buildMotifNewsSearchUrls(motifs);
+  const urls = motifUrls.length > 0 ? [...motifUrls, ...envUrls] : envUrls;
+  return [...new Set(urls)].slice(0, maxFeedsPerRun);
 }
 
 async function defaultFetcher(url: string, timeoutMs = 15_000): Promise<string> {
@@ -210,7 +229,11 @@ export async function readTodayNewsObservations(
 
 function feedSourceLabel(url: string): string {
   try {
-    return new URL(url).hostname;
+    const parsed = new URL(url);
+    if (parsed.hostname === "news.google.com" && parsed.pathname.includes("/rss/search")) {
+      return "news.google.com/search";
+    }
+    return parsed.hostname;
   } catch {
     return url.slice(0, 32);
   }
@@ -233,10 +256,11 @@ export async function collectNewsObservations(
   context: NewsObservationContext = {}
 ): Promise<NewsObservationResult> {
   const now = context.now ?? new Date();
-  const urls = rssUrlsFromEnv();
+  const motifs = extractPersonaMotifs(context.personaText);
+  const urls = newsRssUrlsForRun(motifs);
   const path = newsCachePath(root, now);
   if (urls.length === 0) {
-    return { status: "skipped", path, entries: [], reason: "OPENCLAW_NEWS_RSS_URLS unset" };
+    return { status: "skipped", path, entries: [], reason: "news_motifs_unavailable_and_OPENCLAW_NEWS_RSS_URLS_unset" };
   }
   const cached = await readFile(path, "utf8").catch(() => "");
   if (cached) {
@@ -249,7 +273,6 @@ export async function collectNewsObservations(
       };
     }
   }
-  const motifs = extractPersonaMotifs(context.personaText);
   const fetcher = context.fetcher ?? defaultFetcher;
   const collected: NewsObservationEntry[] = [];
   const failures: string[] = [];
