@@ -1,4 +1,5 @@
 import type { TelegramMessage, TelegramReplyMarkup, TelegramUpdate } from "../types.js";
+import { splitTelegramText } from "./telegramFormatting.js";
 
 export type { TelegramCallbackQuery, TelegramChat, TelegramInlineKeyboard, TelegramInlineKeyboardButton, TelegramMessage, TelegramReplyMarkup, TelegramUpdate, TelegramUser } from "../types.js";
 
@@ -110,13 +111,21 @@ export class TelegramClient {
   }
 
   async sendMessage(chatId: number | string, text: string, options: TelegramSendMessageOptions = {}): Promise<TelegramMessage> {
-    return this.call<TelegramMessage>("sendMessage", {
-      chat_id: chatId,
-      text,
-      parse_mode: options.parseMode,
-      disable_notification: options.disableNotification,
-      reply_markup: options.replyMarkup
-    });
+    const chunks = splitTelegramText(text);
+    let last: TelegramMessage | undefined;
+    for (let index = 0; index < chunks.length; index += 1) {
+      last = await this.call<TelegramMessage>("sendMessage", {
+        chat_id: chatId,
+        text: chunks[index],
+        parse_mode: options.parseMode,
+        disable_notification: options.disableNotification,
+        reply_markup: index === chunks.length - 1 ? options.replyMarkup : undefined
+      });
+    }
+    if (!last) {
+      throw new Error("telegram_sendMessage_empty");
+    }
+    return last;
   }
 
   async answerCallbackQuery(callbackQueryId: string, options: TelegramAnswerCallbackQueryOptions = {}): Promise<boolean> {

@@ -14,10 +14,9 @@ describe("telegram button effect section", () => {
       timestamp: 1
     });
 
-    expect(text).toContain("次のボタン:");
-    expect(text).toContain("- Suno 生成へ: prompt_pack の停止を解除し、次 cycle で Suno 生成へ進めます。");
-    expect(text).toContain("- lyrics-suno.md を編集: planning に戻し、歌詞をもう一度作り直します。");
-    expect(text).toContain("- 保留: この曲を user_paused にして後で再開できる状態にします。");
+    expect(text).toContain("次:\nボタンで選ぶ");
+    expect(text).not.toContain("次のボタン:");
+    expect(text).not.toContain("prompt_pack の停止を解除");
   });
 
   it("keeps non-action telemetry bodies free of button effects", async () => {
@@ -29,6 +28,6 @@ describe("telegram button effect section", () => {
       timestamp: 1
     });
 
-    expect(text).not.toContain("次のボタン:");
+    expect(text).not.toContain("次:");
   });
 });

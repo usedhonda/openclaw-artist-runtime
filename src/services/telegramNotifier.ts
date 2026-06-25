@@ -2,7 +2,7 @@ import type { RuntimeEvent, RuntimeEventBus } from "./runtimeEventBus.js";
 import { TelegramClient, telegramAttemptsFromError, type TelegramFetch } from "./telegramClient.js";
 import { generateArtistResponse, readArtistVoiceContext } from "./artistVoiceResponder.js";
 import type { AiReviewProvider } from "../types.js";
-import { describeCallbackActionEffect, registerCallbackAction } from "./callbackActionRegistry.js";
+import { registerCallbackAction } from "./callbackActionRegistry.js";
 import { appendConversationTurn } from "./conversationalSession.js";
 import { proposalForDetection } from "./songDistributionPoller.js";
 import { getTelegramArtistReportTimeoutMs, isInlineButtonsEnabled, isSelfHealNotifyEnabled, isXInlineButtonEnabled } from "./runtimeConfig.js";
@@ -15,7 +15,6 @@ import { buttonVoiceLabels } from "./buttonVoiceLabels.js";
 import { access, readdir, readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { buildCascadeTrace } from "./cascadeTrace.js";
-import { composeArtistReflection } from "./artistReflectionComposer.js";
 import { appendFailedNotification, isCriticalNotificationEvent } from "./failedNotifyLedger.js";
 import { readLatestPromptPackMetadata } from "./sunoPromptPackFiles.js";
 import { composeDraftBoxNextAction, formatDraftBoxNextActionSection } from "./draftBoxNextAction.js";
@@ -23,10 +22,12 @@ import { emitDraftBoxProactiveNoticeIfNeeded } from "./draftBoxProactiveNotice.j
 import {
   TELEGRAM_SECTION_DIVIDER,
   appendTelegramSection,
+  compactLines,
   formatTelegramCascadeTrace,
   formatTelegramUrlList,
   joinTelegramDetailSection,
-  stripTelegramHtmlComments
+  stripTelegramHtmlComments,
+  truncatePlain
 } from "./telegramFormatting.js";
 
 export interface TelegramNotifierOptions {
@@ -879,6 +880,53 @@ function formatSpawnBriefVoiceDetail(brief: Extract<RuntimeEvent, { type: "song_
   ].join("\n");
 }
 
+function compactReason(value: string | undefined): string {
+  if (isMachineVoiceArtifact(value ?? "")) {
+    return "この切り口、ずっと抱えてた街のざらつきに近い。委ねてみたい。";
+  }
+  const clean = truncatePlain(value, 220);
+  if (!clean) return "この観察を曲にしたい。";
+  const sentences = clean.match(/[^。！？!?]+[。！？!?]?/g)?.map((sentence) => sentence.trim()).filter(Boolean) ?? [clean];
+  return sentences.slice(0, 2).join("");
+}
+
+function formatSpawnObservationLine(event: Extract<RuntimeEvent, { type: "song_spawn_proposed" }>): string {
+  const summary = event.observationSummary;
+  if (summary?.quote) {
+    const author = summary.author ? `@${safeAuthor(summary.author)}: ` : "";
+    return truncatePlain(`${author}${summary.quote}`, 180);
+  }
+  const source = event.brief.sources?.[0];
+  if (source?.quote) {
+    const author = source.author ? `${source.author}: ` : "";
+    return truncatePlain(`${author}${source.quote}`, 180);
+  }
+  return truncatePlain(event.brief.brief || event.brief.sourceText, 180) || "観察の切れ端から始める。";
+}
+
+function formatSpawnSongShape(brief: Extract<RuntimeEvent, { type: "song_spawn_proposed" }>["brief"]): string {
+  const tempo = humanizeTempo(brief.tempo);
+  const mood = humanizeMood(brief.mood);
+  const duration = humanizeDuration(brief.duration);
+  const style = truncatePlain(brief.styleNotes, 80);
+  return [tempo, `${mood}${duration}`, style].filter(Boolean).join(" / ");
+}
+
+function formatSongSpawnCard(event: Extract<RuntimeEvent, { type: "song_spawn_proposed" }>): string {
+  return compactLines([
+    `素案: ${truncatePlain(event.brief.title, 80)}`,
+    "",
+    "今見てるもの:",
+    formatSpawnObservationLine(event),
+    "",
+    "曲にする理由:",
+    compactReason(event.reason || event.voiceTop || event.brief.lyricsTheme),
+    "",
+    "作る曲:",
+    formatSpawnSongShape(event.brief)
+  ], 2200);
+}
+
 async function readSongCompletionContext(event: Extract<RuntimeEvent, { type: "song_take_completed" }>, workspaceRoot?: string): Promise<{ title: string; observationSummary?: ObservationSummary }> {
   if (!workspaceRoot) {
     return { title: event.songId, observationSummary: event.observationSummary };
@@ -1129,11 +1177,7 @@ function appendButtonEffectSection(event: RuntimeEvent, body: string): string {
   if (actions.length === 0) {
     return body;
   }
-  const lines = actions.map((action) => {
-    const effect = describeCallbackActionEffect(action);
-    return `- ${effect.label}: ${effect.effect}`;
-  });
-  return appendTelegramSection(body, `次のボタン:\n${lines.join("\n")}`);
+  return appendTelegramSection(body, "次:\nボタンで選ぶ");
 }
 
 async function appendDraftBoxNextActionSection(
@@ -1164,6 +1208,9 @@ export async function formatRuntimeEvent(
   options: Pick<TelegramNotifierOptions, "workspaceRoot" | "aiReviewProvider" | "dashboardBaseUrl"> = {}
 ): Promise<string> {
   const body = appendButtonEffectSection(event, stripTelegramHtmlComments(await formatRuntimeEventRaw(event, options)));
+  if (event.type === "song_spawn_proposed") {
+    return body;
+  }
   const withNextAction = await appendDraftBoxNextActionSection(event, options, body);
   return enrichWithResources(event, options, withNextAction);
 }
@@ -1359,36 +1406,7 @@ async function formatRuntimeEventRaw(
         event.rationale ? `🎯 なぜ: ${event.rationale}` : undefined
       ].filter(Boolean).join("\n");
     case "song_spawn_proposed": {
-      const reflection = await composeArtistReflection({
-        workspaceRoot: options.workspaceRoot,
-        songId: event.candidateSongId,
-        brief: event.brief,
-        reason: event.reason,
-        voiceTop: event.voiceTop,
-        observationSummary: event.observationSummary,
-        seed: event.candidateSongId
-      }).catch(() => null);
-      const trace = reflection?.cascadeTrace ?? buildCascadeTrace({
-        songId: event.candidateSongId,
-        title: event.brief.title,
-        artistVoice: event.voiceTop,
-        lyricsTheme: event.brief.lyricsTheme,
-        styleLayer: event.brief.styleNotes,
-        observationSummary: event.observationSummary,
-        commissionSources: event.brief.sources
-      });
-      return [
-        "素案を思いついた。草稿箱に入れた。",
-        "",
-        reflection?.narrative ?? [
-          event.voiceTop ?? "次の曲、こんな感じはどう?",
-          "",
-          formatSpawnBriefVoiceDetail(event.brief, event.reason)
-        ].join("\n"),
-        "",
-        TELEGRAM_SECTION_DIVIDER,
-        formatTelegramCascadeTrace(trace)
-      ].join("\n");
+      return formatSongSpawnCard(event);
     }
     case "planning_skeleton_incomplete": {
       const monolog = options.workspaceRoot

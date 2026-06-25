@@ -47,7 +47,7 @@ function brief(): CommissionBrief {
 }
 
 describe("telegram spawn proposed narrative", () => {
-  it("renders artist reflection before the cascade trace and removes the old sources block", async () => {
+  it("renders a readable compact card and removes the old trace-heavy body", async () => {
     const workspaceRoot = await root();
     const text = await formatRuntimeEvent({
       type: "song_spawn_proposed",
@@ -58,11 +58,14 @@ describe("telegram spawn proposed narrative", () => {
       timestamp: 1
     }, { workspaceRoot });
 
-    expect(text).toContain("今日、こんな観察が引っかかった。");
+    expect(text).toContain("素案: 地下鉄のコピー機");
+    expect(text).toContain("今見てるもの:");
     expect(text).toContain("地下鉄のコピー機が深夜も動いている");
-    expect(text).toContain("voice: ゆずるさん、地下鉄のコピー機で切る。");
-    expect(text).toContain("行程 trace:");
-    expect(text).toContain("- 観察 source:");
+    expect(text).toContain("曲にする理由:");
+    expect(text).toContain("作る曲:");
+    expect(text).toContain("次:\nボタンで選ぶ");
+    expect(text).not.toContain("voice:");
+    expect(text).not.toContain("行程 trace:");
     expect(text).not.toContain("観察元 (この曲が引いた news / X)");
     expect(text).not.toContain("- songId:");
   });

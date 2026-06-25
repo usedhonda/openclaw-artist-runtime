@@ -26,7 +26,8 @@ describe("ArtistAutopilotService full dry-run cycle", () => {
     const root = mkdtempSync(join(tmpdir(), "artist-runtime-full-cycle-"));
     await ensureArtistWorkspace(root);
 
-    const fetchMock = vi.fn();
+    const emptyNewsRss = `<?xml version="1.0" encoding="UTF-8"?><rss version="2.0"><channel></channel></rss>`;
+    const fetchMock = vi.fn().mockResolvedValue(new Response(emptyNewsRss, { status: 200 }));
     vi.stubGlobal("fetch", fetchMock);
 
     const service = new ArtistAutopilotService();
@@ -155,7 +156,10 @@ describe("ArtistAutopilotService full dry-run cycle", () => {
     expect(autopilotState.currentSongId).toBeUndefined();
 
     expect(spawnMock).not.toHaveBeenCalled();
-    expect(fetchMock).not.toHaveBeenCalled();
+    expect(fetchMock).toHaveBeenCalled();
+    expect(fetchMock.mock.calls.every((call) => String(call[0]).startsWith("https://news.google.com/rss/search?"))).toBe(
+      true
+    );
 
     vi.unstubAllGlobals();
   });

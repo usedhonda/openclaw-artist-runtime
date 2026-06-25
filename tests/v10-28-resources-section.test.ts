@@ -137,7 +137,7 @@ describe("v10.28-C Phase A: Resources section injection", () => {
     expect(body).toContain("🔗 Dashboard: https://example.test/plugins/artist-runtime#song=song-x1");
   });
 
-  it("drops the local-path line entirely when no resource files exist but keeps the dashboard link", async () => {
+  it("keeps spawn proposal cards free of local-path and dashboard resource clutter", async () => {
     const root = workspace();
     await ensureArtistWorkspace(root);
 
@@ -147,7 +147,8 @@ describe("v10.28-C Phase A: Resources section injection", () => {
     });
 
     expect(body).not.toContain("📂 Local:");
-    expect(body).toContain("🔗 Dashboard: https://example.test/plugins/artist-runtime#song=spawn_a1");
+    expect(body).not.toContain("🔗 Dashboard:");
+    expect(body).toContain("素案: Spawn Test");
   });
 
   it("emits dashboard root only for events without a songId (artist_pulse_drafted)", async () => {
@@ -164,7 +165,7 @@ describe("v10.28-C Phase A: Resources section injection", () => {
     expect(body).not.toMatch(/Dashboard:.*#song=/);
   });
 
-  it("omits dashboard line when dashboardBaseUrl is missing", async () => {
+  it("omits local resources from spawn proposal cards even when files exist", async () => {
     const root = workspace();
     await prepareSongFiles(root, "song-x1", { "brief.md": "fixture" });
 
@@ -172,8 +173,8 @@ describe("v10.28-C Phase A: Resources section injection", () => {
       workspaceRoot: root
     });
 
-    expect(body).toContain("📂 Local:");
-    expect(body).toContain("songs/song-x1/brief.md");
+    expect(body).not.toContain("📂 Local:");
+    expect(body).not.toContain("songs/song-x1/brief.md");
     expect(body).not.toContain("🔗 Dashboard");
   });
 
@@ -200,7 +201,7 @@ describe("v10.28-C Phase A: Resources section injection", () => {
     expect(body).not.toContain("🔗 Dashboard");
   });
 
-  it("normalises trailing slashes in dashboardBaseUrl", async () => {
+  it("keeps spawn proposal cards free of dashboard links even with trailing slashes", async () => {
     const root = workspace();
     await ensureArtistWorkspace(root);
 
@@ -209,7 +210,7 @@ describe("v10.28-C Phase A: Resources section injection", () => {
       dashboardBaseUrl: "https://example.test/////"
     });
 
-    expect(body).toContain("https://example.test/plugins/artist-runtime#song=spawn_a2");
+    expect(body).not.toContain("https://example.test/plugins/artist-runtime#song=spawn_a2");
     expect(body).not.toContain("test/////");
   });
 });

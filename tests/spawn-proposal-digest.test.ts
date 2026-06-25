@@ -94,7 +94,9 @@ describe("spawn proposal notification", () => {
     expect(sendBody.text).not.toContain("アイデアが 2 件、並んでます。");
     expect(sendBody.text).not.toContain("ハンズ前、解散");
     expect(sendBody.text).toContain("地下鉄のコピー機");
-    expect(sendBody.text).toContain("行程 trace:");
+    expect(sendBody.text).toContain("素案: 地下鉄のコピー機");
+    expect(sendBody.text).toContain("次:\nボタンで選ぶ");
+    expect(sendBody.text).not.toContain("行程 trace:");
 
     const markup = requestBody(fetchImpl.mock.calls[1]).reply_markup as { inline_keyboard: Array<Array<{ text: string }>> };
     expect(markup.inline_keyboard).toHaveLength(1);
@@ -120,9 +122,10 @@ describe("spawn proposal notification", () => {
 
     const sendBody = requestBody(fetchImpl.mock.calls[0]);
     expect(sendBody.text).not.toContain("アイデアが 1 件");
-    expect(sendBody.text).toContain("素案を思いついた。草稿箱に入れた。");
+    expect(sendBody.text).toContain("素案: 路地裏の審判");
     expect(sendBody.text).toContain("路地裏の審判");
-    expect(sendBody.text).toContain("行程 trace:");
+    expect(sendBody.text).toContain("次:\nボタンで選ぶ");
+    expect(sendBody.text).not.toContain("行程 trace:");
     const markup = requestBody(fetchImpl.mock.calls[1]).reply_markup as { inline_keyboard: Array<Array<{ text: string }>> };
     expect(markup.inline_keyboard).toEqual([[
       expect.objectContaining({ text: "作る" }),

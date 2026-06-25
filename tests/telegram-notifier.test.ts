@@ -16,9 +16,8 @@ function jsonResponse(body: unknown): Response {
 const songCompletionButtonEffects = [
   "",
   "─────",
-  "次のボタン:",
-  "- 採用: この曲を採用する。SNS には出さない。",
-  "- 破棄: この曲を破棄する。brief は reuse のため残す。"
+  "次:",
+  "ボタンで選ぶ"
 ];
 
 describe("TelegramNotifier", () => {

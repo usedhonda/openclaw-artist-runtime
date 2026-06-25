@@ -18,7 +18,7 @@ function brief(): CommissionBrief {
 }
 
 describe("telegram spawn hybrid format", () => {
-  it("places artist voice top above the metadata block", async () => {
+  it("renders a compact producer-room action card", async () => {
     const text = await formatRuntimeEvent({
       type: "song_spawn_proposed",
       voiceTop: "ゆずる、再開発の街を切るやつ、刺さる",
@@ -29,19 +29,21 @@ describe("telegram spawn hybrid format", () => {
     });
 
     expect(text.split("\n").slice(0, 5)).toEqual([
-      "素案を思いついた。草稿箱に入れた。",
+      "素案: Backyard Cure",
       "",
-      "プロデューサー、今日は外の観察が薄い。",
-      "俺の中に残っている今の違和感だけで、まず話す。",
+      "今見てるもの:",
+      "再開発の街の裏側を切る。",
       ""
     ]);
-    expect(text).toMatch(/これを読んで、俺は/);
-    expect(text).toContain("voice: ゆずる、再開発の街を切るやつ、刺さる");
-    expect(text).toContain("行程 trace:");
+    expect(text).toContain("曲にする理由:");
+    expect(text).toContain("作る曲:");
+    expect(text).toContain("次:\nボタンで選ぶ");
+    expect(text).not.toContain("voice:");
+    expect(text).not.toContain("行程 trace:");
     expect(text).toContain("街の剥がれ方が刺さった。低い熱で行く。");
   });
 
-  it("keeps a fallback top when voiceTop is absent", async () => {
+  it("keeps a compact reason when voiceTop is absent", async () => {
     const text = await formatRuntimeEvent({
       type: "song_spawn_proposed",
       candidateSongId: "spawn_9a57b4",
@@ -50,7 +52,8 @@ describe("telegram spawn hybrid format", () => {
       timestamp: 1
     });
 
-    expect(text).toContain("voice: プロデューサー、次の曲の話をしたい。");
-    expect(text).toContain("行程 trace:");
+    expect(text).toContain("曲にする理由:\n観察が強い。");
+    expect(text).not.toContain("voice:");
+    expect(text).not.toContain("行程 trace:");
   });
 });

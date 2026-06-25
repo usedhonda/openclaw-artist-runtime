@@ -154,9 +154,10 @@ describe("voice no-machine-leak contract (v10.16)", () => {
     });
 
     expectNoMachineMarkers(text);
-    expect(text).toContain("voice: ゆずる、再開発の街を切るやつ、刺さる");
-    expect(text).toContain("lyrics: 街が治るふりをする夜");
-    expect(text).toContain("style: dry drums");
+    expect(text).toContain("素案: Backyard Cure");
+    expect(text).toContain("今見てるもの:");
+    expect(text).toContain("曲にする理由:");
+    expect(text).toContain("作る曲:");
     expect(text).toContain("委ねてみたい");
     expect(text).not.toContain("88 BPM");
     expect(text).not.toContain("tense, cynical, urgent");
