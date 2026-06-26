@@ -91,6 +91,17 @@ Use BotFather to create the bot token and a user-id helper bot or Telegram
 client metadata to find the numeric owner id. Do not commit the local env file
 or paste the token body into issue reports, logs, or screenshots.
 
+After the token and owner id are set, enable Telegram itself (gate 1) by setting
+`telegram.enabled=true` in the Producer Console **Settings** tab, or in
+`runtime/config-overrides.json`:
+
+```json
+{ "telegram": { "enabled": true } }
+```
+
+Then restart the Gateway process that owns the environment so it picks up the
+token and the enabled flag.
+
 ## Token expiry reaction
 
 Use this flow when a platform test route reports expired, missing, or failed

@@ -30,6 +30,12 @@ SOUL.mdとの違い:
 
 # ARTIST.md
 
+> **This is an EXAMPLE artist.** The identity, sound, lyrics, and voice below are
+> a sample that shows the expected format — they are not a required default.
+> Replace them with your own artist: the fastest path is `/setup` in Telegram
+> (it writes the managed block), or edit this file directly. Fields marked `TBD`
+> are filled in by `/setup`.
+
 ## Public Identity
 
 Artist name: TBD
@@ -96,7 +102,7 @@ source_channels:
 
 ### Voice
 
-- gender: male
+- gender: TBD (e.g. male / female / neutral)
 - breathy close vocal
 - controlled delivery
 - little vibrato

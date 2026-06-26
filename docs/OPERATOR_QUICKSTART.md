@@ -15,6 +15,47 @@ See also: [TROUBLESHOOTING.md](TROUBLESHOOTING.md),
 > >= 20, a host `openclaw` CLI on `PATH`, and (for live lanes) the Playwright
 > Chromium binary and the `bird` CLI.
 
+## First-run onboarding (install → artist → first song)
+
+This is the end-to-end path from a fresh install to a generated song. Each step
+links to the detailed section that follows.
+
+1. **Confirm prerequisites** — see the
+   [README "Requirements" section](../README.md#requirements).
+2. **Start the gateway** — [section 2](#2-start-the-gateway)
+   (`openclaw gateway run ...`), then open the Producer Console at
+   `http://127.0.0.1:43134/plugins/artist-runtime`.
+3. **Create your artist persona** — the artist's identity, sound, and lyrics live
+   in `ARTIST.md`. The shipped `ARTIST.md` is an **example** artist; replace it
+   with your own. The fastest path is `/setup` in Telegram (set up Telegram in
+   step 4 first), which writes the managed `ARTIST.md` block; you can also edit
+   `ARTIST.md` directly. See
+   [OPERATOR_RUNBOOK.md "First-run experience"](OPERATOR_RUNBOOK.md#first-run-experience-telegram-artist-persona).
+4. **Connect Telegram (the control surface)** — Telegram is how you talk to the
+   artist and approve songs. Create a bot with BotFather, set `TELEGRAM_BOT_TOKEN`
+   and `TELEGRAM_OWNER_USER_IDS`, and set `telegram.enabled=true`. See
+   [CONNECTOR_AUTH.md](CONNECTOR_AUTH.md) "Telegram bot opt-in" and
+   [OPERATOR_RUNBOOK.md](OPERATOR_RUNBOOK.md) "Telegram opt-in".
+5. **Verify the mock dry-run** — run the
+   [5-Minute First Cycle](#5-minute-first-cycle-mock-only-no-external-side-effects)
+   below to confirm the Console and ticker work with zero external side effects.
+6. **Set up the Suno lane** — install the browser binary and log in
+   ([section 1 "Suno"](#suno)): `npx playwright install chromium`, then
+   `scripts/openclaw-suno-login.sh`.
+7. **Progress mock → live** — in the Producer Console **Settings** tab, switch
+   `music.suno.driver` from `mock` to `playwright`, and `music.suno.submitMode`
+   from `skip` to `live` (live consumes real Suno credits). See
+   [SUNO_BROWSER_DRIVER.md](SUNO_BROWSER_DRIVER.md) "Dry-run vs live".
+8. **Make a song** — with the artist set up and Suno live, the artist proposes
+   songs from its own observations and asks you to approve in Telegram (tap the
+   spawn proposal's GO button), or you send `/commission <idea>`. Autonomous
+   spawn and `/commission` are gated behind `OPENCLAW_SONG_SPAWN_ENABLED` /
+   `OPENCLAW_COMMISSION_ENABLED` (see OPERATOR_RUNBOOK.md). Approve, and the
+   autopilot generates takes via Suno and reports the result to Telegram.
+
+The sections below cover credentials, gateway start, probes, and the dry-run
+safety boundary in detail.
+
 ## 5-Minute First Cycle (mock-only, no external side effects)
 
 Use this section to confirm the Producer Console works end-to-end before
