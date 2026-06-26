@@ -9,8 +9,8 @@ and developer policies.
 
 ## Sunomanual Knowledge Bundle
 
-This package includes a `sunomanual` knowledge bundle copied from
-`/Users/usedhonda/projects/docs/sunomanual` for the usedhonda private
+This package includes a `sunomanual` knowledge bundle copied from the
+`sunomanual` project for the usedhonda private
 non-commercial Artist Runtime project.
 
 - Copyright: Copyright (c) 2025-2026 usedhonda

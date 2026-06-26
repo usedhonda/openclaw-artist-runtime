@@ -211,7 +211,7 @@ value unless the key is one of the recognized aliases below. Use `keep ...`,
 socialVoice: 短く、刺さるように、過剰な売り込みは避ける
 soul-tone: 御大に対しては率直、ぶっきらぼう、必要なら反論
 soul-refusal: できないことは「できない」と即答、言い訳しない
-artistName: keep used::honda
+artistName: keep <your artist name>
 ```
 
 | Field | Recognized aliases |
@@ -418,9 +418,9 @@ Runtime safety knobs:
   `bird.rateLimits.minIntervalMinutes` in `runtime/config-overrides.json`, or
   use `OPENCLAW_BIRD_DAILY_MAX` and `OPENCLAW_BIRD_MIN_INTERVAL_MINUTES`.
   Defaults are deliberately slow to reduce X/Bird ban risk.
-- Apple Music lookup: the default used::honda profile uses iTunes artist id
-  `1889924232` with JP locale. The poller calls
-  `https://itunes.apple.com/lookup?id=1889924232&entity=song&limit=200` and
+- Apple Music lookup: the distribution poller looks up the artist's public
+  Apple Music catalog by the artist's iTunes artist id. The poller calls
+  `https://itunes.apple.com/lookup?id=<artistId>&entity=song&limit=200` and
   matches scheduled song titles.
 
 The older `/answer` wizard flow is gone. `/skip` and `/back` are no longer
@@ -603,7 +603,7 @@ UI:
 
 ### Phase A: Artist Daily Voice (`61fd8aa`)
 
-artist (used::honda) の「曲ではない普段の X tweet」を AI が自発生成 → Telegram 二段階確認で publish。
+artist の「曲ではない普段の X tweet」を AI が自発生成 → Telegram 二段階確認で publish。
 
 退路 flag:
 - `OPENCLAW_ARTIST_PULSE_ENABLED` (default `off`、`on` で発火開始)
@@ -701,7 +701,7 @@ skip 条件: 直近完成曲との距離短い / 予算ぎりぎり / observatio
    export OPENCLAW_COMMISSION_ENABLED=on
    export OPENCLAW_SONG_SPAWN_ENABLED=on
    ```
-3. **bird auth 確認**: `bird --firefox-profile rlff0kyr.artist-x whoami --plain` で artist account (`@used00honda`) を確認
+3. **bird auth 確認**: `bird --firefox-profile <your-artist-firefox-profile> whoami --plain` で artist account を確認
 4. **Telegram で動作開始**: bot worker が Telegram 経由で event push、御大が button 操作
 
 ### R10 守備 (Plan v9.17 全 Phase)
@@ -793,12 +793,12 @@ Phase F adds a maintenance layer for `workspace/artist/SONGBOOK.md`.
 - missing Apple Music links when a public iTunes/Apple candidate is available
 - incomplete rows that can be re-filled from local song state
 
-`itunesArtistLookup` uses the public iTunes Search API for used::honda:
+`itunesArtistLookup` uses the public iTunes Search API for the configured artist:
 
 ```text
-artistId: 1889924232
-country: jp
-endpoint: https://itunes.apple.com/lookup?id=1889924232&entity=song&limit=200&country=jp
+artistId: <artist iTunes id>
+country: <locale, e.g. jp>
+endpoint: https://itunes.apple.com/lookup?id=<artistId>&entity=song&limit=200&country=<locale>
 ```
 
 The lookup returns public metadata and track URLs only. Responses still pass the
