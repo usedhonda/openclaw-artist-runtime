@@ -8,6 +8,15 @@ See also: [OPERATOR_QUICKSTART.md](OPERATOR_QUICKSTART.md),
 [TROUBLESHOOTING.md](TROUBLESHOOTING.md), [ERRORS.md](ERRORS.md), and
 [RUNTIME_CLEANUP.md](RUNTIME_CLEANUP.md).
 
+> **Repo-local vs. installed-plugin commands.** Some procedures below (and the
+> dated "通常運転手順" change-log sections) use `scripts/openclaw-local-*` and
+> `.local/openclaw/bin/openclaw`. Those are the contributor repository sandbox
+> wrappers and are **not** included in the published package. If you installed the
+> plugin, use the host equivalents:
+>
+> - `scripts/openclaw-local-gateway start` / `.local/openclaw/bin/openclaw gateway stop` → `openclaw gateway run --allow-unconfigured --bind loopback --auth none --port 43134` (see [OPERATOR_QUICKSTART.md](OPERATOR_QUICKSTART.md))
+> - `scripts/openclaw-local-env.sh` → repo-only; export the documented environment variables directly in your shell
+
 ## Quick checks
 
 Run the doctor from the package root:

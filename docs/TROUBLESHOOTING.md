@@ -9,6 +9,15 @@ See also: [ERRORS.md](ERRORS.md), [OPERATOR_QUICKSTART.md](OPERATOR_QUICKSTART.m
 [SUNO_BROWSER_DRIVER.md](SUNO_BROWSER_DRIVER.md), and
 [OPERATOR_RUNBOOK.md](OPERATOR_RUNBOOK.md).
 
+> **Repo-local vs. installed-plugin commands.** Commands in this document that
+> use `scripts/openclaw-local-*` are the contributor repository sandbox wrappers
+> and are **not** included in the published package. If you installed the plugin,
+> use the host equivalents:
+>
+> - `scripts/openclaw-local-gateway start` / `status` → `openclaw gateway run --allow-unconfigured --bind loopback --auth none --port 43134` (see [OPERATOR_QUICKSTART.md](OPERATOR_QUICKSTART.md))
+> - `scripts/openclaw-local-env.sh` → repo-only; export the documented environment variables directly in your shell
+> - `scripts/openclaw-local-http-smoke.sh` → `curl -sS http://127.0.0.1:43134/plugins/artist-runtime/api/status`
+
 ## Decision tree overview
 
 1. Is the Gateway reachable?

@@ -19,9 +19,8 @@ The `files` array in `package.json` controls the tarball. Current contents:
 - `dist/**/*.js` — compiled TypeScript runtime entry points loaded by the
   OpenClaw Gateway. Type declarations stay repository-local because the
   package does not expose a public TypeScript API.
-- `ui/dist/**`, `ui/index.html`, `ui/package.json` — the built Producer
-  Console bundle (React app under `ui/dist/assets/*`) plus the bundle
-  loader / package metadata used by the plugin host.
+- `ui/dist/index.html` — the built, self-contained Producer Console bundle
+  served by the plugin from `ui/dist/`.
 - `templates/**` — install-time templates (`ARTIST.md`, `CURRENT_STATE.md`,
   `HEARTBEAT.md`, `SONGBOOK.md`).
 - `prompts/**` — prompt fragments (`suno-style-generation.md`,
@@ -69,8 +68,28 @@ The `files` array in `package.json` controls the tarball. Current contents:
 - `docs/X_LIVE_PUBLISH_DESIGN.md` — staged X live publish state machine.
 - `docs/PACKAGE_CONTENTS.md` — this file.
 
-A `npm pack --dry-run` against the current `package.json` produces 173
-files at roughly 211 kB packed / 815 kB unpacked.
+### Operator scripts
+
+The package also ships the operator-facing helper scripts that the documentation
+above references (run from the package root):
+
+- `scripts/openclaw-doctor.sh`, `scripts/suno-doctor.sh` — readiness/health checks.
+- `scripts/openclaw-suno-login.sh`, `scripts/openclaw-suno-login.mjs`,
+  `scripts/start-chrome-cdp.sh`, `scripts/suno-profile-diagnose.sh` — Suno
+  browser-lane login and diagnosis.
+- `scripts/reset-config.sh` — config rollback.
+- `scripts/rotate-runtime-logs.sh`, `scripts/snapshot-runtime-state.sh`,
+  `scripts/runtime-disk-usage.sh`, `scripts/cleanup-runtime.sh`,
+  `scripts/runtime-retention-enforce.sh` — runtime maintenance.
+- `scripts/import-obsidian-artist.mjs`, `scripts/import-obsidian-song.mjs` —
+  optional Obsidian archive import (`--source <path>`).
+
+The repo-local OpenClaw sandbox wrappers (`scripts/openclaw-local-*`) are **not**
+shipped; they stay in the repository for contributors.
+
+A `npm pack --dry-run` against the current `package.json` produces the tarball
+described here; the exact file count and size grow as operator docs and scripts
+are added.
 
 ## What stays in the repository only
 
@@ -79,8 +98,10 @@ from the marketplace tarball via `package.json:files` and `.npmignore`.
 They are meant for contributors and runtime developers:
 
 - `src/**`, `tests/**` — TypeScript sources and the test suite.
-- `scripts/**` — repo-local OpenClaw sandbox helpers, smoke tests,
-  cleanup utilities, Suno login helpers, doctor and snapshot tools.
+- `scripts/openclaw-local-*` — repo-local OpenClaw sandbox helpers and smoke
+  tests, plus build/verification tooling (`build-knowledge-bundle.mjs`,
+  `boundary-grep.mjs`, `verify-package.mjs`). Operator-facing scripts ship in the
+  tarball (see "Operator scripts" above).
 - `ui/src/**`, `ui/vite.config.ts` — Producer Console source (the built
   bundle ships under `ui/dist/`).
 - `AGENTS.md`, `CODEX_START_HERE.md`, `SPEC_INDEX.md` — agent
