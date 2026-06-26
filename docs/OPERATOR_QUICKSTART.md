@@ -10,6 +10,11 @@ See also: [TROUBLESHOOTING.md](TROUBLESHOOTING.md),
 [SUNO_BROWSER_DRIVER.md](SUNO_BROWSER_DRIVER.md), and
 [OPERATOR_RUNBOOK.md](OPERATOR_RUNBOOK.md).
 
+> **Before you start:** confirm the prerequisites in the
+> [README "Requirements" section](../README.md#requirements) — macOS, Node.js
+> >= 20, a host `openclaw` CLI on `PATH`, and (for live lanes) the Playwright
+> Chromium binary and the `bird` CLI.
+
 ## 5-Minute First Cycle (mock-only, no external side effects)
 
 Use this section to confirm the Producer Console works end-to-end before

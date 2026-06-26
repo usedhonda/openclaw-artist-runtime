@@ -8,6 +8,19 @@ public platforms such as X, Instagram, and TikTok.
 This repository is structured as a **distribution-ready OpenClaw native plugin package**.
 It is intended to be published to ClawHub and/or npm after implementation and review.
 
+## Requirements
+
+- **macOS** — the Suno browser lane and operator helper scripts are built and
+  tested on macOS.
+- **Node.js >= 20.**
+- **A host OpenClaw install** with the `openclaw` CLI on `PATH`. This package is
+  an OpenClaw plugin loaded by the gateway, not a standalone app.
+- **For the live Suno browser lane:** a Playwright Chromium binary
+  (`npx playwright install chromium`) plus a logged-in Suno browser profile.
+- **For X distribution:** the `bird` CLI on `PATH` with an authenticated local
+  session.
+- Instagram and TikTok are optional, frozen lanes and need no setup by default.
+
 ## Product stance
 
 Artist Runtime is not a private writing assistant. It is a public artist daemon.
