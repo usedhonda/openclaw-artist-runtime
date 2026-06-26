@@ -5,10 +5,11 @@ Runtime tarball (the `npm pack` / ClawHub artifact) and what stays in the
 repository for contributors only.
 
 The published tarball is intentionally narrow: it carries the operator
-runtime, the bundled Producer Console, marketplace metadata, and the
-operator-facing documentation. Source code, tests, scripts, internal
-specifications, and contributor guides stay in the GitHub repository and
-are not part of the marketplace artifact.
+runtime, the bundled Producer Console, marketplace metadata, operator-facing
+documentation, and the operator helper scripts. Source code, tests, internal
+specifications, contributor guides, and the repo-local sandbox scripts
+(`scripts/openclaw-local-*`) stay in the GitHub repository and are not part of
+the marketplace artifact.
 
 ## What ships in the marketplace tarball
 

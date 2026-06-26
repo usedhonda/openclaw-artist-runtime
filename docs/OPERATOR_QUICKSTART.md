@@ -106,8 +106,15 @@ or chat transcript, stop and use
    BIRD_FIREFOX_PROFILE=profile-basename
    ```
 
-3. Start shells through `scripts/openclaw-local-env.sh` so
-   `OPENCLAW_X_FIREFOX_PROFILE` is exported for runtime Bird calls.
+3. Export `OPENCLAW_X_FIREFOX_PROFILE` with that profile basename in the shell
+   that launches the gateway, so runtime Bird calls use the artist profile:
+
+   ```sh
+   export OPENCLAW_X_FIREFOX_PROFILE=profile-basename
+   ```
+
+   (Contributors running the repo-local sandbox can instead source
+   `scripts/openclaw-local-env.sh`, which exports it automatically.)
 4. Confirm the selected account outside the plugin:
 
    ```sh
