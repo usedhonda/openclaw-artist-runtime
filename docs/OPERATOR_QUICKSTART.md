@@ -16,11 +16,24 @@ Use this section to confirm the Producer Console works end-to-end before
 provisioning real Suno or X credentials. It exercises the UI, autopilot
 ticker, and dry-run social path without touching live services.
 
-1. Start the local gateway from the package root:
+1. Start the OpenClaw gateway with this plugin loaded. After installing the
+   plugin into a host OpenClaw (`openclaw plugins install ...`), launch the
+   gateway from the host:
 
    ```sh
-   scripts/openclaw-local-gateway start
+   openclaw gateway run --allow-unconfigured --bind loopback --auth none --port 43134
    ```
+
+   The plugin activates on startup (`activation.onStartup`), so the Producer
+   Console route comes up with the gateway. Keep `--bind loopback` so the
+   gateway is reachable only from this machine; see
+   [GATEWAY_AUTH.md](GATEWAY_AUTH.md) to use a gateway token instead of
+   `--auth none`.
+
+   > Contributors working from a repository clone can use the repo-local
+   > sandbox wrapper instead, which pins an isolated `.local/openclaw` home and
+   > the same port: `scripts/openclaw-local-gateway start`. This wrapper is not
+   > part of the published package.
 
 2. Open the Producer Console in a browser:
 
@@ -138,25 +151,33 @@ operator decision. Their existing skeletons remain test-covered and fail-closed.
 If a frozen-lane event appears, use
 [TROUBLESHOOTING.md#igtiktok-frozen-attempt](TROUBLESHOOTING.md#igtiktok-frozen-attempt).
 
-## 2. Start the local Gateway
+## 2. Start the Gateway
+
+Launch the OpenClaw gateway from the host install with the plugin loaded:
 
 ```sh
-source scripts/openclaw-local-env.sh
-scripts/openclaw-local-gateway start
+openclaw gateway run --allow-unconfigured --bind loopback --auth none --port 43134
 ```
 
-Expected success: the local Gateway reports a running process and the plugin API
-responds.
-
-Useful checks:
+Expected success: the gateway reports a running process and the plugin API
+responds. Confirm the plugin route is up:
 
 ```sh
-scripts/openclaw-local-gateway status
-scripts/openclaw-local-http-smoke.sh
+curl -sS http://127.0.0.1:43134/plugins/artist-runtime/api/status
 ```
+
+`--bind loopback` keeps the gateway reachable only from this machine. To run
+with a gateway token instead of `--auth none`, see
+[GATEWAY_AUTH.md](GATEWAY_AUTH.md).
 
 If the Gateway does not start, use
 [TROUBLESHOOTING.md#gateway-startup-failure](TROUBLESHOOTING.md#gateway-startup-failure).
+
+> Contributors working from a repository clone can use the repo-local sandbox
+> wrapper, which sources `scripts/openclaw-local-env.sh` and pins an isolated
+> `.local/openclaw` home: `scripts/openclaw-local-gateway start` plus
+> `scripts/openclaw-local-gateway status`. These wrappers are not part of the
+> published package.
 
 ## 3. Verify probes
 
