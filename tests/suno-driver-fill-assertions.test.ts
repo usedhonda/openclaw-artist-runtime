@@ -283,4 +283,73 @@ describe("PlaywrightSunoDriver fill assertions", () => {
     expect(page.fills.filter((fill) => fill.selector === lyricsSelector)).toHaveLength(2);
     expect(page.clicks).not.toContain(createSelector);
   });
+
+  it("treats a transient degraded lyrics box (1250) as retryable, reloads to re-measure, and does not call it a truncation", async () => {
+    const page = pageMock();
+    page.maxLengths[lyricsSelector] = 1250; // degraded box, stays degraded across reloads
+    launchPersistentContextMock.mockResolvedValue(contextMock([page]));
+
+    const result = await new PlaywrightSunoDriver(".profile", "skip").create({
+      dryRun: false,
+      authority: "auto_create_and_select_take",
+      runId: "degraded-box",
+      payload: { payloadYaml: "L".repeat(2000) } // fits the real 4800 box but exceeds 1250
+    });
+
+    expect(result.accepted).toBe(false);
+    expect(result.reason).toContain("suno_lyrics_box_degraded");
+    expect(result.reason).not.toContain("lyrics_payload_truncated_before_submit");
+    // initial create goto + two bounded recovery reloads, all to the create URL
+    const createGotos = page.goto.mock.calls.filter((call) => call[0] === SUNO_CREATE_URL).length;
+    expect(createGotos).toBeGreaterThanOrEqual(3);
+    expect(page.clicks).not.toContain(createSelector);
+  });
+
+  it("recovers when a reload restores the normal lyrics box (1250 -> 5000)", async () => {
+    const page = pageMock();
+    page.maxLengths[lyricsSelector] = 1250;
+    let gotoCount = 0;
+    page.goto = vi.fn(async (nextUrl: string) => {
+      page.urlValue = nextUrl;
+      gotoCount += 1;
+      // The initial create navigation keeps the degraded box; the first recovery reload
+      // restores the normal box, so the next measurement passes.
+      if (nextUrl === SUNO_CREATE_URL && gotoCount >= 2) {
+        page.maxLengths[lyricsSelector] = 5000;
+      }
+    });
+    launchPersistentContextMock.mockResolvedValue(contextMock([page]));
+
+    const result = await new PlaywrightSunoDriver(".profile", "skip").create({
+      dryRun: false,
+      authority: "auto_create_and_select_take",
+      runId: "degraded-recover",
+      payload: { payloadYaml: "L".repeat(2000) }
+    });
+
+    expect(result.reason).toBe(PLAYWRIGHT_CREATE_SKIPPED_REASON);
+    expect(result.lyricsTelemetry?.textareaMaxLength).toBe(5000);
+    expect(result.reason).not.toContain("suno_lyrics_box_degraded");
+  });
+
+  it("hard-fails (truncated) when the payload genuinely exceeds the real Suno box, even at the normal maxLength", async () => {
+    const page = pageMock();
+    page.maxLengths[lyricsSelector] = 5000; // normal box
+    launchPersistentContextMock.mockResolvedValue(contextMock([page]));
+
+    const result = await new PlaywrightSunoDriver(".profile", "skip").create({
+      dryRun: false,
+      authority: "auto_create_and_select_take",
+      runId: "genuine-oversize",
+      payload: { payloadYaml: "L".repeat(4900) } // exceeds the real 4800 box
+    });
+
+    expect(result.accepted).toBe(false);
+    expect(result.reason).toContain("lyrics_payload_truncated_before_submit");
+    expect(result.reason).not.toContain("suno_lyrics_box_degraded");
+    // a genuine oversize fails immediately without burning reload attempts
+    const createGotos = page.goto.mock.calls.filter((call) => call[0] === SUNO_CREATE_URL).length;
+    expect(createGotos).toBe(1);
+    expect(page.clicks).not.toContain(createSelector);
+  });
 });

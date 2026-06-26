@@ -1,6 +1,6 @@
 import { applyConfigDefaults } from "../config/schema.js";
 import type { AutopilotRunState, ArtistRuntimeConfig } from "../types.js";
-import { ArtistAutopilotService, readAutopilotRunState, PRODUCER_REVIEW_SUSPENDED_AT } from "./autopilotService.js";
+import { ArtistAutopilotService, readAutopilotRunState, PRODUCER_REVIEW_SUSPENDED_AT, isDegradedLyricsBoxReason } from "./autopilotService.js";
 import { emitRuntimeEvent } from "./runtimeEventBus.js";
 import { getAutopilotFastChainMs, getAutopilotImportPollMs, getAutopilotTickStallMs } from "./runtimeConfig.js";
 import { writeAutopilotHeartbeat } from "./supervisorHealth.js";
@@ -77,7 +77,11 @@ function resolveImportPollMs(): number {
 function isAwaitingSunoImport(state: AutopilotRunState): boolean {
   if (state.paused || state.suspendedAt || state.hardStopReason) return false;
   if (FAST_CHAIN_STOP_STAGES.has(state.stage)) return false;
-  return state.blockedReason === SUNO_IMPORT_WAIT_REASON;
+  if (state.blockedReason === SUNO_IMPORT_WAIT_REASON) return true;
+  // A transient degraded lyrics box self-heals across ticks; re-poll at the same slow
+  // cadence so the create lands within minutes once Suno restores the normal box,
+  // instead of waiting the full cycle interval.
+  return isDegradedLyricsBoxReason(state.blockedReason);
 }
 
 // Progress fingerprint: a same-stage advance (e.g. create -> pending import within

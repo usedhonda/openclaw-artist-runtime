@@ -4,7 +4,7 @@ import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { ensureArtistWorkspace } from "../src/services/artistWorkspace";
 import { ensureSongState, readSongState, updateSongState, writeSongBrief } from "../src/services/artistState";
-import { ArtistAutopilotService, writeAutopilotRunState } from "../src/services/autopilotService";
+import { ArtistAutopilotService, writeAutopilotRunState, isDegradedLyricsBoxReason } from "../src/services/autopilotService";
 import { getRuntimeEventBus, type RuntimeEvent } from "../src/services/runtimeEventBus";
 import { importSunoResults, readLatestSunoRun } from "../src/services/sunoRuns";
 
@@ -116,5 +116,15 @@ describe("autopilot Suno generate stage", () => {
     expect(state.retryCount).toBe(3);
     expect(state.blockedReason).toContain("suno_generate_failed");
     expect(events.some((event) => event.type === "suno_generate_failed")).toBe(true);
+  });
+
+  it("recognizes a transient degraded lyrics-box reason regardless of stage prefix", () => {
+    // The driver surfaces suno_lyrics_box_degraded; the autopilot must treat it as a
+    // retryable self-heal (not a hard truncation / pause) wherever the marker appears.
+    expect(isDegradedLyricsBoxReason("suno_generate_retry:suno_lyrics_box_degraded: transient cap")).toBe(true);
+    expect(isDegradedLyricsBoxReason("suno_lyrics_box_degraded_unrecovered: capped")).toBe(true);
+    expect(isDegradedLyricsBoxReason("suno_generate_failed:lyrics_payload_truncated_before_submit")).toBe(false);
+    expect(isDegradedLyricsBoxReason(undefined)).toBe(false);
+    expect(isDegradedLyricsBoxReason(null)).toBe(false);
   });
 });

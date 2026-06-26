@@ -36,6 +36,13 @@ export const PLAYWRIGHT_CREATE_NETWORK_REASON = "playwright_create_network_error
 export const PLAYWRIGHT_CREATE_DOM_MISSING_REASON = "playwright_create_dom_missing";
 export const PLAYWRIGHT_CREATE_LOGIN_EXPIRED_REASON = "playwright_create_login_expired";
 export const PLAYWRIGHT_CREATE_RATE_LIMITED_REASON = "playwright_create_rate_limited";
+// Suno's lyrics textarea maxLength fluctuates between the normal box (5000) and a
+// transient degraded box (1250) depending on UI state / gradual rollout
+// (knowledge/suno_v55_reference.md). A correct payload that fits the real box must NOT
+// hard-fail when Suno momentarily serves the 1250 cap — it is retryable, so a reload
+// (driver) and a soft backoff retry (autopilot) can land the take once the box returns.
+export const PLAYWRIGHT_LYRICS_BOX_DEGRADED_REASON = "suno_lyrics_box_degraded";
+export const PLAYWRIGHT_LYRICS_BOX_DEGRADED_RELOAD_ATTEMPTS = 2;
 
 interface OpenedSunoContext {
   context: BrowserContext;
@@ -469,8 +476,7 @@ export class PlaywrightSunoDriver implements SunoBrowserDriver {
   ): Promise<SunoLyricsSubmitTelemetry | undefined> {
     let lyricsTelemetry: SunoLyricsSubmitTelemetry | undefined;
     if (input.lyrics) {
-      await this.ensureLyricsMode(page);
-      lyricsTelemetry = await this.fillLyricsTextAndMeasure(page.locator('textarea[data-testid="lyrics-textarea"]'), input.lyrics);
+      lyricsTelemetry = await this.fillLyricsWithDegradedRecovery(page, input.lyrics);
     }
 
     if (input.style) {
@@ -519,6 +525,47 @@ export class PlaywrightSunoDriver implements SunoBrowserDriver {
     return lyricsTelemetry;
   }
 
+  // Suno can momentarily serve a degraded 1250-char lyrics box (see
+  // PLAYWRIGHT_LYRICS_BOX_DEGRADED_REASON). When that happens for a payload that fits the
+  // real box, reload the create page to re-measure a fresh maxLength and catch the normal
+  // 5000 box within a bounded number of attempts. Lyrics are filled first in
+  // fillCreateForm, so a reload here cannot clobber already-filled style/title/exclude.
+  private async fillLyricsWithDegradedRecovery(page: Page, lyrics: string): Promise<SunoLyricsSubmitTelemetry> {
+    for (let attempt = 0; attempt <= PLAYWRIGHT_LYRICS_BOX_DEGRADED_RELOAD_ATTEMPTS; attempt += 1) {
+      await this.ensureLyricsMode(page);
+      try {
+        return await this.fillLyricsTextAndMeasure(
+          page.locator('textarea[data-testid="lyrics-textarea"]'),
+          lyrics
+        );
+      } catch (error) {
+        const message = this.errorMessage(error);
+        if (
+          !message.includes(PLAYWRIGHT_LYRICS_BOX_DEGRADED_REASON) ||
+          attempt === PLAYWRIGHT_LYRICS_BOX_DEGRADED_RELOAD_ATTEMPTS
+        ) {
+          throw error;
+        }
+        // Transient degraded box: reload to force Suno to re-render the editor so the
+        // next attempt measures a fresh maxLength (usually back to the normal box).
+        const reloadablePage = page as unknown as {
+          goto?: (url: string, options?: { waitUntil?: string; timeout?: number }) => Promise<unknown>;
+          waitForLoadState?: (state?: string) => Promise<unknown>;
+        };
+        if (reloadablePage.goto) {
+          await reloadablePage
+            .goto(SUNO_CREATE_URL, { waitUntil: "domcontentloaded", timeout: 20_000 })
+            .catch(() => undefined);
+        }
+        if (reloadablePage.waitForLoadState) {
+          await reloadablePage.waitForLoadState("domcontentloaded").catch(() => undefined);
+        }
+        await sleep(this.polling.intervalMs);
+      }
+    }
+    throw new Error(`${PLAYWRIGHT_LYRICS_BOX_DEGRADED_REASON}: exhausted reload attempts`);
+  }
+
   private async fillLyricsTextAndMeasure(locator: Locator, expected: string): Promise<SunoLyricsSubmitTelemetry> {
     const result = await this.fillTextAndAssert(locator, "lyrics", expected);
     const bareLyricsChars = extractLyricsBody(expected).length;
@@ -561,10 +608,19 @@ export class PlaywrightSunoDriver implements SunoBrowserDriver {
           }
           return undefined;
         }, undefined);
+        const realBox = effectiveLyricsBoxLimit({});
         const effectiveLimit = effectiveLyricsBoxLimit({ domMaxLength: maxLength });
-        if (expected.length > effectiveLimit) {
+        if (expected.length > realBox) {
+          // Genuine oversize payload (exceeds the real Suno box) — hard fail-closed.
           throw new Error(
-            `lyrics_payload_truncated_before_submit: payload exceeds Suno lyrics textarea limit; expectedLength=${expected.length} effectiveLimit=${effectiveLimit} textareaMaxLength=${maxLength ?? "unknown"}`
+            `lyrics_payload_truncated_before_submit: payload exceeds Suno lyrics textarea limit; expectedLength=${expected.length} effectiveLimit=${realBox} textareaMaxLength=${maxLength ?? "unknown"}`
+          );
+        }
+        if (maxLength && maxLength > 0 && expected.length > effectiveLimit) {
+          // Payload fits the real box but Suno is serving a transient degraded cap.
+          // Retryable: a reload usually restores the normal box.
+          throw new Error(
+            `${PLAYWRIGHT_LYRICS_BOX_DEGRADED_REASON}: transient Suno lyrics textarea cap; expectedLength=${expected.length} textareaMaxLength=${maxLength} realBox=${realBox}`
           );
         }
       }
@@ -591,6 +647,13 @@ export class PlaywrightSunoDriver implements SunoBrowserDriver {
     }
 
     if (fieldName === "lyrics" && reflected.length > 0 && expected.startsWith(reflected)) {
+      const realBox = effectiveLyricsBoxLimit({});
+      if (expected.length <= realBox && maxLength && maxLength > 0 && reflected.length <= maxLength) {
+        // Payload fits the real box but the DOM truncated to a transient degraded cap.
+        throw new Error(
+          `${PLAYWRIGHT_LYRICS_BOX_DEGRADED_REASON}: reflected lyrics shorter than payload under degraded box; expectedLength=${expected.length} actualLength=${reflected.length} textareaMaxLength=${maxLength}`
+        );
+      }
       throw new Error(
         `lyrics_payload_truncated_before_submit: reflected lyrics value shorter than payload; expectedLength=${expected.length} actualLength=${reflected.length}`
       );
@@ -784,6 +847,9 @@ export class PlaywrightSunoDriver implements SunoBrowserDriver {
 
   private classifyCreateFailure(error: unknown): string {
     const message = this.errorMessage(error);
+    if (message.includes(PLAYWRIGHT_LYRICS_BOX_DEGRADED_REASON)) {
+      return PLAYWRIGHT_LYRICS_BOX_DEGRADED_REASON;
+    }
     if (/(rate limit|too many requests|http 429|\b429\b)/i.test(message)) {
       return PLAYWRIGHT_CREATE_RATE_LIMITED_REASON;
     }

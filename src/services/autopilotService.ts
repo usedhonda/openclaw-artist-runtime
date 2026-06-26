@@ -24,6 +24,7 @@ import { emitRuntimeEvent } from "./runtimeEventBus.js";
 import { resetIfNewDay } from "./sunoBudgetLedger.js";
 import { reserveSunoGenerationBudget, type SunoBudgetGuardResult } from "./sunoBudgetGuard.js";
 import { classifySunoGenerateFailure, nextSunoRetryDecision } from "./sunoRetryHandler.js";
+import { PLAYWRIGHT_LYRICS_BOX_DEGRADED_REASON } from "./sunoPlaywrightDriver.js";
 import { collectObservations, type XObservationContext } from "./xObservationCollector.js";
 import { collectNewsObservations } from "./newsObservationCollector.js";
 import { proposeTheme } from "./themeProposer.js";
@@ -142,6 +143,16 @@ function releaseAfterSunoTakeUrlReady(baseState: AutopilotRunState): AutopilotRu
 
 export function shouldEmitOperationalEpisode(existing: AutopilotRunState, marker: string): boolean {
   return existing.blockedReason !== marker && existing.lastError !== marker;
+}
+
+// Suno's lyrics box transiently degrades (5000 -> 1250 maxLength). The driver surfaces
+// this as a retryable suno_lyrics_box_degraded reason (not a hard truncation), so the
+// autopilot self-heals across ticks instead of hard-pausing for the operator. The cap
+// bounds the self-heal window so a genuinely stuck box eventually surfaces to the producer.
+export const SUNO_LYRICS_BOX_DEGRADED_MARKER = PLAYWRIGHT_LYRICS_BOX_DEGRADED_REASON;
+const SUNO_LYRICS_BOX_DEGRADED_MAX_ATTEMPTS = 8;
+export function isDegradedLyricsBoxReason(value?: string | null): boolean {
+  return Boolean(value && value.includes(SUNO_LYRICS_BOX_DEGRADED_MARKER));
 }
 
 function budgetWindowBlockedReason(budget: SunoBudgetGuardResult): string {
@@ -812,6 +823,7 @@ async function handleSunoGenerateFailure(
   reason: string
 ): Promise<AutopilotRunState> {
   const retryCount = existing.retryCount + 1;
+  const degraded = isDegradedLyricsBoxReason(reason);
   emitRuntimeEvent({
     type: "suno_create_failed",
     songId: song.songId,
@@ -819,6 +831,49 @@ async function handleSunoGenerateFailure(
     retryCount,
     timestamp: Date.now()
   });
+  if (degraded && retryCount < SUNO_LYRICS_BOX_DEGRADED_MAX_ATTEMPTS) {
+    // Transient Suno UI degradation: stay un-paused and self-heal on later ticks. The
+    // payload is valid for the real box; only Suno's momentary 1250 cap blocked it.
+    emitRuntimeEvent({
+      type: "suno_generate_retry",
+      songId: song.songId,
+      reason,
+      retryCount,
+      timestamp: Date.now()
+    });
+    return writeStageState(root, existing, {
+      ...baseState,
+      currentSongId: song.songId,
+      stage: "suno_generation",
+      paused: false,
+      blockedReason: `suno_generate_retry:${reason}`,
+      lastError: reason,
+      lastRunAt: new Date().toISOString(),
+      retryCount,
+      cycleCount: existing.cycleCount + 1
+    });
+  }
+  if (degraded) {
+    // Self-heal window exhausted: surface to the producer so the operator can intervene.
+    emitRuntimeEvent({
+      type: "suno_generate_failed",
+      songId: song.songId,
+      reason,
+      retryCount,
+      timestamp: Date.now()
+    });
+    return writeStageState(root, existing, {
+      ...baseState,
+      currentSongId: song.songId,
+      stage: "paused",
+      paused: true,
+      pausedReason: `suno_lyrics_box_degraded_unrecovered:${reason}`,
+      blockedReason: `suno_lyrics_box_degraded_unrecovered:${reason}`,
+      lastError: reason,
+      retryCount,
+      cycleCount: existing.cycleCount + 1
+    });
+  }
   if (retryCount >= 3) {
     emitRuntimeEvent({
       type: "suno_generate_failed",
@@ -1296,31 +1351,45 @@ export class ArtistAutopilotService {
               cycleCount: existing.cycleCount + 1
             });
           }
-          const retryDecision = nextSunoRetryDecision(existing);
-          if (retryDecision.action === "wait") {
-            if (shouldEmitOperationalEpisode(existing, retryDecision.reason)) {
-              emitRuntimeEvent({
-                type: "suno_generate_retry",
-                songId: song.songId,
-                reason: retryDecision.reason,
-                retryCount: existing.retryCount,
-                nextRetryAt: retryDecision.nextRetryAt,
-                timestamp: Date.now()
+          if (isDegradedLyricsBoxReason(existing.blockedReason)) {
+            // Transient degraded box: skip the generic exponential backoff and re-attempt
+            // the create this tick; only pause once the self-heal window is exhausted.
+            if (existing.retryCount >= SUNO_LYRICS_BOX_DEGRADED_MAX_ATTEMPTS) {
+              return handleSunoGenerateFailure(
+                input.workspaceRoot,
+                existing,
+                baseState,
+                song,
+                existing.lastError ?? `${SUNO_LYRICS_BOX_DEGRADED_MARKER}:cap_reached`
+              );
+            }
+          } else {
+            const retryDecision = nextSunoRetryDecision(existing);
+            if (retryDecision.action === "wait") {
+              if (shouldEmitOperationalEpisode(existing, retryDecision.reason)) {
+                emitRuntimeEvent({
+                  type: "suno_generate_retry",
+                  songId: song.songId,
+                  reason: retryDecision.reason,
+                  retryCount: existing.retryCount,
+                  nextRetryAt: retryDecision.nextRetryAt,
+                  timestamp: Date.now()
+                });
+              }
+              return writeStageState(input.workspaceRoot, existing, {
+                ...baseState,
+                currentSongId: song.songId,
+                stage: "suno_generation",
+                lastRunAt: existing.lastRunAt,
+                blockedReason: retryDecision.reason,
+                lastError: undefined,
+                lastSuccessfulStage: existing.lastSuccessfulStage,
+                cycleCount: existing.cycleCount + 1
               });
             }
-            return writeStageState(input.workspaceRoot, existing, {
-              ...baseState,
-              currentSongId: song.songId,
-              stage: "suno_generation",
-              lastRunAt: existing.lastRunAt,
-              blockedReason: retryDecision.reason,
-              lastError: undefined,
-              lastSuccessfulStage: existing.lastSuccessfulStage,
-              cycleCount: existing.cycleCount + 1
-            });
-          }
-          if (retryDecision.action === "failed") {
-            return handleSunoGenerateFailure(input.workspaceRoot, existing, baseState, song, retryDecision.reason);
+            if (retryDecision.action === "failed") {
+              return handleSunoGenerateFailure(input.workspaceRoot, existing, baseState, song, retryDecision.reason);
+            }
           }
           const pendingImport = await importPendingSunoGeneration(input.workspaceRoot, song.songId, config);
           if (pendingImport?.imported) {
@@ -1347,18 +1416,22 @@ export class ArtistAutopilotService {
               cycleCount: existing.cycleCount + 1
             });
           }
-          const budget = await reserveSunoGenerationBudget(input.workspaceRoot, 1);
-          if (!budget.ok) {
-            const budgetBlockedReason = emitSunoBudgetBlockedIfNeeded(existing, song.songId, budget);
-            return writeStageState(input.workspaceRoot, existing, {
-              ...baseState,
-              currentSongId: song.songId,
-              stage: "suno_generation",
-              blockedReason: budgetBlockedReason,
-              lastError: budgetBlockedReason,
-              lastSuccessfulStage: existing.lastSuccessfulStage,
-              cycleCount: existing.cycleCount + 1
-            });
+          // A degraded-box self-heal retry already reserved a generation on its first
+          // attempt (the create fails before submitting), so skip re-reserving each retry.
+          if (!isDegradedLyricsBoxReason(existing.blockedReason)) {
+            const budget = await reserveSunoGenerationBudget(input.workspaceRoot, 1);
+            if (!budget.ok) {
+              const budgetBlockedReason = emitSunoBudgetBlockedIfNeeded(existing, song.songId, budget);
+              return writeStageState(input.workspaceRoot, existing, {
+                ...baseState,
+                currentSongId: song.songId,
+                stage: "suno_generation",
+                blockedReason: budgetBlockedReason,
+                lastError: budgetBlockedReason,
+                lastSuccessfulStage: existing.lastSuccessfulStage,
+                cycleCount: existing.cycleCount + 1
+              });
+            }
           }
           let generateError: unknown;
           const run = await generateSunoRun({ workspaceRoot: input.workspaceRoot, songId: song.songId, config }).catch((error) => {
