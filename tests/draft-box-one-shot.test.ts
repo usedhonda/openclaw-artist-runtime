@@ -81,7 +81,8 @@ async function registerCreate(root: string, songId: string) {
     chatId: 123,
     messageId: 77,
     userId: 123,
-    now: Date.parse("2026-06-01T00:00:00.000Z")
+    // routeTelegramCallback uses the real clock for expiry checks, so register relative to now.
+    now: Date.now()
   });
 }
 
