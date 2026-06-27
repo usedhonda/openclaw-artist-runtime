@@ -4,7 +4,7 @@ import { join } from "node:path";
 
 export interface PersonaCompletionMarker {
   completedAt: string;
-  source: "telegram";
+  source: "telegram" | "web";
   version: 1;
 }
 
@@ -41,8 +41,9 @@ async function readCompletionMarker(root: string): Promise<PersonaCompletionMark
   }
   try {
     const parsed = JSON.parse(contents) as Partial<PersonaCompletionMarker>;
-    return parsed.source === "telegram" && parsed.version === 1 && typeof parsed.completedAt === "string"
-      ? { completedAt: parsed.completedAt, source: "telegram", version: 1 }
+    const source = parsed.source === "telegram" || parsed.source === "web" ? parsed.source : undefined;
+    return source && parsed.version === 1 && typeof parsed.completedAt === "string"
+      ? { completedAt: parsed.completedAt, source, version: 1 }
       : undefined;
   } catch {
     return undefined;

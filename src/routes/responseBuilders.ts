@@ -28,7 +28,11 @@ import { listPendingSpawnProposals } from "../services/spawnProposalQueue.js";
 import { buildEffectiveDryRunMap, resolvePlatformSocialDryRun } from "../services/socialDryRunResolver.js";
 import { readDistributionDetectionState } from "../services/songDistributionPoller.js";
 import { secretLikePattern } from "../services/personaMigrator.js";
+import { proposePersonaFields } from "../services/personaProposer.js";
+import { readArtistPersonaSummary, writeArtistPersona, writePersonaCompletionMarker } from "../services/personaFileBuilder.js";
 import { describePersonaSetupReasons, readPersonaSetupStatus } from "../services/personaSetupDetector.js";
+import { readSoulPersonaSummary, writeSoulPersona } from "../services/soulFileBuilder.js";
+import { readSnapshotPersonaFile, snapshotPersonaFilenames, writeSnapshotPersonaFile, type SnapshotPersonaLayer } from "../services/snapshotPersonaFileBuilder.js";
 import { STATUS_SUNO_ARTIFACT_LIMIT } from "../services/sunoArtifacts.js";
 import { SunoBudgetTracker } from "../services/sunoBudget.js";
 import { readBudgetDetail as readSunoDailyBudgetDetail, readBudgetState as readSunoDailyBudgetState } from "../services/sunoBudgetLedger.js";
@@ -43,6 +47,7 @@ import { integerFromPayloadOrQuery, isLocalRoutePayload, optionalInteger, payloa
 import { serializeRuntimeEventForSse } from "./runtimeEventStream.js";
 import type {
   ArtistRuntimeConfig,
+  AiReviewProvider,
   DistributionSummary,
   MusicSummary,
   PlatformStatus,
@@ -59,7 +64,9 @@ import type {
   SunoWorkerStatus,
   SunoRunRecord,
   SunoDiagnosticsExportResponse,
-  SunoDiagnosticsImportOutcome
+  SunoDiagnosticsImportOutcome,
+  PersonaAnswers,
+  PersonaField
 } from "../types.js";
 
 function logRouteFallback(reason: string, path: string, error?: unknown): void {
@@ -566,6 +573,152 @@ export function payloadContainsSecretLikeText(payload: Record<string, unknown>, 
     const value = payload[key];
     return typeof value === "string" && secretLikePattern.test(value);
   });
+}
+
+export interface PersonaRouteResponse {
+  artist: Awaited<ReturnType<typeof readArtistPersonaSummary>>;
+  soul: Awaited<ReturnType<typeof readSoulPersonaSummary>>;
+  identity: { text: string };
+  producer: { text: string };
+  inner: { text: string };
+  setup: Awaited<ReturnType<typeof readPersonaSetupStatus>> & { reasonsText: string };
+  aiDraftSupported: ["artist", "soul"];
+  provider: AiReviewProvider;
+}
+
+const personaFieldWhitelist = new Set<PersonaField>([
+  "artistName",
+  "identityLine",
+  "soundDna",
+  "obsessions",
+  "lyricsRules",
+  "socialVoice",
+  "soul-tone",
+  "soul-refusal"
+]);
+
+const snapshotPersonaLayers = new Set<SnapshotPersonaLayer>(["identity", "producer", "inner"]);
+
+function recordFromPayload(payload: Record<string, unknown>, key: string): Record<string, unknown> {
+  const nested = payload[key];
+  return typeof nested === "object" && nested !== null && !Array.isArray(nested)
+    ? nested as Record<string, unknown>
+    : payload;
+}
+
+function stringField(record: Record<string, unknown>, key: string): string | undefined {
+  return typeof record[key] === "string" ? record[key] : undefined;
+}
+
+function artistPersonaFromPayload(payload: Record<string, unknown>): Partial<PersonaAnswers> {
+  const record = recordFromPayload(payload, "artist");
+  return {
+    artistName: stringField(record, "artistName"),
+    identityLine: stringField(record, "identityLine"),
+    soundDna: stringField(record, "soundDna"),
+    obsessions: stringField(record, "obsessions"),
+    lyricsRules: stringField(record, "lyricsRules"),
+    socialVoice: stringField(record, "socialVoice")
+  };
+}
+
+function soulPersonaFromPayload(payload: Record<string, unknown>): Partial<PersonaAnswers> {
+  const record = recordFromPayload(payload, "soul");
+  return {
+    conversationTone: stringField(record, "conversationTone"),
+    refusalStyle: stringField(record, "refusalStyle")
+  };
+}
+
+function snapshotTextFromPayload(payload: Record<string, unknown>, layer: SnapshotPersonaLayer): string {
+  const record = recordFromPayload(payload, layer);
+  const text = stringField(record, "text");
+  return text ?? "";
+}
+
+function personaRouteError(error: unknown): Record<string, unknown> {
+  const message = error instanceof Error ? error.message : String(error);
+  if (message === "persona_block_contains_secret_like_text") {
+    return { error: "persona_block_contains_secret_like_text", statusCode: 400 };
+  }
+  if (message === "snapshot_persona_too_long") {
+    return { error: "snapshot_persona_too_long", statusCode: 400 };
+  }
+  return { error: "persona_route_failed", message, statusCode: 500 };
+}
+
+export async function buildPersonaResponse(config?: Partial<ArtistRuntimeConfig>): Promise<PersonaRouteResponse> {
+  const mergedConfig = await resolveRuntimeConfig(config);
+  const root = mergedConfig.artist.workspaceRoot;
+  const [artist, soul, identity, producer, inner, setupStatus] = await Promise.all([
+    readArtistPersonaSummary(root),
+    readSoulPersonaSummary(root),
+    readSnapshotPersonaFile(root, snapshotPersonaFilenames.identity),
+    readSnapshotPersonaFile(root, snapshotPersonaFilenames.producer),
+    readSnapshotPersonaFile(root, snapshotPersonaFilenames.inner),
+    readPersonaSetupStatus(root)
+  ]);
+  return {
+    artist,
+    soul,
+    identity: { text: identity },
+    producer: { text: producer },
+    inner: { text: inner },
+    setup: { ...setupStatus, reasonsText: describePersonaSetupReasons(setupStatus.reasons) },
+    aiDraftSupported: ["artist", "soul"],
+    provider: mergedConfig.aiReview.provider
+  };
+}
+
+export async function buildPersonaWriteResponse(
+  config: Partial<ArtistRuntimeConfig> | undefined,
+  layer: "artist" | "soul" | SnapshotPersonaLayer,
+  payload: Record<string, unknown>
+): Promise<Record<string, unknown>> {
+  try {
+    const mergedConfig = await resolveRuntimeConfig(config);
+    const root = mergedConfig.artist.workspaceRoot;
+    const result = layer === "artist"
+      ? await writeArtistPersona(root, artistPersonaFromPayload(payload))
+      : layer === "soul"
+        ? await writeSoulPersona(root, soulPersonaFromPayload(payload))
+        : await writeSnapshotPersonaFile(root, snapshotPersonaFilenames[layer], snapshotTextFromPayload(payload, layer));
+    return { ok: true, layer, result, persona: await buildPersonaResponse(mergedConfig) };
+  } catch (error) {
+    return personaRouteError(error);
+  }
+}
+
+export async function buildPersonaProposeResponse(
+  config: Partial<ArtistRuntimeConfig> | undefined,
+  payload: Record<string, unknown>
+): Promise<unknown> {
+  const rawFields = Array.isArray(payload.fields) ? payload.fields : [];
+  if (rawFields.length === 0 || rawFields.some((field) => typeof field !== "string" || !personaFieldWhitelist.has(field as PersonaField))) {
+    return { error: "invalid_persona_fields", statusCode: 400 };
+  }
+  const fields = rawFields as PersonaField[];
+  const mergedConfig = await resolveRuntimeConfig(config);
+  const root = mergedConfig.artist.workspaceRoot;
+  const [artistMd, soulMd] = await Promise.all([
+    readFile(join(root, "ARTIST.md"), "utf8").catch(() => ""),
+    readFile(join(root, "SOUL.md"), "utf8").catch(() => "")
+  ]);
+  return proposePersonaFields(
+    { fields, source: { artistMd, soulMd } },
+    { aiReviewProvider: mergedConfig.aiReview.provider }
+  );
+}
+
+export async function buildPersonaCompleteResponse(config?: Partial<ArtistRuntimeConfig>): Promise<Record<string, unknown>> {
+  const mergedConfig = await resolveRuntimeConfig(config);
+  const path = await writePersonaCompletionMarker(mergedConfig.artist.workspaceRoot, new Date(), "web");
+  const setup = (await buildPersonaResponse(mergedConfig)).setup;
+  return { ok: true, path, setup };
+}
+
+export function isPersonaSnapshotLayer(value: string | undefined): value is SnapshotPersonaLayer {
+  return Boolean(value && snapshotPersonaLayers.has(value as SnapshotPersonaLayer));
 }
 
 export function proposalRouteError(error: unknown): Record<string, unknown> {

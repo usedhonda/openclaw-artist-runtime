@@ -272,12 +272,18 @@ export async function resetArtistPersonaBlock(root: string): Promise<boolean> {
   return true;
 }
 
-export async function writePersonaCompletionMarker(root: string, now = new Date()): Promise<string> {
+export type PersonaCompletionSource = "telegram" | "web";
+
+export async function writePersonaCompletionMarker(
+  root: string,
+  now = new Date(),
+  source: PersonaCompletionSource = "telegram"
+): Promise<string> {
   const path = completionMarkerPath(root);
   await mkdir(dirname(path), { recursive: true });
   await writeFile(
     path,
-    `${JSON.stringify({ completedAt: now.toISOString(), source: "telegram", version: 1 }, null, 2)}\n`,
+    `${JSON.stringify({ completedAt: now.toISOString(), source, version: 1 }, null, 2)}\n`,
     "utf8"
   );
   return path;

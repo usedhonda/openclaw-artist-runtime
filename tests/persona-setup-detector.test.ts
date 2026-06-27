@@ -9,11 +9,11 @@ function makeRoot(): string {
   return mkdtempSync(join(tmpdir(), "artist-runtime-persona-detector-"));
 }
 
-async function writeCompletedMarker(root: string): Promise<void> {
+async function writeCompletedMarker(root: string, source: "telegram" | "web" = "telegram"): Promise<void> {
   await mkdir(join(root, "runtime"), { recursive: true });
   await writeFile(
     join(root, "runtime", "persona-completed.json"),
-    `${JSON.stringify({ completedAt: "2026-04-27T00:00:00.000Z", source: "telegram", version: 1 })}\n`,
+    `${JSON.stringify({ completedAt: "2026-04-27T00:00:00.000Z", source, version: 1 })}\n`,
     "utf8"
   );
 }
@@ -68,6 +68,21 @@ describe("persona setup detector", () => {
     expect(status.needsSetup).toBe(false);
     expect(status.completed).toBe(true);
     expect(status.reasons).toEqual([]);
+  });
+
+  it("accepts web completion markers from the Producer Room setup tab", async () => {
+    const root = makeRoot();
+    await writeCompletedMarker(root, "web");
+    await writeFile(
+      join(root, "ARTIST.md"),
+      ["# ARTIST.md", "", "Artist name: Web Artist", "", "```yaml", "name: Web Artist", "```"].join("\n"),
+      "utf8"
+    );
+
+    const status = await readPersonaSetupStatus(root);
+
+    expect(status.completed).toBe(true);
+    expect(status.marker?.source).toBe("web");
   });
 
   it("treats an imported non-default ARTIST.md without a marker as externally completed", async () => {

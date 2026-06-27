@@ -17,7 +17,7 @@ import { createSongIdea } from "../services/songIdeation.js";
 import { buildSongbookLookup, syncSongbookFromITunes } from "../services/songbookSyncer.js";
 import { selectTake } from "../services/takeSelection.js";
 import { exportWindowFromPayload, payloadPathSegments, payloadRecord, payloadRequestMethod, payloadRequestPath, platformFromSegment, sunoDiagnosticsDaysFromPayload } from "./payloadHelpers.js";
-import { INSTAGRAM_DEFAULT_TOKEN_EXPIRY_MS, appendConfigOverridesAudit, buildAlertsResponse, buildArtistMindResponse, buildAuditLogResponse, buildCallbackActionsResponse, buildConfigOverridesResponse, buildConfigResponse, buildFailedNotifyListResponse, buildFailedNotifyReplayResponse, buildInternalCallbackDispatchResponse, buildNotifyReviewResponse, buildPlatformDetailResponse, buildPlatformsResponse, buildProducerCallbackDispatchResponse, buildPromptLedgerResponse, buildRecoveryResponse, buildSafeTickTriggerResponse, buildSongDetailResponse, buildSongEventsResponse, buildSongLedgerResponse, buildSongsResponse, buildSpawnProposalsResponse, buildStatusExportResponse, buildStatusResponse, buildSunoDiagnosticsExportResponse, buildSunoStatusResponse, isInstagramTokenExpiringSoon, payloadContainsSecretLikeText, proposalFieldsFromPayload, proposalRouteError, runtimeSafetyPatchFromPayload } from "./responseBuilders.js";
+import { INSTAGRAM_DEFAULT_TOKEN_EXPIRY_MS, appendConfigOverridesAudit, buildAlertsResponse, buildArtistMindResponse, buildAuditLogResponse, buildCallbackActionsResponse, buildConfigOverridesResponse, buildConfigResponse, buildFailedNotifyListResponse, buildFailedNotifyReplayResponse, buildInternalCallbackDispatchResponse, buildNotifyReviewResponse, buildPersonaCompleteResponse, buildPersonaProposeResponse, buildPersonaResponse, buildPersonaWriteResponse, buildPlatformDetailResponse, buildPlatformsResponse, buildProducerCallbackDispatchResponse, buildPromptLedgerResponse, buildRecoveryResponse, buildSafeTickTriggerResponse, buildSongDetailResponse, buildSongEventsResponse, buildSongLedgerResponse, buildSongsResponse, buildSpawnProposalsResponse, buildStatusExportResponse, buildStatusResponse, buildSunoDiagnosticsExportResponse, buildSunoStatusResponse, isInstagramTokenExpiringSoon, isPersonaSnapshotLayer, payloadContainsSecretLikeText, proposalFieldsFromPayload, proposalRouteError, runtimeSafetyPatchFromPayload } from "./responseBuilders.js";
 import { registerRuntimeEventStreamRoute } from "./runtimeEventStream.js";
 import { producerConsoleHtml } from "./uiFallback.js";
 import type { ArtistRuntimeConfig } from "../types.js";
@@ -34,6 +34,7 @@ export {
   buildFailedNotifyReplayResponse,
   buildInternalCallbackDispatchResponse,
   buildNotifyReviewResponse,
+  buildPersonaResponse,
   buildPlatformDetailResponse,
   buildPlatformsResponse,
   buildProducerCallbackDispatchResponse,
@@ -75,6 +76,39 @@ export function registerRoutes(api: unknown): void {
     method: "GET",
     path: "/plugins/artist-runtime/api/status",
     handler: async (input) => buildStatusResponse(payloadRecord(input).config as Partial<ArtistRuntimeConfig> | undefined)
+  });
+
+  safeRegisterRoute(api, {
+    method: ["GET", "POST"],
+    match: "prefix",
+    path: "/plugins/artist-runtime/api/persona",
+    handler: async (input) => {
+      const payload = payloadRecord(input);
+      const method = payloadRequestMethod(payload);
+      const segments = payloadPathSegments(payload, "/plugins/artist-runtime/api/persona");
+      const config = payload.config as Partial<ArtistRuntimeConfig> | undefined;
+      if (method === "GET" && segments.length === 0) {
+        return buildPersonaResponse(config);
+      }
+      if (method === "POST" && segments.length === 1) {
+        const layer = segments[0];
+        if (layer === "artist" || layer === "soul" || isPersonaSnapshotLayer(layer)) {
+          return buildPersonaWriteResponse(config, layer, payload);
+        }
+        if (layer === "propose") {
+          return buildPersonaProposeResponse(config, payload);
+        }
+        if (layer === "complete") {
+          return buildPersonaCompleteResponse(config);
+        }
+      }
+      return {
+        error: "unknown_persona_route",
+        method,
+        requestPath: payloadRequestPath(payload, "/plugins/artist-runtime/api/persona"),
+        statusCode: 404
+      };
+    }
   });
 
   safeRegisterRoute(api, {
