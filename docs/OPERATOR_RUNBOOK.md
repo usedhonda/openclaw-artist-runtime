@@ -17,6 +17,21 @@ See also: [OPERATOR_QUICKSTART.md](OPERATOR_QUICKSTART.md),
 > - `scripts/openclaw-local-gateway start` / `.local/openclaw/bin/openclaw gateway stop` → `openclaw gateway run --allow-unconfigured --bind loopback --auth none --port 43134` (see [OPERATOR_QUICKSTART.md](OPERATOR_QUICKSTART.md))
 > - `scripts/openclaw-local-env.sh` → repo-only; export the documented environment variables directly in your shell
 
+## Operator sections
+
+Day-to-day operator topics are listed here. The `## Plan vX.Y …` sections
+further down are implementation change history — skip them for routine
+operation.
+
+- [Quick checks](#quick-checks) — doctor and health
+- [Autopilot mode](#autopilot-mode)
+- [Telegram opt-in](#telegram-opt-in)
+- [First-run experience: artist persona](#first-run-experience-telegram-artist-persona)
+- [Runtime log rotation](#runtime-log-rotation)
+- [Runtime state snapshots](#runtime-state-snapshots)
+- [Cron examples](#cron-examples)
+- [See also](#see-also)
+
 ## Quick checks
 
 Run the doctor from the package root:
