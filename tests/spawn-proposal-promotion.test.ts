@@ -80,7 +80,11 @@ async function registerInject(root: string, songId = "spawn_waiting") {
     chatId: 123,
     messageId: 77,
     userId: 123,
-    now: Date.parse("2026-05-28T00:00:00.000Z")
+    // Register relative to the real clock so the producer_decision callback
+    // (30-day TTL) is never aged out by wall-clock drift; routeTelegramCallback
+    // checks expiry against Date.now(). A hardcoded absolute date here was a
+    // time-bomb that expired once real time passed 2026-06-27.
+    now: Date.now()
   });
 }
 
