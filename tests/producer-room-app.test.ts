@@ -3,7 +3,9 @@ import { renderToStaticMarkup } from "../ui/node_modules/react-dom/server.node.j
 import { describe, expect, it } from "vitest";
 import { runCycleFeedback } from "../ui/src/App";
 import { DiagnosticsView, RoomHeader, SettingsView, SongsView } from "../ui/src/ProducerRoomApp";
+import { SetupView } from "../ui/src/components/SetupView";
 import { buildConfigDraft, buildConfigUpdatePatch } from "../ui/src/configEditor";
+import { buildPersonaDraft } from "../ui/src/personaEditor";
 import type { DraftBoxNextActionSummary } from "../src/types";
 
 function summary(overrides: Partial<DraftBoxNextActionSummary>): DraftBoxNextActionSummary {
@@ -141,6 +143,53 @@ describe("ProducerRoomApp Songs and Settings views", () => {
     expect(html).toContain("Platforms");
     expect(html).toContain("Save Settings");
     expect(html).toContain("frozen");
+  });
+
+  it("renders the Setup tab editor with AI draft only on ARTIST/SOUL layers", () => {
+    const persona = {
+      artist: {
+        artistName: "Glass Commuter",
+        identityLine: "Turns commute damage into songs.",
+        soundDna: "dry drums, low synth",
+        obsessions: "station light, receipts",
+        lyricsRules: "no slogans",
+        socialVoice: "plain and short"
+      },
+      soul: {
+        conversationTone: "short and precise",
+        refusalStyle: "refuse weak ideas plainly"
+      },
+      identity: { text: "# IDENTITY\n\nraw identity" },
+      producer: { text: "# PRODUCER\n\nraw producer" },
+      inner: { text: "# INNER\n\nraw inner" },
+      setup: { completed: false, needsSetup: true, reasons: ["missing_completion_marker"], reasonsText: "setup not completed" },
+      aiDraftSupported: ["artist", "soul"] as ["artist", "soul"],
+      provider: "mock"
+    };
+    const html = renderToStaticMarkup(
+      React.createElement(SetupView, {
+        persona,
+        draft: buildPersonaDraft(persona),
+        dirty: { artist: true, soul: false, identity: false, producer: false, inner: false },
+        busyKey: null,
+        onUpdateArtist: () => undefined,
+        onUpdateSoul: () => undefined,
+        onUpdateSnapshot: () => undefined,
+        onSaveLayer: () => undefined,
+        onReset: () => undefined,
+        onRefresh: () => undefined,
+        onPropose: () => undefined,
+        onComplete: () => undefined
+      })
+    );
+
+    expect(html).toContain("Setup");
+    expect(html).toContain("初回 setup が未完了です");
+    expect(html).toContain("ARTIST.md");
+    expect(html).toContain("SOUL.md");
+    expect(html).toContain("IDENTITY.md");
+    expect(html).toContain("AI下書きはありません");
+    expect(html.match(/AI下書き<\/button>/g)?.length).toBe(8);
   });
 });
 

@@ -5,7 +5,20 @@ import { AwaitingDecisionPanel, type AwaitingDecision } from "./components/Await
 import { SongDetailCard } from "./components/SongDetailCard";
 import { SongLifecycleTimelineCard } from "./components/SongLifecycleTimelineCard";
 import { SpawnProposalQueuePanel, type SpawnProposalQueueItem } from "./components/SpawnProposalQueuePanel";
+import { SetupView } from "./components/SetupView";
 import { useHashRoute } from "./hooks/useHashRoute";
+import {
+  buildPersonaArtistPatch,
+  buildPersonaDraft,
+  buildPersonaSnapshotPatch,
+  buildPersonaSoulPatch,
+  validatePersonaDraft,
+  type ArtistPersonaDraft,
+  type PersonaDraft,
+  type PersonaDraftLayer,
+  type PersonaEditorSource,
+  type SoulPersonaDraft
+} from "./personaEditor";
 import { dismissErrorToast, expireErrorToasts, pushErrorToast, type ErrorToast, type ErrorToastSource } from "../../src/services/errorToastQueue";
 import {
   instagramAuthorityModes,
@@ -13,7 +26,8 @@ import {
   sunoSubmitModes,
   tiktokAuthorityModes,
   xAuthorityModes,
-  type DraftBoxNextActionSummary
+  type DraftBoxNextActionSummary,
+  type PersonaField
 } from "../../src/types";
 
 const refreshIntervalMs = 5000;
@@ -21,7 +35,7 @@ const apiBase = "/plugins/artist-runtime/api";
 const fetchTimeoutMs = 10_000;
 const LegacyConsole = React.lazy(() => import("./App").then((module) => ({ default: module.App })));
 
-type RoomView = "room" | "songs" | "settings" | "diagnostics";
+type RoomView = "room" | "songs" | "settings" | "setup" | "diagnostics";
 
 type StatusResponse = {
   autopilot: {
@@ -74,6 +88,23 @@ type SpawnProposalsResponse = {
   proposals: SpawnProposalQueueItem[];
 };
 
+type PersonaProposeResponse = {
+  drafts?: Array<{ field: PersonaField; draft: string; status: "proposed" | "skipped" | "low_confidence"; reasoning?: string }>;
+  warnings?: string[];
+  provider?: string;
+  error?: string;
+};
+
+type PersonaDirtyMap = Record<PersonaDraftLayer, boolean>;
+
+const emptyPersonaDirty: PersonaDirtyMap = {
+  artist: false,
+  soul: false,
+  identity: false,
+  producer: false,
+  inner: false
+};
+
 async function fetchWithTimeout(input: RequestInfo | URL, init: RequestInit = {}): Promise<Response> {
   const controller = new AbortController();
   const timeoutId = window.setTimeout(() => controller.abort(), fetchTimeoutMs);
@@ -111,6 +142,7 @@ function viewFromHash(hash: string): RoomView {
   if (hash === "#songs") return "songs";
   if (hash.startsWith("#song=")) return "songs";
   if (hash === "#settings") return "settings";
+  if (hash === "#setup") return "setup";
   if (hash === "#diagnostics") return "diagnostics";
   return "room";
 }
@@ -229,6 +261,7 @@ function RouteNav(props: { activeView: RoomView }) {
         <a className={linkClass("room")} href="#room">Room</a>
         <a className={linkClass("songs")} href="#songs">Songs</a>
         <a className={linkClass("settings")} href="#settings">Settings</a>
+        <a className={linkClass("setup")} href="#setup">Setup</a>
       </nav>
       <footer className="producer-room-footer">
         <a href="#diagnostics">診断</a>
@@ -242,6 +275,7 @@ function RoomViewPanel(props: {
   summary: DraftBoxNextActionSummary;
   awaitingDecisions: CallbackActionsResponse;
   spawnProposalQueue: SpawnProposalsResponse;
+  persona: PersonaEditorSource | null;
   busy: string | null;
   selectedSongId: string | null;
   onResume: () => void;
@@ -251,6 +285,13 @@ function RoomViewPanel(props: {
   return (
     <section className="single-column producer-room-grid">
       <RoomHeader summary={props.summary} onResume={props.onResume} resumeBusy={props.busy === "resume"} />
+      {props.persona?.setup.needsSetup ? (
+        <article className="panel">
+          <div className="warning-banner">
+            Setup が未完了です: {props.persona.setup.reasonsText} <a href="#setup">Setup を開く</a>
+          </div>
+        </article>
+      ) : null}
       <article className="panel room-note-card">
         <div className="section-title">Creative Milestones</div>
         <div className="muted">操作の主役は Telegram。Console は現在地と判断待ちの mirror です。</div>
@@ -457,6 +498,10 @@ export function ProducerRoomApp() {
   const [configDraft, setConfigDraft] = useState<ConfigDraft | null>(null);
   const [configDirty, setConfigDirty] = useState(false);
   const configDirtyRef = useRef(false);
+  const [persona, setPersona] = useState<PersonaEditorSource | null>(null);
+  const [personaDraft, setPersonaDraft] = useState<PersonaDraft | null>(null);
+  const [personaDirty, setPersonaDirty] = useState<PersonaDirtyMap>(emptyPersonaDirty);
+  const personaDirtyRef = useRef(false);
   const [songs, setSongs] = useState<SongSummary[]>([]);
   const [awaitingDecisions, setAwaitingDecisions] = useState<CallbackActionsResponse>({ count: 0, callbacks: [] });
   const [spawnProposalQueue, setSpawnProposalQueue] = useState<SpawnProposalsResponse>({ count: 0, proposals: [] });
@@ -470,18 +515,23 @@ export function ProducerRoomApp() {
 
   const refresh = async () => {
     try {
-      const [nextStatus, nextSongs, nextConfig, nextAwaitingDecisions, nextSpawnProposalQueue] = await Promise.all([
+      const [nextStatus, nextSongs, nextConfig, nextPersona, nextAwaitingDecisions, nextSpawnProposalQueue] = await Promise.all([
         apiGet<StatusResponse>("/status"),
         apiGet<SongSummary[]>("/songs"),
         apiGet<ConfigResponse>("/config"),
+        apiGet<PersonaEditorSource>("/persona"),
         apiGet<CallbackActionsResponse>("/callback-actions?status=pending&category=producer_decision"),
         apiGet<SpawnProposalsResponse>("/spawn-proposals?status=draft&limit=20")
       ]);
       setStatus(nextStatus);
       setSongs(nextSongs);
       setConfig(nextConfig);
+      setPersona(nextPersona);
       if (!configDirtyRef.current) {
         setConfigDraft(buildConfigDraft(nextConfig));
+      }
+      if (!personaDirtyRef.current) {
+        setPersonaDraft(buildPersonaDraft(nextPersona));
       }
       setAwaitingDecisions(nextAwaitingDecisions);
       setSpawnProposalQueue(nextSpawnProposalQueue);
@@ -588,6 +638,121 @@ export function ProducerRoomApp() {
     }
   };
 
+  const markPersonaDirty = (layer: PersonaDraftLayer, dirty: boolean) => {
+    setPersonaDirty((current) => {
+      const next = { ...current, [layer]: dirty };
+      personaDirtyRef.current = Object.values(next).some(Boolean);
+      return next;
+    });
+  };
+
+  const resetPersonaDraft = () => {
+    if (!persona) {
+      return;
+    }
+    personaDirtyRef.current = false;
+    setPersonaDirty(emptyPersonaDirty);
+    setPersonaDraft(buildPersonaDraft(persona));
+  };
+
+  const updateArtistPersonaDraft = (field: keyof ArtistPersonaDraft, value: string) => {
+    markPersonaDirty("artist", true);
+    setPersonaDraft((current) => current ? { ...current, artist: { ...current.artist, [field]: value } } : current);
+  };
+
+  const updateSoulPersonaDraft = (field: keyof SoulPersonaDraft, value: string) => {
+    markPersonaDirty("soul", true);
+    setPersonaDraft((current) => current ? { ...current, soul: { ...current.soul, [field]: value } } : current);
+  };
+
+  const updateSnapshotPersonaDraft = (layer: "identity" | "producer" | "inner", value: string) => {
+    markPersonaDirty(layer, true);
+    setPersonaDraft((current) => current ? { ...current, snapshots: { ...current.snapshots, [layer]: value } } : current);
+  };
+
+  const savePersonaLayer = async (layer: PersonaDraftLayer) => {
+    if (!personaDraft) {
+      return;
+    }
+    const validationError = validatePersonaDraft(personaDraft, layer);
+    if (validationError) {
+      showErrorToast("config-patch", "persona_validation_failed", validationError);
+      return;
+    }
+    const patch = layer === "artist"
+      ? buildPersonaArtistPatch(personaDraft)
+      : layer === "soul"
+        ? buildPersonaSoulPatch(personaDraft)
+        : buildPersonaSnapshotPatch(personaDraft, layer);
+    setBusy(`persona-save:${layer}`);
+    try {
+      const response = await apiPost<{ error?: string }>(`/persona/${layer}`, patch);
+      if (response.error) {
+        throw new Error(response.error);
+      }
+      markPersonaDirty(layer, false);
+      await refresh();
+      showErrorToast("config-patch", `persona_${layer}_updated`, `${layer} updated.`);
+    } catch (caughtError) {
+      const message = caughtError instanceof Error ? caughtError.message : String(caughtError);
+      showErrorToast("config-patch", `persona_${layer}_update_failed`, message);
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  const applyPersonaDraftProposal = (field: PersonaField, value: string) => {
+    if (field === "soul-tone") {
+      updateSoulPersonaDraft("conversationTone", value);
+      return;
+    }
+    if (field === "soul-refusal") {
+      updateSoulPersonaDraft("refusalStyle", value);
+      return;
+    }
+    updateArtistPersonaDraft(field as keyof ArtistPersonaDraft, value);
+  };
+
+  const proposePersonaField = async (field: PersonaField) => {
+    setBusy(`persona-ai:${field}`);
+    try {
+      const response = await apiPost<PersonaProposeResponse>("/persona/propose", { fields: [field] });
+      if (response.error) {
+        throw new Error(response.error);
+      }
+      const draft = response.drafts?.find((entry) => entry.field === field);
+      if (!draft || draft.status !== "proposed") {
+        showErrorToast("runtime", `persona_ai_${field}_skipped`, draft?.reasoning ?? "AI 下書きは返りませんでした。");
+        return;
+      }
+      applyPersonaDraftProposal(field, draft.draft);
+      const warning = response.warnings?.[0];
+      showErrorToast("runtime", `persona_ai_${field}_proposed`, warning ? `AI下書き反映: ${warning}` : "AI下書きを反映しました。");
+    } catch (caughtError) {
+      const message = caughtError instanceof Error ? caughtError.message : String(caughtError);
+      showErrorToast("runtime", `persona_ai_${field}_failed`, message);
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  const completePersonaSetup = async () => {
+    setBusy("persona-complete");
+    try {
+      const response = await apiPost<{ error?: string }>("/persona/complete");
+      if (response.error) {
+        throw new Error(response.error);
+      }
+      await refresh();
+      showErrorToast("runtime", "persona_setup_complete", "Setup completion marker を記録しました。");
+    } catch (caughtError) {
+      const message = caughtError instanceof Error ? caughtError.message : String(caughtError);
+      showErrorToast("runtime", "persona_setup_complete_failed", message);
+    } finally {
+      setBusy(null);
+    }
+  };
+
   const summary = status?.autopilot.nextActionSummary ?? fallbackSummary(status);
   const configValidationError = configDraft ? validateConfigDraft(configDraft) : null;
   const artistDisplayName = config?.artist.identity?.displayName?.trim() || "Artist";
@@ -611,6 +776,7 @@ export function ProducerRoomApp() {
           summary={summary}
           awaitingDecisions={awaitingDecisions}
           spawnProposalQueue={spawnProposalQueue}
+          persona={persona}
           busy={busy}
           selectedSongId={selectedSongId}
           onResume={resumeAutopilot}
@@ -632,6 +798,22 @@ export function ProducerRoomApp() {
           onSave={saveConfig}
           onReset={resetConfigDraft}
           onRefresh={refresh}
+        />
+      ) : null}
+      {activeView === "setup" ? (
+        <SetupView
+          persona={persona}
+          draft={personaDraft}
+          dirty={personaDirty}
+          busyKey={busy}
+          onUpdateArtist={updateArtistPersonaDraft}
+          onUpdateSoul={updateSoulPersonaDraft}
+          onUpdateSnapshot={updateSnapshotPersonaDraft}
+          onSaveLayer={savePersonaLayer}
+          onReset={resetPersonaDraft}
+          onRefresh={refresh}
+          onPropose={proposePersonaField}
+          onComplete={completePersonaSetup}
         />
       ) : null}
       {activeView === "diagnostics" ? <DiagnosticsView /> : null}
