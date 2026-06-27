@@ -3,7 +3,7 @@ import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
-import { readPersonaSetupStatus } from "../src/services/personaSetupDetector";
+import { describePersonaSetupReasons, readPersonaSetupStatus } from "../src/services/personaSetupDetector";
 
 function makeRoot(): string {
   return mkdtempSync(join(tmpdir(), "artist-runtime-persona-detector-"));
@@ -97,5 +97,32 @@ describe("persona setup detector", () => {
 
     expect(status.needsSetup).toBe(true);
     expect(status.reasons).toContain("matches_default_template_hash");
+  });
+});
+
+describe("describePersonaSetupReasons", () => {
+  it("maps every known reason code to plain operator text", () => {
+    expect(
+      describePersonaSetupReasons([
+        "missing_completion_marker",
+        "missing_artist_file",
+        "artist_name_tbd",
+        "suno_profile_name_tbd",
+        "matches_default_template_hash"
+      ])
+    ).toBe(
+      "setup not completed, ARTIST.md missing, artist name not set, Suno profile name not set, still the example template"
+    );
+  });
+
+  it("does not surface raw reason codes for known codes", () => {
+    const text = describePersonaSetupReasons(["artist_name_tbd"]);
+    expect(text).not.toContain("artist_name_tbd");
+    expect(text).toBe("artist name not set");
+  });
+
+  it("falls back to the raw value for unknown codes and handles empty input", () => {
+    expect(describePersonaSetupReasons(["unexpected_code"])).toBe("unexpected_code");
+    expect(describePersonaSetupReasons([])).toBe("setup incomplete");
   });
 });

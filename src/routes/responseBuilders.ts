@@ -28,7 +28,7 @@ import { listPendingSpawnProposals } from "../services/spawnProposalQueue.js";
 import { buildEffectiveDryRunMap, resolvePlatformSocialDryRun } from "../services/socialDryRunResolver.js";
 import { readDistributionDetectionState } from "../services/songDistributionPoller.js";
 import { secretLikePattern } from "../services/personaMigrator.js";
-import { readPersonaSetupStatus } from "../services/personaSetupDetector.js";
+import { describePersonaSetupReasons, readPersonaSetupStatus } from "../services/personaSetupDetector.js";
 import { STATUS_SUNO_ARTIFACT_LIMIT } from "../services/sunoArtifacts.js";
 import { SunoBudgetTracker } from "../services/sunoBudget.js";
 import { readBudgetDetail as readSunoDailyBudgetDetail, readBudgetState as readSunoDailyBudgetState } from "../services/sunoBudgetLedger.js";
@@ -381,7 +381,7 @@ async function buildSetupReadiness(
       detail: artistProfileReady
         ? "ARTIST.md, SOUL.md, SOCIAL_VOICE, and RELEASE_POLICY are present."
         : personaSetupStatus.needsSetup
-          ? `Finish artist setup: ${personaSetupStatus.reasons.join(", ")}.`
+          ? `Send /setup in Telegram (or edit ARTIST.md): ${describePersonaSetupReasons(personaSetupStatus.reasons)}.`
           : "Finish the artist constitution and voice files in the workspace template."
     },
     {

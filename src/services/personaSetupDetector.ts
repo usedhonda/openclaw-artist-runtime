@@ -96,3 +96,21 @@ export async function readPersonaSetupStatus(
     marker
   };
 }
+
+const personaSetupReasonText: Record<string, string> = {
+  missing_completion_marker: "setup not completed",
+  missing_artist_file: "ARTIST.md missing",
+  artist_name_tbd: "artist name not set",
+  suno_profile_name_tbd: "Suno profile name not set",
+  matches_default_template_hash: "still the example template"
+};
+
+/**
+ * Render setup reason codes as plain operator-facing text. Keeps the Producer
+ * Console checklist actionable instead of surfacing raw codes like
+ * `artist_name_tbd`. Unknown codes fall back to the raw value.
+ */
+export function describePersonaSetupReasons(reasons: string[]): string {
+  const described = reasons.map((reason) => personaSetupReasonText[reason] ?? reason);
+  return described.length > 0 ? described.join(", ") : "setup incomplete";
+}
