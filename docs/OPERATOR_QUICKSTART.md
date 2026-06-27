@@ -49,9 +49,16 @@ links to the detailed section that follows.
 8. **Make a song** — with the artist set up and Suno live, the artist proposes
    songs from its own observations and asks you to approve in Telegram (tap the
    spawn proposal's GO button), or you send `/commission <idea>`. Autonomous
-   spawn and `/commission` are gated behind `OPENCLAW_SONG_SPAWN_ENABLED` /
-   `OPENCLAW_COMMISSION_ENABLED` (see OPERATOR_RUNBOOK.md). Approve, and the
-   autopilot generates takes via Suno and reports the result to Telegram.
+   spawn and `/commission` are gated behind environment flags set in the shell
+   that launches the gateway:
+
+   ```sh
+   export OPENCLAW_SONG_SPAWN_ENABLED=on   # the artist proposes new songs itself
+   export OPENCLAW_COMMISSION_ENABLED=on   # enables /commission <idea>
+   ```
+
+   Approve a proposal, and the autopilot generates takes via Suno and reports the
+   result to Telegram. See OPERATOR_RUNBOOK.md for spawn/commission detail.
 
 The sections below cover credentials, gateway start, probes, and the dry-run
 safety boundary in detail.
@@ -127,7 +134,9 @@ credentialed sections below.
 
 ## 0. Preconditions
 
-- Work from the package root.
+- Work from the package root — the directory holding the installed plugin's
+  tarball contents (`docs/`, the operator `scripts/`, `package.json`). The
+  helper scripts below are run from there.
 - Keep `.local/`, `runtime/`, `.env*`, and `.openclaw-browser-profiles/` local.
 - Keep `autopilot.dryRun` enabled until the operator has verified the status
   surfaces and granted a separate live GO.

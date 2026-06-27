@@ -87,9 +87,10 @@ EOF
 set -a; . ./.local/social-credentials.env; set +a
 ```
 
-Use BotFather to create the bot token and a user-id helper bot or Telegram
-client metadata to find the numeric owner id. Do not commit the local env file
-or paste the token body into issue reports, logs, or screenshots.
+Use BotFather to create the bot token. To find your numeric owner id, message
+`@userinfobot` on Telegram (it replies with your id), or read `from.id` from the
+bot's `getUpdates` response after you message your bot. Do not commit the local
+env file or paste the token body into issue reports, logs, or screenshots.
 
 After the token and owner id are set, enable Telegram itself (gate 1) by setting
 `telegram.enabled=true` in the Producer Console **Settings** tab, or in
