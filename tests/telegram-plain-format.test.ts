@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
+import { truncatePlain } from "../src/services/telegramFormatting";
 import { formatRuntimeEvent, TelegramNotifier } from "../src/services/telegramNotifier";
 
 function telegramResponse(result: unknown): Response {
@@ -59,5 +60,15 @@ describe("telegram plain format", () => {
 
     const sendBody = JSON.parse(String((fetchImpl.mock.calls[0][1] as RequestInit).body));
     expect(sendBody.parse_mode).toBeUndefined();
+  });
+
+  it("strips long HTML tags before truncating plain Telegram text", () => {
+    const longHref = `<a href="https://news.google.com/rss/articles/${"x".repeat(160)}">ナフサと赤星</a>`;
+
+    const text = truncatePlain(longHref, 80);
+
+    expect(text).toBe("ナフサと赤星");
+    expect(text).not.toContain("<a");
+    expect(text).not.toContain("href=");
   });
 });

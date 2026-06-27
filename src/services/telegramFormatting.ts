@@ -32,7 +32,7 @@ export function stripTelegramHtmlComments(text: string): string {
 }
 
 export function truncatePlain(text: string | undefined, max: number): string {
-  const clean = (text ?? "").replace(/<\/?[A-Za-z][^>\n]{0,64}>/g, "").replace(/\s+/g, " ").trim();
+  const clean = (text ?? "").replace(/<[^>]*>/g, "").replace(/\s+/g, " ").trim();
   if (max <= 0) return "";
   const chars = Array.from(clean);
   if (chars.length <= max) return clean;

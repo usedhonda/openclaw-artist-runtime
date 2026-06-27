@@ -48,6 +48,18 @@ const atomSample = `<?xml version="1.0" encoding="UTF-8"?>
   </entry>
 </feed>`;
 
+const encodedHtmlSample = `<?xml version="1.0" encoding="UTF-8"?>
+<rss version="2.0">
+<channel>
+  <title>Google News Search</title>
+  <item>
+    <title>&lt;a href="https://news.google.com/rss/articles/${"x".repeat(120)}"&gt;ナフサと赤星&lt;/a&gt;</title>
+    <description>&lt;a href="https://news.google.com/rss/articles/${"y".repeat(120)}"&gt;石油と野球の夜&lt;/a&gt;</description>
+    <link>https://news.google.com/rss/articles/example</link>
+  </item>
+</channel>
+</rss>`;
+
 beforeEach(() => {
   delete process.env.OPENCLAW_NEWS_RSS_URLS;
 });
@@ -125,6 +137,24 @@ describe("news observation collector", () => {
     expect(result.entries[0].url).toBe("https://atom.example.test/shinjuku-roby");
     expect(result.entries[0].postedAt).toBe("2026-05-23T05:00:00Z");
     expect(result.entries[0].text).toContain("新宿");
+  });
+
+  it("decodes RSS entities before stripping encoded HTML tags", async () => {
+    const root = workspace();
+    process.env.OPENCLAW_NEWS_RSS_URLS = "https://news.google.com/rss/search?q=test";
+    const fetcher = vi.fn(async () => encodedHtmlSample);
+
+    const result = await collectNewsObservations(root, {
+      now: new Date("2026-05-23T01:00:00.000Z"),
+      fetcher
+    });
+
+    expect(result.entries).toHaveLength(1);
+    expect(result.entries[0].text).toContain("ナフサと赤星");
+    expect(result.entries[0].text).toContain("石油と野球の夜");
+    expect(result.entries[0].text).not.toContain("<a");
+    expect(result.entries[0].text).not.toContain("href=");
+    expect(result.entries[0].source).toBe("news.google.com/search");
   });
 
   it("returns cached entries on subsequent runs within TTL", async () => {

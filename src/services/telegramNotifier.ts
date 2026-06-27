@@ -718,6 +718,15 @@ function safeAuthor(value?: string): string {
   return clean || "unknown";
 }
 
+function formatObservationAuthorPrefix(value?: string): string {
+  const clean = (value ?? "").replace(/\s+/g, " ").trim();
+  if (!clean) return "";
+  if (clean.includes(".")) {
+    return `${truncatePlain(clean, 48)}: `;
+  }
+  return `@${safeAuthor(clean)}: `;
+}
+
 function formatObservationSource(summary?: ObservationSummary): string[] {
   if (!summary) {
     return [
@@ -726,11 +735,11 @@ function formatObservationSource(summary?: ObservationSummary): string[] {
       "🎯 動機: 観察 summary なし"
     ];
   }
-  const author = safeAuthor(summary.author);
+  const author = formatObservationAuthorPrefix(summary.author).replace(/:\s*$/, "") || "@unknown";
   const quote = capQuote(summary.quote ?? "");
   const url = isAllowedObservationUrl(summary.url) ? ` (${summary.url})` : "";
   return [
-    `🌐 観察元: @${author}${url}`,
+    `🌐 観察元: ${author}${url}`,
     `💬 抜粋: 「${quote || "(抜粋なし)"}」`,
     `🎯 動機: ${safeMotivation(summary.motivation)}`
   ];
@@ -893,7 +902,7 @@ function compactReason(value: string | undefined): string {
 function formatSpawnObservationLine(event: Extract<RuntimeEvent, { type: "song_spawn_proposed" }>): string {
   const summary = event.observationSummary;
   if (summary?.quote) {
-    const author = summary.author ? `@${safeAuthor(summary.author)}: ` : "";
+    const author = formatObservationAuthorPrefix(summary.author);
     return truncatePlain(`${author}${summary.quote}`, 180);
   }
   const source = event.brief.sources?.[0];

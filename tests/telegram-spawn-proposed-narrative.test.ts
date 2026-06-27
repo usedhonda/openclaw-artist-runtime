@@ -70,6 +70,23 @@ describe("telegram spawn proposed narrative", () => {
     expect(text).not.toContain("- songId:");
   });
 
+  it("renders news source labels without turning hosts into X handles", async () => {
+    const text = await formatRuntimeEvent({
+      type: "song_spawn_proposed",
+      candidateSongId: "spawn_news",
+      brief: brief(),
+      reason: "この観察から曲に入る。",
+      observationSummary: {
+        author: "news.google.com/search",
+        quote: "ナフサと赤星をめぐる夜のニュース"
+      },
+      timestamp: 1
+    });
+
+    expect(text).toContain("news.google.com/search: ナフサと赤星");
+    expect(text).not.toContain("@newsgooglecomsearch");
+  });
+
   it("attaches readable producer decision buttons without changing callback actions", async () => {
     const workspaceRoot = await root();
     const fetchImpl = vi.fn()

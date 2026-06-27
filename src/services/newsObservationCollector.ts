@@ -113,7 +113,7 @@ function extractTagText(item: string, tag: string): string | undefined {
   const raw = match[1] ?? "";
   const cdata = raw.match(/<!\[CDATA\[([\s\S]*?)\]\]>/);
   const inner = cdata ? cdata[1] : raw;
-  return decodeXmlEntities(inner.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim());
+  return decodeXmlEntities(inner).replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim();
 }
 
 function extractLink(item: string): string | undefined {
