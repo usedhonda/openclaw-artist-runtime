@@ -65,10 +65,11 @@
     "test": "vitest run",
     "test:coverage": "vitest run --coverage",
     "boundary-grep": "node ./scripts/boundary-grep.mjs",
+    "leak-scan": "node ./scripts/maintainer-leak-scan.mjs",
     "pack:verify": "node ./scripts/verify-package.mjs",
     "pack:dry-run": "npm pack --dry-run",
     "clawhub:dry-run": "clawhub package publish . --dry-run",
-    "prepublish:local": "npm run typecheck && npm test && npm run build && npm run pack:verify && npm run pack:dry-run"
+    "prepublish:local": "npm run typecheck && npm test && npm run build && npm run pack:verify && npm run leak-scan && npm run pack:dry-run"
   },
   "keywords": [
     "openclaw",

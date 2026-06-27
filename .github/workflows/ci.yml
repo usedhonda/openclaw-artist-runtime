@@ -153,3 +153,26 @@ jobs:
 
       - name: Boundary grep
         run: npm run boundary-grep
+
+  leak-scan:
+    runs-on: ubuntu-latest
+    env:
+      PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD: "1"
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: 22
+
+      - name: Install dependencies
+        run: npm install --no-audit --no-fund
+
+      - name: Build runtime (for tarball surface)
+        run: npm run build:runtime
+
+      - name: Maintainer leak scan
+        run: npm run leak-scan
