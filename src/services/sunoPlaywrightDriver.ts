@@ -30,6 +30,7 @@ export const PLAYWRIGHT_IMPORT_NO_URLS_REASON = "playwright_import_no_urls";
 export const PLAYWRIGHT_POLL_INTERVAL_MS = 3_000;
 export const PLAYWRIGHT_POLL_TIMEOUT_MS = 10 * 60 * 1_000;
 export const PLAYWRIGHT_CREATE_CARD_TIMEOUT_MS = 3 * 60 * 1_000;
+export const PLAYWRIGHT_EXPECTED_CREATE_CARD_COUNT = 2;
 export const PLAYWRIGHT_CREATE_CARD_REASON = "submitted_via_create_card";
 export const PLAYWRIGHT_CREATE_TIMEOUT_REASON = "playwright_create_timeout";
 export const PLAYWRIGHT_CREATE_NETWORK_REASON = "playwright_create_network_error";
@@ -699,7 +700,13 @@ export class PlaywrightSunoDriver implements SunoBrowserDriver {
       Math.ceil((this.polling.createCardTimeoutMs ?? PLAYWRIGHT_CREATE_CARD_TIMEOUT_MS) / this.polling.intervalMs)
     );
 
-    const createCardUrls = await this.pollCreateCards(page, baselineUrls, createCardAttempts, expectedTitle);
+    const createCardUrls = await this.pollCreateCards(
+      page,
+      baselineUrls,
+      createCardAttempts,
+      expectedTitle,
+      PLAYWRIGHT_EXPECTED_CREATE_CARD_COUNT
+    );
     if (createCardUrls.length > 0) {
       return { urls: createCardUrls, reason: PLAYWRIGHT_CREATE_CARD_REASON };
     }
@@ -743,21 +750,35 @@ export class PlaywrightSunoDriver implements SunoBrowserDriver {
     page: Page,
     baselineUrls: Set<string>,
     maxAttempts: number,
-    expectedTitle?: string
+    expectedTitle?: string,
+    expectedCount = PLAYWRIGHT_EXPECTED_CREATE_CARD_COUNT
   ): Promise<string[]> {
     if (!expectedTitle) {
       return [];
     }
+    let bestUrls: string[] = [];
+    let stablePolls = 0;
     for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
-      const titleMatchedUrls = (await this.readCreateCardSongUrls(page, expectedTitle)).filter((url) => !baselineUrls.has(url));
-      if (titleMatchedUrls.length > 0) {
-        return titleMatchedUrls;
+      const titleMatchedUrls = Array.from(
+        new Set((await this.readCreateCardSongUrls(page, expectedTitle)).filter((url) => !baselineUrls.has(url)))
+      );
+      if (titleMatchedUrls.length > bestUrls.length) {
+        bestUrls = titleMatchedUrls;
+        stablePolls = 0;
+      } else if (bestUrls.length > 0) {
+        stablePolls += 1;
+      }
+      if (bestUrls.length >= expectedCount) {
+        return bestUrls;
+      }
+      if (stablePolls > 0) {
+        return bestUrls;
       }
       if (attempt < maxAttempts - 1) {
         await sleep(this.polling.intervalMs);
       }
     }
-    return [];
+    return bestUrls;
   }
 
   private async extractSongAudio(

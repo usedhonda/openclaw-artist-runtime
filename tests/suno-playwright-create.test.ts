@@ -364,6 +364,41 @@ describe("PlaywrightSunoDriver create", () => {
     expect(page.goto.mock.calls.filter(([url]) => url === SUNO_LIBRARY_URL)).toHaveLength(0);
   });
 
+  it("waits for a staggered second create-card URL before returning", async () => {
+    const { page, context } = createContext();
+    page.createCardSnapshots.push(
+      [],
+      ["https://suno.com/song/new-1"],
+      ["https://suno.com/song/new-1", "https://suno.com/song/new-2"]
+    );
+    launchPersistentContextMock.mockResolvedValue(context);
+    const driver = new PlaywrightSunoDriver(
+      ".openclaw-browser-profiles/suno",
+      "live",
+      mkdtempSync(join(tmpdir(), "artist-runtime-suno-create-staggered-")),
+      { intervalMs: 1, timeoutMs: 5, createCardTimeoutMs: 3 }
+    );
+
+    const result = await driver.create({
+      dryRun: false,
+      authority: "auto_create_and_select_take",
+      runId: "run-staggered",
+      payload: {
+        songName: "Run Staggered",
+        lyrics: "line one"
+      }
+    });
+
+    expect(result).toMatchObject({
+      accepted: true,
+      runId: "run-staggered",
+      reason: PLAYWRIGHT_CREATE_CARD_REASON,
+      urls: ["https://suno.com/song/new-1", "https://suno.com/song/new-2"],
+      dryRun: false
+    });
+    expect(page.goto.mock.calls.filter(([url]) => url === SUNO_LIBRARY_URL)).toHaveLength(0);
+  });
+
   it("ignores create-card URLs already present in the baseline and fails closed instead of polling the library", async () => {
     const { page, context } = createContext();
     page.createCardSnapshots.push(
