@@ -24,6 +24,9 @@ export async function uiBuildIsFresh(projectRoot = PLUGIN_ROOT): Promise<boolean
     join(uiRoot, "package.json"),
     join(uiRoot, "vite.config.ts"),
     join(uiRoot, "src", "App.tsx"),
+    join(uiRoot, "src", "ProducerRoomApp.tsx"),
+    join(uiRoot, "src", "personaEditor.ts"),
+    join(uiRoot, "src", "components", "SetupView.tsx"),
     join(uiRoot, "src", "main.tsx"),
     join(uiRoot, "src", "styles.css")
   ];
