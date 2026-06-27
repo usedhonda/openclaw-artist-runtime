@@ -6,12 +6,12 @@ This directory vendors the seven-file Suno knowledge bundle from:
 
 Each copied knowledge file starts with this attribution comment:
 
-`<!-- Source: sunomanual (CC BY-NC 4.0, Copyright 2025-2026 usedhonda) -->`
+`<!-- Source: sunomanual (MIT, Copyright 2025-2026 usedhonda) -->`
 
 ## License And Attribution
 
 The bundled knowledge files are derived from the user-owned `sunomanual`
-project and are distributed under CC BY-NC 4.0. Copyright (c) 2025-2026
+project and are distributed under MIT. Copyright (c) 2025-2026
 usedhonda.
 
 Do not remove the source attribution header from copied files. Keep future

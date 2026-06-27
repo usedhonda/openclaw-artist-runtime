@@ -20,7 +20,7 @@ describe("lyrics drafting prompt", () => {
     expect(LYRICS_WRITER_SYSTEM_PROMPT).toContain("伏線");
     expect(LYRICS_WRITER_SYSTEM_PROMPT).toContain("情景");
     expect(LYRICS_WRITER_SYSTEM_PROMPT).toContain("パターンA");
-    expect(LYRICS_WRITER_SYSTEM_PROMPT).toContain("CC BY-NC 4.0");
+    expect(LYRICS_WRITER_SYSTEM_PROMPT).toContain("MIT");
     expect(prompt).toContain("rap_and_flow.md");
     expect(prompt).toContain("english_lyrics.md");
     expect(prompt).toContain("master_reference.md");

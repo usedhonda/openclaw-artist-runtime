@@ -13,20 +13,17 @@ This package includes a `sunomanual` knowledge bundle from the `sunomanual`
 project by usedhonda.
 
 - Copyright: Copyright (c) 2025-2026 usedhonda
-- License: Creative Commons Attribution-NonCommercial 4.0 International
-  (CC BY-NC 4.0)
-- Legal code: https://creativecommons.org/licenses/by-nc/4.0/legalcode
+- License: MIT
 - Bundled material: `src/suno-production/knowledge/` knowledge files,
   `master_reference.md`, and the `mygpts/lyrics-writer` and
   `mygpts/style-analyzer` prompt instructions embedded in prompt modules.
 - Attribution locations: copied source files retain HTML source comments, and
   prompt modules retain attribution constants alongside embedded instructions.
 
-NonCommercial term: the bundled `sunomanual` material (including the embedded
-lyrics/style prompt instructions) is licensed for non-commercial use only.
-Operators must not use or redistribute it for commercial purposes without
-separate permission from the copyright holder (usedhonda). The Artist Runtime
-code itself is under its own repository license (see LICENSE).
+The bundled `sunomanual` material (including the embedded lyrics/style prompt
+instructions) is relicensed by its copyright holder under MIT for this package.
+Keep the `usedhonda` copyright attribution when redistributing the copied
+knowledge files or embedded prompt instructions.
 
 ## Third-Party Notices
 

@@ -18,7 +18,7 @@ describe("exclude synthesis prompt", () => {
     expect(EXCLUDE_SYNTHESIS_SYSTEM_PROMPT).toContain("2-5 items");
     expect(EXCLUDE_SYNTHESIS_SYSTEM_PROMPT).toContain("No \"no X\" phrasing");
     expect(EXCLUDE_SYNTHESIS_SYSTEM_PROMPT).toContain("style_catalog.md");
-    expect(EXCLUDE_SYNTHESIS_SYSTEM_PROMPT).toContain("CC BY-NC 4.0");
+    expect(EXCLUDE_SYNTHESIS_SYSTEM_PROMPT).toContain("MIT");
     expect(EXCLUDE_SYNTHESIS_KNOWLEDGE_REFERENCES).toContain("master_reference.md");
     expect(prompt.user).toContain("nu-jazz rap");
   });

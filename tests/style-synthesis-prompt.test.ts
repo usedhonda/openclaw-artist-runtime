@@ -17,7 +17,7 @@ describe("style synthesis prompt", () => {
     expect(STYLE_ANALYZER_SYSTEM_PROMPT).toContain("Suno Style Analyzer V5.5");
     expect(STYLE_ANALYZER_SYSTEM_PROMPT).toContain("Performance direction");
     expect(STYLE_ANALYZER_SYSTEM_PROMPT).toContain("style_catalog.md");
-    expect(STYLE_ANALYZER_SYSTEM_PROMPT).toContain("CC BY-NC 4.0");
+    expect(STYLE_ANALYZER_SYSTEM_PROMPT).toContain("MIT");
     expect(prompt.system).toContain("total <=400 characters");
     expect(prompt.system).toContain("Do not pad");
     expect(STYLE_SYNTHESIS_KNOWLEDGE_REFERENCES).toContain("style_catalog.md");

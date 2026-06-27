@@ -31,7 +31,7 @@ describe("maintainer-leak-scan", () => {
   it("does not flag the legitimate publisher id or NOTICE copyright attribution", async () => {
     const root = mkdtempSync(join(tmpdir(), "artist-runtime-maintainer-leak-clean-"));
     await writeFixture(root, "package.json", '{ "name": "@yzhonda/openclaw-artist-runtime", "author": "yzhonda" }\n');
-    await writeFixture(root, "NOTICE.md", "Copyright (c) 2025-2026 usedhonda. Licensed CC BY-NC 4.0.\n");
+    await writeFixture(root, "NOTICE.md", "Copyright (c) 2025-2026 usedhonda. Licensed MIT.\n");
     await writeFixture(root, "README.md", "openclaw plugins install clawhub:@yzhonda/openclaw-artist-runtime\n");
 
     const findings = scanMaintainerLeaks({

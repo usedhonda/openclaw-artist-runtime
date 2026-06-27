@@ -8,7 +8,7 @@ import {
 } from "../src/suno-production/knowledge-bundle.js";
 
 const knowledgeDir = join(process.cwd(), "src", "suno-production", "knowledge");
-const attribution = "<!-- Source: sunomanual (CC BY-NC 4.0, Copyright 2025-2026 usedhonda) -->";
+const attribution = "<!-- Source: sunomanual (MIT, Copyright 2025-2026 usedhonda) -->";
 
 const expectedKnowledgeFiles: readonly KnowledgeFile[] = [
   "README.md",
@@ -64,9 +64,9 @@ describe("Suno full knowledge bundle", () => {
     expect(KNOWLEDGE_BUNDLE["master_reference.md"].length).toBeGreaterThan(50_000);
   });
 
-  it("documents the CC BY-NC 4.0 bundle attribution in the knowledge README", () => {
+  it("documents the MIT bundle attribution in the knowledge README", () => {
     const readme = KNOWLEDGE_BUNDLE["README.md"];
-    expect(readme).toContain("CC BY-NC 4.0");
+    expect(readme).toContain("MIT");
     expect(readme).toContain("Copyright");
     expect(readme).toContain("english_lyrics.md");
     expect(readme).toContain("rap_and_flow.md");

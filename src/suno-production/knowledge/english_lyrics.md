@@ -1,4 +1,4 @@
-<!-- Source: sunomanual (CC BY-NC 4.0, Copyright 2025-2026 usedhonda) -->
+<!-- Source: sunomanual (MIT, Copyright 2025-2026 usedhonda) -->
 
 # 英語歌詞とバイリンガル設計 — 韻・プロソディ・日英ミックス
 

@@ -1,4 +1,4 @@
-<!-- Source: sunomanual (CC BY-NC 4.0, Copyright 2025-2026 usedhonda) -->
+<!-- Source: sunomanual (MIT, Copyright 2025-2026 usedhonda) -->
 
 # 作詞クラフト — 伏線・韻・フック・品質ルール詳細
 
