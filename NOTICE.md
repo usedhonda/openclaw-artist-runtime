@@ -9,9 +9,8 @@ and developer policies.
 
 ## Sunomanual Knowledge Bundle
 
-This package includes a `sunomanual` knowledge bundle copied from the
-`sunomanual` project for the usedhonda private
-non-commercial Artist Runtime project.
+This package includes a `sunomanual` knowledge bundle from the `sunomanual`
+project by usedhonda.
 
 - Copyright: Copyright (c) 2025-2026 usedhonda
 - License: Creative Commons Attribution-NonCommercial 4.0 International
@@ -23,9 +22,11 @@ non-commercial Artist Runtime project.
 - Attribution locations: copied source files retain HTML source comments, and
   prompt modules retain attribution constants alongside embedded instructions.
 
-The NonCommercial term is satisfied because this repository is operated as
-usedhonda's private non-commercial Artist Runtime project. Do not redistribute
-the `sunomanual` material for commercial use without separate permission.
+NonCommercial term: the bundled `sunomanual` material (including the embedded
+lyrics/style prompt instructions) is licensed for non-commercial use only.
+Operators must not use or redistribute it for commercial purposes without
+separate permission from the copyright holder (usedhonda). The Artist Runtime
+code itself is under its own repository license (see LICENSE).
 
 ## Third-Party Notices
 
