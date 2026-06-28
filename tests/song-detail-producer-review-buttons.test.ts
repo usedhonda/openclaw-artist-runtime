@@ -1,7 +1,7 @@
 import React from "../ui/node_modules/react/index.js";
 import { renderToStaticMarkup } from "../ui/node_modules/react-dom/server.node.js";
 import { describe, expect, it, vi } from "vitest";
-import { buildSongCascadeTrace, DetailPager, producerReasonLabel, ProducerReviewButtons } from "../ui/src/components/SongDetailCard";
+import { buildSongCascadeTrace, DetailPager, producerObservationLabel, producerReasonLabel, producerStyleLabel, ProducerReviewButtons } from "../ui/src/components/SongDetailCard";
 
 describe("SongDetailCard producer review buttons", () => {
   it("renders archive/discard buttons with plain JA action labels", () => {
@@ -73,5 +73,11 @@ describe("SongDetailCard producer review buttons", () => {
   it("maps technical take-selection reasons to producer-facing copy", () => {
     expect(producerReasonLabel("selected best scored take (0.796)")).toBe("試聴用テイクを自動選択しました。");
     expect(producerReasonLabel("歌詞生成に失敗して止まった")).toBe("歌詞生成に失敗して止まった");
+  });
+
+  it("hides technical cascade labels and English style prose from the producer surface", () => {
+    expect(producerObservationLabel({ label: "brief source" })).toBe("記録済みの観察");
+    expect(producerStyleLabel("aggressive jazz drums up front, thick electric bass")).toBe("プロンプト台帳に記録");
+    expect(producerStyleLabel("低いベースと乾いたドラム")).toBe("低いベースと乾いたドラム");
   });
 });

@@ -245,6 +245,19 @@ function compactTrace(value: string | undefined, fallback: string, limit = 120):
   return text.length > limit ? `${text.slice(0, limit)}…` : text;
 }
 
+export function producerObservationLabel(source?: CascadeTrace["observationSources"][number]): string {
+  const value = source?.quote ?? source?.label;
+  if (!value || value === "brief source") return "記録済みの観察";
+  return value;
+}
+
+export function producerStyleLabel(value?: string): string {
+  const text = (value ?? "").trim();
+  if (!text || text === "未記録") return "未記録";
+  if (/[A-Za-z]{4,}/.test(text)) return "プロンプト台帳に記録";
+  return text;
+}
+
 function pageSlice<T>(items: T[], page: number): T[] {
   return items.slice(page * detailPageSize, page * detailPageSize + detailPageSize);
 }
@@ -507,11 +520,11 @@ export function SongDetailCard(props: SongDetailCardProps) {
             <div className="item song-detail-reason">
               <div className="muted">制作の流れ</div>
               <dl className="song-detail-status">
-                <div><dt>観察元</dt><dd>{cascadeSource?.url ? <a href={cascadeSource.url} target="_blank" rel="noreferrer">{cascadeSource.quote ?? cascadeSource.label}</a> : cascadeSource?.quote ?? cascadeSource?.label ?? "未記録"}</dd></div>
+                <div><dt>観察元</dt><dd>{cascadeSource?.url ? <a href={cascadeSource.url} target="_blank" rel="noreferrer">{producerObservationLabel(cascadeSource)}</a> : producerObservationLabel(cascadeSource)}</dd></div>
                 <div><dt>アーティストの声</dt><dd>{producerReasonLabel(cascadeTrace.artistVoice) ?? cascadeTrace.artistVoice}</dd></div>
                 <div><dt>曲名</dt><dd>{cascadeTrace.title}</dd></div>
                 <div><dt>歌詞テーマ</dt><dd>{cascadeTrace.lyricsTheme}</dd></div>
-                <div><dt>音の方向</dt><dd>{cascadeTrace.styleLayer}</dd></div>
+                <div><dt>音の方向</dt><dd>{producerStyleLabel(cascadeTrace.styleLayer)}</dd></div>
               </dl>
             </div>
           ) : null}
