@@ -536,7 +536,31 @@ textarea {
 
 .producer-room-tabs {
   align-items: center;
+  gap: 6px;
   margin-bottom: 10px;
+  padding-bottom: 10px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.14);
+}
+
+.producer-room-tabs .tab-button {
+  display: inline-flex;
+  align-items: center;
+  min-height: 32px;
+  padding: 0.32rem 0.68rem;
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+  color: rgba(255, 255, 255, 0.72);
+}
+
+.producer-room-tabs .tab-button:hover {
+  color: #fff;
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.producer-room-tabs .tab-button.is-active {
+  background: rgba(255, 255, 255, 0.94);
+  color: var(--pr-indigo);
 }
 
 .producer-room-tabs .producer-room-diagnostics-link {
