@@ -184,12 +184,61 @@ describe("ProducerRoomApp Songs and Settings views", () => {
     );
 
     expect(html).toContain("Setup");
+    expect(html).toContain("Artist Setup");
+    expect(html).toContain("創作の核");
+    expect(html).toContain("会話人格");
+    expect(html).toContain("自己紹介");
     expect(html).toContain("初回 setup が未完了です");
-    expect(html).toContain("ARTIST.md");
-    expect(html).toContain("SOUL.md");
+    expect(html).toContain("創作の核 — ARTIST.md");
+    expect(html).toContain("会話人格 — SOUL.md");
+    expect(html).toContain("Suno Style と曲調に効く音の核");
+    expect(html).toContain("押すと下書きが欄に入るだけ");
     expect(html).toContain("IDENTITY.md");
     expect(html).toContain("AI下書きはありません");
     expect(html.match(/AI下書き<\/button>/g)?.length).toBe(8);
+  });
+
+  it("does not show validation errors for untouched empty setup fields", () => {
+    const persona = {
+      artist: {
+        artistName: "",
+        identityLine: "",
+        soundDna: "",
+        obsessions: "",
+        lyricsRules: "",
+        socialVoice: ""
+      },
+      soul: {
+        conversationTone: "",
+        refusalStyle: ""
+      },
+      identity: { text: "" },
+      producer: { text: "" },
+      inner: { text: "" },
+      setup: { completed: false, needsSetup: true, reasons: ["missing_completion_marker"], reasonsText: "setup not completed" },
+      aiDraftSupported: ["artist", "soul"] as ["artist", "soul"],
+      provider: "mock"
+    };
+    const html = renderToStaticMarkup(
+      React.createElement(SetupView, {
+        persona,
+        draft: buildPersonaDraft(persona),
+        dirty: { artist: false, soul: false, identity: false, producer: false, inner: false },
+        busyKey: null,
+        onUpdateArtist: () => undefined,
+        onUpdateSoul: () => undefined,
+        onUpdateSnapshot: () => undefined,
+        onSaveLayer: () => undefined,
+        onReset: () => undefined,
+        onRefresh: () => undefined,
+        onPropose: () => undefined,
+        onComplete: () => undefined
+      })
+    );
+
+    expect(html).toContain("未入力");
+    expect(html).not.toContain("conversationTone must be at least 5 characters");
+    expect(html).not.toContain("artistName is required");
   });
 });
 

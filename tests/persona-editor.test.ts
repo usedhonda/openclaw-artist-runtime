@@ -25,7 +25,7 @@ function source(): PersonaEditorSource {
     identity: { text: "# IDENTITY\n\nraw identity\n" },
     producer: { text: "# PRODUCER\n\nraw producer\n" },
     inner: { text: "# INNER\n\nraw inner\n" },
-    setup: { completed: true, needsSetup: false, reasons: [], reasonsText: "setup incomplete" },
+    setup: { completed: true, needsSetup: false, reasons: [], reasonsText: "" },
     aiDraftSupported: ["artist", "soul"],
     provider: "mock"
   };

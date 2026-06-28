@@ -556,6 +556,48 @@ textarea {
   background: rgba(255, 255, 255, 0.46);
 }
 
+.persona-layer-map {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 10px;
+  margin-top: 12px;
+}
+
+.persona-layer-chip {
+  display: grid;
+  gap: 4px;
+  padding: 12px;
+  border: 1px solid rgba(216, 204, 189, 0.78);
+  border-radius: 16px;
+  background: rgba(255, 255, 255, 0.54);
+}
+
+.persona-layer-chip span,
+.persona-layer-chip small,
+.field-help,
+.ai-draft-row {
+  color: var(--muted);
+}
+
+.persona-layer-details > summary {
+  display: grid;
+  gap: 4px;
+  cursor: pointer;
+}
+
+.persona-field {
+  display: grid;
+  gap: 6px;
+}
+
+.ai-draft-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  font-size: 0.88rem;
+}
+
 .debug-json {
   overflow-x: auto;
   margin: 0;

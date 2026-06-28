@@ -136,8 +136,8 @@ describe("describePersonaSetupReasons", () => {
     expect(text).toBe("artist name not set");
   });
 
-  it("falls back to the raw value for unknown codes and handles empty input", () => {
+  it("falls back to the raw value for unknown codes and returns empty text for complete setup", () => {
     expect(describePersonaSetupReasons(["unexpected_code"])).toBe("unexpected_code");
-    expect(describePersonaSetupReasons([])).toBe("setup incomplete");
+    expect(describePersonaSetupReasons([])).toBe("");
   });
 });

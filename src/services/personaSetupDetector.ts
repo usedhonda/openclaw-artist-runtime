@@ -113,5 +113,7 @@ const personaSetupReasonText: Record<string, string> = {
  */
 export function describePersonaSetupReasons(reasons: string[]): string {
   const described = reasons.map((reason) => personaSetupReasonText[reason] ?? reason);
-  return described.length > 0 ? described.join(", ") : "setup incomplete";
+  // No reasons means setup is complete; return empty so completed states never
+  // leak a stray "setup incomplete" label into any consuming surface.
+  return described.length > 0 ? described.join(", ") : "";
 }

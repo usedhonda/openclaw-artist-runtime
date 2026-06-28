@@ -93,7 +93,8 @@ describe("persona route", () => {
     expect(response.producer.text).toContain("raw producer");
     expect(response.inner.text).toContain("raw inner");
     expect(response.aiDraftSupported).toEqual(["artist", "soul"]);
-    expect(response.setup.reasonsText).toBeTruthy();
+    expect(response.setup.needsSetup).toBe(false);
+    expect(response.setup.reasonsText).toBe("");
   });
 
   it("writes ARTIST.md through the marker-aware writer and preserves operator text outside markers", async () => {
