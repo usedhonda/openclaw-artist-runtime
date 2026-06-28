@@ -272,6 +272,38 @@ describe("ProducerRoomApp Songs and Settings views", () => {
     expect(html).not.toContain("Reset Draft");
   });
 
+  it("disables settings save and reset when there are no unsaved changes", () => {
+    const config = {
+      artist: { artistId: "artist", workspaceRoot: "/tmp/artist" },
+      music: { suno: { dailyCreditLimit: 4, monthlyCreditLimit: 40, driver: "mock" as const, submitMode: "skip" as const } },
+      autopilot: { enabled: true, dryRun: true, songsPerWeek: 3, cycleIntervalMinutes: 60 },
+      distribution: {
+        liveGoArmed: false,
+        platforms: {
+          x: { enabled: true, liveGoArmed: false, authority: "draft_only" as const },
+          instagram: { enabled: false, liveGoArmed: false, authority: "draft_only" as const },
+          tiktok: { enabled: false, liveGoArmed: false, authority: "draft_only" as const }
+        }
+      }
+    };
+    const html = renderToStaticMarkup(
+      React.createElement(SettingsView, {
+        config,
+        draft: buildConfigDraft(config),
+        dirty: false,
+        busy: false,
+        validationError: null,
+        onUpdateDraft: () => undefined,
+        onSave: () => undefined,
+        onReset: () => undefined,
+        onRefresh: () => undefined
+      })
+    );
+
+    expect(html).toMatch(/<button class=\"primary\" type=\"button\" disabled=\"\">設定を保存<\/button>/);
+    expect(html).toMatch(/<button type=\"button\" disabled=\"\">元に戻す<\/button>/);
+  });
+
   it("renders the Setup tab editor with AI draft only on ARTIST/SOUL layers", () => {
     const persona = {
       artist: {

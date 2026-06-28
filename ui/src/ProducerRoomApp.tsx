@@ -587,7 +587,7 @@ export function SettingsView(props: {
             </section>
             {props.validationError ? <div className="field-error">{props.validationError}</div> : null}
             <div className="inline-actions">
-              <button className="primary" type="button" disabled={props.busy || Boolean(props.validationError)} onClick={props.onSave}>設定を保存</button>
+              <button className="primary" type="button" disabled={props.busy || Boolean(props.validationError) || !props.dirty} onClick={props.onSave}>設定を保存</button>
               <button type="button" disabled={props.busy || !props.dirty} onClick={props.onReset}>元に戻す</button>
               <button type="button" disabled={props.busy} onClick={props.onRefresh}>再読み込み</button>
             </div>
