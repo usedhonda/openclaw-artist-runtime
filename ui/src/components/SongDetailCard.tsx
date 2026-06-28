@@ -478,7 +478,6 @@ export function SongDetailCard(props: SongDetailCardProps) {
             { label: title }
           ]}
         />
-        <button type="button" className="song-detail-back" onClick={onBack}>&larr; 作品へ</button>
         <div className="song-detail-title-row">
           <strong>{title}</strong>
           <span className="muted">{statusDisplayLabel(song?.status)}</span>
