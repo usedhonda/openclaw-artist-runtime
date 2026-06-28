@@ -704,8 +704,56 @@ textarea {
   color: var(--muted);
 }
 
+.persona-file-tabs {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 8px;
+}
+
+.persona-file-tab {
+  display: grid;
+  grid-template-columns: 140px 150px minmax(0, 1fr);
+  gap: 10px;
+  align-items: center;
+  min-height: 0;
+  padding: 10px 12px;
+  text-align: left;
+  border: 1px solid var(--pr-line);
+  border-radius: 12px;
+  background: var(--pr-canvas);
+  color: var(--pr-ink);
+  box-shadow: none;
+}
+
+.persona-file-tab.is-active {
+  border-color: var(--pr-indigo);
+  box-shadow: inset 0 0 0 1px var(--pr-indigo);
+}
+
+.persona-file-tab-file {
+  font-weight: 800;
+  color: var(--pr-indigo);
+}
+
+.persona-file-tab-role,
+.persona-file-tab-gap {
+  font-size: 0.86rem;
+  color: var(--muted);
+}
+
+.persona-file-tab-gap {
+  color: var(--warning);
+  font-weight: 700;
+}
+
+.persona-file-editor-head {
+  display: grid;
+  gap: 4px;
+}
+
 @media (max-width: 720px) {
   .persona-layer-chip,
+  .persona-file-tab,
   .song-ledger-toolbar {
     display: grid;
     grid-template-columns: minmax(0, 1fr);

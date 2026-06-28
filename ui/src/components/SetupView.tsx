@@ -23,7 +23,9 @@ const emptyTouchedMap: LayerTouchedMap = {
   inner: false
 };
 
-const snapshotLayerInfo = (layer: "identity" | "producer" | "inner") =>
+const setupLayers: PersonaDraftLayer[] = ["artist", "soul", "identity", "producer", "inner"];
+
+const layerInfo = (layer: PersonaDraftLayer) =>
   personaLayerMap.find((entry) => entry.layer === layer);
 
 function personaIssueLabel(issue: { code: string; file: string; detail: string }): string {
@@ -44,7 +46,17 @@ function personaIssueLabel(issue: { code: string; file: string; detail: string }
 }
 
 function personaFieldLabel(field: string): string {
-  return [...artistPersonaFields, ...soulPersonaFields].find((entry) => entry.aiField === field)?.label ?? field;
+  return [...artistPersonaFields, ...soulPersonaFields].find((entry) => entry.aiField === field || entry.field === field)?.label ?? field;
+}
+
+function personaFieldFile(field: string): string {
+  if (artistPersonaFields.some((entry) => entry.aiField === field || entry.field === field)) {
+    return "ARTIST.md";
+  }
+  if (soulPersonaFields.some((entry) => entry.aiField === field || entry.field === field)) {
+    return "SOUL.md";
+  }
+  return "persona";
 }
 
 function personaFieldStatusLabel(status: "filled" | "thin" | "missing"): string {
@@ -101,6 +113,101 @@ function SaveRow(props: {
   );
 }
 
+function SetupFileTab(props: {
+  layer: PersonaDraftLayer;
+  active: boolean;
+  gap?: string;
+  onSelect: () => void;
+}) {
+  const info = layerInfo(props.layer);
+  return (
+    <button
+      type="button"
+      className={`persona-file-tab${props.active ? " is-active" : ""}`}
+      onClick={props.onSelect}
+      aria-pressed={props.active}
+    >
+      <span className="persona-file-tab-file">{info?.file ?? props.layer}</span>
+      <span className="persona-file-tab-role">{info?.role ?? props.layer}</span>
+      {props.gap ? <span className="persona-file-tab-gap">{props.gap}</span> : null}
+    </button>
+  );
+}
+
+function SetupFileEditor(props: {
+  layer: PersonaDraftLayer;
+  draft: PersonaDraft;
+  dirty: DirtyMap;
+  busyKey: string | null;
+  validationError: string | null;
+  onUpdateArtist: (field: keyof ArtistPersonaDraft, value: string) => void;
+  onUpdateSoul: (field: keyof SoulPersonaDraft, value: string) => void;
+  onUpdateSnapshot: (layer: "identity" | "producer" | "inner", value: string) => void;
+  onSave: () => void;
+  onReset: () => void;
+  onTouched: () => void;
+}) {
+  const info = layerInfo(props.layer);
+  return (
+    <section className="settings-section persona-file-editor">
+      <div className="persona-file-editor-head">
+        <span className="section-title">{info?.file ?? props.layer}</span>
+        <span className="muted">{info?.role ?? props.layer} · {info?.summary}</span>
+      </div>
+      {props.layer === "artist" ? (
+        <div className="persona-field-list">
+          {artistPersonaFields.map((field) => (
+            <PersonaTextInput
+              key={field.field}
+              label={field.label}
+              help={field.help}
+              value={props.draft.artist[field.field]}
+              multiline={field.multiline}
+              onChange={(value) => props.onUpdateArtist(field.field, value)}
+              onTouched={props.onTouched}
+            />
+          ))}
+        </div>
+      ) : null}
+      {props.layer === "soul" ? (
+        <div className="persona-field-list">
+          {soulPersonaFields.map((field) => (
+            <PersonaTextInput
+              key={field.field}
+              label={field.label}
+              help={field.help}
+              value={props.draft.soul[field.field]}
+              multiline={field.multiline}
+              onChange={(value) => props.onUpdateSoul(field.field, value)}
+              onTouched={props.onTouched}
+            />
+          ))}
+        </div>
+      ) : null}
+      {props.layer === "identity" || props.layer === "producer" || props.layer === "inner" ? (
+        <>
+          <div className="muted">全文をそのまま保存します。</div>
+          <textarea
+            rows={10}
+            value={props.draft.snapshots[props.layer]}
+            onBlur={props.onTouched}
+            onChange={(event) => props.onUpdateSnapshot(props.layer, event.target.value)}
+          />
+          {props.draft.snapshots[props.layer].trim().length === 0 ? <div className="muted">未入力</div> : null}
+        </>
+      ) : null}
+      <SaveRow
+        layer={props.layer}
+        dirty={props.dirty[props.layer]}
+        busy={props.busyKey === `persona-save:${props.layer}`}
+        validationError={props.validationError}
+        onSave={props.onSave}
+        onReset={props.onReset}
+      />
+    </section>
+  );
+}
+
 export function SetupView(props: {
   persona: PersonaEditorSource | null;
   draft: PersonaDraft | null;
@@ -119,6 +226,14 @@ export function SetupView(props: {
   const setup = props.persona?.setup;
   const weakPersonaFields = props.persona?.audit?.fields.filter((field) => field.status !== "filled") ?? [];
   const setupBlocked = Boolean(weakPersonaFields.length || props.persona?.audit?.issues.length);
+  const [activeLayer, setActiveLayer] = React.useState<PersonaDraftLayer>("artist");
+  const weakFieldSummaryForFile = (file: string) => {
+    const fields = weakPersonaFields.filter((field) => personaFieldFile(field.field) === file);
+    if (!fields.length) {
+      return undefined;
+    }
+    return `不足: ${fields.slice(0, 2).map((field) => `${personaFieldLabel(field.field)}(${personaFieldStatusLabel(field.status)})`).join(" / ")}${fields.length > 2 ? ` / ほか${fields.length - 2}` : ""}`;
+  };
   const [touched, setTouched] = React.useState<LayerTouchedMap>(emptyTouchedMap);
   const [saveAttempted, setSaveAttempted] = React.useState<LayerTouchedMap>(emptyTouchedMap);
   const markTouched = (layer: PersonaDraftLayer) => setTouched((current) => ({ ...current, [layer]: true }));
@@ -148,7 +263,7 @@ export function SetupView(props: {
     <section className="single-column setup-view">
       <article className="panel settings-panel">
         <div className="section-title">アーティスト設定</div>
-        <div className="muted">曲づくりに効く人格だけを並べます。必要なところだけ開いて編集します。</div>
+        <div className="muted">編集する Markdown ファイルを選びます。ファイル名が正本です。</div>
         {setup?.needsSetup ? (
           <div className="warning-banner">初回 setup が未完了です: {setup.reasonsText}</div>
         ) : null}
@@ -170,7 +285,7 @@ export function SetupView(props: {
             <strong>設定の不足</strong>
             <ul>
               {weakPersonaFields.slice(0, 3).map((field) => (
-                <li key={field.field}>{personaFieldLabel(field.field)}: {personaFieldStatusLabel(field.status)}</li>
+                <li key={field.field}>{personaFieldFile(field.field)}: {personaFieldLabel(field.field)}: {personaFieldStatusLabel(field.status)}</li>
               ))}
             </ul>
             {weakPersonaFields.length > 3 ? (
@@ -182,82 +297,30 @@ export function SetupView(props: {
           <div className="item muted">Loading persona.</div>
         ) : (
           <div className="settings-sections">
-            <details className="settings-section persona-layer-details">
-              <summary>
-                <span className="section-title">創作の核</span>
-                <span className="muted">曲づくりの土台。必要な時だけ開いて編集します。</span>
-              </summary>
-              <div className="muted">保存先: ARTIST.md</div>
-              <div className="persona-field-list">
-                {artistPersonaFields.map((field) => (
-                  <PersonaTextInput
-                    key={field.field}
-                    label={field.label}
-                    help={field.help}
-                    value={draft.artist[field.field]}
-                    multiline={field.multiline}
-                    onChange={(value) => props.onUpdateArtist(field.field, value)}
-                    onTouched={() => markTouched("artist")}
-                  />
-                ))}
-              </div>
-              <SaveRow
-                layer="artist"
-                dirty={props.dirty.artist}
-                busy={props.busyKey === "persona-save:artist"}
-                validationError={visibleValidation("artist")}
-                onSave={() => saveLayer("artist")}
-                onReset={resetDraft}
-              />
-            </details>
-            <details className="settings-section persona-layer-details">
-              <summary>
-                <span className="section-title">会話人格</span>
-                <span className="muted">Telegram や部屋で話す温度。必要な時だけ開いて編集します。</span>
-              </summary>
-              <div className="muted">保存先: SOUL.md</div>
-              <div className="persona-field-list">
-                {soulPersonaFields.map((field) => (
-                  <PersonaTextInput
-                    key={field.field}
-                    label={field.label}
-                    help={field.help}
-                    value={draft.soul[field.field]}
-                    multiline={field.multiline}
-                    onChange={(value) => props.onUpdateSoul(field.field, value)}
-                    onTouched={() => markTouched("soul")}
-                  />
-                ))}
-              </div>
-              <SaveRow
-                layer="soul"
-                dirty={props.dirty.soul}
-                busy={props.busyKey === "persona-save:soul"}
-                validationError={visibleValidation("soul")}
-                onSave={() => saveLayer("soul")}
-                onReset={resetDraft}
-              />
-            </details>
-            {(["identity", "producer", "inner"] as const).map((layer) => (
-              <details className="settings-section persona-layer-details" key={layer}>
-                <summary>
-                  <span className="section-title">{snapshotLayerInfo(layer)?.role}</span>
-                  <span className="muted">{snapshotLayerInfo(layer)?.summary}</span>
-                </summary>
-                <div className="muted">保存先: {snapshotLayerInfo(layer)?.file}</div>
-                <div className="muted">全文をそのまま保存します。</div>
-                <textarea rows={10} value={draft.snapshots[layer]} onBlur={() => markTouched(layer)} onChange={(event) => props.onUpdateSnapshot(layer, event.target.value)} />
-                {draft.snapshots[layer].trim().length === 0 ? <div className="muted">未入力</div> : null}
-                <SaveRow
+            <div className="persona-file-tabs" role="tablist" aria-label="編集する設定ファイル">
+              {setupLayers.map((layer) => (
+                <SetupFileTab
+                  key={layer}
                   layer={layer}
-                  dirty={props.dirty[layer]}
-                  busy={props.busyKey === `persona-save:${layer}`}
-                  validationError={visibleValidation(layer)}
-                  onSave={() => saveLayer(layer)}
-                  onReset={resetDraft}
+                  active={activeLayer === layer}
+                  gap={weakFieldSummaryForFile(layerInfo(layer)?.file ?? "")}
+                  onSelect={() => setActiveLayer(layer)}
                 />
-              </details>
-            ))}
+              ))}
+            </div>
+            <SetupFileEditor
+              layer={activeLayer}
+              draft={draft}
+              dirty={props.dirty}
+              busyKey={props.busyKey}
+              validationError={visibleValidation(activeLayer)}
+              onUpdateArtist={props.onUpdateArtist}
+              onUpdateSoul={props.onUpdateSoul}
+              onUpdateSnapshot={props.onUpdateSnapshot}
+              onSave={() => saveLayer(activeLayer)}
+              onReset={resetDraft}
+              onTouched={() => markTouched(activeLayer)}
+            />
             <div className="inline-actions">
               <button type="button" disabled={props.busyKey !== null} onClick={props.onRefresh}>再読み込み</button>
               {setup?.needsSetup ? (

@@ -289,11 +289,11 @@ function RouteNav(props: { activeView: RoomView }) {
   const linkClass = (view: RoomView) => `tab-button${props.activeView === view ? " is-active" : ""}`;
   return (
     <nav className="view-tabs producer-room-tabs" aria-label="Producer Room views">
-      <a className={linkClass("room")} href="#room">部屋</a>
-      <a className={linkClass("songs")} href="#songs">作品</a>
-      <a className={linkClass("setup")} href="#setup">設定準備</a>
-      <a className={linkClass("settings")} href="#settings">運用設定</a>
-      <a className="producer-room-diagnostics-link" href="#diagnostics">診断</a>
+      <a className={linkClass("room")} href="#room">Room</a>
+      <a className={linkClass("songs")} href="#songs">Songs</a>
+      <a className={linkClass("setup")} href="#setup">Setup</a>
+      <a className={linkClass("settings")} href="#settings">Settings</a>
+      <a className="producer-room-diagnostics-link" href="#diagnostics">Diagnostics</a>
     </nav>
   );
 }
@@ -316,7 +316,7 @@ function RoomViewPanel(props: {
       {props.persona?.setup.needsSetup ? (
         <article className="panel">
           <div className="warning-banner">
-            初期設定が未完了です: {props.persona.setup.reasonsText} <a href="#setup">設定準備を開く</a>
+            初期設定が未完了です: {props.persona.setup.reasonsText} <a href="#setup">Setup を開く</a>
           </div>
         </article>
       ) : null}
