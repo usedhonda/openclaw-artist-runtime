@@ -222,13 +222,17 @@ describe("ProducerRoomApp Songs and Settings views", () => {
     );
 
     expect(patch.autopilot.songsPerWeek).toBe(5);
-    expect(html).toContain("Autopilot");
-    expect(html).toContain("Suno Budget");
-    expect(html).toContain("Platforms");
+    expect(html).toContain("自動制作");
+    expect(html).toContain("Suno 予算");
+    expect(html).toContain("配信先");
     expect(html).toContain("Save Settings");
-    expect(html).toContain("frozen");
-    expect(html).toContain("workspace configured");
+    expect(html).toContain("凍結中");
+    expect(html).toContain("下書きのみ");
     expect(html).not.toContain("/tmp/artist");
+    expect(html).not.toContain("Live-Go Arm");
+    expect(html).not.toContain("Suno Submit Mode");
+    expect(html).not.toContain("workspace configured");
+    expect(html).not.toContain("auto publish");
   });
 
   it("renders the Setup tab editor with AI draft only on ARTIST/SOUL layers", () => {

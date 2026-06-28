@@ -448,79 +448,96 @@ export function SettingsView(props: {
 }) {
   const draft = props.draft;
   const globalArmHeld = Boolean(draft && !draft.distributionLiveGoArmed);
+  const authorityLabel = (value: string) => {
+    switch (value) {
+      case "auto_publish":
+        return "自動公開";
+      case "auto_publish_visuals":
+        return "画像を自動公開";
+      case "auto_publish_clips":
+        return "動画を自動公開";
+      case "auto_publish_and_low_risk_replies":
+        return "自動公開 + 低リスク返信";
+      case "draft_only":
+        return "下書きのみ";
+      case "manual_approval":
+        return "手動承認";
+      default:
+        return value.replace(/_/g, " ");
+    }
+  };
 
   return (
     <section className="single-column settings-view">
       <article className="panel settings-panel">
         <div className="section-title">Settings</div>
-        <div className="muted">platform / authority / budget / cadence / hard-stop を steer する場所です。</div>
+        <div className="muted">制作ペース、Suno 予算、外部公開の許可を決める場所です。</div>
         {!props.config || !draft ? (
           <div className="item muted">Loading config.</div>
         ) : (
           <div className="settings-sections">
             <section className="settings-section">
-              <div className="section-title">Autopilot</div>
-              <label className="toggle"><input type="checkbox" checked={draft.autopilotEnabled} onChange={(event) => props.onUpdateDraft({ autopilotEnabled: event.target.checked })} />Autopilot enabled</label>
-              <label className="toggle"><input type="checkbox" checked={draft.dryRun} onChange={(event) => props.onUpdateDraft({ dryRun: event.target.checked })} />Dry-run safety</label>
-              <label className="toggle"><input type="checkbox" checked={draft.distributionLiveGoArmed} onChange={(event) => props.onUpdateDraft({ distributionLiveGoArmed: event.target.checked })} />Live-Go Arm (global)</label>
-              {globalArmHeld ? <div className="warning-banner">Global live-go arm is OFF. Platform arms stay held upstream.</div> : null}
+              <div className="section-title">自動制作</div>
+              <label className="toggle"><input type="checkbox" checked={draft.autopilotEnabled} onChange={(event) => props.onUpdateDraft({ autopilotEnabled: event.target.checked })} />自動制作を動かす</label>
+              <label className="toggle"><input type="checkbox" checked={draft.dryRun} onChange={(event) => props.onUpdateDraft({ dryRun: event.target.checked })} />外部送信を止める (dry-run)</label>
+              <label className="toggle"><input type="checkbox" checked={draft.distributionLiveGoArmed} onChange={(event) => props.onUpdateDraft({ distributionLiveGoArmed: event.target.checked })} />外部公開を許可する (全体)</label>
+              {globalArmHeld ? <div className="warning-banner">外部公開は全体で止まっています。各配信先の許可も上流で保留されます。</div> : null}
               <div className="field-grid">
-                <NumberField label="Songs Per Week" value={draft.songsPerWeek} min={0} max={21} onChange={(value) => props.onUpdateDraft({ songsPerWeek: value })} />
-                <NumberField label="Cycle Interval Minutes" value={draft.cycleIntervalMinutes} min={15} max={1440} onChange={(value) => props.onUpdateDraft({ cycleIntervalMinutes: value })} />
+                <NumberField label="週あたりの曲数" value={draft.songsPerWeek} min={0} max={21} onChange={(value) => props.onUpdateDraft({ songsPerWeek: value })} />
+                <NumberField label="確認間隔 (分)" value={draft.cycleIntervalMinutes} min={15} max={1440} onChange={(value) => props.onUpdateDraft({ cycleIntervalMinutes: value })} />
               </div>
             </section>
             <section className="settings-section">
-              <div className="section-title">Suno Budget</div>
+              <div className="section-title">Suno 予算</div>
               <div className="field-grid">
-                <NumberField label="Daily Credit Limit" value={draft.dailyCreditLimit} min={1} max={1000} onChange={(value) => props.onUpdateDraft({ dailyCreditLimit: value })} />
-                <NumberField label="Monthly Credit Limit" value={draft.monthlyCreditLimit} min={0} max={50000} onChange={(value) => props.onUpdateDraft({ monthlyCreditLimit: value })} note="0 means unlimited." />
+                <NumberField label="1日の上限" value={draft.dailyCreditLimit} min={1} max={1000} onChange={(value) => props.onUpdateDraft({ dailyCreditLimit: value })} />
+                <NumberField label="月の上限" value={draft.monthlyCreditLimit} min={0} max={50000} onChange={(value) => props.onUpdateDraft({ monthlyCreditLimit: value })} note="0 は無制限。" />
                 <label>
-                  <div className="eyebrow">Suno Driver</div>
+                  <div className="eyebrow">Suno 操作方法</div>
                   <select value={draft.sunoDriver} onChange={(event) => props.onUpdateDraft({ sunoDriver: event.target.value as ConfigDraft["sunoDriver"] })}>
                     {sunoDriverModes.map((mode) => <option key={mode} value={mode}>{mode}</option>)}
                   </select>
                 </label>
                 <label>
-                  <div className="eyebrow">Suno Submit Mode</div>
+                  <div className="eyebrow">Suno 送信</div>
                   <select value={draft.sunoSubmitMode} onChange={(event) => props.onUpdateDraft({ sunoSubmitMode: event.target.value as ConfigDraft["sunoSubmitMode"] })}>
                     {sunoSubmitModes.map((mode) => <option key={mode} value={mode}>{mode}</option>)}
                   </select>
-                  {draft.sunoSubmitMode === "live" ? <div className="warning-banner">Live submit consumes real Suno credits.</div> : <div className="muted">skip = no Create click, live = real submit.</div>}
+                  {draft.sunoSubmitMode === "live" ? <div className="warning-banner">live は実際に Suno クレジットを使います。</div> : <div className="muted">skip は作成クリックなし。live は実送信。</div>}
                 </label>
               </div>
             </section>
             <section className="settings-section">
-              <div className="section-title">Platforms</div>
+              <div className="section-title">配信先</div>
               <div className="field-grid">
                 <label className={`platform-config${globalArmHeld ? " is-held" : ""}`}>
-                  <div className="toggle"><input type="checkbox" checked={draft.xEnabled} onChange={(event) => props.onUpdateDraft({ xEnabled: event.target.checked })} />X enabled</div>
-                  <div className="toggle"><input type="checkbox" checked={draft.xLiveGoArmed} onChange={(event) => props.onUpdateDraft({ xLiveGoArmed: event.target.checked })} />X live-go arm</div>
-                  <div className="eyebrow">X Authority</div>
+                  <div className="toggle"><input type="checkbox" checked={draft.xEnabled} onChange={(event) => props.onUpdateDraft({ xEnabled: event.target.checked })} />X を使う</div>
+                  <div className="toggle"><input type="checkbox" checked={draft.xLiveGoArmed} onChange={(event) => props.onUpdateDraft({ xLiveGoArmed: event.target.checked })} />X への公開を許可</div>
+                  <div className="eyebrow">X 権限</div>
                   <select value={draft.xAuthority} onChange={(event) => props.onUpdateDraft({ xAuthority: event.target.value as ConfigDraft["xAuthority"] })}>
-                    {xAuthorityModes.map((mode) => <option key={mode} value={mode}>{mode}</option>)}
+                    {xAuthorityModes.map((mode) => <option key={mode} value={mode}>{authorityLabel(mode)}</option>)}
                   </select>
                 </label>
                 <label className="platform-config is-frozen" title="凍結中">
-                  <div className="toggle"><input type="checkbox" checked={draft.instagramEnabled} onChange={(event) => props.onUpdateDraft({ instagramEnabled: event.target.checked })} />Instagram enabled</div>
-                  <div className="toggle"><input type="checkbox" checked={draft.instagramLiveGoArmed} disabled readOnly />Instagram live-go arm <span className="badge badge-frozen">frozen</span></div>
-                  <div className="eyebrow">Instagram Authority</div>
+                  <div className="toggle"><input type="checkbox" checked={draft.instagramEnabled} onChange={(event) => props.onUpdateDraft({ instagramEnabled: event.target.checked })} />Instagram を使う</div>
+                  <div className="toggle"><input type="checkbox" checked={draft.instagramLiveGoArmed} disabled readOnly />Instagram 公開許可 <span className="badge badge-frozen">凍結中</span></div>
+                  <div className="eyebrow">Instagram 権限</div>
                   <select value={draft.instagramAuthority} onChange={(event) => props.onUpdateDraft({ instagramAuthority: event.target.value as ConfigDraft["instagramAuthority"] })}>
-                    {instagramAuthorityModes.map((mode) => <option key={mode} value={mode}>{mode}</option>)}
+                    {instagramAuthorityModes.map((mode) => <option key={mode} value={mode}>{authorityLabel(mode)}</option>)}
                   </select>
-                  <div className="muted">Instagram is frozen until operator review.</div>
+                  <div className="muted">Instagram は operator review まで凍結中。</div>
                 </label>
                 <label className="platform-config is-frozen" title="アカウント未作成 / 凍結中">
-                  <div className="toggle"><input type="checkbox" checked={draft.tiktokEnabled} onChange={(event) => props.onUpdateDraft({ tiktokEnabled: event.target.checked })} />TikTok enabled</div>
-                  <div className="toggle"><input type="checkbox" checked={draft.tiktokLiveGoArmed} disabled readOnly />TikTok live-go arm <span className="badge badge-frozen">frozen</span></div>
-                  <div className="eyebrow">TikTok Authority</div>
+                  <div className="toggle"><input type="checkbox" checked={draft.tiktokEnabled} onChange={(event) => props.onUpdateDraft({ tiktokEnabled: event.target.checked })} />TikTok を使う</div>
+                  <div className="toggle"><input type="checkbox" checked={draft.tiktokLiveGoArmed} disabled readOnly />TikTok 公開許可 <span className="badge badge-frozen">凍結中</span></div>
+                  <div className="eyebrow">TikTok 権限</div>
                   <select value={draft.tiktokAuthority} onChange={(event) => props.onUpdateDraft({ tiktokAuthority: event.target.value as ConfigDraft["tiktokAuthority"] })}>
-                    {tiktokAuthorityModes.map((mode) => <option key={mode} value={mode}>{mode}</option>)}
+                    {tiktokAuthorityModes.map((mode) => <option key={mode} value={mode}>{authorityLabel(mode)}</option>)}
                   </select>
-                  <div className="muted">TikTok stays frozen until the operator account exists.</div>
+                  <div className="muted">TikTok は operator account 準備まで凍結中。</div>
                 </label>
               </div>
             </section>
-            <div className="muted">artist {props.config.artist.artistId} · workspace configured</div>
             {props.validationError ? <div className="field-error">{props.validationError}</div> : null}
             <div className="inline-actions">
               <button className="primary" type="button" disabled={props.busy || Boolean(props.validationError)} onClick={props.onSave}>Save Settings</button>
