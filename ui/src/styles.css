@@ -517,18 +517,30 @@ textarea {
   align-items: flex-end;
 }
 
+.producer-room-refresh-pill {
+  flex: 0 0 auto;
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  border-radius: 999px;
+  padding: 0.5rem 0.75rem;
+  color: rgba(255, 255, 255, 0.68);
+  background: rgba(255, 255, 255, 0.06);
+  font-size: 0.78rem;
+}
+
 .producer-room-tabs {
+  align-items: center;
   margin-bottom: 10px;
 }
 
-.producer-room-footer {
-  margin-bottom: 16px;
+.producer-room-tabs .producer-room-diagnostics-link {
+  margin-left: auto;
   font-size: 0.86rem;
-  text-align: right;
+  color: rgba(255, 255, 255, 0.62);
+  text-decoration: none;
 }
 
-.producer-room-footer a {
-  color: rgba(255, 255, 255, 0.62);
+.producer-room-tabs .producer-room-diagnostics-link:hover {
+  color: #fff;
 }
 
 .producer-room-grid {
@@ -1181,12 +1193,12 @@ textarea {
 
 .toast-stack {
   position: fixed;
-  top: 18px;
-  right: 18px;
+  right: 24px;
+  bottom: 24px;
   z-index: 40;
   display: grid;
   gap: 10px;
-  width: min(380px, calc(100vw - 36px));
+  width: min(340px, calc(100vw - 36px));
 }
 
 .toast-item {
@@ -1196,13 +1208,15 @@ textarea {
   gap: 12px;
   border: 1px solid rgba(143, 32, 22, 0.28);
   border-radius: 12px;
-  padding: 12px;
+  padding: 10px;
   background: var(--pr-canvas);
   box-shadow: 0 12px 30px rgba(41, 40, 39, 0.14);
+  font-size: 0.9rem;
 }
 
 .toast-close {
   white-space: nowrap;
+  padding: 0.55rem 0.7rem;
 }
 
 .shortcut-overlay {
@@ -1275,12 +1289,22 @@ textarea {
     flex-direction: column;
   }
 
+  .producer-room-refresh-pill {
+    align-self: flex-end;
+  }
+
   .hero-actions {
     width: 100%;
   }
 
   .hero-actions button {
     flex: 1;
+  }
+
+  .toast-stack {
+    position: static;
+    width: 100%;
+    margin-top: 16px;
   }
 }
 

@@ -256,17 +256,13 @@ export function RoomHeader(props: {
 function RouteNav(props: { activeView: RoomView }) {
   const linkClass = (view: RoomView) => `tab-button${props.activeView === view ? " is-active" : ""}`;
   return (
-    <>
-      <nav className="view-tabs producer-room-tabs" aria-label="Producer Room views">
-        <a className={linkClass("room")} href="#room">Room</a>
-        <a className={linkClass("songs")} href="#songs">Songs</a>
-        <a className={linkClass("setup")} href="#setup">Setup</a>
-        <a className={linkClass("settings")} href="#settings">Settings</a>
-      </nav>
-      <footer className="producer-room-footer">
-        <a href="#diagnostics">診断</a>
-      </footer>
-    </>
+    <nav className="view-tabs producer-room-tabs" aria-label="Producer Room views">
+      <a className={linkClass("room")} href="#room">Room</a>
+      <a className={linkClass("songs")} href="#songs">Songs</a>
+      <a className={linkClass("setup")} href="#setup">Setup</a>
+      <a className={linkClass("settings")} href="#settings">Settings</a>
+      <a className="producer-room-diagnostics-link" href="#diagnostics">診断</a>
+    </nav>
   );
 }
 
@@ -763,8 +759,8 @@ export function ProducerRoomApp() {
           <h1>Producer Room</h1>
           <div className="hero-copy">迷ったら、ここだけ見る。必要な操作は blocked 時に 1 つだけ出す。</div>
         </div>
-        <div className="muted">
-          {lastRefreshAt ? `last refresh ${new Date(lastRefreshAt).toLocaleTimeString()}` : "loading"}
+        <div className="producer-room-refresh-pill">
+          {lastRefreshAt ? `last refresh ${new Date(lastRefreshAt).toLocaleTimeString()}` : "status loading"}
         </div>
       </header>
       <RouteNav activeView={activeView} />
