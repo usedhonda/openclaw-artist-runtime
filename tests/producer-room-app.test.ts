@@ -159,8 +159,9 @@ describe("ProducerRoomApp Songs and Settings views", () => {
 
     expect(html).toContain("Songs");
     expect(html).toContain("七万円のスクランブル");
-    expect(html).toContain("suno_take_url_ready");
+    expect(html).toContain("試聴URLあり");
     expect(html).toContain("採用/破棄は Telegram の通知から");
+    expect(html).not.toContain("suno_take_url_ready");
   });
 
   it("paginates the song ledger instead of rendering the whole archive at once", () => {
@@ -187,8 +188,12 @@ describe("ProducerRoomApp Songs and Settings views", () => {
     expect(html).toContain("1-10 / 12 曲");
     expect(html).toContain("Song 001");
     expect(html).toContain("Song 010");
+    expect(html).toContain("採用済み");
+    expect(html).toContain("採用待ち");
     expect(html).not.toContain("Song 011");
     expect(html).not.toContain("take-001");
+    expect(html).not.toContain("take_selected");
+    expect(html).not.toContain("archived");
   });
 
   it("renders steer settings and builds a config update patch from the draft", () => {
@@ -233,6 +238,8 @@ describe("ProducerRoomApp Songs and Settings views", () => {
     expect(html).not.toContain("Suno Submit Mode");
     expect(html).not.toContain("workspace configured");
     expect(html).not.toContain("auto publish");
+    expect(html).not.toContain(">mock<");
+    expect(html).not.toContain(">skip<");
   });
 
   it("renders the Setup tab editor with AI draft only on ARTIST/SOUL layers", () => {

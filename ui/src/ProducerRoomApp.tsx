@@ -356,7 +356,45 @@ function RoomViewPanel(props: {
 }
 
 function StatusPill(props: { status: string }) {
-  return <span className={`status-pill status-pill-${props.status.replace(/[^A-Za-z0-9_-]/g, "_")}`}>{props.status}</span>;
+  const statusText = (() => {
+    switch (props.status) {
+      case "take_selected":
+        return "採用待ち";
+      case "suno_take_url_ready":
+        return "試聴URLあり";
+      case "archived":
+        return "採用済み";
+      case "discarded":
+        return "破棄済み";
+      case "building":
+        return "制作中";
+      case "draft":
+        return "草稿";
+      case "completed":
+        return "完了";
+      case "failed_closed":
+        return "要対応";
+      default:
+        return props.status.replace(/_/g, " ");
+    }
+  })();
+  const statusTone = (() => {
+    switch (props.status) {
+      case "take_selected":
+      case "suno_take_url_ready":
+        return "waiting";
+      case "archived":
+      case "completed":
+        return "done";
+      case "discarded":
+        return "muted";
+      case "failed_closed":
+        return "blocked";
+      default:
+        return "neutral";
+    }
+  })();
+  return <span className={`status-pill status-pill-${statusTone}`}>{statusText}</span>;
 }
 
 export function SongsView(props: {
@@ -466,6 +504,26 @@ export function SettingsView(props: {
         return value.replace(/_/g, " ");
     }
   };
+  const sunoDriverLabel = (value: string) => {
+    switch (value) {
+      case "mock":
+        return "テスト用";
+      case "playwright":
+        return "ブラウザ操作";
+      default:
+        return value;
+    }
+  };
+  const sunoSubmitModeLabel = (value: string) => {
+    switch (value) {
+      case "skip":
+        return "作成クリックなし";
+      case "live":
+        return "実際に送信";
+      default:
+        return value;
+    }
+  };
 
   return (
     <section className="single-column settings-view">
@@ -495,15 +553,15 @@ export function SettingsView(props: {
                 <label>
                   <div className="eyebrow">Suno 操作方法</div>
                   <select value={draft.sunoDriver} onChange={(event) => props.onUpdateDraft({ sunoDriver: event.target.value as ConfigDraft["sunoDriver"] })}>
-                    {sunoDriverModes.map((mode) => <option key={mode} value={mode}>{mode}</option>)}
+                    {sunoDriverModes.map((mode) => <option key={mode} value={mode}>{sunoDriverLabel(mode)}</option>)}
                   </select>
                 </label>
                 <label>
                   <div className="eyebrow">Suno 送信</div>
                   <select value={draft.sunoSubmitMode} onChange={(event) => props.onUpdateDraft({ sunoSubmitMode: event.target.value as ConfigDraft["sunoSubmitMode"] })}>
-                    {sunoSubmitModes.map((mode) => <option key={mode} value={mode}>{mode}</option>)}
+                    {sunoSubmitModes.map((mode) => <option key={mode} value={mode}>{sunoSubmitModeLabel(mode)}</option>)}
                   </select>
-                  {draft.sunoSubmitMode === "live" ? <div className="warning-banner">live は実際に Suno クレジットを使います。</div> : <div className="muted">skip は作成クリックなし。live は実送信。</div>}
+                  {draft.sunoSubmitMode === "live" ? <div className="warning-banner">実際に送信すると Suno クレジットを使います。</div> : <div className="muted">作成クリックなしなら Suno には送信しません。</div>}
                 </label>
               </div>
             </section>

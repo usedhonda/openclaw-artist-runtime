@@ -70,6 +70,9 @@ function SaveRow(props: {
   onSave: () => void;
   onReset: () => void;
 }) {
+  if (!props.dirty && !props.validationError) {
+    return null;
+  }
   return (
     <div className="inline-actions">
       <button
