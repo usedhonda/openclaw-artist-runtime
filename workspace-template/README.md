@@ -1,47 +1,50 @@
 # Workspace Template Guide
 
-このディレクトリは、Artist Runtime が新しい artist workspace を初期化するときに使うテンプレートです。
+This directory is used when Artist Runtime initializes a new artist workspace.
 
-## Persona file roles (source of truth)
+## Persona source of truth
 
-This section is the canonical definition for the five persona files. Individual
-files should not redefine the full split; they should only point back here.
+The five persona files are projections from one canonical persona contract. Do
+not redefine the split inside each file.
 
-Operator setup rule: ask for only the specific, recognizable parts of the artist.
-Generic behavior is supplied by Artist Runtime defaults. If an answer would be
-true for any artist, do not ask the operator to write it.
+Operator setup rule: ask only for the specific, recognizable parts of the
+artist. Generic behavior is supplied by Artist Runtime defaults. If an answer
+would be true for any artist, do not ask the operator to write it.
 
-| File | Owns | Do not duplicate here |
+| File | Owns | Must not contain |
 | --- | --- | --- |
-| `ARTIST.md` | Distinctive creative constitution: specific obsessions, sound anchors, lyric images, avoid list, Suno production traits. | Generic autonomy rules, conversational voice, producer facts, private tensions, daily state. |
-| `SOUL.md` | Distinctive conversational voice: first person, producer callname, sentence endings, forbidden phrases, signature moves. | Generic politeness/safety rules, music production rules, producer profile, private tensions. |
-| `IDENTITY.md` | Short recognizable anchor: artist name and one-line self-recognition. | Full manifesto, sound profile, voice fingerprint, producer details. |
-| `INNER.md` | Distinctive private creative tension: fear, pressure, obsession, emotional stakes that alter the work. | Public identity, generic mood, sound rules, producer contact details. |
-| `PRODUCER.md` | Producer-specific context that changes artist response or decisions. | Producer callname, artist voice, music aesthetics, secrets or unnecessary personal data. |
+| `ARTIST.md` | Artist name, premise, obsessions, sound anchors, lyric constraints, public output voice, Suno production traits. | Producer facts, producer relationship, private tensions, conversational style. |
+| `SOUL.md` | Speaking style: first person, producer callname, sentence endings, forbidden phrases, signature moves. | Music production rules, artist manifesto, producer profile, private tensions. |
+| `IDENTITY.md` | Derived identity card only. It summarizes `ARTIST.md` and `SOUL.md`; it is not a separate setup source. | New facts that belong in `ARTIST.md` or `SOUL.md`. |
+| `INNER.md` | Private creative pressure that changes the work: fear, pressure, obsession, stakes. | Public identity, sound rules, conversational style, producer data. |
+| `PRODUCER.md` | Producer-specific facts that change response or decisions. | Artist voice, music aesthetics, producer callname, secrets. |
 
-Other workspace files:
+## Setup input fields
 
-- `AGENTS.md`: OpenClaw標準MD。agentが常に従う基本ルールを書く。Artist Runtimeでは「Public Artistとして自律活動する」という最上位の行動原則を置く。
-- `HEARTBEAT.md`: OpenClaw標準MD。heartbeat時の振る舞いを書く。何もなければ黙る、重要な制作進捗だけ報告する、など。
+These are the only user-authored setup fields. They map into the canonical
+contract and then into the files above.
 
-## Decision guide
+| Field | Canonical home |
+| --- | --- |
+| `artistName` | `ARTIST.md` |
+| `identityLine` | `ARTIST.md` |
+| `soundDna` | `ARTIST.md` |
+| `obsessions` | `ARTIST.md` |
+| `lyricsRules` | `ARTIST.md` |
+| `socialVoice` | `ARTIST.md` |
+| `conversationTone` | `SOUL.md` |
+| `refusalStyle` | `SOUL.md` |
 
-- プロデューサーとどう話すか？ -> `SOUL.md`
-- 音楽家として何を作る存在なのか？ -> `ARTIST.md`
-- 自分が誰かを短く思い出す錨は？ -> `IDENTITY.md`
-- 内面の恐れ・執着は？ -> `INNER.md`
-- producer について覚えてよい事実は？ -> `PRODUCER.md`
-- いま何に惹かれているか？ -> `artist/CURRENT_STATE.md`
-- 世の中から何を見つけたか？ -> `artist/OBSERVATIONS.md`
-- この曲をどう作ったか？ -> `songs/<song-id>/`
-- SNSでどう振る舞うか？ -> `artist/SOCIAL_VOICE.md`
-- 公開・権利・停止条件は？ -> `artist/RELEASE_POLICY.md`
+`IDENTITY.md` is derived. `INNER.md` and `PRODUCER.md` are optional context
+files; they should hold only facts that their rows above own.
 
-## Workspace layout notes
+## Other workspace files
 
-- `artist/CURRENT_STATE.md`: 今の関心、感情の天気、制作中の惹かれを置く。
-- `artist/OBSERVATIONS.md`: 外界から拾った観察や種を短く蓄積する。
-- `artist/SOCIAL_VOICE.md`: SNS上の文体、避ける表現、投稿の温度感を定義する。
-- `artist/RELEASE_POLICY.md`: 公開ポリシー、権利ルール、停止条件をまとめる。
-- `artist/PRODUCER_NOTES.md`: プロデューサーからの個別メモや方針変更を置く。
-- `songs/<song-id>/`: 曲ごとの brief、lyrics、Suno payload、social assets、audit を置く。
+- `AGENTS.md`: standing runtime rules for the artist agent.
+- `HEARTBEAT.md`: when the artist should report, stay silent, or alert.
+- `artist/CURRENT_STATE.md`: current interests and active creative pull.
+- `artist/OBSERVATIONS.md`: external observations and song seeds.
+- `artist/SOCIAL_VOICE.md`: platform-specific public posting style.
+- `artist/RELEASE_POLICY.md`: release, rights, and stop conditions.
+- `artist/PRODUCER_NOTES.md`: producer notes that do not belong in persona.
+- `songs/<song-id>/`: song brief, lyrics, Suno payload, assets, and audit.

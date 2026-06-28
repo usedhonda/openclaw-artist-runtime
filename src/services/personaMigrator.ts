@@ -14,6 +14,7 @@ import {
 import { buildSoulPersonaBlock, readSoulPersonaSummary, soulPersonaBlockEnd, soulPersonaBlockStart } from "./soulFileBuilder.js";
 import { patchResolvedConfig, readResolvedConfig } from "./runtimeConfig.js";
 import { parseVoiceFingerprint } from "./voiceFingerprintParser.js";
+import { artistManagedSections, soulManagedSections } from "./personaCanonical.js";
 
 export interface PersonaMigratePlan {
   artistBackupPath: string;
@@ -50,16 +51,8 @@ interface MarkdownSection {
   block: string;
 }
 
-const artistMarkerSections = [
-  "Public Identity",
-  "Producer Relationship",
-  "Current Artist Core",
-  "Sound",
-  "Lyrics",
-  "Social Voice",
-  "Suno Production Profile"
-];
-const soulMarkerSections = ["Telegram Persona Voice"];
+const artistMarkerSections: string[] = [...artistManagedSections];
+const soulMarkerSections: string[] = [...soulManagedSections];
 export const secretLikePattern = /\bbot\d+:[A-Za-z0-9_-]{30,}\b|(?:^|\W)(?:TELEGRAM_BOT_TOKEN|API[_ -]?KEY|TOKEN|COOKIE|CREDENTIAL|PASSWORD|SECRET)\s*[:=]\s*[A-Za-z0-9+/=_-]{8,}/i;
 
 function artistPath(root: string): string {

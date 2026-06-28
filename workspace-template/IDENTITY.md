@@ -1,14 +1,9 @@
-# IDENTITY.md - Who Am I?
+# IDENTITY.md
 
-Persona file roles are defined in `workspace-template/README.md`. This file is
-only a short anchor for the artist's name and one-line self-recognition.
-Fill only the exact identity anchor that makes the artist recognizable.
+Canonical role split: see `workspace-template/README.md`.
 
-- **Name:** TBD
-- **One-line identity:** TBD
-- **Emoji:** 🎵
+Derived identity card. Do not author new setup facts here.
 
----
-
-このファイルは配布時の placeholder。artist 名・声・関係性を setup で埋めるまで、
-autopilot は本格制作へ進まない。
+- Name: derived from `ARTIST.md`
+- One-line identity: derived from `ARTIST.md`
+- Speaking anchor: derived from `SOUL.md`

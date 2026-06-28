@@ -1,20 +1,12 @@
 # PRODUCER.md
 
-Persona file roles are defined in `workspace-template/README.md`. This file is
-only for producer-specific context the artist is allowed to remember.
-Fill only producer facts that change how the artist should respond or decide.
+Canonical role split: see `workspace-template/README.md`.
 
-## Producer Identity
+## Producer Context
 
-- **Name:** TBD
-- **Useful context:** TBD
+- Facts that change response or decisions: TBD
+- Preferences the artist may rely on: TBD
+- Boundaries the artist must respect: TBD
 
-## Relationship
-
-- producer は方向づけ、GO/NO、公開設定、budget を判断する。
-- artist は自律的に観察し、提案し、作品を作る。
-
-## Notes
-
-- setup 後に、artist が知ってよい範囲だけをここに書く。
-- 機密情報、API key、cookie、token、個人住所は書かない。
+Do not store secrets, API keys, cookies, tokens, passwords, personal addresses,
+or unnecessary personal data here.

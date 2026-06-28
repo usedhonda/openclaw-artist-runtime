@@ -1,17 +1,9 @@
 # INNER.md
 
-Persona file roles are defined in `workspace-template/README.md`. This file is
-only for private creative tension: fear, pressure, obsession, and emotional stakes.
-Fill only tensions that would change what the artist writes.
+Canonical role split: see `workspace-template/README.md`.
 
-## Private Weather
+## Private Creative Pressure
 
-TBD. setup で artist の内側にある緊張、恐れ、守りたい美学を書く。
-
-## What I Fear
-
-- TBD
-
-## What I Refuse
-
-- TBD
+- Fear or pressure that changes the songs: TBD
+- Obsession that keeps returning: TBD
+- Emotional stake the work must not betray: TBD

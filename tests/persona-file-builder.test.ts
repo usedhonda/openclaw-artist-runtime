@@ -29,13 +29,13 @@ describe("persona file builder", () => {
     const block = buildArtistPersonaBlock(answers);
 
     expect(block).toContain("## Public Identity");
-    expect(block).toContain("## Producer Relationship");
     expect(block).toContain("## Current Artist Core");
     expect(block).toContain("## Sound");
     expect(block).toContain("## Lyrics");
     expect(block).toContain("## Social Voice");
     expect(block).toContain("## Suno Production Profile");
     expect(block).toContain("Neon Relay");
+    expect(block).not.toContain("## Producer Relationship");
     expect(block).not.toMatch(/TOKEN|COOKIE|CREDENTIAL|SECRET|bot\d+:/i);
   });
 
@@ -102,4 +102,3 @@ describe("persona file builder", () => {
     expect(marker).toEqual({ completedAt: "2026-04-27T00:00:00.000Z", source: "telegram", version: 1 });
   });
 });
-

@@ -4,6 +4,7 @@ import type { PersonaField } from "../types.js";
 import { artistPersonaBlockEnd, artistPersonaBlockStart, readArtistPersonaSummary } from "./personaFileBuilder.js";
 import { readPersonaSetupStatus } from "./personaSetupDetector.js";
 import { readSoulPersonaSummary, soulPersonaBlockEnd, soulPersonaBlockStart } from "./soulFileBuilder.js";
+import { artistManagedSections, personaFileContracts, soulManagedSections, type PersonaTemplateFile } from "./personaCanonical.js";
 
 export type PersonaFieldStatus = "filled" | "thin" | "missing";
 
@@ -20,7 +21,8 @@ export interface PersonaAuditIssue {
     | "duplicated_language_policy"
     | "conflicting_language_policy"
     | "duplicate_suno_profile"
-    | "obsolete_lyrics_length_rule";
+    | "obsolete_lyrics_length_rule"
+    | "persona_responsibility_overlap";
   file: string;
   detail: string;
 }
@@ -34,16 +36,8 @@ export interface PersonaAuditReport {
   summary: { filled: number; thin: number; missing: number };
 }
 
-const standardArtistSections = new Set([
-  "Public Identity",
-  "Producer Relationship",
-  "Current Artist Core",
-  "Sound",
-  "Lyrics",
-  "Social Voice",
-  "Suno Production Profile"
-]);
-const standardSoulSections = new Set(["Telegram Persona Voice"]);
+const standardArtistSections = new Set<string>(artistManagedSections);
+const standardSoulSections = new Set<string>(soulManagedSections);
 const placeholderPattern = /^(?:tbd|unknown artist|\(not set\)|n\/a|none|-+)?$/i;
 const minFilledLength = 20;
 
@@ -70,6 +64,9 @@ function auditField(field: PersonaField, value: string): PersonaFieldAudit {
   }
   if (placeholderPattern.test(current)) {
     return { field, status: "thin", reason: "default_placeholder", current };
+  }
+  if (field === "artistName" || field === "identityLine") {
+    return { field, status: "filled", current };
   }
   if (current.length < minFilledLength) {
     return { field, status: "thin", reason: "shorter_than_20_chars", current };
@@ -104,6 +101,31 @@ function countHeading(contents: string, heading: string): number {
   return [...contents.matchAll(new RegExp(`^##\\s+${escaped}\\s*$`, "gm"))].length;
 }
 
+function normalizedForContract(value: string): string {
+  return value
+    .replace(/([a-z])([A-Z])/g, "$1 $2")
+    .replace(/[_-]+/g, " ")
+    .replace(/\s+/g, " ")
+    .toLowerCase();
+}
+
+function auditResponsibilityOverlap(files: Record<string, string>): PersonaAuditIssue[] {
+  const issues: PersonaAuditIssue[] = [];
+  for (const [file, contract] of Object.entries(personaFileContracts) as Array<[PersonaTemplateFile, typeof personaFileContracts[PersonaTemplateFile]]>) {
+    const contents = normalizedForContract(files[file] ?? "");
+    for (const forbidden of contract.forbidden) {
+      if (contents.includes(forbidden)) {
+        issues.push({
+          code: "persona_responsibility_overlap",
+          file,
+          detail: `${forbidden} belongs outside ${file}; this file owns ${contract.owns}`
+        });
+      }
+    }
+  }
+  return issues;
+}
+
 function auditPersonaIssues(files: Record<string, string>): PersonaAuditIssue[] {
   const issues: PersonaAuditIssue[] = [];
   const policies = Object.entries(files).flatMap(([file, contents]) => languagePolicies(file, contents));
@@ -136,6 +158,7 @@ function auditPersonaIssues(files: Record<string, string>): PersonaAuditIssue[] 
       detail: "fixed lyric character targets conflict with runtime DurationPlan and lyrics-box budget"
     });
   }
+  issues.push(...auditResponsibilityOverlap(files));
   return issues;
 }
 

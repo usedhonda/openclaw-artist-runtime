@@ -2,8 +2,12 @@ import { mkdir, writeFile } from "node:fs/promises";
 import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import { auditPersonaCompleteness, formatPersonaAuditReport } from "../src/services/personaFieldAuditor";
+
+const templateRoot = join(__dirname, "..", "workspace-template");
+const personaTemplateFiles = ["ARTIST.md", "SOUL.md", "IDENTITY.md", "INNER.md", "PRODUCER.md"] as const;
 
 function makeRoot(): string {
   return mkdtempSync(join(tmpdir(), "artist-runtime-persona-audit-"));
@@ -21,10 +25,6 @@ async function writeFixture(root: string): Promise<void> {
       "Artist name: Obsidian Artist",
       "",
       "A nocturnal producer-avatar that writes from stations, platform ads, and weathered signals.",
-      "",
-      "## Producer Relationship",
-      "",
-      "The human is my producer; I can refuse weak direction with a better route.",
       "",
       "## Current Artist Core",
       "",
@@ -75,6 +75,22 @@ async function writeFixture(root: string): Promise<void> {
 }
 
 describe("persona field auditor", () => {
+  it("keeps the workspace template free of persona responsibility overlap", async () => {
+    const report = await auditPersonaCompleteness(templateRoot);
+
+    expect(report.issues.filter((issue) => issue.code === "persona_responsibility_overlap")).toEqual([]);
+  });
+
+  it("keeps role definitions centralized in README instead of the five persona files", () => {
+    for (const file of personaTemplateFiles) {
+      const contents = readFileSync(join(templateRoot, file), "utf8").toLowerCase();
+      expect(contents).toContain("canonical role split");
+      expect(contents).not.toContain("this file follows the canonical role split");
+      expect(contents).not.toContain("it owns");
+      expect(contents).not.toContain("do not duplicate");
+    }
+  });
+
   it("detects filled, thin, missing, external import, and custom sections", async () => {
     const root = makeRoot();
     await writeFixture(root);
@@ -84,14 +100,14 @@ describe("persona field auditor", () => {
 
     expect(report.artistFile).toEqual({ exists: true, markerPresent: false, externalImport: true });
     expect(report.soulFile).toEqual({ exists: true, markerPresent: false });
-    expect(byField.get("artistName")?.status).toBe("thin");
+    expect(byField.get("artistName")?.status).toBe("filled");
     expect(byField.get("soundDna")?.status).toBe("filled");
     expect(byField.get("obsessions")?.status).toBe("thin");
     expect(byField.get("socialVoice")?.status).toBe("missing");
     expect(byField.get("soul-tone")?.status).toBe("missing");
     expect(byField.get("soul-refusal")?.status).toBe("missing");
     expect(report.customSections).toEqual(expect.arrayContaining(["Voice", "Listener", "Conversational Core", "Ritual"]));
-    expect(report.summary).toMatchObject({ filled: 3, thin: 2, missing: 3 });
+    expect(report.summary).toMatchObject({ filled: 4, thin: 1, missing: 3 });
   });
 
   it("formats a compact operator-facing audit report", async () => {
@@ -104,6 +120,7 @@ describe("persona field auditor", () => {
     expect(text).toContain("externalImport=yes");
     expect(text).toContain("- socialVoice: missing");
     expect(text).toContain("Custom sections: Voice, Listener");
+    expect(text).not.toContain("artistName: thin");
     expect(text.length).toBeLessThan(1400);
   });
 
@@ -164,6 +181,7 @@ describe("persona field auditor", () => {
     expect(codes).toContain("conflicting_language_policy");
     expect(codes).toContain("duplicate_suno_profile");
     expect(codes).toContain("obsolete_lyrics_length_rule");
+    expect(codes).toContain("persona_responsibility_overlap");
     expect(formatPersonaAuditReport(report)).toContain("Issues:");
   });
 });

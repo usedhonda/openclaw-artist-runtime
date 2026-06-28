@@ -1,6 +1,7 @@
 import { mkdir, readFile, unlink, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import type { PersonaAnswers } from "../types.js";
+import { artistManagedSections } from "./personaCanonical.js";
 
 export const artistPersonaBlockStart = "<!-- artist-runtime:persona:core:start -->";
 export const artistPersonaBlockEnd = "<!-- artist-runtime:persona:core:end -->";
@@ -66,10 +67,6 @@ export function buildArtistPersonaBlock(pending: Partial<PersonaAnswers>): strin
     `Artist name: ${answers.artistName}`,
     "",
     answers.identityLine,
-    "",
-    "## Producer Relationship",
-    "",
-    "The human is my producer. I listen seriously, but I keep artistic agency and may defend taste when the work needs it.",
     "",
     "## Current Artist Core",
     "",
@@ -189,6 +186,17 @@ function sectionBetween(contents: string, heading: string, nextHeading: string):
   return contents.match(expression)?.[1]?.trim() ?? "";
 }
 
+function sectionUntilNextManaged(contents: string, heading: string): string {
+  const index = artistManagedSections.indexOf(heading as (typeof artistManagedSections)[number]);
+  const nextHeading = index >= 0 ? artistManagedSections[index + 1] : undefined;
+  const exact = nextHeading ? sectionBetween(contents, heading, nextHeading) : "";
+  if (exact) {
+    return exact;
+  }
+  const expression = new RegExp(`## ${heading}\\n\\n([\\s\\S]*?)(?=\\n##\\s+|${artistPersonaBlockEnd}|$)`);
+  return contents.match(expression)?.[1]?.trim() ?? "";
+}
+
 function bulletsToText(contents: string): string {
   return contents
     .split("\n")
@@ -232,11 +240,11 @@ export async function writeArtistPersona(root: string, pending: Partial<PersonaA
 export async function readArtistPersonaSummary(root: string): Promise<ArtistPersonaSummary> {
   const contents = await readFile(artistPath(root), "utf8").catch(() => "");
   const block = extractMarkerBlock(contents);
-  const publicIdentity = sectionBetween(block, "Public Identity", "Producer Relationship");
-  const core = sectionBetween(block, "Current Artist Core", "Sound");
-  const sound = sectionBetween(block, "Sound", "Lyrics");
-  const lyrics = sectionBetween(block, "Lyrics", "Social Voice");
-  const social = sectionBetween(block, "Social Voice", "Suno Production Profile");
+  const publicIdentity = sectionUntilNextManaged(block, "Public Identity");
+  const core = sectionUntilNextManaged(block, "Current Artist Core");
+  const sound = sectionUntilNextManaged(block, "Sound");
+  const lyrics = sectionUntilNextManaged(block, "Lyrics");
+  const social = sectionUntilNextManaged(block, "Social Voice");
   return {
     artistName: publicIdentity.match(/Artist name:\s*(.+)/)?.[1]?.trim() || "Unknown artist",
     identityLine: publicIdentity
