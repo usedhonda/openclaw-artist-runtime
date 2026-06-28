@@ -101,8 +101,8 @@ export function formatSoulPersonaPreview(pending: Partial<PersonaAnswers>): stri
 export async function readSoulPersonaSummary(root: string): Promise<SoulPersonaSummary> {
   const contents = await readFile(soulPath(root), "utf8").catch(() => "");
   return {
-    conversationTone: contents.match(/Conversation tone:\s*(.+)/)?.[1]?.trim() || "",
-    refusalStyle: contents.match(/Refusal style:\s*(.+)/)?.[1]?.trim() || ""
+    conversationTone: contents.match(/^Conversation tone:[ \t]*(.*)$/m)?.[1]?.trim() || "",
+    refusalStyle: contents.match(/^Refusal style:[ \t]*(.*)$/m)?.[1]?.trim() || ""
   };
 }
 

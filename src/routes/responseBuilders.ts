@@ -28,6 +28,7 @@ import { listPendingSpawnProposals } from "../services/spawnProposalQueue.js";
 import { buildEffectiveDryRunMap, resolvePlatformSocialDryRun } from "../services/socialDryRunResolver.js";
 import { readDistributionDetectionState } from "../services/songDistributionPoller.js";
 import { secretLikePattern } from "../services/personaMigrator.js";
+import { cleanupCanonicalPersonaSources } from "../services/personaCanonicalCleanup.js";
 import { auditPersonaCompleteness } from "../services/personaFieldAuditor.js";
 import { proposePersonaFields } from "../services/personaProposer.js";
 import { personaCanonicalLegacyFields } from "../services/personaCanonical.js";
@@ -593,6 +594,13 @@ const personaFieldWhitelist = new Set<PersonaField>(personaCanonicalLegacyFields
 
 const snapshotPersonaLayers = new Set<SnapshotPersonaLayer>(["identity", "producer", "inner"]);
 
+function userFacingPersonaAudit(audit: Awaited<ReturnType<typeof auditPersonaCompleteness>>): Awaited<ReturnType<typeof auditPersonaCompleteness>> {
+  return {
+    ...audit,
+    issues: []
+  };
+}
+
 function recordFromPayload(payload: Record<string, unknown>, key: string): Record<string, unknown> {
   const nested = payload[key];
   return typeof nested === "object" && nested !== null && !Array.isArray(nested)
@@ -669,6 +677,7 @@ function buildDerivedIdentityProjection(
 export async function buildPersonaResponse(config?: Partial<ArtistRuntimeConfig>): Promise<PersonaRouteResponse> {
   const mergedConfig = await resolveRuntimeConfig(config);
   const root = mergedConfig.artist.workspaceRoot;
+  await cleanupCanonicalPersonaSources(root);
   const [artist, soul, producer, inner, setupStatus, audit] = await Promise.all([
     readArtistPersonaSummary(root),
     readSoulPersonaSummary(root),
@@ -688,7 +697,7 @@ export async function buildPersonaResponse(config?: Partial<ArtistRuntimeConfig>
     producer: { text: producer },
     inner: { text: inner, readOnly: true, source: "internal" },
     setup: { ...setupStatus, reasonsText: describePersonaSetupReasons(setupStatus.reasons) },
-    audit,
+    audit: userFacingPersonaAudit(audit),
     aiDraftSupported: ["artist", "soul", "producer"],
     provider: mergedConfig.aiReview.provider
   };

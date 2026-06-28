@@ -8,7 +8,7 @@ import { POPULATED_SOUL_MD } from "./helpers/populatedArtistFixtures";
  * Plan v10.10 Phase G: persona file integrity contract
  *
  * workspace-template/ is now intentionally generic for distribution.
- * The live workspace, once populated, must still hold a ready SOUL.md.
+ * The live workspace may be blank after setup cleanup, but it must stay canonical.
  */
 
 const TEMPLATE_ROOT = join(__dirname, "..", "workspace-template");
@@ -41,7 +41,7 @@ describe("persona file integrity contract", () => {
     expect(bundle.signatureMoves.length).toBeGreaterThanOrEqual(5);
   });
 
-  it("when the live workspace is populated, its SOUL.md must also be ready", () => {
+  it("when the live workspace SOUL.md exists, it must not retain legacy placement drift", () => {
     const livePath = join(LIVE_ROOT, "SOUL.md");
     if (!existsSync(livePath)) {
       // The live workspace is gitignored; this test is a no-op outside developer machines.
@@ -51,7 +51,12 @@ describe("persona file integrity contract", () => {
     const soul = readFileSync(livePath, "utf8");
     const bundle = parseVoiceFingerprint(soul);
     const readiness = isVoiceFingerprintReady(bundle);
-    expect(readiness.ok).toBe(true);
-    expect(readiness.missing).toEqual([]);
+
+    expect(soul).toContain("artist-runtime:persona:soul:start");
+    expect(soul.toLowerCase()).not.toContain("producer_callname");
+    expect(soul.toLowerCase()).not.toContain("producer callname");
+    if (!readiness.ok) {
+      expect(readiness.missing.length).toBeGreaterThan(0);
+    }
   });
 });

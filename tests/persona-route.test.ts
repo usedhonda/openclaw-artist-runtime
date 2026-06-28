@@ -6,6 +6,7 @@ import { Readable } from "node:stream";
 import { describe, expect, it } from "vitest";
 import { registerRoutes } from "../src/routes";
 import { artistPersonaBlockEnd, artistPersonaBlockStart, writeArtistPersona } from "../src/services/personaFileBuilder.js";
+import { auditPersonaCompleteness } from "../src/services/personaFieldAuditor.js";
 import { patchResolvedConfig, readResolvedConfig } from "../src/services/runtimeConfig.js";
 import { writeSoulPersona } from "../src/services/soulFileBuilder.js";
 import type { PersonaRouteResponse } from "../src/routes/responseBuilders.js";
@@ -110,6 +111,49 @@ describe("persona route", () => {
     expect(response.setup.reasonsText).toBe("");
     expect(response.audit.summary.filled).toBeGreaterThan(0);
     expect(response.audit.issues).toEqual([]);
+  });
+
+  it("cleans legacy SOUL.md placement drift before returning Setup persona data", async () => {
+    const root = makeWorkspace();
+    await writeArtistPersona(root, {
+      identityLine: "Turns commute damage into songs.",
+      soundDna: "dry drums, low synth",
+      obsessions: "station light and receipts",
+      lyricsRules: "no slogans",
+      socialVoice: "plain and short"
+    });
+    writeFileSync(
+      join(root, "SOUL.md"),
+      [
+        "# SOUL.md",
+        "",
+        "Legacy dense voice document.",
+        "",
+        "### producer_callname",
+        "",
+        "- producer_callname: boss"
+      ].join("\n"),
+      "utf8"
+    );
+
+    const internalAudit = await auditPersonaCompleteness(root);
+    const response = await callPersona(personaHandler(), "GET", "", root) as unknown as PersonaRouteResponse;
+    const cleanedSoul = readFileSync(join(root, "SOUL.md"), "utf8");
+
+    expect(internalAudit.issues).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          code: "persona_responsibility_overlap",
+          file: "SOUL.md"
+        })
+      ])
+    );
+    expect(response.soul.conversationTone).toBe("");
+    expect(response.soul.refusalStyle).toBe("");
+    expect(response.audit.issues).toEqual([]);
+    expect(cleanedSoul).toContain("<!-- artist-runtime:persona:soul:start -->");
+    expect(cleanedSoul).not.toContain("producer_callname: boss");
+    expect(readFileSync(join(root, "runtime", "persona-legacy", "manifest.jsonl"), "utf8")).toContain("canonical_setup_source_cleanup");
   });
 
   it("writes ARTIST.md through the marker-aware writer and preserves operator text outside markers", async () => {
