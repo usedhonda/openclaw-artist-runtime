@@ -14,10 +14,22 @@ export interface PersonaFieldAudit {
   current?: string;
 }
 
+export interface PersonaAuditIssue {
+  code:
+    | "language_policy_outside_artist"
+    | "duplicated_language_policy"
+    | "conflicting_language_policy"
+    | "duplicate_suno_profile"
+    | "obsolete_lyrics_length_rule";
+  file: string;
+  detail: string;
+}
+
 export interface PersonaAuditReport {
   artistFile: { exists: boolean; markerPresent: boolean; externalImport: boolean };
   soulFile: { exists: boolean; markerPresent: boolean };
   fields: PersonaFieldAudit[];
+  issues: PersonaAuditIssue[];
   customSections: string[];
   summary: { filled: number; thin: number; missing: number };
 }
@@ -80,10 +92,61 @@ function countSummary(fields: PersonaFieldAudit[]): PersonaAuditReport["summary"
   );
 }
 
+function languagePolicies(file: string, contents: string): Array<{ file: string; value: string }> {
+  return [...contents.matchAll(/日本語\s*(\d{1,3})\s*%\s*\/\s*英語\s*(\d{1,3})\s*%/g)].map((match) => ({
+    file,
+    value: `日本語${match[1]}%/英語${match[2]}%`
+  }));
+}
+
+function countHeading(contents: string, heading: string): number {
+  const escaped = heading.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  return [...contents.matchAll(new RegExp(`^##\\s+${escaped}\\s*$`, "gm"))].length;
+}
+
+function auditPersonaIssues(files: Record<string, string>): PersonaAuditIssue[] {
+  const issues: PersonaAuditIssue[] = [];
+  const policies = Object.entries(files).flatMap(([file, contents]) => languagePolicies(file, contents));
+  const uniquePolicies = [...new Set(policies.map((policy) => policy.value))];
+  for (const policy of policies.filter((item) => item.file !== "ARTIST.md")) {
+    issues.push({
+      code: "language_policy_outside_artist",
+      file: policy.file,
+      detail: `${policy.value} belongs in ARTIST.md`
+    });
+  }
+  if (policies.length > 1) {
+    issues.push({
+      code: uniquePolicies.length > 1 ? "conflicting_language_policy" : "duplicated_language_policy",
+      file: "persona",
+      detail: uniquePolicies.join(" / ")
+    });
+  }
+  if (countHeading(files["ARTIST.md"] ?? "", "Suno Production Profile") > 1) {
+    issues.push({
+      code: "duplicate_suno_profile",
+      file: "ARTIST.md",
+      detail: "Suno Production Profile appears more than once"
+    });
+  }
+  if (/文字数\s*[:：]\s*\d{3,5}\s*-\s*\d{3,5}\s*字/.test(files["ARTIST.md"] ?? "")) {
+    issues.push({
+      code: "obsolete_lyrics_length_rule",
+      file: "ARTIST.md",
+      detail: "fixed lyric character targets conflict with runtime DurationPlan and lyrics-box budget"
+    });
+  }
+  return issues;
+}
+
 export async function auditPersonaCompleteness(root: string): Promise<PersonaAuditReport> {
-  const [artistContents, soulContents, artistSummary, soulSummary, setupStatus] = await Promise.all([
+  const [artistContents, soulContents, identityContents, producerContents, innerContents, socialVoiceContents, artistSummary, soulSummary, setupStatus] = await Promise.all([
     readFile(artistPath(root), "utf8").catch(() => ""),
     readFile(soulPath(root), "utf8").catch(() => ""),
+    readFile(join(root, "IDENTITY.md"), "utf8").catch(() => ""),
+    readFile(join(root, "PRODUCER.md"), "utf8").catch(() => ""),
+    readFile(join(root, "INNER.md"), "utf8").catch(() => ""),
+    readFile(join(root, "artist", "SOCIAL_VOICE.md"), "utf8").catch(() => ""),
     readArtistPersonaSummary(root),
     readSoulPersonaSummary(root),
     readPersonaSetupStatus(root)
@@ -104,6 +167,14 @@ export async function auditPersonaCompleteness(root: string): Promise<PersonaAud
     ...customSectionsFor(artistContents, standardArtistSections),
     ...customSectionsFor(soulContents, standardSoulSections)
   ];
+  const issues = auditPersonaIssues({
+    "ARTIST.md": artistContents,
+    "SOUL.md": soulContents,
+    "IDENTITY.md": identityContents,
+    "PRODUCER.md": producerContents,
+    "INNER.md": innerContents,
+    "artist/SOCIAL_VOICE.md": socialVoiceContents
+  });
 
   return {
     artistFile: {
@@ -113,6 +184,7 @@ export async function auditPersonaCompleteness(root: string): Promise<PersonaAud
     },
     soulFile: { exists: Boolean(soulContents.trim()), markerPresent: soulMarkerPresent },
     fields,
+    issues,
     customSections: [...new Set(customSections)],
     summary: countSummary(fields)
   };
@@ -136,6 +208,9 @@ export function formatPersonaAuditReport(report: PersonaAuditReport): string {
   ];
   if (report.customSections.length > 0) {
     lines.push("", `Custom sections: ${report.customSections.join(", ")}`);
+  }
+  if (report.issues.length > 0) {
+    lines.push("", "Issues:", ...report.issues.map((issue) => `- ${issue.code}: ${issue.file} - ${issue.detail}`));
   }
   return lines.join("\n");
 }

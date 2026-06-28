@@ -106,4 +106,64 @@ describe("persona field auditor", () => {
     expect(text).toContain("Custom sections: Voice, Listener");
     expect(text.length).toBeLessThan(1400);
   });
+
+  it("flags duplicate and conflicting persona control directives", async () => {
+    const root = makeRoot();
+    await mkdir(join(root, "artist"), { recursive: true });
+    await writeFile(
+      join(root, "ARTIST.md"),
+      [
+        "# ARTIST.md",
+        "",
+        "<!-- artist-runtime:persona:core:start -->",
+        "## Public Identity",
+        "Artist name: used::honda",
+        "",
+        "## Producer Relationship",
+        "The human is my producer.",
+        "",
+        "## Current Artist Core",
+        "- Core obsessions:",
+        "  - 社会風刺",
+        "- Emotional weather:",
+        "  - focused",
+        "",
+        "## Sound",
+        "- nu-jazz rap",
+        "",
+        "## Lyrics",
+        "- 言語比率: 日本語80% / 英語20%",
+        "- 文字数: 1500-2000字。生成後に文字数を数える",
+        "",
+        "## Social Voice",
+        "- short",
+        "",
+        "## Suno Production Profile",
+        "```yaml",
+        "name: used::honda",
+        "```",
+        "",
+        "## Suno Production Profile",
+        "```yaml",
+        "language: ja",
+        "```",
+        "<!-- artist-runtime:persona:core:end -->"
+      ].join("\n"),
+      "utf8"
+    );
+    await writeFile(join(root, "SOUL.md"), "# SOUL.md\n\n## Internal Tensions\n- 日本語 70% / 英語 30%。\n", "utf8");
+    await writeFile(join(root, "IDENTITY.md"), "- **Language:** 日本語 70% / 英語 30%\n", "utf8");
+    await writeFile(join(root, "PRODUCER.md"), "", "utf8");
+    await writeFile(join(root, "INNER.md"), "", "utf8");
+    await writeFile(join(root, "artist", "SOCIAL_VOICE.md"), "", "utf8");
+
+    const report = await auditPersonaCompleteness(root);
+    const codes = report.issues.map((issue) => issue.code);
+
+    expect(codes).toContain("language_policy_outside_artist");
+    expect(codes).toContain("conflicting_language_policy");
+    expect(codes).toContain("duplicate_suno_profile");
+    expect(codes).toContain("obsolete_lyrics_length_rule");
+    expect(formatPersonaAuditReport(report)).toContain("Issues:");
+  });
 });
