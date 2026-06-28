@@ -34,7 +34,8 @@ describe("awaiting decision panel", () => {
 
     expect(html).toContain("判断待ち");
     expect(html).not.toContain("Awaiting Producer Decision");
-    expect(html).toContain("song-026 / みじかいかげ");
+    expect(html).toContain("みじかいかげ");
+    expect(html).not.toContain("song-026 / みじかいかげ");
     expect(html).toContain("完成後の採用待ち");
     expect(html).not.toContain("take_selection");
     expect(html).toContain("9時間待ち");
@@ -91,7 +92,8 @@ describe("awaiting decision panel", () => {
     expect(grouped).toHaveLength(1);
     expect(grouped[0].actions).toEqual(["採用", "破棄"]);
     expect(grouped[0].hiddenDuplicateCount).toBe(2);
-    expect(html.split("song-026 / みじかいかげ").length - 1).toBe(1);
+    expect(html.split("みじかいかげ").length - 1).toBe(1);
+    expect(html).not.toContain("song-026 / みじかいかげ");
     expect(html).toContain("古い重複通知 2 件をまとめています。");
     expect(html).toContain("表示は曲単位にまとめています。");
   });
@@ -129,7 +131,9 @@ describe("awaiting decision panel", () => {
       })
     );
 
-    expect(html).toContain("song-new / 新しい曲");
+    expect(html).toContain("新しい曲");
+    expect(html).not.toContain("song-new / 新しい曲");
+    expect(html).not.toContain("古い曲");
     expect(html).not.toContain("song-old / 古い曲");
     expect(html).toContain("ほか 1 曲の判断待ちは畳んでいます。");
   });

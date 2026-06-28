@@ -40,8 +40,9 @@ function elapsed(timestamp: number, now: number): string {
 }
 
 function targetLabel(callback: AwaitingDecision): string {
-  if (callback.songId && callback.songTitle) return `${callback.songId} / ${callback.songTitle}`;
-  return callback.songId ?? callback.proposalId ?? callback.action;
+  if (callback.songTitle) return callback.songTitle;
+  if (callback.proposalId || callback.action.startsWith("song_spawn_")) return "この素案";
+  return "この曲";
 }
 
 function groupKey(callback: AwaitingDecision): string {
@@ -120,7 +121,7 @@ export function AwaitingDecisionPanel({ callbacks, count, now = Date.now(), maxG
                 <div className="muted">選択肢: {callback.actions.join(" / ")}</div>
                 <div className="muted">次: Telegram の最新通知で選ぶ</div>
                 {callback.hiddenDuplicateCount > 0 ? <div className="muted">古い重複通知 {callback.hiddenDuplicateCount} 件をまとめています。</div> : null}
-                {callback.reminderSentAt ? <div className="muted">reminder 済み: {elapsed(callback.reminderSentAt, now)}前</div> : null}
+                {callback.reminderSentAt ? <div className="muted">再通知済み: {elapsed(callback.reminderSentAt, now)}前</div> : null}
                 {callback.promptPackGoSongId && onPromptPackGo ? (
                   <div className="inline-actions">
                     <button
