@@ -107,47 +107,6 @@ function fieldText(locale: ProducerRoomLocale, label: string, help: string, fiel
   return fieldEnglishText[field] ?? { label, help };
 }
 
-function overlapIssueKey(detail: string):
-  | "setupOverlapArtistName"
-  | "setupOverlapProducerCallname"
-  | "setupOverlapProducerFacts"
-  | "setupOverlapConversation"
-  | "setupOverlapMusic"
-  | "setupOverlapPrivate"
-  | "setupOverlapGeneric" {
-  const normalized = detail.toLowerCase();
-  if (normalized.includes("artist name") || normalized.includes("display name")) return "setupOverlapArtistName";
-  if (normalized.includes("producer callname")) return "setupOverlapProducerCallname";
-  if (normalized.includes("producer relationship") || normalized.includes("producer identity") || normalized.includes("producer facts")) return "setupOverlapProducerFacts";
-  if (normalized.includes("conversation tone") || normalized.includes("refusal style") || normalized.includes("telegram persona voice") || normalized.includes("voice fingerprint")) return "setupOverlapConversation";
-  if (normalized.includes("suno production profile") || normalized.includes("genre dna") || normalized.includes("sonic anchors") || normalized.includes("social voice")) return "setupOverlapMusic";
-  if (normalized.includes("private weather") || normalized.includes("what i fear")) return "setupOverlapPrivate";
-  return "setupOverlapGeneric";
-}
-
-function personaIssueLabel(locale: ProducerRoomLocale, issue: { code: string; file: string; detail: string }): string {
-  const issueFile = personaLayerMap.find((entry) => entry.file === issue.file);
-  if (issueFile && !issueFile.editable) {
-    return t(locale, "setupReadonlyFileIssue", { file: issue.file });
-  }
-  switch (issue.code) {
-    case "language_policy_outside_artist":
-      return t(locale, "setupLanguageOutsideArtist", { file: issue.file });
-    case "duplicated_language_policy":
-      return t(locale, "setupDuplicatedLanguage");
-    case "conflicting_language_policy":
-      return t(locale, "setupConflictingLanguage", { detail: issue.detail });
-    case "duplicate_suno_profile":
-      return t(locale, "setupDuplicateSuno");
-    case "obsolete_lyrics_length_rule":
-      return t(locale, "setupObsoleteLyrics");
-    case "persona_responsibility_overlap":
-      return t(locale, overlapIssueKey(issue.detail), { file: issue.file });
-    default:
-      return `${issue.file}: ${issue.detail}`;
-  }
-}
-
 function personaFieldLabel(locale: ProducerRoomLocale, field: string): string {
   const match = [...artistPersonaFields, ...soulPersonaFields].find((entry) => entry.aiField === field || entry.field === field);
   if (match) {
@@ -558,21 +517,6 @@ export function SetupView(props: {
         <SetupFileMap locale={locale} />
         {setup?.needsSetup ? (
           <div className="warning-banner">{t(locale, "setupIncomplete")}: {setup.reasonsText}</div>
-        ) : null}
-        {props.persona?.audit?.issues.length ? (
-          <div className="warning-banner">
-            <strong>{t(locale, "setupWarningsTitle")}</strong>
-            <div className="muted">{t(locale, "setupWarningsIntro")}</div>
-            <ul>
-              {props.persona.audit.issues.slice(0, 3).map((issue) => (
-                <li key={`${issue.code}:${issue.file}:${issue.detail}`}>{personaIssueLabel(locale, issue)}</li>
-              ))}
-            </ul>
-            {props.persona.audit.issues.length > 3 ? (
-              <div className="muted">{t(locale, "setupMore")} {props.persona.audit.issues.length - 3}.</div>
-            ) : null}
-            <div className="muted">{t(locale, "setupWarningsAiHelp")}</div>
-          </div>
         ) : null}
         {weakPersonaFields.length ? (
           <div className="warning-banner">

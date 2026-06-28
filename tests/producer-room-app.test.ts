@@ -397,11 +397,11 @@ describe("ProducerRoomApp Songs and Settings views", () => {
     expect(html).toContain("IDENTITY.md 自動表示");
     expect(html).toContain("INNER.md の扱い");
     expect(html).toContain("初回 setup が未完了です");
-    expect(html).toContain("重複・置き場所の確認");
-    expect(html).toContain("ユーザーが手で全部直すエラーではありません");
-    expect(html).toContain("この注意だけでは Setup 完了を止めません");
-    expect(html).toContain("日本語/英語比率が矛盾");
-    expect(html).toContain("Suno Production Profile が ARTIST.md 内で重複");
+    expect(html).not.toContain("重複・置き場所の確認");
+    expect(html).not.toContain("ユーザーが手で全部直すエラーではありません");
+    expect(html).not.toContain("この注意だけでは Setup 完了を止めません");
+    expect(html).not.toContain("日本語/英語比率が矛盾");
+    expect(html).not.toContain("Suno Production Profile が ARTIST.md 内で重複");
     expect(html).toContain("設定の不足");
     expect(html).toContain("音の核: 薄い");
     expect(html).toContain("SNS の声: 未入力");
@@ -436,7 +436,7 @@ describe("ProducerRoomApp Songs and Settings views", () => {
     expect(html).not.toContain("Artist Setup");
   });
 
-  it("does not block setup completion for placement warnings alone", () => {
+  it("does not show generated-file placement issues or block setup completion", () => {
     const persona = {
       artist: {
         artistName: "Glass Commuter",
@@ -490,12 +490,13 @@ describe("ProducerRoomApp Songs and Settings views", () => {
       })
     );
 
-    expect(html).toContain("IDENTITY.md は自動生成または runtime 管理です");
+    expect(html).not.toContain("IDENTITY.md は自動生成または runtime 管理です");
+    expect(html).not.toContain("重複・置き場所の確認");
     expect(html).toContain("初期設定を完了");
     expect(html).not.toContain("不足を埋めると完了");
   });
 
-  it("renders Setup placement warnings in English without leaking raw audit wording", () => {
+  it("hides Setup placement warnings in English without leaking raw audit wording", () => {
     const persona = {
       artist: {
         artistName: "Glass Commuter",
@@ -551,11 +552,12 @@ describe("ProducerRoomApp Songs and Settings views", () => {
 
     expect(html).toContain("Artist setup");
     expect(html).toContain("This is the map of the five persona files");
-    expect(html).toContain("ARTIST.md appears to contain an artist name. The display name is managed in Settings.");
     expect(html).toContain("Music core");
     expect(html).toContain("Input");
     expect(html).toContain("Required");
     expect(html).toContain("AI review all");
+    expect(html).not.toContain("Placement warnings");
+    expect(html).not.toContain("appears to contain an artist name");
     expect(html).not.toContain("belongs outside");
     expect(html).not.toContain("this file owns");
     expect(html).not.toContain("アーティスト設定");

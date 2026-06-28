@@ -43,6 +43,8 @@ const standardArtistSections = new Set<string>([...artistManagedSections, "Publi
 const standardSoulSections = new Set<string>(soulManagedSections);
 const placeholderPattern = /^(?:tbd|unknown artist|\(not set\)|n\/a|none|-+)?$/i;
 const minFilledLength = 20;
+const editablePersonaSourceFiles = new Set(["ARTIST.md", "SOUL.md", "PRODUCER.md"]);
+const responsibilityAuditFiles: PersonaTemplateFile[] = ["ARTIST.md", "SOUL.md", "PRODUCER.md"];
 
 function artistPath(root: string): string {
   return join(root, "ARTIST.md");
@@ -115,10 +117,30 @@ function normalizedForContract(value: string): string {
     .toLowerCase();
 }
 
+function removeManagedBlock(contents: string, startMarker: string, endMarker: string): string {
+  const startIndex = contents.indexOf(startMarker);
+  const endIndex = contents.indexOf(endMarker);
+  if (startIndex === -1 || endIndex === -1 || endIndex < startIndex) {
+    return contents;
+  }
+  return `${contents.slice(0, startIndex)}\n${contents.slice(endIndex + endMarker.length)}`;
+}
+
+function responsibilityAuditContents(file: PersonaTemplateFile, contents: string): string {
+  if (file === "ARTIST.md") {
+    return removeManagedBlock(contents, artistPersonaBlockStart, artistPersonaBlockEnd);
+  }
+  if (file === "SOUL.md") {
+    return removeManagedBlock(contents, soulPersonaBlockStart, soulPersonaBlockEnd);
+  }
+  return contents;
+}
+
 function auditResponsibilityOverlap(files: Record<string, string>): PersonaAuditIssue[] {
   const issues: PersonaAuditIssue[] = [];
-  for (const [file, contract] of Object.entries(personaFileContracts) as Array<[PersonaTemplateFile, typeof personaFileContracts[PersonaTemplateFile]]>) {
-    const contents = normalizedForContract(files[file] ?? "");
+  for (const file of responsibilityAuditFiles) {
+    const contract = personaFileContracts[file];
+    const contents = normalizedForContract(responsibilityAuditContents(file, files[file] ?? ""));
     for (const forbidden of contract.forbidden) {
       if (contents.includes(forbidden)) {
         issues.push({
@@ -134,7 +156,9 @@ function auditResponsibilityOverlap(files: Record<string, string>): PersonaAudit
 
 function auditPersonaIssues(files: Record<string, string>): PersonaAuditIssue[] {
   const issues: PersonaAuditIssue[] = [];
-  const policies = Object.entries(files).flatMap(([file, contents]) => languagePolicies(file, contents));
+  const policies = Object.entries(files)
+    .filter(([file]) => editablePersonaSourceFiles.has(file))
+    .flatMap(([file, contents]) => languagePolicies(file, contents));
   const uniquePolicies = [...new Set(policies.map((policy) => policy.value))];
   for (const policy of policies.filter((item) => item.file !== "ARTIST.md")) {
     issues.push({

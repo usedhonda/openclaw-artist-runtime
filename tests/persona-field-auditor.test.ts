@@ -6,6 +6,8 @@ import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import { personaCanonicalField, personaCanonicalOwnerCount } from "../src/services/personaCanonical";
 import { auditPersonaCompleteness, formatPersonaAuditReport } from "../src/services/personaFieldAuditor";
+import { artistPersonaBlockEnd, artistPersonaBlockStart } from "../src/services/personaFileBuilder";
+import { soulPersonaBlockEnd, soulPersonaBlockStart } from "../src/services/soulFileBuilder";
 
 const templateRoot = join(__dirname, "..", "workspace-template");
 const personaTemplateFiles = ["ARTIST.md", "SOUL.md", "IDENTITY.md", "INNER.md", "PRODUCER.md"] as const;
@@ -101,6 +103,93 @@ describe("persona field auditor", () => {
     expect(report.issues.filter((issue) => issue.code === "persona_responsibility_overlap")).toEqual([]);
   });
 
+  it("does not blame generated managed blocks or read-only projections for overlap", async () => {
+    const root = makeRoot();
+    await mkdir(root, { recursive: true });
+    await writeFile(
+      join(root, "ARTIST.md"),
+      [
+        "# ARTIST.md",
+        "",
+        artistPersonaBlockStart,
+        "Artist name: Legacy Name",
+        "## Producer Relationship",
+        "producer facts are projected here by an older runtime.",
+        artistPersonaBlockEnd
+      ].join("\n"),
+      "utf8"
+    );
+    await writeFile(
+      join(root, "SOUL.md"),
+      [
+        "# SOUL.md",
+        "",
+        soulPersonaBlockStart,
+        "producer callname: boss",
+        "genre dna: cracked city pop",
+        soulPersonaBlockEnd
+      ].join("\n"),
+      "utf8"
+    );
+    await writeFile(join(root, "IDENTITY.md"), "genre dna\nconversation tone\nsuno production profile\n", "utf8");
+    await writeFile(join(root, "INNER.md"), "artist name\nproducer identity\nsocial voice\n", "utf8");
+    await writeFile(join(root, "PRODUCER.md"), "", "utf8");
+
+    const report = await auditPersonaCompleteness(root);
+
+    expect(report.issues.filter((issue) => issue.code === "persona_responsibility_overlap")).toEqual([]);
+  });
+
+  it("still flags wrong-file content written outside managed blocks", async () => {
+    const root = makeRoot();
+    await mkdir(root, { recursive: true });
+    await writeFile(
+      join(root, "ARTIST.md"),
+      [
+        "# ARTIST.md",
+        "",
+        artistPersonaBlockStart,
+        "## Artist Concept",
+        "",
+        "A station-haunted public artist.",
+        artistPersonaBlockEnd,
+        "",
+        "## Manual Drift",
+        "",
+        "Producer callname: boss"
+      ].join("\n"),
+      "utf8"
+    );
+    await writeFile(
+      join(root, "SOUL.md"),
+      [
+        "# SOUL.md",
+        "",
+        soulPersonaBlockStart,
+        "## Telegram Persona Voice",
+        "",
+        "Conversation tone: short",
+        "Refusal style: blunt",
+        soulPersonaBlockEnd
+      ].join("\n"),
+      "utf8"
+    );
+    await writeFile(join(root, "IDENTITY.md"), "", "utf8");
+    await writeFile(join(root, "INNER.md"), "", "utf8");
+    await writeFile(join(root, "PRODUCER.md"), "", "utf8");
+
+    const report = await auditPersonaCompleteness(root);
+
+    expect(report.issues).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          code: "persona_responsibility_overlap",
+          file: "ARTIST.md"
+        })
+      ])
+    );
+  });
+
   it("keeps role definitions centralized in README instead of the five persona files", () => {
     for (const file of personaTemplateFiles) {
       const contents = readFileSync(join(templateRoot, file), "utf8").toLowerCase();
@@ -192,7 +281,11 @@ describe("persona field auditor", () => {
         "```yaml",
         "language: ja",
         "```",
-        "<!-- artist-runtime:persona:core:end -->"
+        "<!-- artist-runtime:persona:core:end -->",
+        "",
+        "## Manual Drift",
+        "",
+        "Producer callname: boss"
       ].join("\n"),
       "utf8"
     );
