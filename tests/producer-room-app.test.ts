@@ -12,10 +12,10 @@ import type { DraftBoxNextActionSummary } from "../src/types";
 function summary(overrides: Partial<DraftBoxNextActionSummary>): DraftBoxNextActionSummary {
   return {
     kind: "empty",
-    currentLine: "今: 次の素案を探している",
+    currentLine: "Artist is: looking for the next draft",
     draftCount: 0,
     buildingCount: 0,
-    nextAction: "次: 素案通知を待つ。",
+    nextAction: "You can: wait for the next draft notice.",
     stateKey: "test",
     ...overrides
   };
@@ -27,18 +27,18 @@ describe("ProducerRoomApp room header", () => {
       React.createElement(RoomHeader, {
         summary: summary({
           kind: "draft_idle",
-          currentLine: "今: 手が空いている",
+          currentLine: "Artist is: free",
           draftCount: 2,
-          nextAction: "次: 草稿箱から「作る」を押す。"
+          nextAction: "You can: choose Build from the draft box."
         })
       })
     );
 
-    expect(html).toContain("現在地");
-    expect(html).toContain("今");
-    expect(html).toContain("今: 手が空いている");
-    expect(html).toContain("状態");
-    expect(html).toContain("健康");
+    expect(html).toContain("Current Room State");
+    expect(html).toContain("Artist is");
+    expect(html).toContain("Artist is: free");
+    expect(html).toContain("Status");
+    expect(html).toContain("Healthy");
     expect(html).toContain("Nothing needed");
     expect(html).not.toContain("<button");
   });
@@ -48,21 +48,20 @@ describe("ProducerRoomApp room header", () => {
       React.createElement(RoomHeader, {
         summary: summary({
           kind: "paused",
-          currentLine: "今: autopilot は停止中",
-          nextAction: "次: /resume で再開できる。",
+          currentLine: "Artist is: paused",
+          nextAction: "You can: resume with /resume.",
           reason: "user_paused"
         }),
         onResume: () => undefined
       })
     );
 
-    expect(html).toContain("状態");
-    expect(html).toContain("詰まり");
-    expect(html).toContain("理由");
+    expect(html).toContain("Status");
+    expect(html).toContain("Blocked");
+    expect(html).toContain("Why");
     expect(html).toContain("user_paused");
     expect(html.match(/<button/g)?.length).toBe(1);
-    expect(html).toContain("再開");
-    expect(html).not.toContain("Resume");
+    expect(html).toContain("Resume");
   });
 
   it("renders reauth_required as guidance without a false fix button", () => {
@@ -70,15 +69,15 @@ describe("ProducerRoomApp room header", () => {
       React.createElement(RoomHeader, {
         summary: summary({
           kind: "reauth_required",
-          currentLine: "今: 歌詞AIのトークンが失効し制作が止まっている",
-          nextAction: "次: 歌詞AIの再認証が必要。/resume では直りません",
+          currentLine: "Artist is: blocked by an expired lyrics AI token",
+          nextAction: "You can: reauth lyrics AI. /resume will not fix it.",
           reason: "ai_provider_not_configured: 歌詞AIのトークン失効/未設定"
         })
       })
     );
 
-    expect(html).toContain("要再認証");
-    expect(html).toContain("歌詞AIの再認証が必要 (/resume では直りません)");
+    expect(html).toContain("Reauth required");
+    expect(html).toContain("Lyrics AI reauth is required. /resume will not fix it.");
     expect(html).toContain("ai_provider_not_configured");
     expect(html).not.toContain("<button");
   });
@@ -87,8 +86,8 @@ describe("ProducerRoomApp room header", () => {
     const promoted = roomSummaryWithDecisions(
       summary({
         kind: "empty",
-        currentLine: "今: 次の素案を探している",
-        nextAction: "次: 素案通知を待つ。"
+        currentLine: "Artist is: looking for the next draft",
+        nextAction: "You can: wait for the next draft notice."
       }),
       {
         count: 2,
@@ -121,10 +120,10 @@ describe("ProducerRoomApp room header", () => {
     const html = renderToStaticMarkup(React.createElement(RoomHeader, { summary: promoted }));
 
     expect(promoted.kind).toBe("decision_pending");
-    expect(html).toContain("判断待ち");
-    expect(html).toContain("今: 二つの低気圧 の判断待ち");
-    expect(html).toContain("Telegram の最新通知で 採用 / 破棄 を選ぶ");
-    expect(html).toContain("完成後の採用待ち");
+    expect(html).toContain("Decision pending");
+    expect(html).toContain("Artist is: waiting on 二つの低気圧");
+    expect(html).toContain("choose 採用 / 破棄 in the latest Telegram notice");
+    expect(html).toContain("Awaiting adoption after completion");
     expect(html).not.toContain("asset_generation");
     expect(html).not.toContain("producer decision");
     expect(html).not.toContain("Nothing needed");
@@ -168,15 +167,15 @@ describe("ProducerRoomApp Songs and Settings views", () => {
     const detailIndex = html.indexOf("曲の詳細を読み込み中。");
     const nextSongIndex = html.indexOf("次の曲");
 
-    expect(html).toContain("作品");
+    expect(html).toContain("Songs");
     expect(html).toContain("七万円のスクランブル");
-    expect(html).toContain("制作 2 回");
-    expect(html).toContain("試聴URLあり");
+    expect(html).toContain("2 runs");
+    expect(html).toContain("Listening URL ready");
     expect(selectedIndex).toBeGreaterThanOrEqual(0);
     expect(detailIndex).toBeGreaterThan(selectedIndex);
     expect(nextSongIndex).toBeGreaterThan(detailIndex);
-    expect(html).toContain("採用待ちの曲だけ同じ判断を出します");
-    expect(html).not.toContain("← 作品へ");
+    expect(html).toContain("only repeats adoption decisions when they are pending");
+    expect(html).not.toContain("← Songs");
     expect(html).not.toContain("song-detail-breadcrumb-link");
     expect(html).not.toContain("song-001 · run");
     expect(html).not.toContain("suno_take_url_ready");
@@ -203,12 +202,12 @@ describe("ProducerRoomApp Songs and Settings views", () => {
       })
     );
 
-    expect(html).toContain("1-5 / 12 曲");
+    expect(html).toContain("1-5 / 12 songs");
     expect(html).toContain("Song 001");
     expect(html).toContain("Song 005");
-    expect(html).toContain("制作 0 回");
-    expect(html).toContain("採用済み");
-    expect(html).toContain("採用待ち");
+    expect(html).toContain("0 runs");
+    expect(html).toContain("Adopted");
+    expect(html).toContain("Awaiting adoption");
     expect(html).not.toContain("Song 006");
     expect(html).not.toContain("song-001 · run");
     expect(html).not.toContain("take-001");
@@ -247,29 +246,33 @@ describe("ProducerRoomApp Songs and Settings views", () => {
     );
 
     expect(patch.autopilot.songsPerWeek).toBe(5);
-    expect(html).toContain("自動制作");
-    expect(html).toContain("Suno 予算");
-    expect(html).toContain("配信先");
-    expect(html).toContain("曲づくりの実行方法");
-    expect(html).toContain("作成ボタン");
-    expect(html).toContain("Instagram の扱い");
-    expect(html).toContain("TikTok の扱い");
-    expect(html).toContain("設定を保存");
-    expect(html).toContain("凍結中");
-    expect(html).toContain("下書きのみ");
+    expect(html).toContain("Autopilot");
+    expect(html).toContain("Suno Budget");
+    expect(html).toContain("Platforms");
+    expect(html).toContain("Creation driver");
+    expect(html).toContain("Browser worker");
+    expect(html).toContain("Create button");
+    expect(html).toContain("Live submit");
+    expect(html).toContain("Instagram");
+    expect(html).toContain("TikTok");
+    expect(html).toContain("Save settings");
+    expect(html).toContain("Frozen");
+    expect(html).toContain("Draft only");
     expect(html).not.toContain("/tmp/artist");
     expect(html).not.toContain("Live-Go Arm");
     expect(html).not.toContain("Suno Submit Mode");
+    expect(html).not.toContain("曲づくりの実行方法");
+    expect(html).not.toContain("作成ボタン");
     expect(html).not.toContain("Suno 操作方法");
     expect(html).not.toContain("Suno 送信");
     expect(html).not.toContain("Instagram 権限");
     expect(html).not.toContain("TikTok 権限");
+    expect(html).not.toContain("Instagram の扱い");
+    expect(html).not.toContain("TikTok の扱い");
     expect(html).not.toContain("workspace configured");
     expect(html).not.toContain("auto publish");
     expect(html).not.toContain(">mock<");
     expect(html).not.toContain(">skip<");
-    expect(html).not.toContain("Save Settings");
-    expect(html).not.toContain("Reset Draft");
   });
 
   it("disables settings save and reset when there are no unsaved changes", () => {
@@ -300,8 +303,8 @@ describe("ProducerRoomApp Songs and Settings views", () => {
       })
     );
 
-    expect(html).toMatch(/<button class=\"primary\" type=\"button\" disabled=\"\">設定を保存<\/button>/);
-    expect(html).toMatch(/<button type=\"button\" disabled=\"\">元に戻す<\/button>/);
+    expect(html).toMatch(/<button class=\"primary\" type=\"button\" disabled=\"\">Save settings<\/button>/);
+    expect(html).toMatch(/<button type=\"button\" disabled=\"\">Reset changes<\/button>/);
   });
 
   it("renders the Setup tab editor with AI draft only on ARTIST/SOUL layers", () => {
@@ -490,9 +493,9 @@ describe("ProducerRoomApp diagnostics", () => {
   it("keeps diagnostics informational without restoring legacy controls", () => {
     const html = renderToStaticMarkup(React.createElement(DiagnosticsView));
 
-    expect(html).toContain("診断");
-    expect(html).toContain("通常の制作判断には使いません");
-    expect(html).toContain("内部操作ボタンは Producer Room に戻しません");
+    expect(html).toContain("Diagnostics");
+    expect(html).toContain("Not part of normal production decisions");
+    expect(html).toContain("Internal operation buttons stay out of Producer Room");
     expect(html).not.toContain("旧 Console");
     expect(html).not.toContain("Run Cycle");
     expect(html).not.toContain("Config Editor");

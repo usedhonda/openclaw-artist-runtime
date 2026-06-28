@@ -20,10 +20,6 @@ import {
 } from "./personaEditor";
 import { dismissErrorToast, expireErrorToasts, pushErrorToast, type ErrorToast, type ErrorToastSource } from "../../src/services/errorToastQueue";
 import {
-  instagramAuthorityModes,
-  sunoDriverModes,
-  sunoSubmitModes,
-  tiktokAuthorityModes,
   xAuthorityModes,
   type DraftBoxNextActionSummary,
   type PersonaField
@@ -161,10 +157,10 @@ function useRoomView(): RoomView {
 function fallbackSummary(status: StatusResponse | null): DraftBoxNextActionSummary {
   return {
     kind: "empty",
-    currentLine: status ? `今: ${status.autopilot.stage}` : "今: 状況を読み込んでいる",
+    currentLine: status ? `Artist is: ${status.autopilot.stage}` : "Artist is: loading current state",
     draftCount: 0,
     buildingCount: status?.autopilot.currentSongId ? 1 : 0,
-    nextAction: status?.autopilot.nextAction ?? "次: 状況取得を待つ。",
+    nextAction: status?.autopilot.nextAction ?? "You can: wait for status refresh.",
     stateKey: status?.autopilot.stage ?? "loading",
     songId: status?.autopilot.currentSongId,
     reason: status?.autopilot.blockedReason ?? status?.autopilot.lastError ?? undefined
@@ -174,19 +170,19 @@ function fallbackSummary(status: StatusResponse | null): DraftBoxNextActionSumma
 function statusLabel(kind: DraftBoxNextActionSummary["kind"]): string {
   switch (kind) {
     case "decision_pending":
-      return "判断待ち";
+      return "Decision pending";
     case "hard_stop":
-      return "hard stop";
+      return "Hard stop";
     case "paused":
     case "suno_trouble":
-      return "詰まり";
+      return "Blocked";
     case "reauth_required":
-      return "要再認証";
+      return "Reauth required";
     case "building":
     case "draft_idle":
     case "empty":
     default:
-      return "健康";
+      return "Healthy";
   }
 }
 
@@ -199,33 +195,33 @@ function canLine(summary: DraftBoxNextActionSummary): string {
     case "decision_pending":
       return summary.nextAction;
     case "reauth_required":
-      return "歌詞AIの再認証が必要 (/resume では直りません)";
+      return "Lyrics AI reauth is required. /resume will not fix it.";
     case "hard_stop":
-      return "/status で理由を確認";
+      return "Check /status for the blocking reason.";
     case "suno_trouble":
-      return "Suno 接続が戻れば自動で続く";
+      return "The run will continue when Suno connectivity returns.";
     case "paused":
       return "Resume";
     case "building":
     case "draft_idle":
     case "empty":
     default:
-      return "Nothing needed — 次の曲を構想中";
+      return "Nothing needed — the artist is thinking about the next song.";
   }
 }
 
 function producerStageLabel(stage?: string): string {
   switch (stage) {
     case "asset_generation":
-      return "完成後の採用待ち";
+      return "Awaiting adoption after completion";
     case "take_selected":
-      return "完成後の採用待ち";
+      return "Awaiting adoption after completion";
     case "prompt_pack_ready":
-      return "Suno に進める判断待ち";
+      return "Awaiting the Suno GO decision";
     case "spawn_proposal_ready":
-      return "素案の判断待ち";
+      return "Awaiting idea decision";
     default:
-      return "判断待ち";
+      return "Awaiting decision";
   }
 }
 
@@ -233,12 +229,12 @@ export function roomSummaryWithDecisions(summary: DraftBoxNextActionSummary, awa
   if (awaitingDecisions.count <= 0 || awaitingDecisions.callbacks.length === 0) return summary;
   const [latest] = groupAwaitingDecisions(awaitingDecisions.callbacks);
   if (!latest) return summary;
-  const target = latest.songTitle ?? latest.songId ?? latest.proposalId ?? "曲";
+  const target = latest.songTitle ?? latest.songId ?? latest.proposalId ?? "song";
   return {
     ...summary,
     kind: "decision_pending",
-    currentLine: `今: ${target} の判断待ち`,
-    nextAction: `次: Telegram の最新通知で ${latest.actions.join(" / ")} を選ぶ`,
+    currentLine: `Artist is: waiting on ${target}`,
+    nextAction: `You can: choose ${latest.actions.join(" / ")} in the latest Telegram notice`,
     reason: producerStageLabel(latest.stage),
     stateKey: `decision_pending:${latest.songId ?? latest.proposalId ?? latest.callbackId}`
   };
@@ -254,27 +250,27 @@ export function RoomHeader(props: {
 
   return (
     <article className={`panel room-status-card room-status-${summary.kind}`}>
-      <div className="section-title">現在地</div>
+      <div className="section-title">Current Room State</div>
       <div className="room-grammar">
         <div>
-          <span className="grammar-label">今</span>
+          <span className="grammar-label">Artist is</span>
           <strong>{summary.currentLine}</strong>
         </div>
         <div>
-          <span className="grammar-label">状態</span>
+          <span className="grammar-label">Status</span>
           <strong>{statusLabel(summary.kind)}</strong>
         </div>
         {why ? (
           <div>
-            <span className="grammar-label">理由</span>
+            <span className="grammar-label">Why</span>
             <span>{why}</span>
           </div>
         ) : null}
         <div>
-          <span className="grammar-label">次</span>
+          <span className="grammar-label">You can</span>
           {summary.kind === "paused" ? (
             <button type="button" className="primary" disabled={props.resumeBusy} onClick={props.onResume}>
-              {props.resumeBusy ? "再開中..." : "再開"}
+              {props.resumeBusy ? "Resuming..." : "Resume"}
             </button>
           ) : (
             <span>{canLine(summary)}</span>
@@ -316,7 +312,7 @@ function RoomViewPanel(props: {
       {props.persona?.setup.needsSetup ? (
         <article className="panel">
           <div className="warning-banner">
-            初期設定が未完了です: {props.persona.setup.reasonsText} <a href="#setup">Setup を開く</a>
+            Setup is incomplete: {props.persona.setup.reasonsText} <a href="#setup">Open Setup</a>
           </div>
         </article>
       ) : null}
@@ -343,21 +339,21 @@ function StatusPill(props: { status: string }) {
   const statusText = (() => {
     switch (props.status) {
       case "take_selected":
-        return "採用待ち";
+        return "Awaiting adoption";
       case "suno_take_url_ready":
-        return "試聴URLあり";
+        return "Listening URL ready";
       case "archived":
-        return "採用済み";
+        return "Adopted";
       case "discarded":
-        return "破棄済み";
+        return "Discarded";
       case "building":
-        return "制作中";
+        return "Building";
       case "draft":
-        return "草稿";
+        return "Draft";
       case "completed":
-        return "完了";
+        return "Completed";
       case "failed_closed":
-        return "要対応";
+        return "Needs action";
       default:
         return props.status.replace(/_/g, " ");
     }
@@ -401,17 +397,17 @@ export function SongsView(props: {
   return (
     <section className="single-column songs-view">
       <article className="panel">
-        <div className="section-title">作品</div>
-        <div className="muted">Telegram が一次。ここでは作品の歩みを読み、採用待ちの曲だけ同じ判断を出します。</div>
+        <div className="section-title">Songs</div>
+        <div className="muted">Telegram is primary. This view mirrors the song history and only repeats adoption decisions when they are pending.</div>
         {props.songs.length === 0 ? (
-          <div className="item muted">曲台帳はまだ空です。</div>
+          <div className="item muted">The song ledger is empty.</div>
         ) : (
           <>
             <div className="song-ledger-toolbar">
-              <span className="muted">{start + 1}-{Math.min(start + songLedgerPageSize, props.songs.length)} / {props.songs.length} 曲</span>
+              <span className="muted">{start + 1}-{Math.min(start + songLedgerPageSize, props.songs.length)} / {props.songs.length} songs</span>
               <div className="inline-actions">
-                <button type="button" disabled={safePage === 0} onClick={() => setPage((current) => Math.max(0, current - 1))}>前へ</button>
-                <button type="button" disabled={safePage >= totalPages - 1} onClick={() => setPage((current) => Math.min(totalPages - 1, current + 1))}>次へ</button>
+                <button type="button" disabled={safePage === 0} onClick={() => setPage((current) => Math.max(0, current - 1))}>Previous</button>
+                <button type="button" disabled={safePage >= totalPages - 1} onClick={() => setPage((current) => Math.min(totalPages - 1, current + 1))}>Next</button>
               </div>
             </div>
             <div className="song-ledger-list">
@@ -424,7 +420,7 @@ export function SongsView(props: {
                   >
                     <span>
                       <strong>{song.title || song.songId}</strong>
-                      <span className="muted">制作 {song.runCount} 回</span>
+                      <span className="muted">{song.runCount} runs</span>
                     </span>
                     <span>
                       <StatusPill status={song.status} />
@@ -478,118 +474,89 @@ export function SettingsView(props: {
   const authorityLabel = (value: string) => {
     switch (value) {
       case "auto_publish":
-        return "自動公開";
+        return "Auto publish";
       case "auto_publish_visuals":
-        return "画像を自動公開";
+        return "Auto publish visuals";
       case "auto_publish_clips":
-        return "動画を自動公開";
+        return "Auto publish clips";
       case "auto_publish_and_low_risk_replies":
-        return "自動公開 + 低リスク返信";
+        return "Auto publish + low-risk replies";
       case "draft_only":
-        return "下書きのみ";
+        return "Draft only";
       case "manual_approval":
-        return "手動承認";
+        return "Manual approval";
       default:
         return value.replace(/_/g, " ");
-    }
-  };
-  const sunoDriverLabel = (value: string) => {
-    switch (value) {
-      case "mock":
-        return "テスト用";
-      case "playwright":
-        return "ブラウザ操作";
-      default:
-        return value;
-    }
-  };
-  const sunoSubmitModeLabel = (value: string) => {
-    switch (value) {
-      case "skip":
-        return "作成クリックなし";
-      case "live":
-        return "実際に送信";
-      default:
-        return value;
     }
   };
 
   return (
     <section className="single-column settings-view">
       <article className="panel settings-panel">
-        <div className="section-title">運用設定</div>
-        <div className="muted">制作ペース、Suno 予算、外部公開の許可を決める場所です。</div>
+        <div className="section-title">Settings</div>
+        <div className="muted">Set production cadence, Suno credit limits, and public publishing authority.</div>
         {!props.config || !draft ? (
           <div className="item muted">Loading config.</div>
         ) : (
           <div className="settings-sections">
             <section className="settings-section">
-              <div className="section-title">自動制作</div>
-              <label className="toggle"><input type="checkbox" checked={draft.autopilotEnabled} onChange={(event) => props.onUpdateDraft({ autopilotEnabled: event.target.checked })} />自動制作を動かす</label>
-              <label className="toggle"><input type="checkbox" checked={draft.dryRun} onChange={(event) => props.onUpdateDraft({ dryRun: event.target.checked })} />外部送信を止める</label>
-              <label className="toggle"><input type="checkbox" checked={draft.distributionLiveGoArmed} onChange={(event) => props.onUpdateDraft({ distributionLiveGoArmed: event.target.checked })} />外部公開を許可する (全体)</label>
-              {globalArmHeld ? <div className="warning-banner">外部公開は全体で止まっています。各配信先の許可も上流で保留されます。</div> : null}
+              <div className="section-title">Autopilot</div>
+              <label className="toggle"><input type="checkbox" checked={draft.autopilotEnabled} onChange={(event) => props.onUpdateDraft({ autopilotEnabled: event.target.checked })} />Run autonomous production</label>
+              <label className="toggle"><input type="checkbox" checked={draft.dryRun} onChange={(event) => props.onUpdateDraft({ dryRun: event.target.checked })} />Block external side effects</label>
+              <label className="toggle"><input type="checkbox" checked={draft.distributionLiveGoArmed} onChange={(event) => props.onUpdateDraft({ distributionLiveGoArmed: event.target.checked })} />Allow public publishing globally</label>
+              {globalArmHeld ? <div className="warning-banner">Public publishing is globally held. Platform arms remain blocked upstream.</div> : null}
               <div className="field-grid">
-                <NumberField label="週あたりの曲数" value={draft.songsPerWeek} min={0} max={21} onChange={(value) => props.onUpdateDraft({ songsPerWeek: value })} />
-                <NumberField label="確認間隔 (分)" value={draft.cycleIntervalMinutes} min={15} max={1440} onChange={(value) => props.onUpdateDraft({ cycleIntervalMinutes: value })} />
+                <NumberField label="Songs per week" value={draft.songsPerWeek} min={0} max={21} onChange={(value) => props.onUpdateDraft({ songsPerWeek: value })} />
+                <NumberField label="Cycle interval (minutes)" value={draft.cycleIntervalMinutes} min={15} max={1440} onChange={(value) => props.onUpdateDraft({ cycleIntervalMinutes: value })} />
               </div>
             </section>
             <section className="settings-section">
-              <div className="section-title">Suno 予算</div>
+              <div className="section-title">Suno Budget</div>
               <div className="field-grid">
-                <NumberField label="1日の上限" value={draft.dailyCreditLimit} min={1} max={1000} onChange={(value) => props.onUpdateDraft({ dailyCreditLimit: value })} />
-                <NumberField label="月の上限" value={draft.monthlyCreditLimit} min={0} max={50000} onChange={(value) => props.onUpdateDraft({ monthlyCreditLimit: value })} note="0 は無制限。" />
-                <label>
-                  <div className="eyebrow">曲づくりの実行方法</div>
-                  <select value={draft.sunoDriver} onChange={(event) => props.onUpdateDraft({ sunoDriver: event.target.value as ConfigDraft["sunoDriver"] })}>
-                    {sunoDriverModes.map((mode) => <option key={mode} value={mode}>{sunoDriverLabel(mode)}</option>)}
-                  </select>
-                </label>
-                <label>
-                  <div className="eyebrow">作成ボタン</div>
-                  <select value={draft.sunoSubmitMode} onChange={(event) => props.onUpdateDraft({ sunoSubmitMode: event.target.value as ConfigDraft["sunoSubmitMode"] })}>
-                    {sunoSubmitModes.map((mode) => <option key={mode} value={mode}>{sunoSubmitModeLabel(mode)}</option>)}
-                  </select>
-                  {draft.sunoSubmitMode === "live" ? <div className="warning-banner">実際に送信すると Suno クレジットを使います。</div> : <div className="muted">作成クリックなしなら Suno には送信しません。</div>}
-                </label>
+                <NumberField label="Daily limit" value={draft.dailyCreditLimit} min={1} max={1000} onChange={(value) => props.onUpdateDraft({ dailyCreditLimit: value })} />
+                <NumberField label="Monthly limit" value={draft.monthlyCreditLimit} min={0} max={50000} onChange={(value) => props.onUpdateDraft({ monthlyCreditLimit: value })} note="0 means unlimited." />
+                <div className="settings-readonly">
+                  <div className="eyebrow">Creation driver</div>
+                  <strong>Browser worker</strong>
+                  <div className="muted">Fixed for normal operation. Mock driver is an internal test path.</div>
+                </div>
+                <div className="settings-readonly">
+                  <div className="eyebrow">Create button</div>
+                  <strong>Live submit</strong>
+                  <div className="warning-banner">This spends Suno credits. Use the dry-run safety switch above when external side effects must stay blocked.</div>
+                </div>
               </div>
             </section>
             <section className="settings-section">
-              <div className="section-title">配信先</div>
+              <div className="section-title">Platforms</div>
               <div className="field-grid">
                 <label className={`platform-config${globalArmHeld ? " is-held" : ""}`}>
-                  <div className="toggle"><input type="checkbox" checked={draft.xEnabled} onChange={(event) => props.onUpdateDraft({ xEnabled: event.target.checked })} />X を使う</div>
-                  <div className="toggle"><input type="checkbox" checked={draft.xLiveGoArmed} onChange={(event) => props.onUpdateDraft({ xLiveGoArmed: event.target.checked })} />X への公開を許可</div>
-                  <div className="eyebrow">X 権限</div>
+                  <div className="toggle"><input type="checkbox" checked={draft.xEnabled} onChange={(event) => props.onUpdateDraft({ xEnabled: event.target.checked })} />Use X</div>
+                  <div className="toggle"><input type="checkbox" checked={draft.xLiveGoArmed} onChange={(event) => props.onUpdateDraft({ xLiveGoArmed: event.target.checked })} />Allow publishing to X</div>
+                  <div className="eyebrow">X authority</div>
                   <select value={draft.xAuthority} onChange={(event) => props.onUpdateDraft({ xAuthority: event.target.value as ConfigDraft["xAuthority"] })}>
                     {xAuthorityModes.map((mode) => <option key={mode} value={mode}>{authorityLabel(mode)}</option>)}
                   </select>
                 </label>
-                <label className="platform-config is-frozen" title="凍結中">
-                  <div className="toggle"><input type="checkbox" checked={draft.instagramEnabled} onChange={(event) => props.onUpdateDraft({ instagramEnabled: event.target.checked })} />Instagram を使う</div>
-                  <div className="toggle"><input type="checkbox" checked={draft.instagramLiveGoArmed} disabled readOnly />Instagram 公開許可 <span className="badge badge-frozen">凍結中</span></div>
-                  <div className="eyebrow">Instagram の扱い</div>
-                  <select value={draft.instagramAuthority} onChange={(event) => props.onUpdateDraft({ instagramAuthority: event.target.value as ConfigDraft["instagramAuthority"] })}>
-                    {instagramAuthorityModes.map((mode) => <option key={mode} value={mode}>{authorityLabel(mode)}</option>)}
-                  </select>
-                  <div className="muted">Instagram は運用確認まで凍結中。</div>
-                </label>
-                <label className="platform-config is-frozen" title="アカウント未作成 / 凍結中">
-                  <div className="toggle"><input type="checkbox" checked={draft.tiktokEnabled} onChange={(event) => props.onUpdateDraft({ tiktokEnabled: event.target.checked })} />TikTok を使う</div>
-                  <div className="toggle"><input type="checkbox" checked={draft.tiktokLiveGoArmed} disabled readOnly />TikTok 公開許可 <span className="badge badge-frozen">凍結中</span></div>
-                  <div className="eyebrow">TikTok の扱い</div>
-                  <select value={draft.tiktokAuthority} onChange={(event) => props.onUpdateDraft({ tiktokAuthority: event.target.value as ConfigDraft["tiktokAuthority"] })}>
-                    {tiktokAuthorityModes.map((mode) => <option key={mode} value={mode}>{authorityLabel(mode)}</option>)}
-                  </select>
-                  <div className="muted">TikTok は運用アカウント準備まで凍結中。</div>
-                </label>
+                <div className="platform-config is-frozen" title="Frozen">
+                  <div className="eyebrow">Instagram</div>
+                  <strong>Frozen</strong>
+                  <span className="badge badge-frozen">Not available</span>
+                  <div className="muted">Instagram publishing is hidden until the connector is ready for operators.</div>
+                </div>
+                <div className="platform-config is-frozen" title="Account not ready / frozen">
+                  <div className="eyebrow">TikTok</div>
+                  <strong>Frozen</strong>
+                  <span className="badge badge-frozen">Not available</span>
+                  <div className="muted">TikTok publishing is hidden until the operator account flow exists.</div>
+                </div>
               </div>
             </section>
             {props.validationError ? <div className="field-error">{props.validationError}</div> : null}
             <div className="inline-actions">
-              <button className="primary" type="button" disabled={props.busy || Boolean(props.validationError) || !props.dirty} onClick={props.onSave}>設定を保存</button>
-              <button type="button" disabled={props.busy || !props.dirty} onClick={props.onReset}>元に戻す</button>
-              <button type="button" disabled={props.busy} onClick={props.onRefresh}>再読み込み</button>
+              <button className="primary" type="button" disabled={props.busy || Boolean(props.validationError) || !props.dirty} onClick={props.onSave}>Save settings</button>
+              <button type="button" disabled={props.busy || !props.dirty} onClick={props.onReset}>Reset changes</button>
+              <button type="button" disabled={props.busy} onClick={props.onRefresh}>Refresh</button>
             </div>
           </div>
         )}
@@ -602,9 +569,9 @@ export function DiagnosticsView() {
   return (
     <section className="single-column">
       <article className="panel">
-        <div className="section-title">診断</div>
-        <p>通常の制作判断には使いません。部屋 / 作品 / 運用設定を主に使います。</p>
-        <div className="item muted">内部操作ボタンは Producer Room に戻しません。詳しい調査が必要な時だけ、ログと API を見ます。</div>
+        <div className="section-title">Diagnostics</div>
+        <p>Not part of normal production decisions. Use Room, Songs, and Settings first.</p>
+        <div className="item muted">Internal operation buttons stay out of Producer Room. Use diagnostics only for logs and API investigation.</div>
       </article>
     </section>
   );
@@ -680,7 +647,7 @@ export function ProducerRoomApp() {
     try {
       await apiPost("/resume");
       await refresh();
-      showErrorToast("runtime", "resume_requested", "再開を送信しました。");
+      showErrorToast("runtime", "resume_requested", "Resume requested.");
     } catch (caughtError) {
       const message = caughtError instanceof Error ? caughtError.message : String(caughtError);
       showErrorToast("runtime", "resume_failed", message);
@@ -694,7 +661,7 @@ export function ProducerRoomApp() {
     try {
       await apiPost(`/spawn-proposals/${encodeURIComponent(proposalId)}/${decision}`);
       await refresh();
-      showErrorToast("runtime", `spawn_${decision}_applied`, decision === "inject" ? "曲づくりを開始しました。" : "草稿を見送りました。");
+      showErrorToast("runtime", `spawn_${decision}_applied`, decision === "inject" ? "Started building the song." : "Dismissed the draft.");
     } catch (caughtError) {
       const message = caughtError instanceof Error ? caughtError.message : String(caughtError);
       showErrorToast("runtime", `spawn_${decision}_failed`, message);
@@ -708,7 +675,7 @@ export function ProducerRoomApp() {
     try {
       await apiPost(`/songs/${encodeURIComponent(songId)}/prompt-pack-go`);
       await refresh();
-      showErrorToast("runtime", "prompt_pack_go_applied", "Suno 生成へ進めました。");
+      showErrorToast("runtime", "prompt_pack_go_applied", "Moved the song to Suno generation.");
     } catch (caughtError) {
       const message = caughtError instanceof Error ? caughtError.message : String(caughtError);
       showErrorToast("runtime", "prompt_pack_go_failed", message);
@@ -749,7 +716,7 @@ export function ProducerRoomApp() {
       configDirtyRef.current = false;
       setConfigDirty(false);
       await refresh();
-      showErrorToast("config-patch", "config_updated", "運用設定を保存しました。");
+      showErrorToast("config-patch", "config_updated", "Settings saved.");
     } catch (caughtError) {
       const message = caughtError instanceof Error ? caughtError.message : String(caughtError);
       showErrorToast("config-patch", "config_update_failed", message);
@@ -812,7 +779,7 @@ export function ProducerRoomApp() {
       }
       markPersonaDirty(layer, false);
       await refresh();
-      showErrorToast("config-patch", `persona_${layer}_updated`, "設定準備を保存しました。");
+      showErrorToast("config-patch", `persona_${layer}_updated`, "Setup draft saved.");
     } catch (caughtError) {
       const message = caughtError instanceof Error ? caughtError.message : String(caughtError);
       showErrorToast("config-patch", `persona_${layer}_update_failed`, message);
@@ -842,12 +809,12 @@ export function ProducerRoomApp() {
       }
       const draft = response.drafts?.find((entry) => entry.field === field);
       if (!draft || draft.status !== "proposed") {
-        showErrorToast("runtime", `persona_ai_${field}_skipped`, draft?.reasoning ?? "AIお任せの案は返りませんでした。");
+        showErrorToast("runtime", `persona_ai_${field}_skipped`, draft?.reasoning ?? "AI suggestion returned nothing usable.");
         return;
       }
       applyPersonaDraftProposal(field, draft.draft);
       const warning = response.warnings?.[0];
-      showErrorToast("runtime", `persona_ai_${field}_proposed`, warning ? `AIお任せを反映: ${warning}` : "AIお任せを反映しました。");
+      showErrorToast("runtime", `persona_ai_${field}_proposed`, warning ? `AI suggestion applied: ${warning}` : "AI suggestion applied.");
     } catch (caughtError) {
       const message = caughtError instanceof Error ? caughtError.message : String(caughtError);
       showErrorToast("runtime", `persona_ai_${field}_failed`, message);
@@ -864,7 +831,7 @@ export function ProducerRoomApp() {
         throw new Error(response.error);
       }
       await refresh();
-      showErrorToast("runtime", "persona_setup_complete", "初期設定の完了を記録しました。");
+      showErrorToast("runtime", "persona_setup_complete", "Setup completion recorded.");
     } catch (caughtError) {
       const message = caughtError instanceof Error ? caughtError.message : String(caughtError);
       showErrorToast("runtime", "persona_setup_complete_failed", message);
@@ -879,12 +846,12 @@ export function ProducerRoomApp() {
     <main className="console-shell producer-room-shell">
       <header className="hero producer-room-hero">
         <div>
-          <div className="eyebrow">アーティスト運用</div>
+          <div className="eyebrow">Artist Operations</div>
           <h1>Producer Room</h1>
-          <div className="hero-copy">迷ったら、ここだけ見る。必要な操作は止まった時に 1 つだけ出す。</div>
+          <div className="hero-copy">If you are unsure, look here. When action is needed, this room shows one move.</div>
         </div>
         <div className="producer-room-refresh-pill">
-          {lastRefreshAt ? `更新 ${new Date(lastRefreshAt).toLocaleTimeString()}` : "読み込み中"}
+          {lastRefreshAt ? `Updated ${new Date(lastRefreshAt).toLocaleTimeString()}` : "Loading"}
         </div>
       </header>
       <RouteNav activeView={activeView} />
@@ -936,8 +903,8 @@ export function ProducerRoomApp() {
       ) : null}
       {activeView === "diagnostics" ? <DiagnosticsView /> : null}
       <footer className="producer-room-closing-band">
-        <strong>普段は静かに。</strong>
-        <span>創作の節目、動けない停止、次の一手だけを出します。</span>
+        <strong>Quiet by default.</strong>
+        <span>Only creative milestones, hard stops, and the next required move surface here.</span>
       </footer>
       <ErrorToastStack toasts={errorToasts} onDismiss={(id) => setErrorToasts((current) => dismissErrorToast(current, id))} />
     </main>
