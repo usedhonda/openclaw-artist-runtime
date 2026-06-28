@@ -209,13 +209,13 @@ describe("registration shells", () => {
     expect(Array.isArray(promptLedger)).toBe(true);
     expect(recovery.diagnostics.dryRun).toBe(true);
     const consoleHtml = await producerConsoleHtml();
-    expect(consoleHtml).toContain("Artist Runtime");
+    expect(consoleHtml).toContain("アーティスト運用");
     expect(consoleHtml).toContain("Producer Room");
     expect(consoleHtml).toContain("現在地");
     expect(consoleHtml).toContain("次");
-    expect(consoleHtml).toContain("Room");
-    expect(consoleHtml).toContain("Songs");
-    expect(consoleHtml).toContain("Settings");
+    expect(consoleHtml).toContain("部屋");
+    expect(consoleHtml).toContain("作品");
+    expect(consoleHtml).toContain("運用設定");
     expect(consoleHtml).toContain("診断");
     expect(consoleHtml).not.toContain("Run Cycle");
     expect(consoleHtml).not.toContain("Config Editor");
