@@ -6,6 +6,7 @@ import { SongDetailCard } from "./components/SongDetailCard";
 import { SpawnProposalQueuePanel, type SpawnProposalQueueItem } from "./components/SpawnProposalQueuePanel";
 import { SetupView, type PersonaAiSuggestion } from "./components/SetupView";
 import { useHashRoute } from "./hooks/useHashRoute";
+import { resolveProducerRoomLocale, t, type ProducerRoomLocale } from "./i18n";
 import {
   buildPersonaArtistPatch,
   buildPersonaDraft,
@@ -169,22 +170,22 @@ function fallbackSummary(status: StatusResponse | null): DraftBoxNextActionSumma
   };
 }
 
-function statusLabel(kind: DraftBoxNextActionSummary["kind"]): string {
+function statusLabel(locale: ProducerRoomLocale, kind: DraftBoxNextActionSummary["kind"]): string {
   switch (kind) {
     case "decision_pending":
-      return "Decision pending";
+      return t(locale, "roomDecisionPending");
     case "hard_stop":
-      return "Hard stop";
+      return t(locale, "roomHardStop");
     case "paused":
     case "suno_trouble":
-      return "Blocked";
+      return t(locale, "roomBlocked");
     case "reauth_required":
-      return "Reauth required";
+      return t(locale, "roomReauthRequired");
     case "building":
     case "draft_idle":
     case "empty":
     default:
-      return "Healthy";
+      return t(locale, "roomHealthy");
   }
 }
 
@@ -192,42 +193,42 @@ function showsWhy(kind: DraftBoxNextActionSummary["kind"]): boolean {
   return kind === "decision_pending" || kind === "hard_stop" || kind === "paused" || kind === "reauth_required" || kind === "suno_trouble";
 }
 
-function canLine(summary: DraftBoxNextActionSummary): string {
+function canLine(locale: ProducerRoomLocale, summary: DraftBoxNextActionSummary): string {
   switch (summary.kind) {
     case "decision_pending":
       return summary.nextAction;
     case "reauth_required":
-      return "Lyrics AI reauth is required. /resume will not fix it.";
+      return t(locale, "roomReauthHelp");
     case "hard_stop":
-      return "Check /status for the blocking reason.";
+      return t(locale, "roomHardStopHelp");
     case "suno_trouble":
-      return "The run will continue when Suno connectivity returns.";
+      return t(locale, "roomSunoTroubleHelp");
     case "paused":
       return "Resume";
     case "building":
     case "draft_idle":
     case "empty":
     default:
-      return "Nothing needed — the artist is thinking about the next song.";
+      return t(locale, "roomNothingNeeded");
   }
 }
 
-function producerStageLabel(stage?: string): string {
+function producerStageLabel(locale: ProducerRoomLocale, stage?: string): string {
   switch (stage) {
     case "asset_generation":
-      return "Awaiting adoption after completion";
+      return t(locale, "roomAwaitingAdoption");
     case "take_selected":
-      return "Awaiting adoption after completion";
+      return t(locale, "roomAwaitingAdoption");
     case "prompt_pack_ready":
-      return "Awaiting the Suno GO decision";
+      return t(locale, "roomAwaitingSunoGo");
     case "spawn_proposal_ready":
-      return "Awaiting idea decision";
+      return t(locale, "roomAwaitingIdeaDecision");
     default:
-      return "Awaiting decision";
+      return t(locale, "roomDecisionPending");
   }
 }
 
-export function roomSummaryWithDecisions(summary: DraftBoxNextActionSummary, awaitingDecisions: CallbackActionsResponse): DraftBoxNextActionSummary {
+export function roomSummaryWithDecisions(summary: DraftBoxNextActionSummary, awaitingDecisions: CallbackActionsResponse, locale: ProducerRoomLocale = "en"): DraftBoxNextActionSummary {
   if (awaitingDecisions.count <= 0 || awaitingDecisions.callbacks.length === 0) return summary;
   const [latest] = groupAwaitingDecisions(awaitingDecisions.callbacks);
   if (!latest) return summary;
@@ -237,45 +238,47 @@ export function roomSummaryWithDecisions(summary: DraftBoxNextActionSummary, awa
     kind: "decision_pending",
     currentLine: `Artist is: waiting on ${target}`,
     nextAction: `You can: choose ${latest.actions.join(" / ")} in the latest Telegram notice`,
-    reason: producerStageLabel(latest.stage),
+    reason: producerStageLabel(locale, latest.stage),
     stateKey: `decision_pending:${latest.songId ?? latest.proposalId ?? latest.callbackId}`
   };
 }
 
 export function RoomHeader(props: {
+  locale?: ProducerRoomLocale;
   summary: DraftBoxNextActionSummary;
   onResume?: () => void;
   resumeBusy?: boolean;
 }) {
   const { summary } = props;
+  const locale = props.locale ?? "en";
   const why = showsWhy(summary.kind) ? summary.reason : undefined;
 
   return (
     <article className={`panel room-status-card room-status-${summary.kind}`}>
-      <div className="section-title">Current Room State</div>
+      <div className="section-title">{t(locale, "roomCurrentState")}</div>
       <div className="room-grammar">
         <div>
-          <span className="grammar-label">Artist is</span>
+          <span className="grammar-label">{t(locale, "roomArtistIs")}</span>
           <strong>{summary.currentLine}</strong>
         </div>
         <div>
-          <span className="grammar-label">Status</span>
-          <strong>{statusLabel(summary.kind)}</strong>
+          <span className="grammar-label">{t(locale, "roomStatus")}</span>
+          <strong>{statusLabel(locale, summary.kind)}</strong>
         </div>
         {why ? (
           <div>
-            <span className="grammar-label">Why</span>
+            <span className="grammar-label">{t(locale, "roomWhy")}</span>
             <span>{why}</span>
           </div>
         ) : null}
         <div>
-          <span className="grammar-label">You can</span>
+          <span className="grammar-label">{t(locale, "roomYouCan")}</span>
           {summary.kind === "paused" ? (
             <button type="button" className="primary" disabled={props.resumeBusy} onClick={props.onResume}>
               {props.resumeBusy ? "Resuming..." : "Resume"}
             </button>
           ) : (
-            <span>{canLine(summary)}</span>
+            <span>{canLine(locale, summary)}</span>
           )}
         </div>
       </div>
@@ -297,6 +300,7 @@ function RouteNav(props: { activeView: RoomView }) {
 }
 
 function RoomViewPanel(props: {
+  locale: ProducerRoomLocale;
   status: StatusResponse | null;
   summary: DraftBoxNextActionSummary;
   awaitingDecisions: CallbackActionsResponse;
@@ -310,7 +314,7 @@ function RoomViewPanel(props: {
 }) {
   return (
     <section className="single-column producer-room-grid">
-      <RoomHeader summary={roomSummaryWithDecisions(props.summary, props.awaitingDecisions)} onResume={props.onResume} resumeBusy={props.busy === "resume"} />
+      <RoomHeader locale={props.locale} summary={roomSummaryWithDecisions(props.summary, props.awaitingDecisions, props.locale)} onResume={props.onResume} resumeBusy={props.busy === "resume"} />
       {props.persona?.setup.needsSetup ? (
         <article className="panel">
           <div className="warning-banner">
@@ -380,11 +384,13 @@ function StatusPill(props: { status: string }) {
 }
 
 export function SongsView(props: {
+  locale?: ProducerRoomLocale;
   songs: SongSummary[];
   selectedSongId: string | null;
   onSelectSong: (songId: string) => void;
   onBack: () => void;
 }) {
+  const locale = props.locale ?? "en";
   const selected = props.selectedSongId;
   const [page, setPage] = useState(0);
   const totalPages = Math.max(1, Math.ceil(props.songs.length / songLedgerPageSize));
@@ -400,9 +406,9 @@ export function SongsView(props: {
     <section className="single-column songs-view">
       <article className="panel">
         <div className="section-title">Songs</div>
-        <div className="muted">Telegram is primary. This view mirrors the song history and only repeats adoption decisions when they are pending.</div>
+        <div className="muted">{t(locale, "songsIntro")}</div>
         {props.songs.length === 0 ? (
-          <div className="item muted">The song ledger is empty.</div>
+          <div className="item muted">{t(locale, "songsEmpty")}</div>
         ) : (
           <>
             <div className="song-ledger-toolbar">
@@ -461,6 +467,7 @@ function NumberField(props: {
 }
 
 export function SettingsView(props: {
+  locale?: ProducerRoomLocale;
   config: ConfigResponse | null;
   draft: ConfigDraft | null;
   dirty: boolean;
@@ -471,6 +478,7 @@ export function SettingsView(props: {
   onReset: () => void;
   onRefresh: () => void;
 }) {
+  const locale = props.locale ?? "en";
   const draft = props.draft;
   const globalArmHeld = Boolean(draft && !draft.distributionLiveGoArmed);
   const authorityLabel = (value: string) => {
@@ -496,45 +504,57 @@ export function SettingsView(props: {
     <section className="single-column settings-view">
       <article className="panel settings-panel">
         <div className="section-title">Settings</div>
-        <div className="muted">Set production cadence, Suno credit limits, and public publishing authority.</div>
+        <div className="muted">{t(locale, "settingsIntro")}</div>
         {!props.config || !draft ? (
-          <div className="item muted">Loading config.</div>
+          <div className="item muted">{t(locale, "settingsLoading")}</div>
         ) : (
           <div className="settings-sections">
             <section className="settings-section">
-              <div className="section-title">Autopilot</div>
-              <label className="toggle"><input type="checkbox" checked={draft.autopilotEnabled} onChange={(event) => props.onUpdateDraft({ autopilotEnabled: event.target.checked })} />Run autonomous production</label>
-              <label className="toggle"><input type="checkbox" checked={draft.dryRun} onChange={(event) => props.onUpdateDraft({ dryRun: event.target.checked })} />Block external side effects</label>
-              <label className="toggle"><input type="checkbox" checked={draft.distributionLiveGoArmed} onChange={(event) => props.onUpdateDraft({ distributionLiveGoArmed: event.target.checked })} />Allow public publishing globally</label>
-              {globalArmHeld ? <div className="warning-banner">Public publishing is globally held. Platform arms remain blocked upstream.</div> : null}
+              <div className="section-title">{t(locale, "settingsLanguage")}</div>
+              <div className="muted">{t(locale, "settingsLanguageHelp")}</div>
+              <label>
+                <div className="eyebrow">Language</div>
+                <select value={draft.uiLocale} onChange={(event) => props.onUpdateDraft({ uiLocale: event.target.value as ConfigDraft["uiLocale"] })}>
+                  <option value="auto">Auto</option>
+                  <option value="ja">日本語</option>
+                  <option value="en">English</option>
+                </select>
+              </label>
+            </section>
+            <section className="settings-section">
+              <div className="section-title">{t(locale, "settingsAutopilot")}</div>
+              <label className="toggle"><input type="checkbox" checked={draft.autopilotEnabled} onChange={(event) => props.onUpdateDraft({ autopilotEnabled: event.target.checked })} />{t(locale, "settingsRunAutonomous")}</label>
+              <label className="toggle"><input type="checkbox" checked={draft.dryRun} onChange={(event) => props.onUpdateDraft({ dryRun: event.target.checked })} />{t(locale, "settingsBlockExternal")}</label>
+              <label className="toggle"><input type="checkbox" checked={draft.distributionLiveGoArmed} onChange={(event) => props.onUpdateDraft({ distributionLiveGoArmed: event.target.checked })} />{t(locale, "settingsAllowPublic")}</label>
+              {globalArmHeld ? <div className="warning-banner">{t(locale, "settingsPublicHeld")}</div> : null}
               <div className="field-grid">
-                <NumberField label="Songs per week" value={draft.songsPerWeek} min={0} max={21} onChange={(value) => props.onUpdateDraft({ songsPerWeek: value })} />
-                <NumberField label="Cycle interval (minutes)" value={draft.cycleIntervalMinutes} min={15} max={1440} onChange={(value) => props.onUpdateDraft({ cycleIntervalMinutes: value })} />
+                <NumberField label={t(locale, "settingsSongsPerWeek")} value={draft.songsPerWeek} min={0} max={21} onChange={(value) => props.onUpdateDraft({ songsPerWeek: value })} />
+                <NumberField label={t(locale, "settingsCycleInterval")} value={draft.cycleIntervalMinutes} min={15} max={1440} onChange={(value) => props.onUpdateDraft({ cycleIntervalMinutes: value })} />
               </div>
             </section>
             <section className="settings-section">
-              <div className="section-title">Suno Budget</div>
+              <div className="section-title">{t(locale, "settingsSunoBudget")}</div>
               <div className="field-grid">
-                <NumberField label="Daily limit" value={draft.dailyCreditLimit} min={1} max={1000} onChange={(value) => props.onUpdateDraft({ dailyCreditLimit: value })} />
-                <NumberField label="Monthly limit" value={draft.monthlyCreditLimit} min={0} max={50000} onChange={(value) => props.onUpdateDraft({ monthlyCreditLimit: value })} note="0 means unlimited." />
+                <NumberField label={t(locale, "settingsDailyLimit")} value={draft.dailyCreditLimit} min={1} max={1000} onChange={(value) => props.onUpdateDraft({ dailyCreditLimit: value })} />
+                <NumberField label={t(locale, "settingsMonthlyLimit")} value={draft.monthlyCreditLimit} min={0} max={50000} onChange={(value) => props.onUpdateDraft({ monthlyCreditLimit: value })} note={t(locale, "settingsMonthlyNote")} />
                 <div className="settings-readonly">
                   <div className="eyebrow">Creation driver</div>
                   <strong>Browser worker</strong>
-                  <div className="muted">Fixed for normal operation. Mock driver is an internal test path.</div>
+                  <div className="muted">{t(locale, "settingsCreationDriverHelp")}</div>
                 </div>
                 <div className="settings-readonly">
                   <div className="eyebrow">Create button</div>
                   <strong>Live submit</strong>
-                  <div className="warning-banner">This spends Suno credits. Use the dry-run safety switch above when external side effects must stay blocked.</div>
+                  <div className="warning-banner">{t(locale, "settingsCreateButtonWarning")}</div>
                 </div>
               </div>
             </section>
             <section className="settings-section">
-              <div className="section-title">Platforms</div>
+              <div className="section-title">{t(locale, "settingsPlatforms")}</div>
               <div className="field-grid">
                 <label className={`platform-config${globalArmHeld ? " is-held" : ""}`}>
-                  <div className="toggle"><input type="checkbox" checked={draft.xEnabled} onChange={(event) => props.onUpdateDraft({ xEnabled: event.target.checked })} />Use X</div>
-                  <div className="toggle"><input type="checkbox" checked={draft.xLiveGoArmed} onChange={(event) => props.onUpdateDraft({ xLiveGoArmed: event.target.checked })} />Allow publishing to X</div>
+                  <div className="toggle"><input type="checkbox" checked={draft.xEnabled} onChange={(event) => props.onUpdateDraft({ xEnabled: event.target.checked })} />{t(locale, "settingsUseX")}</div>
+                  <div className="toggle"><input type="checkbox" checked={draft.xLiveGoArmed} onChange={(event) => props.onUpdateDraft({ xLiveGoArmed: event.target.checked })} />{t(locale, "settingsAllowX")}</div>
                   <div className="eyebrow">X authority</div>
                   <select value={draft.xAuthority} onChange={(event) => props.onUpdateDraft({ xAuthority: event.target.value as ConfigDraft["xAuthority"] })}>
                     {xAuthorityModes.map((mode) => <option key={mode} value={mode}>{authorityLabel(mode)}</option>)}
@@ -544,21 +564,21 @@ export function SettingsView(props: {
                   <div className="eyebrow">Instagram</div>
                   <strong>Frozen</strong>
                   <span className="badge badge-frozen">Not available</span>
-                  <div className="muted">Instagram publishing is hidden until the connector is ready for operators.</div>
+                  <div className="muted">{t(locale, "settingsInstagramFrozen")}</div>
                 </div>
                 <div className="platform-config is-frozen" title="Account not ready / frozen">
                   <div className="eyebrow">TikTok</div>
                   <strong>Frozen</strong>
                   <span className="badge badge-frozen">Not available</span>
-                  <div className="muted">TikTok publishing is hidden until the operator account flow exists.</div>
+                  <div className="muted">{t(locale, "settingsTikTokFrozen")}</div>
                 </div>
               </div>
             </section>
             {props.validationError ? <div className="field-error">{props.validationError}</div> : null}
             <div className="inline-actions">
-              <button className="primary" type="button" disabled={props.busy || Boolean(props.validationError) || !props.dirty} onClick={props.onSave}>Save settings</button>
-              <button type="button" disabled={props.busy || !props.dirty} onClick={props.onReset}>Reset changes</button>
-              <button type="button" disabled={props.busy} onClick={props.onRefresh}>Refresh</button>
+              <button className="primary" type="button" disabled={props.busy || Boolean(props.validationError) || !props.dirty} onClick={props.onSave}>{t(locale, "settingsSave")}</button>
+              <button type="button" disabled={props.busy || !props.dirty} onClick={props.onReset}>{t(locale, "settingsReset")}</button>
+              <button type="button" disabled={props.busy} onClick={props.onRefresh}>{t(locale, "refresh")}</button>
             </div>
           </div>
         )}
@@ -567,13 +587,14 @@ export function SettingsView(props: {
   );
 }
 
-export function DiagnosticsView() {
+export function DiagnosticsView(props: { locale?: ProducerRoomLocale }) {
+  const locale = props.locale ?? "en";
   return (
     <section className="single-column">
       <article className="panel">
         <div className="section-title">Diagnostics</div>
-        <p>Not part of normal production decisions. Use Room, Songs, and Settings first.</p>
-        <div className="item muted">Internal operation buttons stay out of Producer Room. Use diagnostics only for logs and API investigation.</div>
+        <p>{t(locale, "diagnosticsIntro")}</p>
+        <div className="item muted">{t(locale, "diagnosticsNote")}</div>
       </article>
     </section>
   );
@@ -960,6 +981,7 @@ export function ProducerRoomApp() {
 
   const summary = status?.autopilot.nextActionSummary ?? fallbackSummary(status);
   const configValidationError = configDraft ? validateConfigDraft(configDraft) : null;
+  const locale = resolveProducerRoomLocale(configDraft?.uiLocale ?? config?.ui?.locale);
   return (
     <main className="console-shell producer-room-shell">
       <header className="hero producer-room-hero">
@@ -976,6 +998,7 @@ export function ProducerRoomApp() {
       {activeView === "room" ? (
         <RoomViewPanel
           status={status}
+          locale={locale}
           summary={summary}
           awaitingDecisions={awaitingDecisions}
           spawnProposalQueue={spawnProposalQueue}
@@ -988,11 +1011,12 @@ export function ProducerRoomApp() {
         />
       ) : null}
       {activeView === "songs" ? (
-        <SongsView songs={songs} selectedSongId={selectedSongId} onSelectSong={selectSong} onBack={clearSong} />
+        <SongsView locale={locale} songs={songs} selectedSongId={selectedSongId} onSelectSong={selectSong} onBack={clearSong} />
       ) : null}
       {activeView === "settings" ? (
         <SettingsView
           config={config}
+          locale={locale}
           draft={configDraft}
           dirty={configDirty}
           busy={busy !== null}
@@ -1005,6 +1029,7 @@ export function ProducerRoomApp() {
       ) : null}
       {activeView === "setup" ? (
         <SetupView
+          locale={locale}
           persona={persona}
           draft={personaDraft}
           dirty={personaDirty}
@@ -1024,7 +1049,7 @@ export function ProducerRoomApp() {
           onComplete={completePersonaSetup}
         />
       ) : null}
-      {activeView === "diagnostics" ? <DiagnosticsView /> : null}
+      {activeView === "diagnostics" ? <DiagnosticsView locale={locale} /> : null}
       <footer className="producer-room-closing-band">
         <strong>Quiet by default.</strong>
         <span>Only creative milestones, hard stops, and the next required move surface here.</span>

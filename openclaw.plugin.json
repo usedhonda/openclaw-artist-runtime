@@ -377,6 +377,24 @@
           }
         }
       },
+      "ui": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "locale": {
+            "type": "string",
+            "enum": [
+              "auto",
+              "ja",
+              "en"
+            ],
+            "default": "auto"
+          }
+        },
+        "default": {
+          "locale": "auto"
+        }
+      },
       "safety": {
         "type": "object",
         "additionalProperties": false,
@@ -736,6 +754,10 @@
     "aiReview.provider": {
       "label": "Debug AI review provider",
       "help": "Debug-only review provider for /review. Mock is safe and does not affect take selection or publishing."
+    },
+    "ui.locale": {
+      "label": "Producer Room language",
+      "help": "Choose Auto, Japanese, or English for Producer Room help text and warnings."
     },
     "safety.auditLog": {
       "label": "Audit log",

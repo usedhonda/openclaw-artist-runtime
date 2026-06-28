@@ -4,6 +4,7 @@ import { buildConfigDraft, buildConfigUpdatePatch, validateConfigDraft } from ".
 describe("config editor payload builder", () => {
   it("builds a draft from config response shape", () => {
     expect(buildConfigDraft({
+      ui: { locale: "ja" },
       music: {
         suno: {
           dailyCreditLimit: 60,
@@ -27,6 +28,7 @@ describe("config editor payload builder", () => {
         }
       }
     })).toEqual({
+      uiLocale: "ja",
       dailyCreditLimit: "60",
       monthlyCreditLimit: "0",
       sunoDriver: "mock",
@@ -50,6 +52,7 @@ describe("config editor payload builder", () => {
 
   it("builds the config/update patch payload", () => {
     expect(buildConfigUpdatePatch({
+      uiLocale: "en",
       dailyCreditLimit: "120",
       monthlyCreditLimit: "240",
       sunoDriver: "playwright",
@@ -69,6 +72,9 @@ describe("config editor payload builder", () => {
       tiktokLiveGoArmed: true,
       tiktokAuthority: "draft_only"
     })).toEqual({
+      ui: {
+        locale: "en"
+      },
       music: {
         suno: {
           dailyCreditLimit: 120,
@@ -96,6 +102,7 @@ describe("config editor payload builder", () => {
 
   it("keeps the TikTok live-go arm frozen even when the draft flips it on", () => {
     expect(buildConfigUpdatePatch({
+      uiLocale: "auto",
       dailyCreditLimit: "120",
       monthlyCreditLimit: "0",
       sunoDriver: "mock",
@@ -119,6 +126,7 @@ describe("config editor payload builder", () => {
 
   it("keeps the Instagram live-go arm frozen even when the draft flips it on", () => {
     expect(buildConfigUpdatePatch({
+      uiLocale: "auto",
       dailyCreditLimit: "120",
       monthlyCreditLimit: "0",
       sunoDriver: "mock",
@@ -142,6 +150,7 @@ describe("config editor payload builder", () => {
 
   it("rejects unsupported Suno driver values", () => {
     expect(validateConfigDraft({
+      uiLocale: "auto",
       dailyCreditLimit: "60",
       monthlyCreditLimit: "0",
       sunoDriver: "selenium" as never,
@@ -165,6 +174,7 @@ describe("config editor payload builder", () => {
 
   it("rejects unsupported Suno submit mode values", () => {
     expect(validateConfigDraft({
+      uiLocale: "auto",
       dailyCreditLimit: "60",
       monthlyCreditLimit: "0",
       sunoDriver: "mock",
@@ -188,6 +198,7 @@ describe("config editor payload builder", () => {
 
   it("rejects out-of-range numeric values", () => {
     expect(validateConfigDraft({
+      uiLocale: "auto",
       dailyCreditLimit: "0",
       monthlyCreditLimit: "0",
       sunoDriver: "mock",
@@ -211,6 +222,7 @@ describe("config editor payload builder", () => {
 
   it("rejects non-whole-number values", () => {
     expect(validateConfigDraft({
+      uiLocale: "auto",
       dailyCreditLimit: "sixty",
       monthlyCreditLimit: "0",
       sunoDriver: "mock",
@@ -234,6 +246,7 @@ describe("config editor payload builder", () => {
 
   it("rejects unsupported authority values", () => {
     expect(validateConfigDraft({
+      uiLocale: "auto",
       dailyCreditLimit: "60",
       monthlyCreditLimit: "0",
       sunoDriver: "mock",
@@ -257,6 +270,7 @@ describe("config editor payload builder", () => {
 
   it("rejects Suno daily credit limits above the supported ceiling", () => {
     expect(validateConfigDraft({
+      uiLocale: "auto",
       dailyCreditLimit: "1001",
       monthlyCreditLimit: "0",
       sunoDriver: "mock",
@@ -280,6 +294,7 @@ describe("config editor payload builder", () => {
 
   it("rejects Suno monthly credit limits above the supported ceiling", () => {
     expect(validateConfigDraft({
+      uiLocale: "auto",
       dailyCreditLimit: "60",
       monthlyCreditLimit: "50001",
       sunoDriver: "mock",

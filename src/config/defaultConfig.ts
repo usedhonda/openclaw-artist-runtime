@@ -93,6 +93,9 @@ export const defaultArtistRuntimeConfig: ArtistRuntimeConfig = {
   aiReview: {
     provider: "mock"
   },
+  ui: {
+    locale: "auto"
+  },
   safety: {
     auditLog: true,
     failClosed: true,

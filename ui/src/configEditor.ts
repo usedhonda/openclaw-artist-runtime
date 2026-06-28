@@ -8,10 +8,14 @@ import {
   type SunoDriverMode,
   type SunoSubmitMode,
   type TikTokAuthority,
+  type UiLocaleMode,
   type XAuthority
 } from "../../src/types";
 
 export type ConfigEditorSource = {
+  ui?: {
+    locale?: UiLocaleMode;
+  };
   music: {
     suno: {
       dailyCreditLimit: number;
@@ -55,9 +59,13 @@ export type ConfigDraft = {
   tiktokEnabled: boolean;
   tiktokLiveGoArmed: boolean;
   tiktokAuthority: TikTokAuthority;
+  uiLocale: UiLocaleMode;
 };
 
 export type ConfigUpdatePatch = {
+  ui: {
+    locale: UiLocaleMode;
+  };
   music: {
     suno: {
       dailyCreditLimit: number;
@@ -92,6 +100,7 @@ function parseWholeNumber(value: string, label: string): number {
 
 export function buildConfigDraft(source: ConfigEditorSource): ConfigDraft {
   return {
+    uiLocale: source.ui?.locale ?? "auto",
     dailyCreditLimit: String(source.music.suno.dailyCreditLimit),
     monthlyCreditLimit: String(source.music.suno.monthlyCreditLimit),
     sunoDriver: source.music.suno.driver,
@@ -155,7 +164,14 @@ export function buildConfigUpdatePatch(draft: ConfigDraft): ConfigUpdatePatch {
     throw new Error("sunoSubmitMode must be one of the supported Suno submit modes");
   }
 
+  if (!["auto", "ja", "en"].includes(draft.uiLocale)) {
+    throw new Error("uiLocale must be one of auto, ja, en");
+  }
+
   return {
+    ui: {
+      locale: draft.uiLocale
+    },
     music: {
       suno: {
         dailyCreditLimit,

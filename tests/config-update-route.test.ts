@@ -94,6 +94,20 @@ describe("config/update behaviour", () => {
     expect(result.autopilot.enabled).toBe(true);
   });
 
+  it("patchResolvedConfig persists Producer Room locale overrides", async () => {
+    const root = makeWorkspace();
+
+    const updated = await patchResolvedConfig(root, {
+      artist: { workspaceRoot: root, mode: "public_artist", artistId: "artist", profilePath: "ARTIST.md" },
+      ui: { locale: "ja" }
+    });
+
+    expect(updated.ui.locale).toBe("ja");
+
+    const persisted = JSON.parse(readFileSync(join(root, "runtime", "config-overrides.json"), "utf8"));
+    expect(persisted.ui.locale).toBe("ja");
+  });
+
   it("resolveRuntimeConfig merges persisted overrides with payload config", async () => {
     const root = makeWorkspace();
 

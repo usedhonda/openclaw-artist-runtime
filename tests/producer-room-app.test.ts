@@ -217,6 +217,7 @@ describe("ProducerRoomApp Songs and Settings views", () => {
 
   it("renders steer settings and builds a config update patch from the draft", () => {
     const config = {
+      ui: { locale: "auto" as const },
       artist: { artistId: "artist", workspaceRoot: "/tmp/artist" },
       music: { suno: { dailyCreditLimit: 4, monthlyCreditLimit: 40, driver: "mock" as const, submitMode: "skip" as const } },
       autopilot: { enabled: true, dryRun: true, songsPerWeek: 3, cycleIntervalMinutes: 60 },
@@ -229,7 +230,7 @@ describe("ProducerRoomApp Songs and Settings views", () => {
         }
       }
     };
-    const draft = { ...buildConfigDraft(config), songsPerWeek: "5" };
+    const draft = { ...buildConfigDraft(config), songsPerWeek: "5", uiLocale: "ja" as const };
     const patch = buildConfigUpdatePatch(draft);
     const html = renderToStaticMarkup(
       React.createElement(SettingsView, {
@@ -246,7 +247,12 @@ describe("ProducerRoomApp Songs and Settings views", () => {
     );
 
     expect(patch.autopilot.songsPerWeek).toBe(5);
+    expect(patch.ui.locale).toBe("ja");
     expect(html).toContain("Autopilot");
+    expect(html).toContain("Display language");
+    expect(html).toContain("Auto");
+    expect(html).toContain("日本語");
+    expect(html).toContain("English");
     expect(html).toContain("Suno Budget");
     expect(html).toContain("Platforms");
     expect(html).toContain("Creation driver");
@@ -277,6 +283,7 @@ describe("ProducerRoomApp Songs and Settings views", () => {
 
   it("disables settings save and reset when there are no unsaved changes", () => {
     const config = {
+      ui: { locale: "auto" as const },
       artist: { artistId: "artist", workspaceRoot: "/tmp/artist" },
       music: { suno: { dailyCreditLimit: 4, monthlyCreditLimit: 40, driver: "mock" as const, submitMode: "skip" as const } },
       autopilot: { enabled: true, dryRun: true, songsPerWeek: 3, cycleIntervalMinutes: 60 },
@@ -389,7 +396,7 @@ describe("ProducerRoomApp Songs and Settings views", () => {
     expect(html).toContain("IDENTITY.md 自動表示");
     expect(html).toContain("INNER.md の扱い");
     expect(html).toContain("初回 setup が未完了です");
-    expect(html).toContain("設定の警告");
+    expect(html).toContain("重複・置き場所の確認");
     expect(html).toContain("日本語/英語比率が矛盾");
     expect(html).toContain("Suno Production Profile が ARTIST.md 内で重複");
     expect(html).toContain("設定の不足");
@@ -424,6 +431,72 @@ describe("ProducerRoomApp Songs and Settings views", () => {
     expect(html).not.toContain("Setup 完了");
     expect(html).not.toContain("創作の核 — ARTIST.md");
     expect(html).not.toContain("Artist Setup");
+  });
+
+  it("renders Setup placement warnings in English without leaking raw audit wording", () => {
+    const persona = {
+      artist: {
+        artistName: "Glass Commuter",
+        identityLine: "Turns commute damage into songs.",
+        soundDna: "dry drums, low synth texture around station announcements",
+        obsessions: "station light, receipts",
+        lyricsRules: "no slogans",
+        socialVoice: "plain and short"
+      },
+      soul: {
+        conversationTone: "short and precise",
+        refusalStyle: "refuse weak ideas plainly"
+      },
+      identity: { text: "# IDENTITY\n\nraw identity" },
+      producer: { text: "# PRODUCER\n\nraw producer" },
+      inner: { text: "# INNER\n\nraw inner" },
+      setup: { completed: false, needsSetup: true, reasons: ["missing_completion_marker"], reasonsText: "setup not completed" },
+      audit: {
+        summary: { filled: 8, thin: 0, missing: 0 },
+        fields: [
+          { field: "soundDna", status: "filled" }
+        ],
+        issues: [
+          { code: "persona_responsibility_overlap", file: "ARTIST.md", detail: "artist name belongs outside ARTIST.md; this file owns music direction" }
+        ],
+        customSections: []
+      },
+      aiDraftSupported: ["artist", "soul", "producer"] as ["artist", "soul", "producer"],
+      provider: "mock"
+    };
+    const html = renderToStaticMarkup(
+      React.createElement(SetupView, {
+        locale: "en",
+        persona,
+        draft: buildPersonaDraft(persona),
+        dirty: { artist: false, soul: false, identity: false, producer: false, inner: false },
+        busyKey: null,
+        onUpdateArtist: () => undefined,
+        onUpdateSoul: () => undefined,
+        onUpdateSnapshot: () => undefined,
+        onSaveLayer: () => undefined,
+        onReset: () => undefined,
+        onRefresh: () => undefined,
+        onPropose: () => undefined,
+        onProposeMissing: () => undefined,
+        onProposeReview: () => undefined,
+        onProposeDedupe: () => undefined,
+        aiSuggestions: {},
+        onApplySuggestion: () => undefined,
+        onComplete: () => undefined
+      })
+    );
+
+    expect(html).toContain("Artist setup");
+    expect(html).toContain("This is the map of the five persona files");
+    expect(html).toContain("ARTIST.md appears to contain an artist name. The display name is managed in Settings.");
+    expect(html).toContain("Music core");
+    expect(html).toContain("Input");
+    expect(html).toContain("Required");
+    expect(html).toContain("AI review all");
+    expect(html).not.toContain("belongs outside");
+    expect(html).not.toContain("this file owns");
+    expect(html).not.toContain("アーティスト設定");
   });
 
   it("hides the setup completion action after setup is already complete", () => {

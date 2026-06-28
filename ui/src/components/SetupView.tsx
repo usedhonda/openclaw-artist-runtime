@@ -12,6 +12,7 @@ import {
   type PersonaEditorSource,
   type SoulPersonaDraft
 } from "../personaEditor";
+import { t, type ProducerRoomLocale } from "../i18n";
 import type { PersonaField } from "../../../src/types";
 
 type DirtyMap = Record<PersonaDraftLayer, boolean>;
@@ -36,25 +37,122 @@ const editableSetupLayers: PersonaDraftLayer[] = ["artist", "soul", "producer"];
 const layerInfo = (layer: PersonaDraftLayer) =>
   personaLayerMap.find((entry) => entry.layer === layer);
 
-function personaIssueLabel(issue: { code: string; file: string; detail: string }): string {
+const fileEnglishText: Record<string, { role: string; kind: string; requirement: string; summary: string; purpose: string; write: string; avoid: string }> = {
+  "ARTIST.md": {
+    role: "Music core",
+    kind: "Input",
+    requirement: "Required",
+    summary: "The creative core: what the artist notices, what the music sounds like, and what the lyrics do.",
+    purpose: "Sets song topics, sound direction, lyric habits, and public voice. This strongly affects Suno prompts and daily song ideas.",
+    write: "Themes, sound texture, lyric constraints, public post voice, and musical traits for Suno.",
+    avoid: "Artist display name, producer information, conversation tone, and internal memory."
+  },
+  "SOUL.md": {
+    role: "Conversation voice",
+    kind: "Input",
+    requirement: "Required",
+    summary: "How the artist talks with the producer during reports, advice, and refusals.",
+    purpose: "Sets reply distance, speed, roughness, and how weak ideas are stopped. It does not set genre or sound.",
+    write: "Conversation distance, phrasing, and the attitude used when rejecting weak or risky ideas.",
+    avoid: "Music genre, Suno settings, producer callname, and artist profile facts."
+  },
+  "PRODUCER.md": {
+    role: "Producer context",
+    kind: "Input",
+    requirement: "Optional",
+    summary: "Producer-side preferences, constraints, and boundaries that affect creative decisions.",
+    purpose: "Sets producer preferences, directions to avoid, and public-release boundaries. Optional; blank does not block setup.",
+    write: "Directions to avoid, preferred density, public-release boundaries, and decision context.",
+    avoid: "Address, contact info, real-name detail, secrets, artist voice, and music identity."
+  },
+  "IDENTITY.md": {
+    role: "Identity card",
+    kind: "Generated",
+    requirement: "Read-only",
+    summary: "A generated profile from the display name and setup fields. It is not canonical input.",
+    purpose: "Shows the configured name and setup summary as a readable profile. New rules written here do not become canonical.",
+    write: "Users do not write here. Runtime generates it from Settings, ARTIST.md, and SOUL.md.",
+    avoid: "New settings, creative rules, or personal information."
+  },
+  "INNER.md": {
+    role: "Internal memory",
+    kind: "Internal",
+    requirement: "Read-only",
+    summary: "Runtime-managed inner memory. It is not a Setup input.",
+    purpose: "Carries creative history and internal pressure across runs. Users do not fill it during initial setup, and it is not a public profile.",
+    write: "Normally users do not write here. Existing content is kept as seed/history.",
+    avoid: "Setup input, public profile, and producer information."
+  }
+};
+
+function fileText(locale: ProducerRoomLocale, file: (typeof personaLayerMap)[number]) {
+  return locale === "en" ? fileEnglishText[file.file] ?? file : file;
+}
+
+const fieldEnglishText: Partial<Record<PersonaField, { label: string; help: string }>> = {
+  identityLine: { label: "Artist concept", help: "Not the name. Write what this artist is obsessed with and what they sing about." },
+  soundDna: { label: "Sound core", help: "Sound DNA for Suno Style and arrangement: texture, instruments, BPM, and mix traits." },
+  obsessions: { label: "Recurring themes", help: "Subjects the artist repeatedly notices. Affects observation, song ideas, and lyric choices." },
+  lyricsRules: { label: "Lyric stance", help: "Lyric constraints: language, avoided words, structure, metaphor habits." },
+  socialVoice: { label: "Public/SNS voice", help: "Voice for public posts and short studio notes. Separate from conversation tone." },
+  "soul-tone": { label: "Conversation tone", help: "Distance, speed, and roughness when talking with the producer on Telegram and similar channels." },
+  "soul-refusal": { label: "Refusal style", help: "How the artist stops weak or risky ideas and what it offers instead." },
+  producerFacts: { label: "Producer decision notes", help: "Only preferences, boundaries, and decision context. Do not put callnames or artist voice here." }
+};
+
+function fieldText(locale: ProducerRoomLocale, label: string, help: string, field?: PersonaField) {
+  if (locale !== "en" || !field) {
+    return { label, help };
+  }
+  return fieldEnglishText[field] ?? { label, help };
+}
+
+function overlapIssueKey(detail: string):
+  | "setupOverlapArtistName"
+  | "setupOverlapProducerCallname"
+  | "setupOverlapProducerFacts"
+  | "setupOverlapConversation"
+  | "setupOverlapMusic"
+  | "setupOverlapPrivate"
+  | "setupOverlapGeneric" {
+  const normalized = detail.toLowerCase();
+  if (normalized.includes("artist name") || normalized.includes("display name")) return "setupOverlapArtistName";
+  if (normalized.includes("producer callname")) return "setupOverlapProducerCallname";
+  if (normalized.includes("producer relationship") || normalized.includes("producer identity") || normalized.includes("producer facts")) return "setupOverlapProducerFacts";
+  if (normalized.includes("conversation tone") || normalized.includes("refusal style") || normalized.includes("telegram persona voice") || normalized.includes("voice fingerprint")) return "setupOverlapConversation";
+  if (normalized.includes("suno production profile") || normalized.includes("genre dna") || normalized.includes("sonic anchors") || normalized.includes("social voice")) return "setupOverlapMusic";
+  if (normalized.includes("private weather") || normalized.includes("what i fear")) return "setupOverlapPrivate";
+  return "setupOverlapGeneric";
+}
+
+function personaIssueLabel(locale: ProducerRoomLocale, issue: { code: string; file: string; detail: string }): string {
   switch (issue.code) {
     case "language_policy_outside_artist":
-      return `${issue.file}: 日本語/英語比率は ARTIST.md に集約`;
+      return t(locale, "setupLanguageOutsideArtist", { file: issue.file });
     case "duplicated_language_policy":
-      return "日本語/英語比率が複数箇所に重複";
+      return t(locale, "setupDuplicatedLanguage");
     case "conflicting_language_policy":
-      return `日本語/英語比率が矛盾: ${issue.detail}`;
+      return t(locale, "setupConflictingLanguage", { detail: issue.detail });
     case "duplicate_suno_profile":
-      return "Suno Production Profile が ARTIST.md 内で重複";
+      return t(locale, "setupDuplicateSuno");
     case "obsolete_lyrics_length_rule":
-      return "固定文字数ルールが DurationPlan と箱予算に矛盾";
+      return t(locale, "setupObsoleteLyrics");
+    case "persona_responsibility_overlap":
+      return t(locale, overlapIssueKey(issue.detail), { file: issue.file });
     default:
       return `${issue.file}: ${issue.detail}`;
   }
 }
 
-function personaFieldLabel(field: string): string {
-  return [...artistPersonaFields, ...soulPersonaFields].find((entry) => entry.aiField === field || entry.field === field)?.label ?? field;
+function personaFieldLabel(locale: ProducerRoomLocale, field: string): string {
+  const match = [...artistPersonaFields, ...soulPersonaFields].find((entry) => entry.aiField === field || entry.field === field);
+  if (match) {
+    return fieldText(locale, match.label, match.help, match.aiField).label;
+  }
+  if (field === producerContextField.aiField) {
+    return fieldText(locale, producerContextField.label, producerContextField.help, producerContextField.aiField).label;
+  }
+  return field;
 }
 
 function personaFieldFile(field: string): string {
@@ -70,11 +168,14 @@ function personaFieldFile(field: string): string {
   return "persona";
 }
 
-function personaFieldStatusLabel(status: "filled" | "thin" | "missing"): string {
-  return status === "missing" ? "未入力" : status === "thin" ? "薄い" : "入力済み";
+function personaFieldStatusLabel(locale: ProducerRoomLocale, status: "filled" | "thin" | "missing"): string {
+  if (status === "missing") return t(locale, "setupFieldMissing");
+  if (status === "thin") return t(locale, "setupFieldWeak");
+  return t(locale, "setupFieldFilled");
 }
 
 function PersonaTextInput(props: {
+  locale: ProducerRoomLocale;
   label: string;
   help: string;
   targetFile: string;
@@ -106,7 +207,7 @@ function PersonaTextInput(props: {
               props.onPropose?.(props.aiField as PersonaField);
             }}
           >
-            {props.busyKey === `persona-ai:${props.aiField}` ? "作成中" : "AI案"}
+            {props.busyKey === `persona-ai:${props.aiField}` ? t(props.locale, "setupAiBusy") : t(props.locale, "setupAiFieldButton")}
           </button>
         ) : null}
       </div>
@@ -114,14 +215,14 @@ function PersonaTextInput(props: {
       {props.suggestion && props.aiField ? (
         <div className={`persona-ai-suggestion persona-ai-suggestion-${props.suggestion.mode}`}>
           <div>
-            <strong>{props.suggestion.mode === "dedupe" ? "重複整理案" : "AI添削案"}</strong>
+            <strong>{props.suggestion.mode === "dedupe" ? t(props.locale, "setupAiSuggestionDedupe") : t(props.locale, "setupAiSuggestionReview")}</strong>
             <p>{props.suggestion.draft}</p>
             {props.suggestion.reasoning ? <small>{props.suggestion.reasoning}</small> : null}
           </div>
           <button type="button" onClick={(event) => {
             event.preventDefault();
             props.onApplySuggestion?.(props.aiField as PersonaField);
-          }}>案を入れる</button>
+          }}>{t(props.locale, "setupApplySuggestion")}</button>
         </div>
       ) : null}
       {props.multiline ? (
@@ -129,29 +230,29 @@ function PersonaTextInput(props: {
       ) : (
         <input value={props.value} onBlur={props.onTouched} onChange={(event) => props.onChange(event.target.value)} />
       )}
-      {isEmpty ? <div className="muted">未入力</div> : null}
+      {isEmpty ? <div className="muted">{t(props.locale, "setupFieldEmpty")}</div> : null}
     </label>
   );
 }
 
-function SetupFileMap() {
+function SetupFileMap(props: { locale: ProducerRoomLocale }) {
   return (
     <div className="persona-file-map" aria-label="5ファイルの役割">
       {personaLayerMap.map((file) => (
         <div key={file.file} className={`persona-file-map-item${file.editable ? "" : " is-readonly"}${file.requirement === "必須" ? " is-required" : ""}`}>
           <div className="persona-file-map-main">
             <strong>{file.file}</strong>
-            <span>{file.role}</span>
+            <span>{fileText(props.locale, file).role}</span>
           </div>
           <div className="persona-file-badges">
-            <span className="persona-badge">{file.kind}</span>
-            <span className="persona-badge">{file.requirement}</span>
+            <span className="persona-badge">{fileText(props.locale, file).kind}</span>
+            <span className="persona-badge">{fileText(props.locale, file).requirement}</span>
           </div>
-          <p>{file.summary}</p>
+          <p>{fileText(props.locale, file).summary}</p>
           <dl>
-            <div><dt>決まること</dt><dd>{file.purpose}</dd></div>
-            <div><dt>書く</dt><dd>{file.write}</dd></div>
-            <div><dt>書かない</dt><dd>{file.avoid}</dd></div>
+            <div><dt>{t(props.locale, "setupPurpose")}</dt><dd>{fileText(props.locale, file).purpose}</dd></div>
+            <div><dt>{t(props.locale, "setupWrite")}</dt><dd>{fileText(props.locale, file).write}</dd></div>
+            <div><dt>{t(props.locale, "setupAvoid")}</dt><dd>{fileText(props.locale, file).avoid}</dd></div>
           </dl>
         </div>
       ))}
@@ -160,6 +261,7 @@ function SetupFileMap() {
 }
 
 function SaveRow(props: {
+  locale: ProducerRoomLocale;
   layer: PersonaDraftLayer;
   dirty: boolean;
   busy: boolean;
@@ -182,15 +284,16 @@ function SaveRow(props: {
         disabled={props.busy || Boolean(props.validationError) || !props.dirty}
         onClick={props.onSave}
       >
-        保存
+        {t(props.locale, "setupSave")}
       </button>
-      <button type="button" disabled={props.busy || !props.dirty} onClick={props.onReset}>変更を破棄</button>
+      <button type="button" disabled={props.busy || !props.dirty} onClick={props.onReset}>{t(props.locale, "setupDiscard")}</button>
       {props.validationError ? <span className="field-error">{props.validationError}</span> : null}
     </div>
   );
 }
 
 function SetupFileEditor(props: {
+  locale: ProducerRoomLocale;
   layer: PersonaDraftLayer;
   draft: PersonaDraft;
   dirty: DirtyMap;
@@ -207,59 +310,72 @@ function SetupFileEditor(props: {
   onTouched: () => void;
 }) {
   const info = layerInfo(props.layer);
+  const text = info ? fileText(props.locale, info) : undefined;
   return (
     <section className="settings-section persona-file-editor">
       <div className="persona-file-editor-head">
-        <span className="section-title">{info?.file ?? props.layer} に書くこと</span>
-        <span className="muted">{info?.role ?? props.layer} · {info?.summary}</span>
+        <span className="section-title">{info?.file ?? props.layer} {props.locale === "ja" ? "に書くこと" : "inputs"}</span>
+        <span className="muted">{text?.role ?? props.layer} · {text?.summary ?? ""}</span>
       </div>
       {props.layer === "artist" ? (
         <div className="persona-field-list">
-          {artistPersonaFields.map((field) => (
-            <PersonaTextInput
-              key={field.field}
-              label={field.label}
-              help={field.help}
-              targetFile={field.targetFile}
-              value={props.draft.artist[field.field]}
-              multiline={field.multiline}
-              onChange={(value) => props.onUpdateArtist(field.field, value)}
-              onTouched={props.onTouched}
-              aiField={field.aiField}
-              busyKey={props.busyKey}
-              onPropose={props.onPropose}
-              suggestion={props.suggestions[field.aiField]}
-              onApplySuggestion={props.onApplySuggestion}
-            />
-          ))}
+          {artistPersonaFields.map((field) => {
+            const localized = fieldText(props.locale, field.label, field.help, field.aiField);
+            return (
+              <PersonaTextInput
+                locale={props.locale}
+                key={field.field}
+                label={localized.label}
+                help={localized.help}
+                targetFile={field.targetFile}
+                value={props.draft.artist[field.field]}
+                multiline={field.multiline}
+                onChange={(value) => props.onUpdateArtist(field.field, value)}
+                onTouched={props.onTouched}
+                aiField={field.aiField}
+                busyKey={props.busyKey}
+                onPropose={props.onPropose}
+                suggestion={props.suggestions[field.aiField]}
+                onApplySuggestion={props.onApplySuggestion}
+              />
+            );
+          })}
         </div>
       ) : null}
       {props.layer === "soul" ? (
         <div className="persona-field-list">
-          {soulPersonaFields.map((field) => (
-            <PersonaTextInput
-              key={field.field}
-              label={field.label}
-              help={field.help}
-              targetFile={field.targetFile}
-              value={props.draft.soul[field.field]}
-              multiline={field.multiline}
-              onChange={(value) => props.onUpdateSoul(field.field, value)}
-              onTouched={props.onTouched}
-              aiField={field.aiField}
-              busyKey={props.busyKey}
-              onPropose={props.onPropose}
-              suggestion={props.suggestions[field.aiField]}
-              onApplySuggestion={props.onApplySuggestion}
-            />
-          ))}
+          {soulPersonaFields.map((field) => {
+            const localized = fieldText(props.locale, field.label, field.help, field.aiField);
+            return (
+              <PersonaTextInput
+                locale={props.locale}
+                key={field.field}
+                label={localized.label}
+                help={localized.help}
+                targetFile={field.targetFile}
+                value={props.draft.soul[field.field]}
+                multiline={field.multiline}
+                onChange={(value) => props.onUpdateSoul(field.field, value)}
+                onTouched={props.onTouched}
+                aiField={field.aiField}
+                busyKey={props.busyKey}
+                onPropose={props.onPropose}
+                suggestion={props.suggestions[field.aiField]}
+                onApplySuggestion={props.onApplySuggestion}
+              />
+            );
+          })}
         </div>
       ) : null}
       {props.layer === "producer" ? (
         <>
+          {(() => {
+            const localized = fieldText(props.locale, producerContextField.label, producerContextField.help, producerContextField.aiField);
+            return (
           <PersonaTextInput
-            label={producerContextField.label}
-            help={producerContextField.help}
+            locale={props.locale}
+            label={localized.label}
+            help={localized.help}
             targetFile={producerContextField.targetFile}
             value={props.draft.snapshots.producer}
             multiline
@@ -271,9 +387,12 @@ function SetupFileEditor(props: {
             suggestion={props.suggestions[producerContextField.aiField]}
             onApplySuggestion={props.onApplySuggestion}
           />
+            );
+          })()}
         </>
       ) : null}
       <SaveRow
+        locale={props.locale}
         layer={props.layer}
         dirty={props.dirty[props.layer]}
         busy={props.busyKey === `persona-save:${props.layer}`}
@@ -285,30 +404,31 @@ function SetupFileEditor(props: {
   );
 }
 
-function IdentityProjection(props: { value: string }) {
+function IdentityProjection(props: { locale: ProducerRoomLocale; value: string }) {
   return (
     <section className="settings-section persona-file-editor">
       <div className="persona-file-editor-head">
-        <span className="section-title">IDENTITY.md 自動表示</span>
-        <span className="muted">上の入力と設定から作る確認用の自己紹介。直接編集しません。</span>
+        <span className="section-title">{t(props.locale, "setupReadonlyIdentityTitle")}</span>
+        <span className="muted">{t(props.locale, "setupReadonlyIdentityHelp")}</span>
       </div>
       <textarea rows={6} value={props.value} readOnly />
     </section>
   );
 }
 
-function InnerFileNote() {
+function InnerFileNote(props: { locale: ProducerRoomLocale }) {
   return (
     <section className="settings-section persona-file-editor">
       <div className="persona-file-editor-head">
-        <span className="section-title">INNER.md の扱い</span>
-        <span className="muted">内部メモ。Setup では編集しません。既存内容は消しません。</span>
+        <span className="section-title">{t(props.locale, "setupInnerTitle")}</span>
+        <span className="muted">{t(props.locale, "setupInnerHelp")}</span>
       </div>
     </section>
   );
 }
 
 function SetupAiActionMenu(props: {
+  locale: ProducerRoomLocale;
   busyKey: string | null;
   hasEmptyEditableField: boolean;
   onProposeMissing: () => void;
@@ -323,37 +443,38 @@ function SetupAiActionMenu(props: {
           disabled={props.busyKey !== null || !props.hasEmptyEditableField}
           onClick={props.onProposeMissing}
         >
-          {props.busyKey === "persona-ai:missing" ? "作成中" : "空欄をAI補完"}
+          {props.busyKey === "persona-ai:missing" ? t(props.locale, "setupAiBusy") : t(props.locale, "setupAiFill")}
         </button>
         <div>
-          <strong>未入力だけを埋める</strong>
-          <p>他の欄を読んで、空欄だけに下書きを入れます。書いてある内容は上書きしません。</p>
+          <strong>{t(props.locale, "setupAiFillTitle")}</strong>
+          <p>{t(props.locale, "setupAiFillHelp")}</p>
         </div>
       </div>
       <div className="persona-ai-menu-row">
         <button type="button" disabled={props.busyKey !== null} onClick={props.onProposeReview}>
-          {props.busyKey === "persona-ai:review_all" ? "添削中" : "全体をAI添削"}
+          {props.busyKey === "persona-ai:review_all" ? t(props.locale, "setupAiReviewBusy") : t(props.locale, "setupAiReview")}
         </button>
         <div>
-          <strong>5ファイル全体を本気で磨く</strong>
-          <p>薄い表現、普通すぎる言葉、音楽家として弱い個性を削り、各入力欄の下により尖った下書き案を表示します。保存も上書きもしません。</p>
+          <strong>{t(props.locale, "setupAiReviewTitle")}</strong>
+          <p>{t(props.locale, "setupAiReviewHelp")}</p>
         </div>
       </div>
       <div className="persona-ai-menu-row">
         <button type="button" disabled={props.busyKey !== null} onClick={props.onProposeDedupe}>
-          {props.busyKey === "persona-ai:dedupe" ? "整理中" : "重複整理案"}
+          {props.busyKey === "persona-ai:dedupe" ? t(props.locale, "setupAiDedupeBusy") : t(props.locale, "setupAiDedupe")}
         </button>
         <div>
-          <strong>正本ルールで散らばりを直す</strong>
-          <p>名前、呼称、声、音楽性、producer 情報が wrong file に混ざっていないか見て、移動・削除の案を出します。</p>
+          <strong>{t(props.locale, "setupAiDedupeTitle")}</strong>
+          <p>{t(props.locale, "setupAiDedupeHelp")}</p>
         </div>
       </div>
-      <p className="persona-ai-menu-note">AI案は保存前の下書きです。空欄補完以外は、各欄の「案を入れる」で反映します。</p>
+      <p className="persona-ai-menu-note">{t(props.locale, "setupAiNote")}</p>
     </section>
   );
 }
 
 export function SetupView(props: {
+  locale?: ProducerRoomLocale;
   persona: PersonaEditorSource | null;
   draft: PersonaDraft | null;
   dirty: DirtyMap;
@@ -372,6 +493,7 @@ export function SetupView(props: {
   onApplySuggestion: (field: PersonaField) => void;
   onComplete: () => void;
 }) {
+  const locale = props.locale ?? "ja";
   const draft = props.draft;
   const setup = props.persona?.setup;
   const weakPersonaFields = props.persona?.audit?.fields.filter((field) => field.setupInput !== false && field.status !== "filled") ?? [];
@@ -381,7 +503,8 @@ export function SetupView(props: {
     if (!fields.length) {
       return undefined;
     }
-    return `不足: ${fields.slice(0, 2).map((field) => `${personaFieldLabel(field.field)}(${personaFieldStatusLabel(field.status)})`).join(" / ")}${fields.length > 2 ? ` / ほか${fields.length - 2}` : ""}`;
+    const prefix = locale === "ja" ? "不足" : "Needs";
+    return `${prefix}: ${fields.slice(0, 2).map((field) => `${personaFieldLabel(locale, field.field)}(${personaFieldStatusLabel(locale, field.status)})`).join(" / ")}${fields.length > 2 ? ` / ${t(locale, "setupMore")} ${fields.length - 2}` : ""}`;
   };
   const [touched, setTouched] = React.useState<LayerTouchedMap>(emptyTouchedMap);
   const [saveAttempted, setSaveAttempted] = React.useState<LayerTouchedMap>(emptyTouchedMap);
@@ -412,43 +535,45 @@ export function SetupView(props: {
   return (
     <section className="single-column setup-view">
       <article className="panel settings-panel">
-        <div className="section-title">アーティスト設定</div>
-        <div className="muted">5つのファイルの全体像です。入力する場所、自動生成される場所、内部管理の場所をここで分けて見ます。</div>
-        <SetupFileMap />
+        <div className="section-title">{t(locale, "setupTitle")}</div>
+        <div className="muted">{t(locale, "setupIntro")}</div>
+        <SetupFileMap locale={locale} />
         {setup?.needsSetup ? (
-          <div className="warning-banner">初回 setup が未完了です: {setup.reasonsText}</div>
+          <div className="warning-banner">{t(locale, "setupIncomplete")}: {setup.reasonsText}</div>
         ) : null}
         {props.persona?.audit?.issues.length ? (
           <div className="warning-banner">
-            <strong>設定の警告</strong>
+            <strong>{t(locale, "setupWarningsTitle")}</strong>
+            <div className="muted">{t(locale, "setupWarningsIntro")}</div>
             <ul>
               {props.persona.audit.issues.slice(0, 3).map((issue) => (
-                <li key={`${issue.code}:${issue.file}:${issue.detail}`}>{personaIssueLabel(issue)}</li>
+                <li key={`${issue.code}:${issue.file}:${issue.detail}`}>{personaIssueLabel(locale, issue)}</li>
               ))}
             </ul>
             {props.persona.audit.issues.length > 3 ? (
-              <div className="muted">ほか {props.persona.audit.issues.length - 3} 件。Telegram の /persona check でも確認できます。</div>
+              <div className="muted">{t(locale, "setupMore")} {props.persona.audit.issues.length - 3}.</div>
             ) : null}
           </div>
         ) : null}
         {weakPersonaFields.length ? (
           <div className="warning-banner">
-            <strong>設定の不足</strong>
+            <strong>{t(locale, "setupMissingTitle")}</strong>
             <ul>
               {weakPersonaFields.slice(0, 3).map((field) => (
-                <li key={field.field}>{personaFieldFile(field.field)}: {personaFieldLabel(field.field)}: {personaFieldStatusLabel(field.status)}</li>
+                <li key={field.field}>{personaFieldFile(field.field)}: {personaFieldLabel(locale, field.field)}: {personaFieldStatusLabel(locale, field.status)}</li>
               ))}
             </ul>
             {weakPersonaFields.length > 3 ? (
-              <div className="muted">ほか {weakPersonaFields.length - 3} 件。</div>
+              <div className="muted">{t(locale, "setupMore")} {weakPersonaFields.length - 3}.</div>
             ) : null}
           </div>
         ) : null}
         {!props.persona || !draft ? (
-          <div className="item muted">Loading persona.</div>
+          <div className="item muted">{t(locale, "setupLoading")}</div>
         ) : (
           <div className="settings-sections">
             <SetupAiActionMenu
+              locale={locale}
               busyKey={props.busyKey}
               hasEmptyEditableField={hasEmptyEditableField}
               onProposeMissing={props.onProposeMissing}
@@ -461,6 +586,7 @@ export function SetupView(props: {
                   <div className="muted">{weakFieldSummaryForFile(layerInfo(layer)?.file ?? "")}</div>
                 ) : null}
                 <SetupFileEditor
+                  locale={locale}
                   layer={layer}
                   draft={draft}
                   dirty={props.dirty}
@@ -478,13 +604,13 @@ export function SetupView(props: {
                 />
               </React.Fragment>
             ))}
-            <IdentityProjection value={draft.snapshots.identity} />
-            <InnerFileNote />
+            <IdentityProjection locale={locale} value={draft.snapshots.identity} />
+            <InnerFileNote locale={locale} />
             <div className="inline-actions">
-              <button type="button" disabled={props.busyKey !== null} onClick={props.onRefresh}>再読み込み</button>
+              <button type="button" disabled={props.busyKey !== null} onClick={props.onRefresh}>{t(locale, "setupReload")}</button>
               {setup?.needsSetup ? (
                 <button type="button" disabled={props.busyKey === "persona-complete" || setupBlocked} onClick={props.onComplete}>
-                  {props.busyKey === "persona-complete" ? "完了記録中" : setupBlocked ? "不足を埋めると完了" : "初期設定を完了"}
+                  {props.busyKey === "persona-complete" ? t(locale, "setupCompletePending") : setupBlocked ? t(locale, "setupCompleteBlocked") : t(locale, "setupComplete")}
                 </button>
               ) : null}
             </div>

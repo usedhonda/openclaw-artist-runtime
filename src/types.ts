@@ -22,6 +22,7 @@ export const socialRiskLevels = ["low", "medium", "high"] as const;
 export const capabilityStates = [true, false, "unknown"] as const;
 export const platformAuthStatuses = ["unconfigured", "configured", "tested", "failed"] as const;
 export const aiReviewProviders = ["mock", "openclaw", "openai-codex"] as const;
+export const uiLocaleModes = ["auto", "ja", "en"] as const;
 export const sunoWorkerStates = ["disconnected", "connecting", "connected", "generating", "importing", "login_required", "login_challenge", "captcha", "payment_prompt", "ui_mismatch", "quota_exhausted", "paused", "stopped"] as const;
 export const autopilotStages = ["idle", "planning", "prompt_pack", "suno_generation", "take_selection", "asset_generation", "publishing", "completed", "paused", "failed_closed"] as const;
 export const songStatuses = ["idea", "brief", "lyrics", "suno_prompt_pack", "suno_running", "suno_take_url_ready", "takes_imported", "take_selected", "social_assets", "publishing", "scheduled", "published", "archived", "discarded", "failed"] as const;
@@ -60,6 +61,7 @@ export type SocialPlatform = "x" | "instagram" | "tiktok";
 export type CapabilityState = (typeof capabilityStates)[number];
 export type PlatformAuthStatus = (typeof platformAuthStatuses)[number];
 export type AiReviewProvider = (typeof aiReviewProviders)[number];
+export type UiLocaleMode = (typeof uiLocaleModes)[number];
 export type SunoWorkerState = (typeof sunoWorkerStates)[number];
 export type AutopilotStage = (typeof autopilotStages)[number];
 export type SongStatus = (typeof songStatuses)[number];
@@ -401,6 +403,10 @@ export interface AiReviewConfig {
   provider: AiReviewProvider;
 }
 
+export interface UiConfig {
+  locale: UiLocaleMode;
+}
+
 export interface ArtistRuntimeConfig {
   schemaVersion: number;
   artist: ArtistConfig;
@@ -412,6 +418,7 @@ export interface ArtistRuntimeConfig {
   commission: CommissionConfig;
   songSpawn: SongSpawnConfig;
   aiReview: AiReviewConfig;
+  ui: UiConfig;
   safety: SafetyConfig;
 }
 

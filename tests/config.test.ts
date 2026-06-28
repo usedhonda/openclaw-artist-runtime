@@ -68,6 +68,27 @@ describe("config schema", () => {
     expect(merged.distribution.platforms.instagram.liveGoArmed).toBe(false);
     expect(merged.distribution.platforms.tiktok.liveGoArmed).toBe(false);
     expect(merged.music.suno.authority).toBe("auto_create_and_select_take");
+    expect(merged.ui.locale).toBe("auto");
+  });
+
+  it("accepts supported Producer Room locales", () => {
+    const result = validateConfig({
+      ui: {
+        locale: "ja"
+      }
+    });
+    expect(result.ok).toBe(true);
+    expect(result.value.ui.locale).toBe("ja");
+  });
+
+  it("rejects unsupported Producer Room locales", () => {
+    const result = validateConfig({
+      ui: {
+        locale: "fr"
+      }
+    });
+    expect(result.ok).toBe(false);
+    expect(result.errors).toContain("config.ui.locale must be one of auto, ja, en");
   });
 
   it("rejects non-boolean platform live-go flags", () => {

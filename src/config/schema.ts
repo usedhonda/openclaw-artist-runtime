@@ -12,6 +12,7 @@ import {
   sunoDriverModes,
   sunoSubmitModes,
   tiktokAuthorityModes,
+  uiLocaleModes,
   type ArtistRuntimeConfig,
   type ValidationResult,
   xAuthorityModes
@@ -126,6 +127,9 @@ export function applyConfigDefaults(config?: PartialDeep<ArtistRuntimeConfig>): 
   if (config.aiReview) {
     Object.assign(merged.aiReview, config.aiReview);
   }
+  if (config.ui) {
+    Object.assign(merged.ui, config.ui);
+  }
   if (config.safety) {
     Object.assign(merged.safety, config.safety);
   }
@@ -140,7 +144,7 @@ export function validateConfig(config: unknown): ValidationResult<ArtistRuntimeC
     return { ok: false, errors: ["config must be an object"], warnings };
   }
 
-  validateKnownKeys("config", config, ["schemaVersion", "artist", "autopilot", "music", "distribution", "telegram", "artistPulse", "commission", "songSpawn", "aiReview", "safety"], errors);
+  validateKnownKeys("config", config, ["schemaVersion", "artist", "autopilot", "music", "distribution", "telegram", "artistPulse", "commission", "songSpawn", "aiReview", "ui", "safety"], errors);
 
   if ("schemaVersion" in config && !isIntegerInRange(config.schemaVersion, 1, CURRENT_CONFIG_SCHEMA_VERSION)) {
     errors.push(`config.schemaVersion must be an integer between 1 and ${CURRENT_CONFIG_SCHEMA_VERSION}`);
@@ -389,6 +393,17 @@ export function validateConfig(config: unknown): ValidationResult<ArtistRuntimeC
       validateKnownKeys("config.aiReview", config.aiReview, ["provider"], errors);
       if ("provider" in config.aiReview) {
         validateEnum("config.aiReview.provider", config.aiReview.provider, aiReviewProviders, errors);
+      }
+    }
+  }
+
+  if ("ui" in config) {
+    if (!isRecord(config.ui)) {
+      errors.push("config.ui must be an object");
+    } else {
+      validateKnownKeys("config.ui", config.ui, ["locale"], errors);
+      if ("locale" in config.ui) {
+        validateEnum("config.ui.locale", config.ui.locale, uiLocaleModes, errors);
       }
     }
   }

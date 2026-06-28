@@ -301,6 +301,24 @@
         }
       }
     },
+    "ui": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "locale": {
+          "type": "string",
+          "enum": [
+            "auto",
+            "ja",
+            "en"
+          ],
+          "default": "auto"
+        }
+      },
+      "default": {
+        "locale": "auto"
+      }
+    },
     "safety": {
       "type": "object",
       "additionalProperties": false,
