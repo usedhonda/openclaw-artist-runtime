@@ -215,6 +215,21 @@ function canLine(summary: DraftBoxNextActionSummary): string {
   }
 }
 
+function producerStageLabel(stage?: string): string {
+  switch (stage) {
+    case "asset_generation":
+      return "完成後の採用待ち";
+    case "take_selected":
+      return "完成後の採用待ち";
+    case "prompt_pack_ready":
+      return "Suno に進める判断待ち";
+    case "spawn_proposal_ready":
+      return "素案の判断待ち";
+    default:
+      return "判断待ち";
+  }
+}
+
 export function roomSummaryWithDecisions(summary: DraftBoxNextActionSummary, awaitingDecisions: CallbackActionsResponse): DraftBoxNextActionSummary {
   if (awaitingDecisions.count <= 0 || awaitingDecisions.callbacks.length === 0) return summary;
   const [latest] = groupAwaitingDecisions(awaitingDecisions.callbacks);
@@ -225,7 +240,7 @@ export function roomSummaryWithDecisions(summary: DraftBoxNextActionSummary, awa
     kind: "decision_pending",
     currentLine: `今: ${target} の判断待ち`,
     nextAction: `次: Telegram の最新通知で ${latest.actions.join(" / ")} を選ぶ`,
-    reason: `${latest.stage ?? "stage 不明"} · 最新の producer decision`,
+    reason: producerStageLabel(latest.stage),
     stateKey: `decision_pending:${latest.songId ?? latest.proposalId ?? latest.callbackId}`
   };
 }
@@ -240,25 +255,24 @@ export function RoomHeader(props: {
 
   return (
     <article className={`panel room-status-card room-status-${summary.kind}`}>
-      <div className="eyebrow">Producer Room</div>
-      <h1>Room</h1>
+      <div className="section-title">現在地</div>
       <div className="room-grammar">
         <div>
-          <span className="grammar-label">Artist is:</span>
+          <span className="grammar-label">今</span>
           <strong>{summary.currentLine}</strong>
         </div>
         <div>
-          <span className="grammar-label">Status:</span>
+          <span className="grammar-label">状態</span>
           <strong>{statusLabel(summary.kind)}</strong>
         </div>
         {why ? (
           <div>
-            <span className="grammar-label">Why:</span>
+            <span className="grammar-label">理由</span>
             <span>{why}</span>
           </div>
         ) : null}
         <div>
-          <span className="grammar-label">You can:</span>
+          <span className="grammar-label">次</span>
           {summary.kind === "paused" ? (
             <button type="button" className="primary" disabled={props.resumeBusy} onClick={props.onResume}>
               {props.resumeBusy ? "Resuming..." : "Resume"}
@@ -371,7 +385,6 @@ export function SongsView(props: {
         )}
       </article>
       {selected ? <SongDetailCard key={selected} songId={selected} onBack={props.onBack} /> : null}
-      <SongLifecycleTimelineCard />
     </section>
   );
 }
@@ -497,7 +510,8 @@ export function DiagnosticsView() {
     <section className="single-column">
       <article className="panel">
         <div className="section-title">診断</div>
-        <p>旧 Console を診断用に読み込みます。Room / Songs / Settings には内部操作の主導ボタンを戻しません。</p>
+        <p>診断専用の旧 Console を読み込みます。Room / Songs / Settings には内部操作の主導ボタンを戻しません。</p>
+        <div className="item muted">表示されるまで数秒かかる場合があります。空白のままなら旧 Console の読み込みに失敗しています。</div>
         <Suspense fallback={<div className="item muted">旧 Console を読み込み中。</div>}>
           <LegacyConsole />
         </Suspense>

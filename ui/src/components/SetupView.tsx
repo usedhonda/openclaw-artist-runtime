@@ -30,13 +30,16 @@ function PersonaTextInput(props: {
   label: string;
   help: string;
   value: string;
+  originalValue: string;
   multiline?: boolean;
   onChange: (value: string) => void;
   onTouched: () => void;
   onAiDraft?: () => void;
+  onResetField: () => void;
   aiBusy?: boolean;
 }) {
   const isEmpty = props.value.trim().length === 0;
+  const fieldChanged = props.value !== props.originalValue;
   return (
     <label className="persona-field">
       <div className="eyebrow">{props.label}</div>
@@ -50,9 +53,9 @@ function PersonaTextInput(props: {
       {props.onAiDraft ? (
         <div className="ai-draft-row">
           <button type="button" className="secondary" disabled={props.aiBusy} onClick={props.onAiDraft}>
-            {props.aiBusy ? "下書き中" : "AI下書き"}
+            {props.aiBusy ? "作成中" : "AIお任せ"}
           </button>
-          <span className="muted">押すと下書きが欄に入るだけ。保存は Save まで行われない。</span>
+          <button type="button" disabled={!fieldChanged} onClick={props.onResetField}>元に戻す</button>
         </div>
       ) : null}
     </label>
@@ -146,19 +149,22 @@ export function SetupView(props: {
         ) : (
           <div className="settings-sections">
             <section className="settings-section">
-              <div className="section-title">創作の核 — ARTIST.md</div>
-              <div className="muted">曲の音楽性・作詞・世界観・SNS声。autopilot が曲生成や投稿で参照する憲法です。</div>
-              <div className="field-grid">
+              <div className="section-title">創作の核</div>
+              <div className="muted">曲の音楽性・作詞・世界観・SNS声に効く設定です。AIお任せは欄に案を入れるだけで、保存するまで反映されません。</div>
+              <div className="muted">参照元: ARTIST.md</div>
+              <div className="persona-field-list">
                 {artistPersonaFields.map((field) => (
                   <PersonaTextInput
                     key={field.field}
                     label={field.label}
                     help={field.help}
                     value={draft.artist[field.field]}
+                    originalValue={props.persona.artist[field.field]}
                     multiline={field.multiline}
                     onChange={(value) => props.onUpdateArtist(field.field, value)}
                     onTouched={() => markTouched("artist")}
                     onAiDraft={() => props.onPropose(field.aiField)}
+                    onResetField={() => props.onUpdateArtist(field.field, props.persona?.artist[field.field] ?? "")}
                     aiBusy={props.busyKey === `persona-ai:${field.aiField}`}
                   />
                 ))}
@@ -173,19 +179,22 @@ export function SetupView(props: {
               />
             </section>
             <section className="settings-section">
-              <div className="section-title">会話人格 — SOUL.md</div>
-              <div className="muted">Telegram や Producer Room で話す温度、距離感、断り方に効きます。</div>
-              <div className="field-grid">
+              <div className="section-title">会話人格</div>
+              <div className="muted">Telegram や Producer Room で話す温度、距離感、断り方に効きます。AIお任せは欄に案を入れるだけで、保存するまで反映されません。</div>
+              <div className="muted">参照元: SOUL.md</div>
+              <div className="persona-field-list">
                 {soulPersonaFields.map((field) => (
                   <PersonaTextInput
                     key={field.field}
                     label={field.label}
                     help={field.help}
                     value={draft.soul[field.field]}
+                    originalValue={props.persona.soul[field.field]}
                     multiline={field.multiline}
                     onChange={(value) => props.onUpdateSoul(field.field, value)}
                     onTouched={() => markTouched("soul")}
                     onAiDraft={() => props.onPropose(field.aiField)}
+                    onResetField={() => props.onUpdateSoul(field.field, props.persona?.soul[field.field] ?? "")}
                     aiBusy={props.busyKey === `persona-ai:${field.aiField}`}
                   />
                 ))}
@@ -202,10 +211,11 @@ export function SetupView(props: {
             {(["identity", "producer", "inner"] as const).map((layer) => (
               <details className="settings-section persona-layer-details" key={layer}>
                 <summary>
-                  <span className="section-title">{snapshotLayerInfo(layer)?.role} — {snapshotLayerInfo(layer)?.file}</span>
+                  <span className="section-title">{snapshotLayerInfo(layer)?.role}</span>
                   <span className="muted">{snapshotLayerInfo(layer)?.summary}</span>
+                  <span className="muted">参照元: {snapshotLayerInfo(layer)?.file}</span>
                 </summary>
-                <div className="muted">全文をそのまま保存します。AI下書きはありません。</div>
+                <div className="muted">全文をそのまま保存します。AIお任せはありません。</div>
                 <textarea rows={10} value={draft.snapshots[layer]} onBlur={() => markTouched(layer)} onChange={(event) => props.onUpdateSnapshot(layer, event.target.value)} />
                 {draft.snapshots[layer].trim().length === 0 ? <div className="muted">未入力</div> : null}
                 <SaveRow

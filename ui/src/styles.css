@@ -62,6 +62,8 @@ button:disabled {
 
 input[type="checkbox"] {
   accent-color: var(--accent);
+  width: auto;
+  min-width: 16px;
 }
 
 input,
@@ -686,7 +688,16 @@ textarea {
 
 .persona-field {
   display: grid;
-  gap: 6px;
+  gap: 8px;
+  padding: 14px;
+  border: 1px solid var(--pr-line);
+  border-radius: 12px;
+  background: var(--pr-canvas);
+}
+
+.persona-field-list {
+  display: grid;
+  gap: 12px;
 }
 
 .ai-draft-row {
@@ -954,6 +965,8 @@ textarea {
   display: flex;
   align-items: center;
   gap: 10px;
+  justify-content: flex-start;
+  width: fit-content;
 }
 
 .platform-config {

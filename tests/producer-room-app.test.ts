@@ -34,9 +34,10 @@ describe("ProducerRoomApp room header", () => {
       })
     );
 
-    expect(html).toContain("Artist is:");
+    expect(html).toContain("現在地");
+    expect(html).toContain("今");
     expect(html).toContain("今: 手が空いている");
-    expect(html).toContain("Status:");
+    expect(html).toContain("状態");
     expect(html).toContain("健康");
     expect(html).toContain("Nothing needed");
     expect(html).not.toContain("<button");
@@ -55,9 +56,9 @@ describe("ProducerRoomApp room header", () => {
       })
     );
 
-    expect(html).toContain("Status:");
+    expect(html).toContain("状態");
     expect(html).toContain("詰まり");
-    expect(html).toContain("Why:");
+    expect(html).toContain("理由");
     expect(html).toContain("user_paused");
     expect(html.match(/<button/g)?.length).toBe(1);
     expect(html).toContain("Resume");
@@ -122,7 +123,9 @@ describe("ProducerRoomApp room header", () => {
     expect(html).toContain("判断待ち");
     expect(html).toContain("今: 二つの低気圧 の判断待ち");
     expect(html).toContain("Telegram の最新通知で 採用 / 破棄 を選ぶ");
-    expect(html).toContain("最新の producer decision");
+    expect(html).toContain("完成後の採用待ち");
+    expect(html).not.toContain("asset_generation");
+    expect(html).not.toContain("producer decision");
     expect(html).not.toContain("Nothing needed");
   });
 });
@@ -244,13 +247,16 @@ describe("ProducerRoomApp Songs and Settings views", () => {
     expect(html).toContain("会話人格");
     expect(html).toContain("自己紹介");
     expect(html).toContain("初回 setup が未完了です");
-    expect(html).toContain("創作の核 — ARTIST.md");
-    expect(html).toContain("会話人格 — SOUL.md");
+    expect(html).toContain("参照元: ARTIST.md");
+    expect(html).toContain("参照元: SOUL.md");
     expect(html).toContain("Suno Style と曲調に効く音の核");
-    expect(html).toContain("押すと下書きが欄に入るだけ");
+    expect(html).toContain("AIお任せは欄に案を入れるだけ");
     expect(html).toContain("IDENTITY.md");
-    expect(html).toContain("AI下書きはありません");
-    expect(html.match(/AI下書き<\/button>/g)?.length).toBe(8);
+    expect(html).toContain("AIお任せはありません");
+    expect(html.match(/AIお任せ<\/button>/g)?.length).toBe(8);
+    expect(html.match(/元に戻す<\/button>/g)?.length).toBe(8);
+    expect(html).not.toContain("AI下書き");
+    expect(html).not.toContain("創作の核 — ARTIST.md");
   });
 
   it("does not show validation errors for untouched empty setup fields", () => {
