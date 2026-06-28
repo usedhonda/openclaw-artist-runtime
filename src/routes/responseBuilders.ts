@@ -21,7 +21,7 @@ import { emitRuntimeEvent, getRuntimeEventBus } from "../services/runtimeEventBu
 import { readRuntimeEvents, readSongEventsAsc } from "../services/runtimeEventsLedger.js";
 import { appendFailedNotifyReplayRecord, latestFailedNotifyEntry, listUnreplayedFailedNotifications, summarizeFailedNotifications } from "../services/failedNotifyLedger.js";
 import { getSongPromptLedgerPath } from "../services/promptLedger.js";
-import { getBirdDailyMaxOverride, getBirdMinIntervalMinutesOverride, getSunoDailyBudgetOverride, isDebugCallbackDispatchEnabled, isDebugNotifyReviewEnabled, readConfigOverrides, resolveRuntimeConfig, resolveSunoDailyBudget, type RuntimeSafetyOverridesPatch } from "../services/runtimeConfig.js";
+import { getBirdDailyMaxOverride, getBirdMinIntervalMinutesOverride, getSunoDailyBudgetOverride, isDebugCallbackDispatchEnabled, isDebugNotifyReviewEnabled, patchResolvedConfig, readConfigOverrides, resolveRuntimeConfig, resolveSunoDailyBudget, type RuntimeSafetyOverridesPatch } from "../services/runtimeConfig.js";
 import { readLatestSocialAction } from "../services/socialPublishing.js";
 import { SocialDistributionWorker } from "../services/socialDistributionWorker.js";
 import { listPendingSpawnProposals } from "../services/spawnProposalQueue.js";
@@ -579,7 +579,7 @@ export function payloadContainsSecretLikeText(payload: Record<string, unknown>, 
 export interface PersonaRouteResponse {
   artist: Awaited<ReturnType<typeof readArtistPersonaSummary>>;
   soul: Awaited<ReturnType<typeof readSoulPersonaSummary>>;
-  identity: { text: string };
+  identity: { text: string; readOnly: true; source: "derived" };
   producer: { text: string };
   inner: { text: string };
   setup: Awaited<ReturnType<typeof readPersonaSetupStatus>> & { reasonsText: string };
@@ -624,6 +624,15 @@ function artistPersonaFromPayload(payload: Record<string, unknown>): Partial<Per
   };
 }
 
+function artistIdentityFromPayload(payload: Record<string, unknown>): { displayName?: string; producerCallname?: string } {
+  const artist = recordFromPayload(payload, "artist");
+  const identity = recordFromPayload(payload, "identity");
+  return {
+    displayName: stringField(artist, "artistName") ?? stringField(identity, "displayName"),
+    producerCallname: stringField(identity, "producerCallname")
+  };
+}
+
 function soulPersonaFromPayload(payload: Record<string, unknown>): Partial<PersonaAnswers> {
   const record = recordFromPayload(payload, "soul");
   return {
@@ -640,6 +649,9 @@ function snapshotTextFromPayload(payload: Record<string, unknown>, layer: Snapsh
 
 function personaRouteError(error: unknown): Record<string, unknown> {
   const message = error instanceof Error ? error.message : String(error);
+  if (message === "identity_projection_read_only") {
+    return { error: "identity_projection_read_only", statusCode: 400 };
+  }
   if (message === "persona_block_contains_secret_like_text") {
     return { error: "persona_block_contains_secret_like_text", statusCode: 400 };
   }
@@ -649,22 +661,45 @@ function personaRouteError(error: unknown): Record<string, unknown> {
   return { error: "persona_route_failed", message, statusCode: 500 };
 }
 
+function buildDerivedIdentityProjection(
+  config: ArtistRuntimeConfig,
+  artist: Awaited<ReturnType<typeof readArtistPersonaSummary>>,
+  soul: Awaited<ReturnType<typeof readSoulPersonaSummary>>
+): string {
+  const displayName = config.artist.identity.displayName?.trim() || artist.artistName || "Unnamed OpenClaw Artist";
+  const producerCallname = config.artist.identity.producerCallname?.trim() || "producer";
+  return [
+    "# IDENTITY.md",
+    "",
+    "Derived identity card. Do not edit directly.",
+    "",
+    `- Display name: ${displayName}`,
+    `- Producer callname: ${producerCallname}`,
+    `- Artist concept: ${artist.identityLine || "(not set)"}`,
+    `- Speaking anchor: ${soul.conversationTone || "(not set)"}`,
+    ""
+  ].join("\n");
+}
+
 export async function buildPersonaResponse(config?: Partial<ArtistRuntimeConfig>): Promise<PersonaRouteResponse> {
   const mergedConfig = await resolveRuntimeConfig(config);
   const root = mergedConfig.artist.workspaceRoot;
-  const [artist, soul, identity, producer, inner, setupStatus, audit] = await Promise.all([
+  const [artist, soul, producer, inner, setupStatus, audit] = await Promise.all([
     readArtistPersonaSummary(root),
     readSoulPersonaSummary(root),
-    readSnapshotPersonaFile(root, snapshotPersonaFilenames.identity),
     readSnapshotPersonaFile(root, snapshotPersonaFilenames.producer),
     readSnapshotPersonaFile(root, snapshotPersonaFilenames.inner),
     readPersonaSetupStatus(root),
     auditPersonaCompleteness(root)
   ]);
+  const responseArtist = {
+    ...artist,
+    artistName: mergedConfig.artist.identity.displayName?.trim() || artist.artistName
+  };
   return {
-    artist,
+    artist: responseArtist,
     soul,
-    identity: { text: identity },
+    identity: { text: buildDerivedIdentityProjection(mergedConfig, responseArtist, soul), readOnly: true, source: "derived" },
     producer: { text: producer },
     inner: { text: inner },
     setup: { ...setupStatus, reasonsText: describePersonaSetupReasons(setupStatus.reasons) },
@@ -680,8 +715,26 @@ export async function buildPersonaWriteResponse(
   payload: Record<string, unknown>
 ): Promise<Record<string, unknown>> {
   try {
-    const mergedConfig = await resolveRuntimeConfig(config);
+    let mergedConfig = await resolveRuntimeConfig(config);
     const root = mergedConfig.artist.workspaceRoot;
+    if (layer === "identity") {
+      throw new Error("identity_projection_read_only");
+    }
+    if (layer === "artist") {
+      const identity = artistIdentityFromPayload(payload);
+      const identityPatch = {
+        ...(identity.displayName?.trim() ? { displayName: identity.displayName.trim() } : {}),
+        ...(identity.producerCallname?.trim() ? { producerCallname: identity.producerCallname.trim() } : {})
+      };
+      if (Object.keys(identityPatch).length > 0) {
+        mergedConfig = await patchResolvedConfig(root, {
+          artist: {
+            ...mergedConfig.artist,
+            identity: { ...mergedConfig.artist.identity, ...identityPatch }
+          }
+        });
+      }
+    }
     const result = layer === "artist"
       ? await writeArtistPersona(root, artistPersonaFromPayload(payload))
       : layer === "soul"

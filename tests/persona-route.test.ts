@@ -6,6 +6,7 @@ import { Readable } from "node:stream";
 import { describe, expect, it } from "vitest";
 import { registerRoutes } from "../src/routes";
 import { artistPersonaBlockEnd, artistPersonaBlockStart, writeArtistPersona } from "../src/services/personaFileBuilder.js";
+import { patchResolvedConfig, readResolvedConfig } from "../src/services/runtimeConfig.js";
 import { writeSoulPersona } from "../src/services/soulFileBuilder.js";
 import type { PersonaRouteResponse } from "../src/routes/responseBuilders.js";
 
@@ -80,8 +81,16 @@ describe("persona route", () => {
   it("returns all five persona layers plus setup status", async () => {
     const root = makeWorkspace();
     await writeArtistPersona(root, { artistName: "Neon Relay" });
+    await patchResolvedConfig(root, {
+      artist: {
+        mode: "public_artist",
+        artistId: "artist",
+        profilePath: "ARTIST.md",
+        workspaceRoot: root,
+        identity: { displayName: "Neon Relay" }
+      }
+    });
     await writeSoulPersona(root, { conversationTone: "short and precise", refusalStyle: "refuse weak ideas plainly" });
-    writeFileSync(join(root, "IDENTITY.md"), "# IDENTITY\n\nraw identity\n", "utf8");
     writeFileSync(join(root, "PRODUCER.md"), "# PRODUCER\n\nraw producer\n", "utf8");
     writeFileSync(join(root, "INNER.md"), "# INNER\n\nraw inner\n", "utf8");
 
@@ -89,7 +98,9 @@ describe("persona route", () => {
 
     expect(response.artist.artistName).toBe("Neon Relay");
     expect(response.soul.conversationTone).toBe("short and precise");
-    expect(response.identity.text).toContain("raw identity");
+    expect(response.identity.readOnly).toBe(true);
+    expect(response.identity.source).toBe("derived");
+    expect(response.identity.text).toContain("Display name: Neon Relay");
     expect(response.producer.text).toContain("raw producer");
     expect(response.inner.text).toContain("raw inner");
     expect(response.aiDraftSupported).toEqual(["artist", "soul"]);
@@ -128,13 +139,16 @@ describe("persona route", () => {
     const contents = readFileSync(join(root, "ARTIST.md"), "utf8");
 
     expect(response.ok).toBe(true);
+    await expect(readResolvedConfig(root)).resolves.toMatchObject({
+      artist: { identity: { displayName: "Glass Commuter" } }
+    });
     expect(contents).toContain("operator note before");
     expect(contents).toContain("operator note after");
-    expect(contents).toContain("Artist name: Glass Commuter");
+    expect(contents).not.toContain("Artist name: Glass Commuter");
     expect(contents).not.toContain("old block");
   });
 
-  it("writes snapshot persona files verbatim and rejects secret-like text", async () => {
+  it("keeps IDENTITY.md read-only and rejects secret-like snapshot text", async () => {
     const root = makeWorkspace();
     const handler = personaHandler();
 
@@ -145,8 +159,8 @@ describe("persona route", () => {
       producer: { text: "TELEGRAM_BOT_TOKEN=do-not-write" }
     });
 
-    expect(written.ok).toBe(true);
-    expect(readFileSync(join(root, "IDENTITY.md"), "utf8")).toBe("# IDENTITY.md\n\nplain snapshot\n");
+    expect(written.error).toBe("identity_projection_read_only");
+    expect(written.statusCode).toBe(400);
     expect(rejected.error).toBe("persona_block_contains_secret_like_text");
     expect(rejected.statusCode).toBe(400);
   });

@@ -6,6 +6,7 @@ import { describe, expect, it, vi } from "vitest";
 import type { TelegramConfig } from "../src/types";
 import { TelegramBotWorker } from "../src/services/telegramBotWorker";
 import { readArtistPersonaSummary } from "../src/services/personaFileBuilder";
+import { getArtistIdentity } from "../src/services/runtimeConfig";
 import { readSoulPersonaSummary } from "../src/services/soulFileBuilder";
 
 const enabledConfig: TelegramConfig = {
@@ -128,10 +129,11 @@ describe("telegram persona migrate intent e2e", () => {
     const artist = await readFile(join(root, "ARTIST.md"), "utf8");
     const soul = await readFile(join(root, "SOUL.md"), "utf8");
     const artistSummary = await readArtistPersonaSummary(root);
+    const identity = await getArtistIdentity(root);
     const soulSummary = await readSoulPersonaSummary(root);
     expect(artist).not.toContain("[mock proposal based on operator intent:");
     expect(soul).not.toContain("[mock proposal based on operator intent:");
-    expect(artistSummary.artistName).toBe("Telegram Intent Artist");
+    expect(identity.artistName).toBe("Telegram Intent Artist");
     expect(artistSummary.obsessions).toBe("日本社会の風刺, 批評, 皮肉");
     expect(artistSummary.socialVoice).toBe("短く, 刺さるように, 過剰な売り込みは避ける");
     expect(soulSummary.conversationTone).toBe("御大に対しては率直、ぶっきらぼう、必要なら反論");

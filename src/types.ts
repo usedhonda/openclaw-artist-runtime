@@ -241,6 +241,7 @@ export interface TelegramReplyMarkup {
 
 export type PersonaField =
   | "artistName"
+  | "producerCallname"
   | "identityLine"
   | "soundDna"
   | "obsessions"

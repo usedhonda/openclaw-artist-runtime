@@ -5,6 +5,7 @@ import { updateSongState, writeSongBrief } from "./artistState.js";
 import type { ChangeSetField, ChangeSetProposal } from "./freeformChangesetProposer.js";
 import { ensureBackupChangeSet, type BackupChangeSet } from "./personaBackup.js";
 import { updateArtistPersonaField, type ArtistPersonaSummary } from "./personaFileBuilder.js";
+import { patchResolvedConfig, readResolvedConfig } from "./runtimeConfig.js";
 import { updateSoulPersonaField, type SoulPersonaSummary } from "./soulFileBuilder.js";
 
 export interface ChangeSetApplyResult {
@@ -41,7 +42,6 @@ function normalizeSongStatus(value: string): SongStatus | undefined {
 
 function artistField(field: string): keyof ArtistPersonaSummary | undefined {
   switch (field) {
-    case "artistName":
     case "identityLine":
     case "soundDna":
     case "obsessions":
@@ -77,6 +77,16 @@ async function applyField(root: string, proposal: ChangeSetProposal, field: Chan
     throw new Error("changeset_field_skipped");
   }
   if (proposal.domain === "persona") {
+    if (field.field === "artistName") {
+      const current = await readResolvedConfig(root);
+      await patchResolvedConfig(root, {
+        artist: {
+          ...current.artist,
+          identity: { ...current.artist.identity, displayName: field.proposedValue.trim() }
+        }
+      });
+      return;
+    }
     const artistKey = artistField(field.field);
     if (artistKey) {
       await updateArtistPersonaField(root, artistKey, field.proposedValue);

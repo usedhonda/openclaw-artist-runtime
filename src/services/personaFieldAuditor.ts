@@ -5,6 +5,8 @@ import { artistPersonaBlockEnd, artistPersonaBlockStart, readArtistPersonaSummar
 import { readPersonaSetupStatus } from "./personaSetupDetector.js";
 import { readSoulPersonaSummary, soulPersonaBlockEnd, soulPersonaBlockStart } from "./soulFileBuilder.js";
 import { artistManagedSections, personaFileContracts, soulManagedSections, type PersonaTemplateFile } from "./personaCanonical.js";
+import { readResolvedConfig } from "./runtimeConfig.js";
+import { parseVoiceFingerprint } from "./voiceFingerprintParser.js";
 
 export type PersonaFieldStatus = "filled" | "thin" | "missing";
 
@@ -36,7 +38,7 @@ export interface PersonaAuditReport {
   summary: { filled: number; thin: number; missing: number };
 }
 
-const standardArtistSections = new Set<string>(artistManagedSections);
+const standardArtistSections = new Set<string>([...artistManagedSections, "Public Identity"]);
 const standardSoulSections = new Set<string>(soulManagedSections);
 const placeholderPattern = /^(?:tbd|unknown artist|\(not set\)|n\/a|none|-+)?$/i;
 const minFilledLength = 20;
@@ -65,7 +67,7 @@ function auditField(field: PersonaField, value: string): PersonaFieldAudit {
   if (placeholderPattern.test(current)) {
     return { field, status: "thin", reason: "default_placeholder", current };
   }
-  if (field === "artistName" || field === "identityLine") {
+  if (field === "artistName" || field === "producerCallname" || field === "identityLine") {
     return { field, status: "filled", current };
   }
   if (current.length < minFilledLength) {
@@ -174,10 +176,15 @@ export async function auditPersonaCompleteness(root: string): Promise<PersonaAud
     readSoulPersonaSummary(root),
     readPersonaSetupStatus(root)
   ]);
+  const resolvedConfig = await readResolvedConfig(root).catch(() => undefined);
+  const fingerprint = parseVoiceFingerprint(soulContents);
+  const displayName = resolvedConfig?.artist.identity.displayName?.trim() || artistSummary.artistName;
+  const producerCallname = resolvedConfig?.artist.identity.producerCallname?.trim() || fingerprint.producerCallname || "";
   const artistMarkerPresent = artistContents.includes(artistPersonaBlockStart) && artistContents.includes(artistPersonaBlockEnd);
   const soulMarkerPresent = soulContents.includes(soulPersonaBlockStart) && soulContents.includes(soulPersonaBlockEnd);
   const fields: PersonaFieldAudit[] = [
-    auditField("artistName", artistSummary.artistName),
+    auditField("artistName", displayName),
+    auditField("producerCallname", producerCallname),
     auditField("identityLine", artistSummary.identityLine),
     auditField("soundDna", artistSummary.soundDna),
     auditField("obsessions", artistSummary.obsessions),

@@ -638,7 +638,8 @@ async function formatPersonaSuggestions(
 function formatPersonaFields(): string {
   return [
     "Editable persona fields:",
-    "ARTIST: name, identity, sound, themes, lyrics, social",
+    "CONFIG: artistName",
+    "ARTIST: identity, sound, themes, lyrics, social",
     "SOUL: soul-tone, soul-refusal"
   ].join("\n");
 }

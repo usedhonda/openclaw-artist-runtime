@@ -62,9 +62,7 @@ export function buildArtistPersonaBlock(pending: Partial<PersonaAnswers>): strin
 
   return [
     artistPersonaBlockStart,
-    "## Public Identity",
-    "",
-    `Artist name: ${answers.artistName}`,
+    "## Artist Concept",
     "",
     answers.identityLine,
     "",
@@ -92,7 +90,6 @@ export function buildArtistPersonaBlock(pending: Partial<PersonaAnswers>): strin
     "## Suno Production Profile",
     "",
     "```yaml",
-    `name: ${answers.artistName}`,
     "genres:",
     ...soundTraits.slice(0, 3).map((item) => `  - ${item}`),
     "language: operator-defined",
@@ -105,7 +102,7 @@ export function buildArtistPersonaBlock(pending: Partial<PersonaAnswers>): strin
     "### Output rules",
     "",
     "- Always produce Style, Exclude, YAML lyrics, sliders, and payload for Suno.",
-    "- Avoid direct artist-name prompting.",
+    "- Avoid direct named-artist prompting.",
     "- Describe sonic features instead of copying named artists.",
     artistPersonaBlockEnd
   ].join("\n");
@@ -197,6 +194,16 @@ function sectionUntilNextManaged(contents: string, heading: string): string {
   return contents.match(expression)?.[1]?.trim() ?? "";
 }
 
+function firstPresentSection(contents: string, headings: string[]): string {
+  for (const heading of headings) {
+    const body = sectionUntilNextManaged(contents, heading);
+    if (body) {
+      return body;
+    }
+  }
+  return "";
+}
+
 function bulletsToText(contents: string): string {
   return contents
     .split("\n")
@@ -240,14 +247,15 @@ export async function writeArtistPersona(root: string, pending: Partial<PersonaA
 export async function readArtistPersonaSummary(root: string): Promise<ArtistPersonaSummary> {
   const contents = await readFile(artistPath(root), "utf8").catch(() => "");
   const block = extractMarkerBlock(contents);
-  const publicIdentity = sectionUntilNextManaged(block, "Public Identity");
+  const artistConcept = firstPresentSection(block, ["Artist Concept", "Public Identity"]);
   const core = sectionUntilNextManaged(block, "Current Artist Core");
   const sound = sectionUntilNextManaged(block, "Sound");
   const lyrics = sectionUntilNextManaged(block, "Lyrics");
   const social = sectionUntilNextManaged(block, "Social Voice");
+  const legacyArtistName = block.match(/(?:^|\n)\s*Artist name:\s*(.+)/i)?.[1]?.trim();
   return {
-    artistName: publicIdentity.match(/Artist name:\s*(.+)/)?.[1]?.trim() || "Unknown artist",
-    identityLine: publicIdentity
+    artistName: legacyArtistName || "Unknown artist",
+    identityLine: artistConcept
       .split("\n")
       .map((line) => line.trim())
       .filter((line) => line && !line.startsWith("Artist name:"))[0] ?? "",

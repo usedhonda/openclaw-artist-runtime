@@ -21,6 +21,8 @@ export interface PersonaSetupDetectorOptions {
 
 const artistNameTbdPattern = /(^|\n)\s*Artist name:\s*(?:TBD|Unnamed OpenClaw Artist)?\s*(\n|$)/i;
 const sunoProfileNameTbdPattern = /(^|\n)\s*name:\s*TBD\s*(\n|$)/i;
+const artistConceptTbdPattern = /(^|\n)\s*One-line artistic premise:\s*TBD\s*(\n|$)/i;
+const templateTbdPattern = /(^|\n)\s*(?:[-*]\s*)?(?:Genre DNA|Texture|Vocal character|Signature subjects|Public output voice):\s*TBD\s*(\n|$)/i;
 
 function markerPath(root: string): string {
   return join(root, "runtime", "persona-completed.json");
@@ -70,9 +72,11 @@ export async function readPersonaSetupStatus(
   const missingArtistFile = !artistContents;
   const artistNameTbd = artistNameTbdPattern.test(artistContents);
   const sunoProfileNameTbd = sunoProfileNameTbdPattern.test(artistContents);
+  const artistConceptTbd = artistConceptTbdPattern.test(artistContents);
+  const templateTbd = templateTbdPattern.test(artistContents);
   const defaultTemplateMatch = await matchesTemplate(artistContents, options.templateArtistPath);
   const completedExternalImport =
-    !marker && !missingArtistFile && !artistNameTbd && !sunoProfileNameTbd && !defaultTemplateMatch;
+    !marker && !missingArtistFile && !artistNameTbd && !sunoProfileNameTbd && !artistConceptTbd && !templateTbd && !defaultTemplateMatch;
 
   if (!marker && !completedExternalImport) {
     reasons.push("missing_completion_marker");
@@ -85,6 +89,9 @@ export async function readPersonaSetupStatus(
   }
   if (sunoProfileNameTbd) {
     reasons.push("suno_profile_name_tbd");
+  }
+  if (artistConceptTbd || templateTbd) {
+    reasons.push("artist_concept_tbd");
   }
   if (defaultTemplateMatch) {
     reasons.push("matches_default_template_hash");
@@ -103,6 +110,7 @@ const personaSetupReasonText: Record<string, string> = {
   missing_artist_file: "ARTIST.md missing",
   artist_name_tbd: "artist name not set",
   suno_profile_name_tbd: "Suno profile name not set",
+  artist_concept_tbd: "artist concept not set",
   matches_default_template_hash: "still the example template"
 };
 

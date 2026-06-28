@@ -125,13 +125,13 @@ function configuredIdentityValue(value: string | undefined): string | undefined 
   return trimmed && trimmed !== "TBD" && trimmed !== "Unknown artist" && trimmed !== "Unnamed OpenClaw Artist" ? trimmed : undefined;
 }
 
-async function syncMigratedIdentityConfig(root: string): Promise<void> {
+async function syncMigratedIdentityConfig(root: string, overrides: { displayName?: string; producerCallname?: string } = {}): Promise<void> {
   const [artistSummary, soulContents] = await Promise.all([
     readArtistPersonaSummary(root),
     readFile(soulPath(root), "utf8").catch(() => "")
   ]);
-  const displayName = configuredIdentityValue(artistSummary.artistName);
-  const producerCallname = configuredIdentityValue(parseVoiceFingerprint(soulContents).producerCallname ?? undefined);
+  const displayName = configuredIdentityValue(overrides.displayName) ?? configuredIdentityValue(artistSummary.artistName);
+  const producerCallname = configuredIdentityValue(overrides.producerCallname) ?? configuredIdentityValue(parseVoiceFingerprint(soulContents).producerCallname ?? undefined);
   if (!displayName && !producerCallname) {
     return;
   }
@@ -196,6 +196,8 @@ function fieldAliases(field: PersonaField): string[] {
   switch (field) {
     case "artistName":
       return ["artistName", "artist name", "name"];
+    case "producerCallname":
+      return ["producerCallname", "producer callname", "callname"];
     case "identityLine":
       return ["identityLine", "identity", "manifesto"];
     case "soundDna":
@@ -376,6 +378,8 @@ export async function executePersonaMigrate(root: string, plan: PersonaMigratePl
     await syncMigratedIdentityConfig(root);
     return;
   }
+  const legacyArtistSummary = await readArtistPersonaSummary(root);
+  const migratedDisplayName = proposedDraftValue(plan.proposedDrafts, "artistName") ?? legacyArtistSummary.artistName;
   const [artist, soul] = await Promise.all([buildMigratedArtist(root, plan.proposedDrafts), buildMigratedSoul(root, plan.proposedDrafts)]);
   await Promise.all([
     backupPathIfPresentOnce(artistPath(root), plan.artistBackupPath, `migrate:${plan.artistBackupPath}`),
@@ -390,7 +394,7 @@ export async function executePersonaMigrate(root: string, plan: PersonaMigratePl
     writeFile(soulPath(root), soul.endsWith("\n") ? soul : `${soul}\n`, "utf8")
   ]);
   await writePersonaCompletionMarker(root);
-  await syncMigratedIdentityConfig(root);
+  await syncMigratedIdentityConfig(root, { displayName: migratedDisplayName });
 }
 
 export function formatPersonaMigratePlan(plan: PersonaMigratePlan): string {

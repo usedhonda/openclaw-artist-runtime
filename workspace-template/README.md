@@ -13,9 +13,9 @@ would be true for any artist, do not ask the operator to write it.
 
 | File | Owns | Must not contain |
 | --- | --- | --- |
-| `ARTIST.md` | Artist name, premise, obsessions, sound anchors, lyric constraints, public output voice, Suno production traits. | Producer facts, producer relationship, private tensions, conversational style. |
-| `SOUL.md` | Speaking style: first person, producer callname, sentence endings, forbidden phrases, signature moves. | Music production rules, artist manifesto, producer profile, private tensions. |
-| `IDENTITY.md` | Derived identity card only. It summarizes `ARTIST.md` and `SOUL.md`; it is not a separate setup source. | New facts that belong in `ARTIST.md` or `SOUL.md`. |
+| `ARTIST.md` | Artist concept, obsessions, sound anchors, lyric constraints, public output voice, Suno production traits. | Artist display name, producer facts, producer relationship, private tensions, conversational style. |
+| `SOUL.md` | Speaking style: first person, sentence endings, forbidden phrases, signature moves. | Producer callname, music production rules, artist manifesto, producer profile, private tensions. |
+| `IDENTITY.md` | Derived identity card only. It summarizes config identity, `ARTIST.md`, and `SOUL.md`; it is not a setup source. | New facts that belong in config, `ARTIST.md`, or `SOUL.md`. |
 | `INNER.md` | Private creative pressure that changes the work: fear, pressure, obsession, stakes. | Public identity, sound rules, conversational style, producer data. |
 | `PRODUCER.md` | Producer-specific facts that change response or decisions. | Artist voice, music aesthetics, producer callname, secrets. |
 
@@ -26,7 +26,8 @@ contract and then into the files above.
 
 | Field | Canonical home |
 | --- | --- |
-| `artistName` | `ARTIST.md` |
+| `artist.identity.displayName` | Runtime config |
+| `artist.identity.producerCallname` | Runtime config |
 | `identityLine` | `ARTIST.md` |
 | `soundDna` | `ARTIST.md` |
 | `obsessions` | `ARTIST.md` |
@@ -34,9 +35,11 @@ contract and then into the files above.
 | `socialVoice` | `ARTIST.md` |
 | `conversationTone` | `SOUL.md` |
 | `refusalStyle` | `SOUL.md` |
+| `producerFacts` | `PRODUCER.md` |
+| `privateTensions` | `INNER.md` |
 
-`IDENTITY.md` is derived. `INNER.md` and `PRODUCER.md` are optional context
-files; they should hold only facts that their rows above own.
+`IDENTITY.md` is always a derived projection. New setup should not ask the
+operator to author it directly.
 
 ## Other workspace files
 

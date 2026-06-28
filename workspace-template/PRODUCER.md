@@ -1,6 +1,6 @@
 # PRODUCER.md
 
-Canonical role split: see `workspace-template/README.md`.
+Producer facts that change creative or operational decisions.
 
 ## Producer Context
 

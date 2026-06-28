@@ -1,9 +1,8 @@
 # IDENTITY.md
 
-Canonical role split: see `workspace-template/README.md`.
+Derived identity card. Runtime generates this view from config, `ARTIST.md`, and `SOUL.md`.
 
-Derived identity card. Do not author new setup facts here.
-
-- Name: derived from `ARTIST.md`
+- Display name: derived from `artist.identity.displayName`
+- Producer callname: derived from `artist.identity.producerCallname`
 - One-line identity: derived from `ARTIST.md`
 - Speaking anchor: derived from `SOUL.md`

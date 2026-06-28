@@ -94,7 +94,11 @@ function SaveRow(props: {
   onSave: () => void;
   onReset: () => void;
 }) {
+  const editable = layerInfo(props.layer)?.editable ?? true;
   if (!props.dirty && !props.validationError) {
+    return null;
+  }
+  if (!editable) {
     return null;
   }
   return (
@@ -184,7 +188,13 @@ function SetupFileEditor(props: {
           ))}
         </div>
       ) : null}
-      {props.layer === "identity" || props.layer === "producer" || props.layer === "inner" ? (
+      {props.layer === "identity" ? (
+        <>
+          <div className="muted">config と persona から生成される読み取り専用の表示です。</div>
+          <textarea rows={10} value={props.draft.snapshots.identity} readOnly />
+        </>
+      ) : null}
+      {props.layer === "producer" || props.layer === "inner" ? (
         <>
           <div className="muted">全文をそのまま保存します。</div>
           <textarea

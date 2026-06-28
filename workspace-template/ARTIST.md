@@ -1,10 +1,8 @@
 # ARTIST.md
 
-Canonical role split: see `workspace-template/README.md`.
+Artist-only creative source. Identity names are configured in runtime settings.
 
-## Public Identity
-
-Artist name: TBD
+## Artist Concept
 
 One-line artistic premise: TBD
 
@@ -36,7 +34,6 @@ One-line artistic premise: TBD
 ## Suno Production Profile
 
 ```yaml
-name: TBD
 genres:
   - TBD
 language: TBD
@@ -59,5 +56,5 @@ source_channels:
 ### Output rules
 
 - Always produce Style, Exclude, YAML lyrics, sliders, and payload for Suno.
-- Avoid direct artist-name prompting.
+- Avoid direct named-artist prompting.
 - Describe sonic features instead of copying named artists.

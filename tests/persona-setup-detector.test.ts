@@ -70,6 +70,22 @@ describe("persona setup detector", () => {
     expect(status.reasons).toEqual([]);
   });
 
+  it("does not require duplicate artist name fields in new ARTIST.md", async () => {
+    const root = makeRoot();
+    await writeCompletedMarker(root);
+    await writeFile(
+      join(root, "ARTIST.md"),
+      ["# ARTIST.md", "", "## Artist Concept", "", "A public artist built from local observations.", "", "## Suno Production Profile", "", "```yaml", "genres:", "  - nu-jazz rap", "```"].join("\n"),
+      "utf8"
+    );
+
+    const status = await readPersonaSetupStatus(root);
+
+    expect(status.needsSetup).toBe(false);
+    expect(status.completed).toBe(true);
+    expect(status.reasons).toEqual([]);
+  });
+
   it("accepts web completion markers from the Producer Room setup tab", async () => {
     const root = makeRoot();
     await writeCompletedMarker(root, "web");

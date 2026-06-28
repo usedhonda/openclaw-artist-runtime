@@ -28,13 +28,14 @@ describe("persona file builder", () => {
   it("builds ARTIST.md sections from six answers without secret-like text", () => {
     const block = buildArtistPersonaBlock(answers);
 
-    expect(block).toContain("## Public Identity");
+    expect(block).toContain("## Artist Concept");
     expect(block).toContain("## Current Artist Core");
     expect(block).toContain("## Sound");
     expect(block).toContain("## Lyrics");
     expect(block).toContain("## Social Voice");
     expect(block).toContain("## Suno Production Profile");
-    expect(block).toContain("Neon Relay");
+    expect(block).not.toContain("Artist name:");
+    expect(block).not.toContain("name: Neon Relay");
     expect(block).not.toContain("## Producer Relationship");
     expect(block).not.toMatch(/TOKEN|COOKIE|CREDENTIAL|SECRET|bot\d+:/i);
   });
@@ -49,8 +50,10 @@ describe("persona file builder", () => {
     expect(result.mode).toBe("replace_default");
     expect(contents).toContain("# ARTIST.md");
     expect(contents).toContain(artistPersonaBlockStart);
-    expect(contents).toContain("Artist name: Neon Relay");
+    expect(contents).toContain("## Artist Concept");
+    expect(contents).not.toContain("Artist name: Neon Relay");
     expect(contents).not.toContain("Artist name: TBD");
+    expect(contents).not.toContain("name: Neon Relay");
   });
 
   it("updates only an existing managed marker block", async () => {
@@ -76,7 +79,8 @@ describe("persona file builder", () => {
     expect(result.mode).toBe("replace_marker");
     expect(contents).toContain("Before stays.");
     expect(contents).toContain("Spotify section stays.");
-    expect(contents).toContain("Artist name: Neon Relay");
+    expect(contents).toContain("An electronic singer-songwriter built from subway light and failed notifications.");
+    expect(contents).not.toContain("Artist name: Neon Relay");
     expect(contents).not.toContain("old block");
   });
 

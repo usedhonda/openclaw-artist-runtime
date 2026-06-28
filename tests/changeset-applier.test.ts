@@ -8,6 +8,7 @@ import type { ChangeSetProposal } from "../src/services/freeformChangesetPropose
 import { ensureArtistWorkspace } from "../src/services/artistWorkspace";
 import { createSongSkeleton } from "../src/repositories/songRepository";
 import { readSongState } from "../src/services/artistState";
+import { readResolvedConfig } from "../src/services/runtimeConfig";
 
 function makeRoot(): string {
   return mkdtempSync(join(tmpdir(), "artist-runtime-changeset-apply-"));
@@ -38,10 +39,12 @@ describe("changeset applier", () => {
 
     const backups = (await readdir(root)).filter((name) => name.includes(".backup-"));
     const artist = await readFile(join(root, "ARTIST.md"), "utf8");
+    const config = await readResolvedConfig(root);
     expect(result.applied).toHaveLength(2);
     expect(result.backups.entries).toHaveLength(1);
     expect(backups).toHaveLength(1);
-    expect(artist).toContain("Artist name: New Name");
+    expect(config.artist.identity.displayName).toBe("New Name");
+    expect(artist).not.toContain("Artist name: New Name");
     expect(artist).toContain("cold public transit");
   });
 

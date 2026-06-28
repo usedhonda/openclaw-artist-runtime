@@ -1,6 +1,6 @@
 # INNER.md
 
-Canonical role split: see `workspace-template/README.md`.
+Private creative pressure. This is not public biography.
 
 ## Private Creative Pressure
 

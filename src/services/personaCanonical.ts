@@ -1,7 +1,7 @@
 export const personaCanonicalVersion = 1;
 
 export const artistManagedSections = [
-  "Public Identity",
+  "Artist Concept",
   "Current Artist Core",
   "Sound",
   "Lyrics",
@@ -11,12 +11,181 @@ export const artistManagedSections = [
 
 export const soulManagedSections = ["Telegram Persona Voice"] as const;
 
+export type PersonaCanonicalOwner =
+  | { kind: "config"; path: "artist.identity.displayName" | "artist.identity.producerCallname" }
+  | { kind: "file"; file: PersonaTemplateFile };
+
+export type PersonaCanonicalFieldId =
+  | "artistDisplayName"
+  | "producerCallname"
+  | "artistConcept"
+  | "soundDna"
+  | "obsessions"
+  | "lyricsRules"
+  | "socialVoice"
+  | "conversationTone"
+  | "refusalStyle"
+  | "producerFacts"
+  | "privateTensions";
+
+export interface PersonaCanonicalField {
+  id: PersonaCanonicalFieldId;
+  legacyField?: string;
+  owner: PersonaCanonicalOwner;
+  label: string;
+  help: string;
+  derivedOutputs: PersonaTemplateFile[];
+  forbiddenFiles: PersonaTemplateFile[];
+  setupEditable: boolean;
+  multiline?: boolean;
+  minLength?: number;
+}
+
+export const personaCanonicalFields: PersonaCanonicalField[] = [
+  {
+    id: "artistDisplayName",
+    legacyField: "artistName",
+    owner: { kind: "config", path: "artist.identity.displayName" },
+    label: "アーティスト表示名",
+    help: "全曲・公開プロフィールで使う名前。MD には手入力しません。",
+    derivedOutputs: ["IDENTITY.md"],
+    forbiddenFiles: ["ARTIST.md", "SOUL.md", "PRODUCER.md", "INNER.md"],
+    setupEditable: false
+  },
+  {
+    id: "producerCallname",
+    owner: { kind: "config", path: "artist.identity.producerCallname" },
+    label: "プロデューサー呼称",
+    help: "会話で producer を呼ぶ名前。MD には手入力しません。",
+    derivedOutputs: ["IDENTITY.md"],
+    forbiddenFiles: ["ARTIST.md", "SOUL.md", "PRODUCER.md", "INNER.md"],
+    setupEditable: false
+  },
+  {
+    id: "artistConcept",
+    legacyField: "identityLine",
+    owner: { kind: "file", file: "ARTIST.md" },
+    label: "アーティストコンセプト",
+    help: "名前ではなく、何に取り憑かれて何を歌う存在か。",
+    derivedOutputs: ["IDENTITY.md"],
+    forbiddenFiles: ["SOUL.md", "PRODUCER.md", "INNER.md"],
+    setupEditable: true,
+    multiline: true,
+    minLength: 8
+  },
+  {
+    id: "soundDna",
+    owner: { kind: "file", file: "ARTIST.md" },
+    label: "音の核",
+    help: "Suno Style と曲調に効く音の核。具体的な質感・楽器・BPM まで書く。",
+    derivedOutputs: ["IDENTITY.md"],
+    forbiddenFiles: ["SOUL.md", "PRODUCER.md", "INNER.md"],
+    setupEditable: true,
+    multiline: true,
+    minLength: 20
+  },
+  {
+    id: "obsessions",
+    owner: { kind: "file", file: "ARTIST.md" },
+    label: "執着テーマ",
+    help: "繰り返し拾う主題。観察・曲提案・歌詞の選び方に効く。",
+    derivedOutputs: ["IDENTITY.md"],
+    forbiddenFiles: ["SOUL.md", "PRODUCER.md", "INNER.md"],
+    setupEditable: true,
+    multiline: true,
+    minLength: 20
+  },
+  {
+    id: "lyricsRules",
+    owner: { kind: "file", file: "ARTIST.md" },
+    label: "歌詞スタンス",
+    help: "歌詞で守る制約。言語・避ける語・構造・比喩の癖。",
+    derivedOutputs: ["IDENTITY.md"],
+    forbiddenFiles: ["SOUL.md", "PRODUCER.md", "INNER.md"],
+    setupEditable: true,
+    multiline: true,
+    minLength: 20
+  },
+  {
+    id: "socialVoice",
+    owner: { kind: "file", file: "ARTIST.md" },
+    label: "公開/SNS の声",
+    help: "公開投稿や短い制作ノートの声。会話人格とは分ける。",
+    derivedOutputs: ["IDENTITY.md"],
+    forbiddenFiles: ["SOUL.md", "PRODUCER.md", "INNER.md"],
+    setupEditable: true,
+    multiline: true,
+    minLength: 20
+  },
+  {
+    id: "conversationTone",
+    legacyField: "soul-tone",
+    owner: { kind: "file", file: "SOUL.md" },
+    label: "会話の温度",
+    help: "Telegram などで producer と話す距離感・速度・荒さ。",
+    derivedOutputs: ["IDENTITY.md"],
+    forbiddenFiles: ["ARTIST.md", "PRODUCER.md", "INNER.md"],
+    setupEditable: true,
+    multiline: true,
+    minLength: 5
+  },
+  {
+    id: "refusalStyle",
+    legacyField: "soul-refusal",
+    owner: { kind: "file", file: "SOUL.md" },
+    label: "断り方",
+    help: "弱い案・危ない案をどう止め、何を代わりに出すか。",
+    derivedOutputs: ["IDENTITY.md"],
+    forbiddenFiles: ["ARTIST.md", "PRODUCER.md", "INNER.md"],
+    setupEditable: true,
+    multiline: true,
+    minLength: 8
+  },
+  {
+    id: "producerFacts",
+    owner: { kind: "file", file: "PRODUCER.md" },
+    label: "制作判断に効く producer 事実",
+    help: "好み・境界・判断材料だけ。呼称や artist voice は置かない。",
+    derivedOutputs: [],
+    forbiddenFiles: ["ARTIST.md", "SOUL.md", "INNER.md"],
+    setupEditable: true,
+    multiline: true,
+    minLength: 0
+  },
+  {
+    id: "privateTensions",
+    owner: { kind: "file", file: "INNER.md" },
+    label: "表に出ない創作圧",
+    help: "恐れ・圧・執着。公開 identity や sound rules は置かない。",
+    derivedOutputs: [],
+    forbiddenFiles: ["ARTIST.md", "SOUL.md", "PRODUCER.md"],
+    setupEditable: true,
+    multiline: true,
+    minLength: 0
+  }
+] as const;
+
+export function personaCanonicalField(id: PersonaCanonicalFieldId): PersonaCanonicalField {
+  const field = personaCanonicalFields.find((candidate) => candidate.id === id);
+  if (!field) {
+    throw new Error(`unknown_persona_canonical_field:${id}`);
+  }
+  return field;
+}
+
+export function personaCanonicalOwnerCount(id: PersonaCanonicalFieldId): number {
+  return personaCanonicalFields.filter((field) => field.id === id).length;
+}
+
 export const personaFileContracts = {
   "ARTIST.md": {
-    owns: "artist name, premise, obsessions, sound anchors, lyric constraints, public output voice, and Suno production traits",
+    owns: "artist concept, obsessions, sound anchors, lyric constraints, public/social output voice, and Suno production traits",
     forbidden: [
+      "artist name",
+      "display name",
       "producer relationship",
       "producer identity",
+      "producer callname",
       "producer facts",
       "private weather",
       "what i fear",
@@ -26,8 +195,11 @@ export const personaFileContracts = {
     ]
   },
   "SOUL.md": {
-    owns: "direct speaking style: conversation tone, refusal style, first person, producer callname, sentence endings, and signature moves",
+    owns: "direct speaking style: conversation tone, refusal style, sentence endings, forbidden phrases, and signature moves",
     forbidden: [
+      "artist name",
+      "display name",
+      "producer callname",
       "suno production profile",
       "genre dna",
       "sonic anchors",
@@ -37,7 +209,7 @@ export const personaFileContracts = {
     ]
   },
   "IDENTITY.md": {
-    owns: "derived identity card from ARTIST.md and SOUL.md; no new setup facts",
+    owns: "derived identity card from config identity, ARTIST.md, and SOUL.md; no new setup facts",
     forbidden: [
       "genre dna",
       "core obsessions",
@@ -72,4 +244,3 @@ export const personaFileContracts = {
 } as const;
 
 export type PersonaTemplateFile = keyof typeof personaFileContracts;
-

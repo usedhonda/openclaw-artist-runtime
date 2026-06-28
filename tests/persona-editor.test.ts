@@ -35,7 +35,8 @@ describe("personaEditor", () => {
   it("builds editable persona drafts and layer patches", () => {
     const draft = buildPersonaDraft(source());
 
-    expect(buildPersonaArtistPatch(draft).artist.artistName).toBe("Glass Commuter");
+    expect(buildPersonaArtistPatch(draft).artist).not.toHaveProperty("artistName");
+    expect(buildPersonaArtistPatch(draft).artist.identityLine).toBe("Turns commute damage into songs.");
     expect(buildPersonaSoulPatch(draft).soul.conversationTone).toBe("short and precise");
     expect(buildPersonaSnapshotPatch(draft, "identity")).toEqual({
       identity: { text: "# IDENTITY\n\nraw identity\n" }
@@ -47,7 +48,7 @@ describe("personaEditor", () => {
     draft.artist.artistName = "";
     draft.soul.refusalStyle = "short";
 
-    expect(validatePersonaDraft(draft, "artist")).toBe("artistName is required");
+    expect(validatePersonaDraft(draft, "artist")).toBeNull();
     expect(validatePersonaDraft(draft, "soul")).toBe("refusalStyle must be at least 8 characters");
     expect(validatePersonaDraft(draft, "identity")).toBeNull();
   });

@@ -4,6 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
+import { personaCanonicalField, personaCanonicalOwnerCount } from "../src/services/personaCanonical";
 import { auditPersonaCompleteness, formatPersonaAuditReport } from "../src/services/personaFieldAuditor";
 
 const templateRoot = join(__dirname, "..", "workspace-template");
@@ -75,6 +76,21 @@ async function writeFixture(root: string): Promise<void> {
 }
 
 describe("persona field auditor", () => {
+  it("keeps factual identity owned by runtime config only", () => {
+    expect(personaCanonicalOwnerCount("artistDisplayName")).toBe(1);
+    expect(personaCanonicalOwnerCount("producerCallname")).toBe(1);
+    expect(personaCanonicalField("artistDisplayName").owner).toEqual({
+      kind: "config",
+      path: "artist.identity.displayName"
+    });
+    expect(personaCanonicalField("producerCallname").owner).toEqual({
+      kind: "config",
+      path: "artist.identity.producerCallname"
+    });
+    expect(personaCanonicalField("artistDisplayName").forbiddenFiles).toContain("ARTIST.md");
+    expect(personaCanonicalField("producerCallname").forbiddenFiles).toContain("SOUL.md");
+  });
+
   it("keeps the workspace template free of persona responsibility overlap", async () => {
     const report = await auditPersonaCompleteness(templateRoot);
 
@@ -84,10 +100,15 @@ describe("persona field auditor", () => {
   it("keeps role definitions centralized in README instead of the five persona files", () => {
     for (const file of personaTemplateFiles) {
       const contents = readFileSync(join(templateRoot, file), "utf8").toLowerCase();
-      expect(contents).toContain("canonical role split");
+      expect(contents).not.toContain("canonical role split");
       expect(contents).not.toContain("this file follows the canonical role split");
       expect(contents).not.toContain("it owns");
       expect(contents).not.toContain("do not duplicate");
+      expect(contents).not.toContain("chi");
+      expect(contents).not.toContain("cc");
+      expect(contents).not.toContain("plan v");
+      expect(contents).not.toContain("御大");
+      expect(contents).not.toContain("ゆずるさん");
     }
   });
 
@@ -101,13 +122,14 @@ describe("persona field auditor", () => {
     expect(report.artistFile).toEqual({ exists: true, markerPresent: false, externalImport: true });
     expect(report.soulFile).toEqual({ exists: true, markerPresent: false });
     expect(byField.get("artistName")?.status).toBe("filled");
+    expect(byField.get("producerCallname")?.status).toBe("missing");
     expect(byField.get("soundDna")?.status).toBe("filled");
     expect(byField.get("obsessions")?.status).toBe("thin");
     expect(byField.get("socialVoice")?.status).toBe("missing");
     expect(byField.get("soul-tone")?.status).toBe("missing");
     expect(byField.get("soul-refusal")?.status).toBe("missing");
     expect(report.customSections).toEqual(expect.arrayContaining(["Voice", "Listener", "Conversational Core", "Ritual"]));
-    expect(report.summary).toMatchObject({ filled: 4, thin: 1, missing: 3 });
+    expect(report.summary).toMatchObject({ filled: 4, thin: 1, missing: 4 });
   });
 
   it("formats a compact operator-facing audit report", async () => {
