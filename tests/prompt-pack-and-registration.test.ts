@@ -211,8 +211,8 @@ describe("registration shells", () => {
     const consoleHtml = await producerConsoleHtml();
     expect(consoleHtml).toContain("Artist Runtime");
     expect(consoleHtml).toContain("Producer Room");
-    expect(consoleHtml).toContain("Artist is:");
-    expect(consoleHtml).toContain("You can:");
+    expect(consoleHtml).toContain("現在地");
+    expect(consoleHtml).toContain("次");
     expect(consoleHtml).toContain("Room");
     expect(consoleHtml).toContain("Songs");
     expect(consoleHtml).toContain("Settings");
