@@ -405,7 +405,7 @@ describe("ProducerRoomApp Songs and Settings views", () => {
     expect(html).toContain("重複整理案");
     expect(html).toContain("未入力だけを埋める");
     expect(html).toContain("5ファイル全体を本気で磨く");
-    expect(html).toContain("もっと尖った案");
+    expect(html).toContain("各入力欄の下により尖った下書き案を表示します");
     expect(html).toContain("正本ルールで散らばりを直す");
     expect(html).toContain("AI添削案");
     expect(html).toContain("案を入れる");

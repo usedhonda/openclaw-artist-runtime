@@ -335,7 +335,7 @@ function SetupAiActionMenu(props: {
         </button>
         <div>
           <strong>5ファイル全体を本気で磨く</strong>
-          <p>薄い表現、普通すぎる言葉、音楽家として弱い個性を削り、もっと尖った案を各欄に出します。保存はしません。</p>
+          <p>薄い表現、普通すぎる言葉、音楽家として弱い個性を削り、各入力欄の下により尖った下書き案を表示します。保存も上書きもしません。</p>
         </div>
       </div>
       <div className="persona-ai-menu-row">
