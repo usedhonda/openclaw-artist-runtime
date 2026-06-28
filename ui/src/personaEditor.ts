@@ -53,17 +53,17 @@ export type PersonaFieldMeta<K> = {
 };
 
 export const artistPersonaFields: Array<PersonaFieldMeta<keyof ArtistPersonaDraft>> = [
-  { field: "artistName", label: "Artist name", help: "全曲・SNS・自己紹介で使う表の名前。", aiField: "artistName" },
-  { field: "identityLine", label: "Identity line", help: "一文の自己定義。AI が毎セッション参照する自己像に効く。", aiField: "identityLine", multiline: true },
-  { field: "soundDna", label: "Sound DNA", help: "Suno Style と曲調に効く音の核。例: nu-jazz rap, dry drums, 108 BPM, male vocal", aiField: "soundDna", multiline: true },
-  { field: "obsessions", label: "Obsessions", help: "繰り返し拾う主題。曲の提案や news/X 観察の選び方に効く。", aiField: "obsessions", multiline: true },
-  { field: "lyricsRules", label: "Lyrics rules", help: "歌詞で守る制約。言語・避ける語・構造に効く。", aiField: "lyricsRules", multiline: true },
-  { field: "socialVoice", label: "Social voice", help: "Telegram や SNS での短い喋り方に効く。", aiField: "socialVoice", multiline: true }
+  { field: "artistName", label: "アーティスト名", help: "全曲・SNS・自己紹介で使う表の名前。", aiField: "artistName" },
+  { field: "identityLine", label: "自己定義", help: "一文の自己定義。AI が毎セッション参照する自己像に効く。", aiField: "identityLine", multiline: true },
+  { field: "soundDna", label: "音の核", help: "Suno Style と曲調に効く音の核。例: nu-jazz rap, dry drums, 108 BPM, male vocal", aiField: "soundDna", multiline: true },
+  { field: "obsessions", label: "執着テーマ", help: "繰り返し拾う主題。曲の提案や news/X 観察の選び方に効く。", aiField: "obsessions", multiline: true },
+  { field: "lyricsRules", label: "歌詞ルール", help: "歌詞で守る制約。言語・避ける語・構造に効く。", aiField: "lyricsRules", multiline: true },
+  { field: "socialVoice", label: "SNS の声", help: "Telegram や SNS での短い喋り方に効く。", aiField: "socialVoice", multiline: true }
 ];
 
 export const soulPersonaFields: Array<PersonaFieldMeta<keyof SoulPersonaDraft>> = [
-  { field: "conversationTone", label: "Conversation tone", help: "会話の温度・距離感に効く。どんな空気で話すか。", aiField: "soul-tone", multiline: true },
-  { field: "refusalStyle", label: "Refusal style", help: "断りたいときの言い方に効く。", aiField: "soul-refusal", multiline: true }
+  { field: "conversationTone", label: "会話の温度", help: "会話の温度・距離感に効く。どんな空気で話すか。", aiField: "soul-tone", multiline: true },
+  { field: "refusalStyle", label: "断り方", help: "断りたいときの言い方に効く。", aiField: "soul-refusal", multiline: true }
 ];
 
 export type PersonaLayerInfo = {
