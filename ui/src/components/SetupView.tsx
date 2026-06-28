@@ -307,6 +307,51 @@ function InnerFileNote() {
   );
 }
 
+function SetupAiActionMenu(props: {
+  busyKey: string | null;
+  hasEmptyEditableField: boolean;
+  onProposeMissing: () => void;
+  onProposeReview: () => void;
+  onProposeDedupe: () => void;
+}) {
+  return (
+    <section className="persona-ai-menu" aria-label="AI actions">
+      <div className="persona-ai-menu-row">
+        <button
+          type="button"
+          disabled={props.busyKey !== null || !props.hasEmptyEditableField}
+          onClick={props.onProposeMissing}
+        >
+          {props.busyKey === "persona-ai:missing" ? "作成中" : "空欄をAI補完"}
+        </button>
+        <div>
+          <strong>未入力だけを埋める</strong>
+          <p>他の欄を読んで、空欄だけに下書きを入れます。書いてある内容は上書きしません。</p>
+        </div>
+      </div>
+      <div className="persona-ai-menu-row">
+        <button type="button" disabled={props.busyKey !== null} onClick={props.onProposeReview}>
+          {props.busyKey === "persona-ai:review_all" ? "添削中" : "全体をAI添削"}
+        </button>
+        <div>
+          <strong>5ファイル全体を本気で磨く</strong>
+          <p>薄い表現、普通すぎる言葉、音楽家として弱い個性を削り、もっと尖った案を各欄に出します。保存はしません。</p>
+        </div>
+      </div>
+      <div className="persona-ai-menu-row">
+        <button type="button" disabled={props.busyKey !== null} onClick={props.onProposeDedupe}>
+          {props.busyKey === "persona-ai:dedupe" ? "整理中" : "重複整理案"}
+        </button>
+        <div>
+          <strong>正本ルールで散らばりを直す</strong>
+          <p>名前、呼称、声、音楽性、producer 情報が wrong file に混ざっていないか見て、移動・削除の案を出します。</p>
+        </div>
+      </div>
+      <p className="persona-ai-menu-note">AI案は保存前の下書きです。空欄補完以外は、各欄の「案を入れる」で反映します。</p>
+    </section>
+  );
+}
+
 export function SetupView(props: {
   persona: PersonaEditorSource | null;
   draft: PersonaDraft | null;
@@ -402,22 +447,13 @@ export function SetupView(props: {
           <div className="item muted">Loading persona.</div>
         ) : (
           <div className="settings-sections">
-            <div className="inline-actions">
-              <button
-                type="button"
-                disabled={props.busyKey !== null || !hasEmptyEditableField}
-                onClick={props.onProposeMissing}
-              >
-                {props.busyKey === "persona-ai:missing" ? "作成中" : "空欄をAI補完"}
-              </button>
-              <button type="button" disabled={props.busyKey !== null} onClick={props.onProposeReview}>
-                {props.busyKey === "persona-ai:review_all" ? "添削中" : "全体をAI添削"}
-              </button>
-              <button type="button" disabled={props.busyKey !== null} onClick={props.onProposeDedupe}>
-                {props.busyKey === "persona-ai:dedupe" ? "整理中" : "重複整理案"}
-              </button>
-              <span className="muted">AI案は保存前の下書きです。空欄補完以外は、各欄の「案を入れる」で反映します。</span>
-            </div>
+            <SetupAiActionMenu
+              busyKey={props.busyKey}
+              hasEmptyEditableField={hasEmptyEditableField}
+              onProposeMissing={props.onProposeMissing}
+              onProposeReview={props.onProposeReview}
+              onProposeDedupe={props.onProposeDedupe}
+            />
             {editableSetupLayers.map((layer) => (
               <React.Fragment key={layer}>
                 {weakFieldSummaryForFile(layerInfo(layer)?.file ?? "") ? (

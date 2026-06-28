@@ -884,6 +884,10 @@ textarea {
   .persona-file-map-item dl {
     grid-column: auto;
   }
+
+  .persona-ai-menu-row {
+    grid-template-columns: minmax(0, 1fr);
+  }
 }
 
 .persona-layer-details > summary {
@@ -942,6 +946,58 @@ textarea {
 
 .persona-ai-suggestion small {
   color: var(--muted);
+}
+
+.persona-ai-menu {
+  display: grid;
+  gap: 10px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 12px;
+  background: var(--pr-soft);
+}
+
+.persona-ai-menu-row {
+  display: grid;
+  grid-template-columns: 148px minmax(0, 1fr);
+  gap: 14px;
+  align-items: start;
+  padding: 10px;
+  border: 1px solid color-mix(in srgb, var(--pr-indigo) 16%, var(--line));
+  border-radius: 8px;
+  background: var(--pr-canvas);
+}
+
+.persona-ai-menu-row button {
+  width: 100%;
+  min-height: 44px;
+}
+
+.persona-ai-menu-row strong {
+  display: block;
+  color: var(--pr-indigo);
+  margin-bottom: 4px;
+}
+
+.persona-ai-menu-row p,
+.persona-ai-menu-note {
+  margin: 0;
+  color: var(--muted);
+}
+
+.persona-ai-menu-note {
+  font-size: 0.9rem;
+}
+
+@media (max-width: 720px) {
+  .persona-ai-menu-row {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .persona-ai-menu-row button {
+    width: max-content;
+    max-width: 100%;
+  }
 }
 
 .debug-json {

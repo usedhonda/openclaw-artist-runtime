@@ -403,6 +403,10 @@ describe("ProducerRoomApp Songs and Settings views", () => {
     expect(html).toContain("空欄をAI補完");
     expect(html).toContain("全体をAI添削");
     expect(html).toContain("重複整理案");
+    expect(html).toContain("未入力だけを埋める");
+    expect(html).toContain("5ファイル全体を本気で磨く");
+    expect(html).toContain("もっと尖った案");
+    expect(html).toContain("正本ルールで散らばりを直す");
     expect(html).toContain("AI添削案");
     expect(html).toContain("案を入れる");
     expect(html.match(/AI案<\/button>/g)?.length ?? 0).toBe(8);
