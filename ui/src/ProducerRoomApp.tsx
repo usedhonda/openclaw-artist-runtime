@@ -432,26 +432,31 @@ export function SongsView(props: {
             </div>
             <div className="song-ledger-list">
               {visibleSongs.map((song) => (
-                <button
-                  type="button"
-                  className={`song-ledger-row${selected === song.songId ? " is-selected" : ""}`}
-                  key={song.songId}
-                  onClick={() => props.onSelectSong(song.songId)}
-                >
-                  <span>
-                    <strong>{song.title || song.songId}</strong>
-                    <span className="muted">制作 {song.runCount} 回</span>
-                  </span>
-                  <span>
-                    <StatusPill status={song.status} />
-                  </span>
-                </button>
+                <React.Fragment key={song.songId}>
+                  <button
+                    type="button"
+                    className={`song-ledger-row${selected === song.songId ? " is-selected" : ""}`}
+                    onClick={() => props.onSelectSong(song.songId)}
+                  >
+                    <span>
+                      <strong>{song.title || song.songId}</strong>
+                      <span className="muted">制作 {song.runCount} 回</span>
+                    </span>
+                    <span>
+                      <StatusPill status={song.status} />
+                    </span>
+                  </button>
+                  {selected === song.songId ? (
+                    <div className="song-ledger-detail">
+                      <SongDetailCard key={selected} songId={selected} onBack={props.onBack} />
+                    </div>
+                  ) : null}
+                </React.Fragment>
               ))}
             </div>
           </>
         )}
       </article>
-      {selected ? <SongDetailCard key={selected} songId={selected} onBack={props.onBack} /> : null}
     </section>
   );
 }

@@ -647,6 +647,10 @@ textarea {
   box-shadow: inset 0 0 0 1px var(--pr-indigo);
 }
 
+.song-ledger-detail {
+  margin: -4px 0 10px;
+}
+
 .status-pill {
   display: inline-flex;
   align-items: center;

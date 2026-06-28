@@ -153,15 +153,28 @@ describe("ProducerRoomApp Songs and Settings views", () => {
             status: "suno_take_url_ready",
             runCount: 2,
             selectedTakeId: "take-1"
+          },
+          {
+            songId: "song-002",
+            title: "次の曲",
+            status: "archived",
+            runCount: 1,
+            selectedTakeId: "take-2"
           }
         ]
       })
     );
+    const selectedIndex = html.indexOf("七万円のスクランブル");
+    const detailIndex = html.indexOf("曲の詳細を読み込み中。");
+    const nextSongIndex = html.indexOf("次の曲");
 
     expect(html).toContain("作品");
     expect(html).toContain("七万円のスクランブル");
     expect(html).toContain("制作 2 回");
     expect(html).toContain("試聴URLあり");
+    expect(selectedIndex).toBeGreaterThanOrEqual(0);
+    expect(detailIndex).toBeGreaterThan(selectedIndex);
+    expect(nextSongIndex).toBeGreaterThan(detailIndex);
     expect(html).toContain("採用待ちの曲だけ同じ判断を出します");
     expect(html).not.toContain("song-001 · run");
     expect(html).not.toContain("suno_take_url_ready");
