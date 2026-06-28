@@ -162,19 +162,18 @@ describe("persona proposer", () => {
       expect(isPersonaAppendOnly("a".repeat(2000), "b".repeat(2000))).toBe(false);
     });
 
-    it("skips every requested field when persona files are dense, with append-only reasoning", async () => {
+    it("still proposes draft-only fields when persona files are dense", async () => {
       const denseSoul = "## SOUL.md\n\n" + "用途は試験。文字を埋めるだけ。\n".repeat(400);
       const result = await proposePersonaFields({
         fields: allFields,
         source: { artistMd: "", soulMd: denseSoul }
       });
 
-      expect(result.warnings.some((w) => w.includes("append-only"))).toBe(true);
+      expect(result.warnings.some((w) => w.includes("draft-only"))).toBe(true);
       expect(result.drafts).toHaveLength(allFields.length);
       for (const draft of result.drafts) {
-        expect(draft.status).toBe("skipped");
-        expect(draft.draft).toBe("");
-        expect(draft.reasoning).toContain("append-only");
+        expect(draft.status).toBe("proposed");
+        expect(draft.draft).not.toBe("");
       }
     });
   });

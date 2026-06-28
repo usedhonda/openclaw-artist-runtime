@@ -24,6 +24,10 @@ export type PersonaAiSuggestion = {
   mode: PersonaAiSuggestionMode;
 };
 
+const keepAiActionFromMarkingFieldTouched = (event: React.MouseEvent<HTMLButtonElement>) => {
+  event.preventDefault();
+};
+
 const emptyTouchedMap: LayerTouchedMap = {
   artist: false,
   soul: false,
@@ -165,6 +169,7 @@ function PersonaTextInput(props: {
             type="button"
             className="ghost-button"
             disabled={props.busyKey !== null}
+            onMouseDown={keepAiActionFromMarkingFieldTouched}
             onClick={(event) => {
               event.preventDefault();
               props.onPropose?.(props.aiField as PersonaField);
@@ -185,7 +190,7 @@ function PersonaTextInput(props: {
           <button type="button" onClick={(event) => {
             event.preventDefault();
             props.onApplySuggestion?.(props.aiField as PersonaField);
-          }}>{t(props.locale, "setupApplySuggestion")}</button>
+          }} onMouseDown={keepAiActionFromMarkingFieldTouched}>{t(props.locale, "setupApplySuggestion")}</button>
         </div>
       ) : null}
       {props.multiline ? (
@@ -418,6 +423,7 @@ function SetupAiActionMenu(props: {
         <button
           type="button"
           disabled={props.busyKey !== null || !props.hasEmptyEditableField}
+          onMouseDown={keepAiActionFromMarkingFieldTouched}
           onClick={props.onProposeMissing}
         >
           {props.busyKey === "persona-ai:missing" ? t(props.locale, "setupAiBusy") : t(props.locale, "setupAiFill")}
@@ -428,7 +434,7 @@ function SetupAiActionMenu(props: {
         </div>
       </div>
       <div className="persona-ai-menu-row">
-        <button type="button" disabled={props.busyKey !== null} onClick={props.onProposeReview}>
+        <button type="button" disabled={props.busyKey !== null} onMouseDown={keepAiActionFromMarkingFieldTouched} onClick={props.onProposeReview}>
           {props.busyKey === "persona-ai:review_all" ? t(props.locale, "setupAiReviewBusy") : t(props.locale, "setupAiReview")}
         </button>
         <div>
@@ -437,7 +443,7 @@ function SetupAiActionMenu(props: {
         </div>
       </div>
       <div className="persona-ai-menu-row">
-        <button type="button" disabled={props.busyKey !== null} onClick={props.onProposeDedupe}>
+        <button type="button" disabled={props.busyKey !== null} onMouseDown={keepAiActionFromMarkingFieldTouched} onClick={props.onProposeDedupe}>
           {props.busyKey === "persona-ai:dedupe" ? t(props.locale, "setupAiDedupeBusy") : t(props.locale, "setupAiDedupe")}
         </button>
         <div>

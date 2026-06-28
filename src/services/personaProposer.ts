@@ -204,15 +204,6 @@ export function isPersonaAppendOnly(soulMd: string | undefined, artistMd: string
   return total > APPEND_ONLY_DENSITY_THRESHOLD;
 }
 
-function applyAppendOnlySkips(drafts: PersonaFieldDraft[], reason: string): PersonaFieldDraft[] {
-  return drafts.map((draft) => ({
-    field: draft.field,
-    draft: "",
-    status: "skipped",
-    reasoning: reason
-  }));
-}
-
 export async function proposePersonaFields(
   req: PersonaProposerRequest,
   options: { aiReviewProvider?: AiReviewProvider } = {}
@@ -234,16 +225,8 @@ export async function proposePersonaFields(
   const appendOnlyMode = isPersonaAppendOnly(req.source.soulMd, req.source.artistMd);
   if (appendOnlyMode) {
     warnings.push(
-      `persona files exceed ${APPEND_ONLY_DENSITY_THRESHOLD} chars; proposer is append-only — manual edits preserved over AI rewrites`
+      `persona files exceed ${APPEND_ONLY_DENSITY_THRESHOLD} chars; AI suggestions are draft-only and do not overwrite saved text`
     );
-    return {
-      provider: provider === "mock" ? "mock" : provider,
-      warnings,
-      drafts: applyAppendOnlySkips(
-        req.fields.map((field) => ({ field, draft: "", status: "skipped" })),
-        "append-only mode: persona file already dense, manual edits preserved"
-      )
-    };
   }
   if (provider === "mock") {
     return {

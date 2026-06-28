@@ -36,7 +36,13 @@ export interface StyleAiSynthesisOptions {
 }
 
 function compact(value: string): string {
-  return value.replace(/[.;:]/g, ",").replace(/\s+/g, " ").trim();
+  return value
+    .replace(/[.;:]/g, ",")
+    .replace(/\s+/g, " ")
+    .replace(/\s*,\s*/g, ", ")
+    .replace(/(?:,\s*){2,}/g, ", ")
+    .replace(/^,\s*|\s*,\s*$/g, "")
+    .trim();
 }
 
 function splitTags(value: string): string[] {
@@ -109,6 +115,13 @@ interface StyleVariationProfile {
 
 const variationProfiles: StyleVariationProfile[] = [
   {
+    id: "dopagaki-overt",
+    line: "Variation Move: overt dopamine-pop pressure inside the existing genre; instant bilingual chant hook with glitch-vocal sparks, candy-bright synth stabs tucked behind the core band, snap-cut drum mutes every 4 bars, post-hook earworm tag, and final hook overload without festival EDM or novelty voice.",
+    arrangement: ["instant bilingual chant hook with glitch-vocal sparks", "4-bar snap-cut drum mutes", "post-hook earworm tag", "final hook overload"],
+    mix: ["hypergloss transient snap", "front-loaded hook loudness", "bright hook stabs under dry rap", "controlled overload without festival scale"],
+    texture: ["candy-bright synth pinpricks", "arcade-like counter hooks tucked behind Rhodes", "glitch-vocal sparks"]
+  },
+  {
     id: "dopagaki-lite",
     line: "Variation Move: light dopamine-pop pressure inside the existing genre; cold-open hook energy, fast earworm recall, 8-bar texture switches, post-hook counter-motif, one-beat bridge silence, and a final hook density lift while preserving the natural mid-range male lead.",
     arrangement: ["cold-open hook pressure", "8-bar texture switches", "post-hook counter-motif", "one-beat bridge silence", "final hook density lift"],
@@ -147,8 +160,16 @@ const variationProfiles: StyleVariationProfile[] = [
 
 function variationProfile(input: BuildStyleInput): StyleVariationProfile {
   const source = `${input.variationSeed ?? ""}\n${input.artistProfile ?? ""}\n${input.brief ?? ""}\n${input.moodHint ?? ""}\n${input.vibe ?? ""}`;
+  if (
+    /\b(overt|strong|hard|max(?:imum)?|explicit|full)\b/i.test(source)
+    || /露骨|強め|濃い|全開|はっきり|ガッツリ|ごりごり|ゴリゴリ/.test(source)
+  ) {
+    if (/\bdopagaki\b|\bdopamine\b|\bhigh stimulus\b/i.test(source) || source.includes("\u30c9\u30d1\u30ac\u30ad")) {
+      return variationProfiles[0];
+    }
+  }
   if (/\bdopagaki\b|\bdopamine\b|\bhigh stimulus\b/i.test(source) || source.includes("\u30c9\u30d1\u30ac\u30ad")) {
-    return variationProfiles[0];
+    return variationProfiles[1];
   }
   const seed = input.variationSeed ?? source;
   const hash = hashString(seed || "artist-runtime-style-variation");
