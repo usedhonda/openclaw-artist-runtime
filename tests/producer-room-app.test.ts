@@ -163,6 +163,34 @@ describe("ProducerRoomApp Songs and Settings views", () => {
     expect(html).toContain("採用/破棄は Telegram の通知から");
   });
 
+  it("paginates the song ledger instead of rendering the whole archive at once", () => {
+    (globalThis as typeof globalThis & { React?: typeof React }).React = React;
+    const songs = Array.from({ length: 12 }, (_, index) => {
+      const number = String(index + 1).padStart(3, "0");
+      return {
+        songId: `song-${number}`,
+        title: `Song ${number}`,
+        status: index % 2 === 0 ? "archived" : "take_selected",
+        runCount: index,
+        selectedTakeId: `take-${number}`
+      };
+    });
+    const html = renderToStaticMarkup(
+      React.createElement(SongsView, {
+        selectedSongId: null,
+        onSelectSong: () => undefined,
+        onBack: () => undefined,
+        songs
+      })
+    );
+
+    expect(html).toContain("1-10 / 12 曲");
+    expect(html).toContain("Song 001");
+    expect(html).toContain("Song 010");
+    expect(html).not.toContain("Song 011");
+    expect(html).not.toContain("take-001");
+  });
+
   it("renders steer settings and builds a config update patch from the draft", () => {
     const config = {
       artist: { artistId: "artist", workspaceRoot: "/tmp/artist" },

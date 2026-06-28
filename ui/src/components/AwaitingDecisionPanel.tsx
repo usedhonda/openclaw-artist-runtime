@@ -107,9 +107,9 @@ export function AwaitingDecisionPanel({ callbacks, count, now = Date.now(), maxG
   const hiddenGroupCount = Math.max(0, groupedCallbacks.length - visibleGroups.length);
   return (
     <article className={`panel awaiting-decision-panel${count > 0 ? " has-waiting" : ""}`}>
-      <div className="section-title">Awaiting Producer Decision</div>
+      <div className="section-title">判断待ち</div>
       {count === 0 ? (
-        <div className="muted">採用/破棄/進行待ちの producer decision はありません。</div>
+        <div className="muted">採用/破棄/進行待ちはありません。</div>
       ) : (
         <div className="list awaiting-decision-list">
           {visibleGroups.map((callback) => (

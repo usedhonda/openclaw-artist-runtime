@@ -3,7 +3,6 @@ import { buildConfigDraft, buildConfigUpdatePatch, validateConfigDraft, type Con
 import { ErrorToastStack } from "./ErrorToast";
 import { AwaitingDecisionPanel, groupAwaitingDecisions, type AwaitingDecision } from "./components/AwaitingDecisionPanel";
 import { SongDetailCard } from "./components/SongDetailCard";
-import { SongLifecycleTimelineCard } from "./components/SongLifecycleTimelineCard";
 import { SpawnProposalQueuePanel, type SpawnProposalQueueItem } from "./components/SpawnProposalQueuePanel";
 import { SetupView } from "./components/SetupView";
 import { useHashRoute } from "./hooks/useHashRoute";
@@ -33,6 +32,7 @@ import {
 const refreshIntervalMs = 5000;
 const apiBase = "/plugins/artist-runtime/api";
 const fetchTimeoutMs = 10_000;
+const songLedgerPageSize = 10;
 const LegacyConsole = React.lazy(() => import("./App").then((module) => ({ default: module.App })));
 
 class DiagnosticsErrorBoundary extends React.Component<{ children: React.ReactNode }, { failed: boolean }> {
@@ -336,11 +336,6 @@ function RoomViewPanel(props: {
           </div>
         </article>
       ) : null}
-      <article className="panel room-note-card">
-        <div className="section-title">Creative Milestones</div>
-        <div className="muted">操作の主役は Telegram。Console は現在地と判断待ちの mirror です。</div>
-        {props.selectedSongId ? <div className="muted">選択中 song: {props.selectedSongId}</div> : null}
-      </article>
       <AwaitingDecisionPanel
         callbacks={props.awaitingDecisions.callbacks}
         count={props.awaitingDecisions.count}
@@ -348,13 +343,14 @@ function RoomViewPanel(props: {
         onPromptPackGo={props.onPromptPackGo}
         busyKey={props.busy}
       />
-      <SongLifecycleTimelineCard limit={3} />
-      <SpawnProposalQueuePanel
-        count={props.spawnProposalQueue.count}
-        proposals={props.spawnProposalQueue.proposals}
-        onDecide={props.onDecideSpawnProposal}
-        busyKey={props.busy}
-      />
+      {props.spawnProposalQueue.count > 0 ? (
+        <SpawnProposalQueuePanel
+          count={props.spawnProposalQueue.count}
+          proposals={props.spawnProposalQueue.proposals}
+          onDecide={props.onDecideSpawnProposal}
+          busyKey={props.busy}
+        />
+      ) : null}
     </section>
   );
 }
@@ -370,6 +366,16 @@ export function SongsView(props: {
   onBack: () => void;
 }) {
   const selected = props.selectedSongId;
+  const [page, setPage] = useState(0);
+  const totalPages = Math.max(1, Math.ceil(props.songs.length / songLedgerPageSize));
+  const safePage = Math.min(page, totalPages - 1);
+  const start = safePage * songLedgerPageSize;
+  const visibleSongs = props.songs.slice(start, start + songLedgerPageSize);
+  useEffect(() => {
+    if (safePage !== page) {
+      setPage(safePage);
+    }
+  }, [page, safePage]);
   return (
     <section className="single-column songs-view">
       <article className="panel">
@@ -378,25 +384,33 @@ export function SongsView(props: {
         {props.songs.length === 0 ? (
           <div className="item muted">曲台帳はまだ空です。</div>
         ) : (
-          <div className="song-ledger-list">
-            {props.songs.map((song) => (
-              <button
-                type="button"
-                className={`song-ledger-row${selected === song.songId ? " is-selected" : ""}`}
-                key={song.songId}
-                onClick={() => props.onSelectSong(song.songId)}
-              >
-                <span>
-                  <strong>{song.title || song.songId}</strong>
-                  <span className="muted">{song.songId} · run {song.runCount}</span>
-                </span>
-                <span>
-                  <StatusPill status={song.status} />
-                  {song.selectedTakeId ? <span className="muted">take {song.selectedTakeId}</span> : null}
-                </span>
-              </button>
-            ))}
-          </div>
+          <>
+            <div className="song-ledger-toolbar">
+              <span className="muted">{start + 1}-{Math.min(start + songLedgerPageSize, props.songs.length)} / {props.songs.length} 曲</span>
+              <div className="inline-actions">
+                <button type="button" disabled={safePage === 0} onClick={() => setPage((current) => Math.max(0, current - 1))}>前へ</button>
+                <button type="button" disabled={safePage >= totalPages - 1} onClick={() => setPage((current) => Math.min(totalPages - 1, current + 1))}>次へ</button>
+              </div>
+            </div>
+            <div className="song-ledger-list">
+              {visibleSongs.map((song) => (
+                <button
+                  type="button"
+                  className={`song-ledger-row${selected === song.songId ? " is-selected" : ""}`}
+                  key={song.songId}
+                  onClick={() => props.onSelectSong(song.songId)}
+                >
+                  <span>
+                    <strong>{song.title || song.songId}</strong>
+                    <span className="muted">{song.songId} · run {song.runCount}</span>
+                  </span>
+                  <span>
+                    <StatusPill status={song.status} />
+                  </span>
+                </button>
+              ))}
+            </div>
+          </>
         )}
       </article>
       {selected ? <SongDetailCard key={selected} songId={selected} onBack={props.onBack} /> : null}

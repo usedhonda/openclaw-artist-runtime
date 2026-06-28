@@ -153,7 +153,7 @@ describe("spawn proposal notification", () => {
 
     expect(response.count).toBe(2);
     expect(response.proposals[0].actions.map((action) => action.label)).toEqual(["作る", "保留する", "修正する"]);
-    expect(html).toContain("永続草稿箱");
+    expect(html).toContain("草稿箱");
     expect(html).toContain("ハンズ前、解散");
     expect(html).toContain("この草稿で曲を完成まで作る。外部公開はしない。");
     expect(html).toContain("Telegram の草稿カード、または上のボタンから実行できます。");

@@ -53,7 +53,7 @@ function sourceLine(proposal: SpawnProposalQueueItem): string {
 export function SpawnProposalQueuePanel({ count, proposals, onDecide, busyKey }: SpawnProposalQueuePanelProps) {
   return (
     <article className={`panel spawn-proposal-queue-panel${count > 0 ? " has-proposals" : ""}`}>
-      <div className="section-title">永続草稿箱</div>
+      <div className="section-title">草稿箱</div>
       {count === 0 ? (
         <div className="muted">保存中の曲草稿はありません。</div>
       ) : (

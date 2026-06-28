@@ -132,6 +132,7 @@ export function SetupView(props: {
       <article className="panel settings-panel">
         <div className="section-title">Artist Setup</div>
         <div className="muted">ファイル名は残しつつ、ここでは「何に効く人格か」を先に見せます。</div>
+        <div className="eyebrow">参照ファイル</div>
         <div className="persona-layer-map" aria-label="persona layer map">
           {personaLayerMap.map((entry) => (
             <div className="persona-layer-chip" key={entry.layer}>
@@ -231,7 +232,7 @@ export function SetupView(props: {
             <div className="inline-actions">
               <button type="button" disabled={props.busyKey !== null} onClick={props.onRefresh}>Refresh</button>
               <button type="button" disabled={props.busyKey === "persona-complete"} onClick={props.onComplete}>
-                {props.busyKey === "persona-complete" ? "Completing..." : "Setup complete"}
+                {props.busyKey === "persona-complete" ? "完了記録中" : "Setup 完了"}
               </button>
             </div>
           </div>
