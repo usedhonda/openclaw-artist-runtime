@@ -131,6 +131,49 @@ describe("TelegramNotifier", () => {
     expect(fetchImpl).not.toHaveBeenCalled();
   });
 
+  it("honors notifyStages=false for normal stage notifications", async () => {
+    const fetchImpl = vi.fn().mockResolvedValue(jsonResponse({ ok: true }));
+    const notifier = new TelegramNotifier({
+      token: "token",
+      chatId: 123,
+      fetchImpl,
+      notifyStages: false
+    });
+
+    await notifier.notify({
+      type: "autopilot_stage_changed",
+      songId: "song-001",
+      from: "planning",
+      to: "prompt_pack",
+      timestamp: 1
+    });
+
+    expect(fetchImpl).not.toHaveBeenCalled();
+  });
+
+  it("honors producerDigest=off for normal signal notifications", async () => {
+    const fetchImpl = vi.fn().mockResolvedValue(jsonResponse({ ok: true }));
+    const notifier = new TelegramNotifier({
+      token: "token",
+      chatId: 123,
+      fetchImpl,
+      producerDigest: "off"
+    });
+
+    await notifier.notify({
+      type: "prompt_pack_ready",
+      songId: "song-001",
+      title: "t",
+      lyricsExcerpt: "l",
+      mood: "m",
+      tempo: "120 BPM",
+      styleNotes: "s",
+      timestamp: 2
+    });
+
+    expect(fetchImpl).not.toHaveBeenCalled();
+  });
+
   it("sends the four producer-room signal events and preserves inline buttons", async () => {
     const root = mkdtempSync(join(tmpdir(), "artist-runtime-signal-notify-"));
     const fetchImpl = vi.fn().mockResolvedValue(jsonResponse({

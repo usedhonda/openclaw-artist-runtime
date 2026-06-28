@@ -55,4 +55,19 @@ describe("Suno V5.5 YAML builder", () => {
       meta: { vibe: "long civic dread" }
     })).toThrow("YAML overflow");
   });
+
+  it("keeps vocal gender in budget-saving YAML modes", () => {
+    const yaml = buildYaml({
+      title: "Budget Signal",
+      lyrics: `[Verse]\n${"あ".repeat(3000)}`,
+      meta: { vibe: "budget civic dread" },
+      vocals: {
+        parts: [{ id: "lead", gender: "male", tone: "dry close male vocal" }],
+        rules: ["clear consonants"]
+      }
+    });
+
+    expect(yaml).toContain("vocals:");
+    expect(yaml).toContain("gender: male");
+  });
 });

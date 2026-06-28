@@ -5,6 +5,7 @@ import { applyConfigDefaults } from "../config/schema.js";
 import { BrowserWorkerSunoConnector } from "../connectors/suno/browserWorkerConnector.js";
 import type {
   ArtistRuntimeConfig,
+  AuthorityDecision,
   PromptLedgerEntry,
   SunoArtifactIndexEntry,
   SunoImportedAssetMetadata,
@@ -109,6 +110,64 @@ function generatedDurationSec(metadata: SunoImportedAssetMetadata[] | undefined)
   return durations.length > 0 ? Math.max(...durations) : undefined;
 }
 
+function isCreateAttempt(run: SunoRunRecord): boolean {
+  return run.status !== "imported" && run.status !== "blocked_dry_run";
+}
+
+function sameUtcDay(left: string, right: Date): boolean {
+  return left.slice(0, 10) === right.toISOString().slice(0, 10);
+}
+
+function sameUtcMonth(left: string, right: Date): boolean {
+  return left.slice(0, 7) === right.toISOString().slice(0, 7);
+}
+
+export async function evaluateSunoGenerationLimits(
+  root: string,
+  config: ArtistRuntimeConfig,
+  now = new Date()
+): Promise<AuthorityDecision | undefined> {
+  const songs = await listSongStates(root);
+  const runs = (
+    await Promise.all(songs.map((song) => readAllSunoRuns(root, song.songId).catch(() => [])))
+  ).flat().filter(isCreateAttempt);
+  const dailyRuns = runs.filter((run) => sameUtcDay(run.createdAt, now));
+  const monthlyRuns = runs.filter((run) => sameUtcMonth(run.createdAt, now));
+  if (config.music.suno.maxGenerationsPerDay <= dailyRuns.length) {
+    return {
+      allowed: false,
+      reason: `Suno daily generation limit reached (${dailyRuns.length}/${config.music.suno.maxGenerationsPerDay})`,
+      hardStop: true,
+      policyDecision: "stop_daily_generation_limit"
+    };
+  }
+  if (config.music.suno.monthlyGenerationBudget <= monthlyRuns.length) {
+    return {
+      allowed: false,
+      reason: `Suno monthly generation budget reached (${monthlyRuns.length}/${config.music.suno.monthlyGenerationBudget})`,
+      hardStop: true,
+      policyDecision: "stop_monthly_generation_budget"
+    };
+  }
+  const latest = runs
+    .map((run) => Date.parse(run.createdAt))
+    .filter((timestamp) => Number.isFinite(timestamp))
+    .sort((left, right) => right - left)[0];
+  if (latest !== undefined) {
+    const elapsedMs = now.getTime() - latest;
+    const requiredMs = config.music.suno.minMinutesBetweenCreates * 60 * 1000;
+    if (elapsedMs < requiredMs) {
+      const remainingMinutes = Math.ceil((requiredMs - elapsedMs) / 60000);
+      return {
+        allowed: false,
+        reason: `Suno create cooldown active (${remainingMinutes} min remaining)`,
+        policyDecision: "stop_create_cooldown"
+      };
+    }
+  }
+  return undefined;
+}
+
 async function appendLedgerEntries(path: string, entries: PromptLedgerEntry[]): Promise<void> {
   for (const entry of entries) {
     await appendPromptLedger(path, entry);
@@ -178,7 +237,7 @@ export async function generateSunoRun(input: GenerateSunoRunInput): Promise<Suno
   const connector = new BrowserWorkerSunoConnector(input.workspaceRoot, { config });
   const workerStatus = input.workerState ? { state: input.workerState } : await connector.status();
   const { payload, payloadHash, payloadPath } = await loadPayload(input.workspaceRoot, input.songId);
-  const authorityDecision = decideMusicAuthority({
+  let authorityDecision = decideMusicAuthority({
     dryRun: config.autopilot.dryRun,
     authority: config.music.suno.authority,
     budgetRemaining: config.music.suno.monthlyGenerationBudget,
@@ -186,6 +245,9 @@ export async function generateSunoRun(input: GenerateSunoRunInput): Promise<Suno
     workerState: workerStatus.state,
     requestedAction: "create"
   });
+  if (authorityDecision.allowed) {
+    authorityDecision = await evaluateSunoGenerationLimits(input.workspaceRoot, config) ?? authorityDecision;
+  }
 
   const createdAt = new Date().toISOString();
   const provisionalRunId = runId();

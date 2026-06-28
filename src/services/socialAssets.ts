@@ -26,8 +26,15 @@ function buildCopy(platform: SocialPlatform, title: string, reason?: string, tak
   ].join("\n");
 }
 
+function defaultPostType(platform: SocialPlatform): string {
+  return platform === "x" ? "observation" : platform === "instagram" ? "lyric_card" : "hook_clip";
+}
+
 export async function prepareSocialAssets(input: PrepareSocialAssetsInput): Promise<SocialAssetRecord[]> {
   const config = applyConfigDefaults(input.config);
+  if (config.distribution.dailySharing === "off") {
+    throw new Error("daily_sharing_off");
+  }
   const song = await readSongState(input.workspaceRoot, input.songId);
   if (!song.selectedTakeId) {
     throw new Error(`cannot prepare social assets before take selection for ${input.songId}`);
@@ -36,7 +43,11 @@ export async function prepareSocialAssets(input: PrepareSocialAssetsInput): Prom
   const enabledPlatforms = (Object.entries(config.distribution.platforms) as Array<[SocialPlatform, ArtistRuntimeConfig["distribution"]["platforms"][SocialPlatform]]>)
     .filter(([, platform]) => platform.enabled)
     .map(([platform]) => platform);
-  const targets = enabledPlatforms.length > 0 ? enabledPlatforms : (["x"] as SocialPlatform[]);
+  const targets = (enabledPlatforms.length > 0 ? enabledPlatforms : (["x"] as SocialPlatform[]))
+    .filter((platform) => config.distribution.platforms[platform].autoPostTypes.includes(defaultPostType(platform)));
+  if (targets.length === 0) {
+    throw new Error("no_enabled_auto_post_types");
+  }
 
   const records: SocialAssetRecord[] = [];
   await mkdir(join(input.workspaceRoot, "songs", input.songId, "social"), { recursive: true });
@@ -47,7 +58,7 @@ export async function prepareSocialAssets(input: PrepareSocialAssetsInput): Prom
     records.push({
       songId: input.songId,
       platform,
-      postType: platform === "x" ? "observation" : platform === "instagram" ? "lyric_card" : "hook_clip",
+      postType: defaultPostType(platform),
       textPath,
       mediaRefs: [],
       sourceTakeId: song.selectedTakeId

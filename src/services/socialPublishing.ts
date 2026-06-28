@@ -5,11 +5,12 @@ import { InstagramConnector } from "../connectors/social/instagramConnector.js";
 import type { SocialConnector } from "../connectors/social/SocialConnector.js";
 import { TikTokConnector } from "../connectors/social/tiktokConnector.js";
 import { XBirdConnector } from "../connectors/social/xBirdConnector.js";
-import type { ArtistRuntimeConfig, SocialCapability, SocialPlatform, SocialPublishLedgerEntry, SocialPublishResult, SocialRiskLevel } from "../types.js";
+import type { ArtistRuntimeConfig, AuthorityDecision, SocialCapability, SocialPlatform, SocialPublishLedgerEntry, SocialPublishResult, SocialRiskLevel } from "../types.js";
 import { readSongState, updateSongState } from "./artistState.js";
 import { appendAuditLog, createAuditEvent } from "./auditLog.js";
 import { decideSocialAuthority } from "./socialAuthority.js";
-import { appendSocialPublishLedgerEntry, appendSocialReplyLedgerEntry, readLatestSocialPublishLedgerEntry } from "./socialPublishLedger.js";
+import { listSongStates } from "./artistState.js";
+import { appendSocialPublishLedgerEntry, appendSocialReplyLedgerEntry, readLatestSocialPublishLedgerEntry, readSocialPublishLedgerEntries } from "./socialPublishLedger.js";
 import { resolvePlatformSocialDryRun } from "./socialDryRunResolver.js";
 
 export interface SocialActionInput {
@@ -51,6 +52,95 @@ function hashText(value?: string): string | undefined {
   return value ? createHash("sha256").update(value).digest("hex") : undefined;
 }
 
+function todayKey(now = new Date()): string {
+  return now.toISOString().slice(0, 10);
+}
+
+function platformAutoPostTypes(config: ArtistRuntimeConfig, platform: SocialPlatform): string[] {
+  return config.distribution.platforms[platform].autoPostTypes;
+}
+
+function platformPostLimit(config: ArtistRuntimeConfig, platform: SocialPlatform): number {
+  return config.distribution.platforms[platform].maxPostsPerDay;
+}
+
+function platformReplyLimit(config: ArtistRuntimeConfig, platform: SocialPlatform): number {
+  return platform === "x" ? config.distribution.platforms.x.maxRepliesPerDay : 0;
+}
+
+function officialReleasePostType(postType: string): boolean {
+  return /official|release/i.test(postType);
+}
+
+function containsForbiddenTopic(text: string | undefined, topics: string[]): string | undefined {
+  const normalized = (text ?? "").toLowerCase();
+  return topics.find((topic) => topic.trim() && normalized.includes(topic.trim().toLowerCase()));
+}
+
+async function readTodaysPlatformActions(root: string, platform: SocialPlatform, action: "publish" | "reply"): Promise<SocialPublishLedgerEntry[]> {
+  const songs = await listSongStates(root);
+  const today = todayKey();
+  const entries = (
+    await Promise.all(songs.map((song) => readSocialPublishLedgerEntries(root, song.songId).catch(() => [])))
+  ).flat();
+  return entries.filter((entry) =>
+    entry.platform === platform
+    && entry.action === action
+    && entry.accepted
+    && entry.timestamp.slice(0, 10) === today
+  );
+}
+
+async function enforceSocialConfigPolicy(
+  input: SocialActionInput,
+  config: ArtistRuntimeConfig,
+  baseDecision: AuthorityDecision
+): Promise<AuthorityDecision> {
+  if (!baseDecision.allowed) return baseDecision;
+  const forbidden = containsForbiddenTopic(input.text, config.safety.forbiddenTopics);
+  if (forbidden) {
+    return {
+      allowed: false,
+      reason: `forbidden topic blocked: ${forbidden}`,
+      requiresApproval: true,
+      policyDecision: "deny_forbidden_topic"
+    };
+  }
+  if (input.action !== "reply" && config.distribution.dailySharing === "off") {
+    return { allowed: false, reason: "daily sharing is off", policyDecision: "deny_daily_sharing_off" };
+  }
+  if (input.action !== "reply" && config.distribution.dailySharing === "draft_only") {
+    return { allowed: false, reason: "daily sharing is draft_only", policyDecision: "deny_daily_sharing_draft_only" };
+  }
+  if (input.action !== "reply" && officialReleasePostType(input.postType) && config.distribution.officialRelease === "manual_approval") {
+    return { allowed: false, reason: "official release requires manual approval", requiresApproval: true, policyDecision: "require_official_release_approval" };
+  }
+  if (input.action !== "reply" && !platformAutoPostTypes(config, input.platform).includes(input.postType)) {
+    return { allowed: false, reason: `${input.platform} post type is not enabled: ${input.postType}`, policyDecision: "deny_post_type" };
+  }
+  const action = input.action ?? "publish";
+  if (action === "reply") {
+    const limit = platformReplyLimit(config, input.platform);
+    if (limit <= 0) {
+      return { allowed: false, reason: `${input.platform} replies are capped at 0/day`, policyDecision: "deny_reply_cap" };
+    }
+    const replies = await readTodaysPlatformActions(input.workspaceRoot, input.platform, "reply");
+    if (replies.length >= limit) {
+      return { allowed: false, reason: `${input.platform} daily reply cap reached (${replies.length}/${limit})`, policyDecision: "deny_reply_cap" };
+    }
+  } else {
+    const limit = platformPostLimit(config, input.platform);
+    if (limit <= 0) {
+      return { allowed: false, reason: `${input.platform} posts are capped at 0/day`, policyDecision: "deny_post_cap" };
+    }
+    const posts = await readTodaysPlatformActions(input.workspaceRoot, input.platform, "publish");
+    if (posts.length >= limit) {
+      return { allowed: false, reason: `${input.platform} daily post cap reached (${posts.length}/${limit})`, policyDecision: "deny_post_cap" };
+    }
+  }
+  return baseDecision;
+}
+
 function capabilityForPostType(capability: SocialCapability, postType: string, action: "publish" | "reply") {
   if (action === "reply") {
     return capability.reply;
@@ -84,15 +174,17 @@ export async function publishSocialAction(input: SocialActionInput): Promise<{ r
   const connector = getConnector(input.platform);
   const capabilitySummary = await connector.checkCapabilities();
   const capabilityAvailable = capabilityForPostType(capabilitySummary, input.postType, action);
-  const authorityDecision = decideSocialAuthority({
+  let authorityDecision = decideSocialAuthority({
     dryRun: effectiveDryRun,
     authority: getPlatformAuthority(config, input.platform),
     platform: input.platform,
     risk: input.risk ?? "low",
     postType: input.postType,
     requestedAction: action,
-    capabilityAvailable
+    capabilityAvailable,
+    requireApprovalForHighRisk: config.safety.requireApprovalForHighRisk
   });
+  authorityDecision = await enforceSocialConfigPolicy(input, config, authorityDecision);
   if (action === "publish") {
     const songState = await readSongState(input.workspaceRoot, input.songId);
     if (songState.degradedLyrics) {
@@ -184,23 +276,25 @@ export async function publishSocialAction(input: SocialActionInput): Promise<{ r
     };
   }
 
-  await appendAuditLog(
-    getAuditPath(input.workspaceRoot, input.songId),
-    createAuditEvent({
-      eventType: action === "reply" ? "social_reply" : "social_publish",
-      actor: "connector",
-      sourceRefs: input.mediaPaths,
-      policyDecision: authorityDecision,
-      verification: entry.verification,
-      error: entry.error,
-      details: {
-        platform: input.platform,
-        connector: connector.id,
-        postType: input.postType,
-        url: result.url
-      }
-    })
-  );
+  if (config.safety.auditLog) {
+    await appendAuditLog(
+      getAuditPath(input.workspaceRoot, input.songId),
+      createAuditEvent({
+        eventType: action === "reply" ? "social_reply" : "social_publish",
+        actor: "connector",
+        sourceRefs: input.mediaPaths,
+        policyDecision: authorityDecision,
+        verification: entry.verification,
+        error: entry.error,
+        details: {
+          platform: input.platform,
+          connector: connector.id,
+          postType: input.postType,
+          url: result.url
+        }
+      })
+    );
+  }
   if (action === "reply" && entry.replyTarget?.type === "reply") {
     await appendSocialReplyLedgerEntry(input.workspaceRoot, input.songId, entry);
   } else {

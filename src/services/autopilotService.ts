@@ -16,7 +16,7 @@ import { createSongIdea } from "./songIdeation.js";
 import { draftLyrics } from "./lyricsDrafting.js";
 import { prepareSocialAssets } from "./socialAssets.js";
 import { createAndPersistSunoPromptPack } from "./sunoPromptPackFiles.js";
-import { generateSunoRun, importSunoResults, readLatestSunoRun } from "./sunoRuns.js";
+import { evaluateSunoGenerationLimits, generateSunoRun, importSunoResults, readLatestSunoRun } from "./sunoRuns.js";
 import { publishSocialAction } from "./socialPublishing.js";
 import { selectTake } from "./takeSelection.js";
 import { evaluateSunoTakeSelection } from "./sunoTakeSelector.js";
@@ -319,6 +319,21 @@ function spawnProposalRecordFromGenerated(
 function isProducerReviewOnlyLane(state: AutopilotRunState): boolean {
   void state;
   return false;
+}
+
+async function weeklySongLimitBlocked(root: string, config: ArtistRuntimeConfig, now = new Date()): Promise<string | undefined> {
+  if (config.autopilot.songsPerWeek <= 0) {
+    return "weekly song creation limit is 0";
+  }
+  const weekAgo = now.getTime() - 7 * 24 * 60 * 60 * 1000;
+  const songs = await listSongStates(root);
+  const recent = songs.filter((song) => {
+    const createdAt = Date.parse(song.createdAt);
+    return Number.isFinite(createdAt) && createdAt >= weekAgo && createdAt <= now.getTime();
+  });
+  return recent.length >= config.autopilot.songsPerWeek
+    ? `weekly song creation limit reached (${recent.length}/${config.autopilot.songsPerWeek})`
+    : undefined;
 }
 
 async function runIdeaQueueLane(
@@ -1234,6 +1249,19 @@ export class ArtistAutopilotService {
 
     try {
       if (!song) {
+        if (!input.manualSeed) {
+          const weeklyLimit = await weeklySongLimitBlocked(input.workspaceRoot, config);
+          if (weeklyLimit) {
+            return writeStageState(input.workspaceRoot, existing, {
+              ...baseState,
+              currentSongId: undefined,
+              stage: "planning",
+              blockedReason: weeklyLimit,
+              lastError: undefined,
+              cycleCount: existing.cycleCount + 1
+            });
+          }
+        }
         if (!input.manualSeed && isSongSpawnConfigured(config)) {
           return writeStageState(input.workspaceRoot, existing, {
             ...baseState,
@@ -1325,6 +1353,18 @@ export class ArtistAutopilotService {
           });
         }
         case "suno_generation": {
+          const generationLimit = await evaluateSunoGenerationLimits(input.workspaceRoot, config);
+          if (generationLimit) {
+            return writeStageState(input.workspaceRoot, existing, {
+              ...baseState,
+              currentSongId: song.songId,
+              stage: "suno_generation",
+              blockedReason: generationLimit.reason,
+              lastError: generationLimit.reason,
+              lastSuccessfulStage: existing.lastSuccessfulStage,
+              cycleCount: existing.cycleCount + 1
+            });
+          }
           if (isMockSunoGenerationBypass(config)) {
             const budget = await reserveSunoGenerationBudget(input.workspaceRoot, 1);
             if (!budget.ok) {

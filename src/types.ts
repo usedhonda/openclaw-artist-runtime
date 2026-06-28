@@ -1044,6 +1044,7 @@ export interface SocialAuthorityInput {
   postType: string;
   requestedAction?: "publish" | "reply";
   capabilityAvailable?: CapabilityState;
+  requireApprovalForHighRisk?: boolean;
 }
 
 export interface AutopilotStatus {

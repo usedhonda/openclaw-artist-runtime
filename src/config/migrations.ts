@@ -24,8 +24,31 @@ export function migrateConfig(config: unknown): Partial<ArtistRuntimeConfig> {
     throw new Error(`config schemaVersion ${version} is newer than supported ${CURRENT_CONFIG_SCHEMA_VERSION}`);
   }
 
+  return migrateV1ToCurrent(config);
+}
+
+function migrateV1ToCurrent(config: ConfigRecord): Partial<ArtistRuntimeConfig> {
+  const music = config.music?.suno
+    ? {
+        ...config.music,
+        suno: {
+          ...config.music.suno,
+          stopOnLoginChallenge: true,
+          stopOnCaptcha: true,
+          stopOnPaymentPrompt: true,
+          promptLogging: "full" as const
+        }
+      }
+    : config.music;
   return {
     ...config,
+    music,
+    safety: config.safety ? {
+      ...config.safety,
+      forbidCaptchaBypass: true,
+      forbidCredentialLogging: true,
+      requireApprovalForHighRisk: true
+    } : config.safety,
     schemaVersion: CURRENT_CONFIG_SCHEMA_VERSION
   };
 }

@@ -195,6 +195,8 @@ function renderYaml(input: BuildYamlInput, level: YamlBudgetLevel): string {
       for (const part of parts) {
         lines.push(`    - id: ${part.id}`, `      gender: ${part.gender ?? "male"}`, `      tone: ${part.tone}`);
       }
+    } else {
+      lines.push(`  gender: ${parts[0]?.gender ?? "male"}`);
     }
     lines.push("  rules:");
     for (const rule of takeByLevel(rules, level)) {

@@ -297,7 +297,7 @@
             "openclaw"
           ],
           "default": "mock",
-          "description": "Debug-only AI review provider. 'mock' never calls an external model; 'openclaw' is reserved until a provider is configured."
+          "description": "AI provider used for artist setup proposals, lyrics drafts, style synthesis, and production review. 'mock' stays local and deterministic; 'openclaw' uses the configured OpenClaw provider when available."
         }
       }
     },

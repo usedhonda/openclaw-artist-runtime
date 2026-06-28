@@ -13,7 +13,7 @@ import {
 import { proposeFreeformChangeSet, type ChangeSetProposal } from "./freeformChangesetProposer.js";
 import { secretLikePattern } from "./personaMigrator.js";
 import { handleCommission } from "./songCommissionHandler.js";
-import { isCommissionEnabled } from "./runtimeConfig.js";
+import { isCommissionConfigured, readResolvedConfig } from "./runtimeConfig.js";
 
 export interface TelegramConversationalRouteInput {
   text: string;
@@ -36,6 +36,11 @@ export interface TelegramProposalButtonsRequest {
 
 function stripCommand(text: string): string {
   return text.replace(/^\/(persona|song|talk|commission)\b/i, "").trim();
+}
+
+function forbiddenTopic(text: string, topics: string[]): string | undefined {
+  const normalized = text.toLowerCase();
+  return topics.find((topic) => topic.trim() && normalized.includes(topic.trim().toLowerCase()));
 }
 
 function songCreateHint(text: string): string | undefined {
@@ -124,12 +129,17 @@ export async function routeTelegramConversation(input: TelegramConversationalRou
     return { responseText: "それ、秘密っぽい文字列が混じってる。別の言い方で投げてくれ。", shouldStoreFreeText: true };
   }
   if (/^\/commission\b/i.test(text)) {
-    if (!isCommissionEnabled()) {
+    const config = await readResolvedConfig(input.workspaceRoot);
+    if (!isCommissionConfigured(config)) {
       return { responseText: "commission intake is disabled. OPENCLAW_COMMISSION_ENABLED=on で開ける。", shouldStoreFreeText: false };
     }
     const brief = stripCommand(text);
     if (!brief) {
       return { responseText: "Usage: /commission <曲のお題・方向性>", shouldStoreFreeText: false };
+    }
+    const blockedTopic = forbiddenTopic(brief, config.safety.forbiddenTopics);
+    if (blockedTopic) {
+      return { responseText: `commission blocked by forbidden topic: ${blockedTopic}`, shouldStoreFreeText: false };
     }
     const result = await handleCommission(input.workspaceRoot, {
       brief,

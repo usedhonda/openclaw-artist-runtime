@@ -373,7 +373,7 @@
               "openclaw"
             ],
             "default": "mock",
-            "description": "Debug-only AI review provider. 'mock' never calls an external model; 'openclaw' is reserved until a provider is configured."
+            "description": "AI provider used for artist setup proposals, lyrics drafts, style synthesis, and production review. 'mock' stays local and deterministic; 'openclaw' uses the configured OpenClaw provider when available."
           }
         }
       },
@@ -752,8 +752,8 @@
       "help": "Allow owner free-text messages to be staged for a later operator inbox path."
     },
     "aiReview.provider": {
-      "label": "Debug AI review provider",
-      "help": "Debug-only review provider for /review. Mock is safe and does not affect take selection or publishing."
+      "label": "AI helper provider",
+      "help": "Chooses the AI helper used for persona proposals, lyrics, Suno style synthesis, and review. Mock is local/deterministic; OpenClaw uses the configured provider."
     },
     "ui.locale": {
       "label": "Producer Room language",

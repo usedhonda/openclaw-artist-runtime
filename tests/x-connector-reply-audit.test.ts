@@ -158,7 +158,7 @@ describe("X reply audit trail", () => {
           enabled: true,
           liveGoArmed: true,
           platforms: {
-            x: { enabled: true, liveGoArmed: true, authority: "auto_publish_and_low_risk_replies" }
+            x: { enabled: true, liveGoArmed: true, authority: "auto_publish_and_low_risk_replies", maxRepliesPerDay: 1 }
           }
         }
       }

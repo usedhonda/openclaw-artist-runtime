@@ -4,6 +4,7 @@ import { lintJapaneseLyricsEnglishFragments, lintResidualKanji, normalizeAsciiNu
 import { repairCommandLeak } from "../services/lyricsRepair.js";
 import type { AiReviewProvider, CreateSunoPromptPackInput, SunoPromptPack, SunoSliders } from "../types.js";
 import { getSunoLyricsLimit } from "../services/runtimeConfig.js";
+import { parseLyricsLanguagePolicy } from "../services/lyricsLanguagePolicy.js";
 import { validateSunoPromptPack } from "../validators/promptPackValidator.js";
 import { buildExclude as buildExcludeV55 } from "./buildExclude.js";
 import { synthesizeExclude } from "./buildExclude.js";
@@ -81,6 +82,7 @@ export function createSunoPromptPack(input: CreateSunoPromptPackInput): SunoProm
   const durationPlan = getDurationPlan();
   const bpm = input.bpm ?? durationPlan.bpm.target;
   const vocalGender = input.vocalGender ?? artistDefaultVocalGender(input.artistSnapshot);
+  const languagePolicy = parseLyricsLanguagePolicy(input.artistSnapshot);
   const lyricsBoxLimit = getSunoLyricsLimit();
   const styleResult = buildStyleV55({
     artistProfile: input.artistSnapshot,
@@ -106,7 +108,7 @@ export function createSunoPromptPack(input: CreateSunoPromptPackInput): SunoProm
       signature: "4/4",
       form: durationPlan.form,
       vibe: input.moodHint ?? "observational dusk",
-      language: "ja"
+      language: languagePolicy.yamlLanguage
     },
     vocals: {
       parts: [
@@ -126,7 +128,8 @@ export function createSunoPromptPack(input: CreateSunoPromptPackInput): SunoProm
     ],
     notes: [
       "original lyrics and style only; no source-name imitation",
-      "metadata describes delivery; lyrics body remains the singable text"
+      "metadata describes delivery; lyrics body remains the singable text",
+      languagePolicy.instruction
     ],
     cues: durationPlanCues(durationPlan),
     lyricsBoxLimit,
@@ -174,6 +177,7 @@ export async function createSunoPromptPackWithAi(
   const durationPlan = getDurationPlan();
   const bpm = input.bpm ?? durationPlan.bpm.target;
   const vocalGender = input.vocalGender ?? artistDefaultVocalGender(input.artistSnapshot);
+  const languagePolicy = parseLyricsLanguagePolicy(input.artistSnapshot);
   const lyricsBoxLimit = getSunoLyricsLimit();
   const styleResult = await synthesizeStyle({
     artistProfile: input.artistSnapshot,
@@ -198,7 +202,7 @@ export async function createSunoPromptPackWithAi(
       signature: "4/4",
       form: durationPlan.form,
       vibe: input.moodHint ?? "observational dusk",
-      language: "ja"
+      language: languagePolicy.yamlLanguage
     },
     vocals: {
       parts: [
@@ -218,7 +222,8 @@ export async function createSunoPromptPackWithAi(
     ],
     notes: [
       "original lyrics and style only; no source-name imitation",
-      "metadata describes delivery; lyrics body remains the singable text"
+      "metadata describes delivery; lyrics body remains the singable text",
+      languagePolicy.instruction
     ],
     cues: durationPlanCues(durationPlan),
     lyricsBoxLimit,

@@ -3,6 +3,7 @@ import {
   formatDurationPlanForPrompt,
   getDurationPlan
 } from "../suno-production/durationPlan.js";
+import type { LyricsLanguagePolicy } from "./lyricsLanguagePolicy.js";
 
 export const LYRICS_WRITER_INSTRUCTIONS_ATTRIBUTION =
   "Source: sunomanual/mygpts/lyrics-writer/instructions.md (MIT, Copyright 2025-2026 usedhonda)";
@@ -46,6 +47,7 @@ export interface BuildLyricsPromptInput {
   lyricsBoxLimit?: number;
   lyricBodyLimit?: number;
   artistName?: string;
+  languagePolicy?: LyricsLanguagePolicy;
 }
 
 function truncate(value: string, max = 8000): string {
@@ -94,6 +96,7 @@ export function buildLyricsDraftingPrompt(input: BuildLyricsPromptInput): string
   const lyricBodyLimit = input.lyricBodyLimit ?? Math.max(200, Math.min(2600, lyricsBoxLimit - 900));
   const durationPlan = getDurationPlan();
   const artistName = input.artistName?.trim() || "the configured artist";
+  const languagePolicy = input.languagePolicy;
   return [
     `Write lyrics for ${artistName} from the provided raw material.`,
     "Use the attributed lyrics-writer system source as the craft policy for this draft.",
@@ -107,6 +110,7 @@ export function buildLyricsDraftingPrompt(input: BuildLyricsPromptInput): string
     "",
     "Extract one motif from the observation-bearing brief, metabolize it through the artist persona, and avoid generic placeholder lyrics.",
     "Prioritize 韻, 伏線, 情景, genre-aware flow, hook design, Suno V5.5 section tags, and singable line length.",
+    languagePolicy ? `Language policy: ${languagePolicy.instruction}` : "",
     "Return strict JSON only: {\"title\":\"2-4 words\",\"form\":\"duration_plan_v1 form\",\"sections\":[{\"tag\":\"Verse 1 - 16 bars, spacious rap phrasing, no double-time\",\"lines\":[\"line\"]}],\"bilingual_hint\":\"short note\",\"moodHint\":\"2-4 word sonic mood\"}.",
     "Use the DurationPlan section plan below as the only form source. Do not invent a shorter 7-section form.",
     "Physically repeat the Hook text in Hook 2 and Final Hook; do not write only \"repeat hook\" as an instruction.",

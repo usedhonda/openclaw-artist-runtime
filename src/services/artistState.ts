@@ -1,7 +1,8 @@
 import { mkdir, readdir, readFile, writeFile } from "node:fs/promises";
-import { join } from "node:path";
+import { isAbsolute, normalize, join } from "node:path";
 import { createSongSkeleton } from "../repositories/songRepository.js";
 import type { ObservationSummary, SongState, SongStateImportOutcome, SongStatus } from "../types.js";
+import { readResolvedConfig } from "./runtimeConfig.js";
 
 const stateBlockStart = "<!-- artist-runtime:song-state:start -->";
 const stateBlockEnd = "<!-- artist-runtime:song-state:end -->";
@@ -253,8 +254,14 @@ export async function syncSongbookRow(root: string, state: SongState): Promise<v
 }
 
 export async function readArtistMind(root: string): Promise<ArtistMindSnapshot> {
+  const config = await readResolvedConfig(root).catch(() => undefined);
+  const configuredProfilePath = config?.artist.profilePath?.trim() || "ARTIST.md";
+  const normalizedProfile = normalize(configuredProfilePath);
+  const artistProfilePath = !isAbsolute(normalizedProfile) && !normalizedProfile.startsWith("..")
+    ? join(root, normalizedProfile)
+    : join(root, "ARTIST.md");
   const [artist, currentState, socialVoice, songbook] = await Promise.all([
-    readFile(join(root, "ARTIST.md"), "utf8").catch(() => ""),
+    readFile(artistProfilePath, "utf8").catch(() => ""),
     readFile(join(root, "artist", "CURRENT_STATE.md"), "utf8").catch(() => ""),
     readFile(join(root, "artist", "SOCIAL_VOICE.md"), "utf8").catch(() => ""),
     readFile(songbookPath(root), "utf8").catch(() => defaultSongbook)

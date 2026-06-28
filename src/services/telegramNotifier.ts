@@ -1,7 +1,7 @@
 import type { RuntimeEvent, RuntimeEventBus } from "./runtimeEventBus.js";
 import { TelegramClient, telegramAttemptsFromError, type TelegramFetch } from "./telegramClient.js";
 import { generateArtistResponse, readArtistVoiceContext } from "./artistVoiceResponder.js";
-import type { AiReviewProvider } from "../types.js";
+import type { AiReviewProvider, ProducerDigestMode } from "../types.js";
 import { registerCallbackAction } from "./callbackActionRegistry.js";
 import { appendConversationTurn } from "./conversationalSession.js";
 import { proposalForDetection } from "./songDistributionPoller.js";
@@ -37,6 +37,8 @@ export interface TelegramNotifierOptions {
   aiReviewProvider?: AiReviewProvider;
   fetchImpl?: TelegramFetch;
   dashboardBaseUrl?: string;
+  notifyStages?: boolean;
+  producerDigest?: ProducerDigestMode;
 }
 
 const TELEGRAM_SIGNAL_EVENT_TYPES: ReadonlySet<RuntimeEvent["type"]> = new Set([
@@ -194,6 +196,8 @@ export class TelegramNotifier {
       await this.client.sendMessage(this.options.chatId, formatActionableHardStopText(event));
       return;
     }
+    if (this.options.producerDigest === "off") return;
+    if (this.options.notifyStages === false) return;
     if (!isTelegramSignalEvent(event)) return;
     if (event.type === "song_spawn_proposed") {
       return this.enqueueSongSpawnNotification(event);

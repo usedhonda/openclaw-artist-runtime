@@ -219,6 +219,10 @@ export class TelegramBotWorker {
           aiReviewProvider: this.options.aiReviewProvider,
           dashboardBaseUrl: this.options.dashboardBaseUrl ?? getDashboardBaseUrl()
         });
+    if (route.shouldStoreFreeText && !this.options.config.acceptFreeText) {
+      await client.sendMessage(message.chat.id, "Free text intake is disabled in settings.");
+      return true;
+    }
     if (route.shouldStoreFreeText) {
       await storeTelegramInbox(this.options.root, {
         type: "free_text",

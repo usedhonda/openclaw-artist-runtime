@@ -530,7 +530,12 @@ export function mergeResolvedConfig(current: ArtistRuntimeConfig, patch: Partial
         tiktok: { ...current.distribution.platforms.tiktok, ...patch.distribution?.platforms?.tiktok }
       }
     },
+    telegram: { ...current.telegram, ...patch.telegram },
     artistPulse: { ...current.artistPulse, ...patch.artistPulse },
+    commission: { ...current.commission, ...patch.commission },
+    songSpawn: { ...current.songSpawn, ...patch.songSpawn },
+    aiReview: { ...current.aiReview, ...patch.aiReview },
+    ui: { ...current.ui, ...patch.ui },
     safety: { ...current.safety, ...patch.safety }
   }));
 }

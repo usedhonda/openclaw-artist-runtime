@@ -129,7 +129,9 @@ export async function startTelegramNotifierFromEnv(env: NodeJS.ProcessEnv = proc
     chatId: Number.isFinite(Number(chatId)) ? Number(chatId) : chatId,
     workspaceRoot: config.artist.workspaceRoot,
     aiReviewProvider: config.aiReview.provider,
-    dashboardBaseUrl
+    dashboardBaseUrl,
+    notifyStages: config.telegram.notifyStages,
+    producerDigest: config.autopilot.producerDigest
   }).subscribe(getRuntimeEventBus()));
   if (!stopFailedNotifyReplayWorker && failedNotifyReplayEnabled(env)) {
     stopFailedNotifyReplayWorker = startFailedNotifyReplayWorker({

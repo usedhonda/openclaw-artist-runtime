@@ -11,8 +11,9 @@ export function decideSocialAuthority(input: SocialAuthorityInput): AuthorityDec
   if (input.authority === "disabled" || input.authority === "draft_only") {
     return { allowed: false, reason: `${input.platform} authority blocks live publishing`, policyDecision: "deny_authority" };
   }
+  const requireApprovalForHighRisk = input.requireApprovalForHighRisk ?? true;
   if (requestedAction === "reply") {
-    if (input.risk === "high") {
+    if (input.risk === "high" && requireApprovalForHighRisk) {
       return {
         allowed: false,
         reason: "high-risk social reply requires producer intervention",
@@ -25,7 +26,7 @@ export function decideSocialAuthority(input: SocialAuthorityInput): AuthorityDec
     }
     return { allowed: false, reason: `${input.platform} authority does not allow replies`, policyDecision: "deny_reply" };
   }
-  if (input.risk === "high") {
+  if (input.risk === "high" && requireApprovalForHighRisk) {
     return {
       allowed: false,
       reason: "high-risk social action requires producer intervention",

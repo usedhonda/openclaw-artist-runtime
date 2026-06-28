@@ -66,7 +66,7 @@ function validateStringArray(path: string, value: unknown, errors: string[]): vo
 export function applyConfigDefaults(config?: PartialDeep<ArtistRuntimeConfig>): ArtistRuntimeConfig {
   const merged = structuredClone(defaultArtistRuntimeConfig);
   if (!config) {
-    return merged;
+    return enforceConfigInvariants(merged);
   }
 
   if (config.schemaVersion !== undefined) {
@@ -134,7 +134,18 @@ export function applyConfigDefaults(config?: PartialDeep<ArtistRuntimeConfig>): 
     Object.assign(merged.safety, config.safety);
   }
 
-  return merged;
+  return enforceConfigInvariants(merged);
+}
+
+function enforceConfigInvariants(config: ArtistRuntimeConfig): ArtistRuntimeConfig {
+  config.music.suno.stopOnLoginChallenge = true;
+  config.music.suno.stopOnCaptcha = true;
+  config.music.suno.stopOnPaymentPrompt = true;
+  config.music.suno.promptLogging = "full";
+  config.safety.forbidCaptchaBypass = true;
+  config.safety.forbidCredentialLogging = true;
+  config.safety.requireApprovalForHighRisk = true;
+  return config;
 }
 
 export function validateConfig(config: unknown): ValidationResult<ArtistRuntimeConfig> {

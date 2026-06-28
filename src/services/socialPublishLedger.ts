@@ -122,3 +122,7 @@ export async function readLatestSocialPublishLedgerEntry(root: string, songId: s
   const entries = await readJsonlEntries<SocialPublishLedgerEntry>(getSocialLedgerPath(root, songId));
   return entries.at(-1);
 }
+
+export async function readSocialPublishLedgerEntries(root: string, songId: string): Promise<SocialPublishLedgerEntry[]> {
+  return readJsonlEntries<SocialPublishLedgerEntry>(getSocialLedgerPath(root, songId));
+}
