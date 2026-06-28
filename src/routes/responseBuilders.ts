@@ -28,6 +28,7 @@ import { listPendingSpawnProposals } from "../services/spawnProposalQueue.js";
 import { buildEffectiveDryRunMap, resolvePlatformSocialDryRun } from "../services/socialDryRunResolver.js";
 import { readDistributionDetectionState } from "../services/songDistributionPoller.js";
 import { secretLikePattern } from "../services/personaMigrator.js";
+import { auditPersonaCompleteness } from "../services/personaFieldAuditor.js";
 import { proposePersonaFields } from "../services/personaProposer.js";
 import { readArtistPersonaSummary, writeArtistPersona, writePersonaCompletionMarker } from "../services/personaFileBuilder.js";
 import { describePersonaSetupReasons, readPersonaSetupStatus } from "../services/personaSetupDetector.js";
@@ -582,6 +583,7 @@ export interface PersonaRouteResponse {
   producer: { text: string };
   inner: { text: string };
   setup: Awaited<ReturnType<typeof readPersonaSetupStatus>> & { reasonsText: string };
+  audit: Awaited<ReturnType<typeof auditPersonaCompleteness>>;
   aiDraftSupported: ["artist", "soul"];
   provider: AiReviewProvider;
 }
@@ -650,13 +652,14 @@ function personaRouteError(error: unknown): Record<string, unknown> {
 export async function buildPersonaResponse(config?: Partial<ArtistRuntimeConfig>): Promise<PersonaRouteResponse> {
   const mergedConfig = await resolveRuntimeConfig(config);
   const root = mergedConfig.artist.workspaceRoot;
-  const [artist, soul, identity, producer, inner, setupStatus] = await Promise.all([
+  const [artist, soul, identity, producer, inner, setupStatus, audit] = await Promise.all([
     readArtistPersonaSummary(root),
     readSoulPersonaSummary(root),
     readSnapshotPersonaFile(root, snapshotPersonaFilenames.identity),
     readSnapshotPersonaFile(root, snapshotPersonaFilenames.producer),
     readSnapshotPersonaFile(root, snapshotPersonaFilenames.inner),
-    readPersonaSetupStatus(root)
+    readPersonaSetupStatus(root),
+    auditPersonaCompleteness(root)
   ]);
   return {
     artist,
@@ -665,6 +668,7 @@ export async function buildPersonaResponse(config?: Partial<ArtistRuntimeConfig>
     producer: { text: producer },
     inner: { text: inner },
     setup: { ...setupStatus, reasonsText: describePersonaSetupReasons(setupStatus.reasons) },
+    audit,
     aiDraftSupported: ["artist", "soul"],
     provider: mergedConfig.aiReview.provider
   };

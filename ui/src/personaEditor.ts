@@ -32,6 +32,12 @@ export type PersonaEditorSource = {
     reasons: string[];
     reasonsText: string;
   };
+  audit?: {
+    summary: { filled: number; thin: number; missing: number };
+    fields: Array<{ field: string; status: "filled" | "thin" | "missing"; reason?: string; current?: string }>;
+    issues: Array<{ code: string; file: string; detail: string }>;
+    customSections: string[];
+  };
   aiDraftSupported: ["artist", "soul"];
   provider: string;
 };

@@ -289,6 +289,19 @@ describe("ProducerRoomApp Songs and Settings views", () => {
       producer: { text: "# PRODUCER\n\nraw producer" },
       inner: { text: "# INNER\n\nraw inner" },
       setup: { completed: false, needsSetup: true, reasons: ["missing_completion_marker"], reasonsText: "setup not completed" },
+      audit: {
+        summary: { filled: 7, thin: 1, missing: 0 },
+        fields: [
+          { field: "artistName", status: "filled" },
+          { field: "soundDna", status: "thin", reason: "shorter_than_20_chars" },
+          { field: "socialVoice", status: "missing", reason: "empty_or_absent" }
+        ],
+        issues: [
+          { code: "conflicting_language_policy", file: "persona", detail: "日本語80%/英語20% / 日本語70%/英語30%" },
+          { code: "duplicate_suno_profile", file: "ARTIST.md", detail: "Suno Production Profile appears more than once" }
+        ],
+        customSections: ["Shibuya Lens"]
+      },
       aiDraftSupported: ["artist", "soul"] as ["artist", "soul"],
       provider: "mock"
     };
@@ -314,6 +327,12 @@ describe("ProducerRoomApp Songs and Settings views", () => {
     expect(html).toContain("会話人格");
     expect(html).toContain("自己紹介");
     expect(html).toContain("初回 setup が未完了です");
+    expect(html).toContain("設定の警告");
+    expect(html).toContain("日本語/英語比率が矛盾");
+    expect(html).toContain("Suno Production Profile が ARTIST.md 内で重複");
+    expect(html).toContain("設定の不足");
+    expect(html).toContain("音の核: 薄い");
+    expect(html).toContain("SNS の声: 未入力");
     expect(html).toContain("曲づくりに効く人格だけを並べます。");
     expect(html).toContain("保存先: ARTIST.md");
     expect(html).toContain("保存先: SOUL.md");

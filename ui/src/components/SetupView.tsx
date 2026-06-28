@@ -26,6 +26,31 @@ const emptyTouchedMap: LayerTouchedMap = {
 const snapshotLayerInfo = (layer: "identity" | "producer" | "inner") =>
   personaLayerMap.find((entry) => entry.layer === layer);
 
+function personaIssueLabel(issue: { code: string; file: string; detail: string }): string {
+  switch (issue.code) {
+    case "language_policy_outside_artist":
+      return `${issue.file}: 日本語/英語比率は ARTIST.md に集約`;
+    case "duplicated_language_policy":
+      return "日本語/英語比率が複数箇所に重複";
+    case "conflicting_language_policy":
+      return `日本語/英語比率が矛盾: ${issue.detail}`;
+    case "duplicate_suno_profile":
+      return "Suno Production Profile が ARTIST.md 内で重複";
+    case "obsolete_lyrics_length_rule":
+      return "固定文字数ルールが DurationPlan と箱予算に矛盾";
+    default:
+      return `${issue.file}: ${issue.detail}`;
+  }
+}
+
+function personaFieldLabel(field: string): string {
+  return [...artistPersonaFields, ...soulPersonaFields].find((entry) => entry.aiField === field)?.label ?? field;
+}
+
+function personaFieldStatusLabel(status: "filled" | "thin" | "missing"): string {
+  return status === "missing" ? "未入力" : status === "thin" ? "薄い" : "入力済み";
+}
+
 function PersonaTextInput(props: {
   label: string;
   help: string;
@@ -92,6 +117,7 @@ export function SetupView(props: {
 }) {
   const draft = props.draft;
   const setup = props.persona?.setup;
+  const weakPersonaFields = props.persona?.audit?.fields.filter((field) => field.status !== "filled") ?? [];
   const [touched, setTouched] = React.useState<LayerTouchedMap>(emptyTouchedMap);
   const [saveAttempted, setSaveAttempted] = React.useState<LayerTouchedMap>(emptyTouchedMap);
   const markTouched = (layer: PersonaDraftLayer) => setTouched((current) => ({ ...current, [layer]: true }));
@@ -124,6 +150,32 @@ export function SetupView(props: {
         <div className="muted">曲づくりに効く人格だけを並べます。必要なところだけ開いて編集します。</div>
         {setup?.needsSetup ? (
           <div className="warning-banner">初回 setup が未完了です: {setup.reasonsText}</div>
+        ) : null}
+        {props.persona?.audit?.issues.length ? (
+          <div className="warning-banner">
+            <strong>設定の警告</strong>
+            <ul>
+              {props.persona.audit.issues.slice(0, 3).map((issue) => (
+                <li key={`${issue.code}:${issue.file}:${issue.detail}`}>{personaIssueLabel(issue)}</li>
+              ))}
+            </ul>
+            {props.persona.audit.issues.length > 3 ? (
+              <div className="muted">ほか {props.persona.audit.issues.length - 3} 件。Telegram の /persona check でも確認できます。</div>
+            ) : null}
+          </div>
+        ) : null}
+        {weakPersonaFields.length ? (
+          <div className="warning-banner">
+            <strong>設定の不足</strong>
+            <ul>
+              {weakPersonaFields.slice(0, 3).map((field) => (
+                <li key={field.field}>{personaFieldLabel(field.field)}: {personaFieldStatusLabel(field.status)}</li>
+              ))}
+            </ul>
+            {weakPersonaFields.length > 3 ? (
+              <div className="muted">ほか {weakPersonaFields.length - 3} 件。</div>
+            ) : null}
+          </div>
         ) : null}
         {!props.persona || !draft ? (
           <div className="item muted">Loading persona.</div>
