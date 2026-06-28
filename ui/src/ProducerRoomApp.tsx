@@ -418,7 +418,7 @@ export function SongsView(props: {
     <section className="single-column songs-view">
       <article className="panel">
         <div className="section-title">作品</div>
-        <div className="muted">採用/破棄は Telegram の通知から。ここでは作品の歩みだけを読みます。</div>
+        <div className="muted">Telegram が一次。ここでは作品の歩みを読み、採用待ちの曲だけ同じ判断を出します。</div>
         {props.songs.length === 0 ? (
           <div className="item muted">曲台帳はまだ空です。</div>
         ) : (

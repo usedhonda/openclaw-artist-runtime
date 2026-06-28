@@ -589,11 +589,14 @@ export function SongDetailCard(props: SongDetailCardProps) {
                   {selectedTake.url ? <div><dt>URL</dt><dd><a href={selectedTake.url} target="_blank" rel="noreferrer">{selectedTake.url}</a></dd></div> : null}
                 </dl>
                 {canReviewSelectedTake ? (
-                  <ProducerReviewButtons
-                    disabled={reviewBusy !== null}
-                    onArchive={() => void runProducerReviewAction("archive")}
-                    onDiscard={() => void runProducerReviewAction("discard")}
-                  />
+                  <>
+                    <div className="muted">Telegram の採用/破棄と同じ判断です。</div>
+                    <ProducerReviewButtons
+                      disabled={reviewBusy !== null}
+                      onArchive={() => void runProducerReviewAction("archive")}
+                      onDiscard={() => void runProducerReviewAction("discard")}
+                    />
+                  </>
                 ) : null}
                 {reviewResult ? <div className="muted">{reviewResult}</div> : null}
                 {reviewError ? <div className="muted">error: {reviewError}</div> : null}

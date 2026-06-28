@@ -162,7 +162,7 @@ describe("ProducerRoomApp Songs and Settings views", () => {
     expect(html).toContain("七万円のスクランブル");
     expect(html).toContain("制作 2 回");
     expect(html).toContain("試聴URLあり");
-    expect(html).toContain("ここでは作品の歩みだけを読みます");
+    expect(html).toContain("採用待ちの曲だけ同じ判断を出します");
     expect(html).not.toContain("song-001 · run");
     expect(html).not.toContain("suno_take_url_ready");
   });
