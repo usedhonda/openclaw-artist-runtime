@@ -41,9 +41,8 @@ const editableSetupLayers: PersonaDraftLayer[] = ["artist", "soul", "producer"];
 const layerInfo = (layer: PersonaDraftLayer) =>
   personaLayerMap.find((entry) => entry.layer === layer);
 
-const fileEnglishText: Record<string, { role: string; kind: string; requirement: string; summary: string; purpose: string; write: string; avoid: string }> = {
+const fileEnglishText: Record<string, { kind: string; requirement: string; summary: string; purpose: string; write: string; avoid: string }> = {
   "ARTIST.md": {
-    role: "Music core",
     kind: "Input",
     requirement: "Required",
     summary: "The creative core: what the artist notices, what the music sounds like, and what the lyrics do.",
@@ -52,7 +51,6 @@ const fileEnglishText: Record<string, { role: string; kind: string; requirement:
     avoid: "Artist display name, producer information, conversation tone, and internal memory."
   },
   "SOUL.md": {
-    role: "Conversation voice",
     kind: "Input",
     requirement: "Required",
     summary: "How the artist talks with the producer during reports, advice, and refusals.",
@@ -61,7 +59,6 @@ const fileEnglishText: Record<string, { role: string; kind: string; requirement:
     avoid: "Music genre, Suno settings, producer callname, and artist profile facts."
   },
   "PRODUCER.md": {
-    role: "Producer context",
     kind: "Input",
     requirement: "Optional",
     summary: "Producer-side preferences, constraints, and boundaries that affect creative decisions.",
@@ -70,7 +67,6 @@ const fileEnglishText: Record<string, { role: string; kind: string; requirement:
     avoid: "Address, contact info, real-name detail, secrets, artist voice, and music identity."
   },
   "IDENTITY.md": {
-    role: "Identity card",
     kind: "Generated",
     requirement: "Read-only",
     summary: "A generated profile from the display name and setup fields. It is not canonical input.",
@@ -79,7 +75,6 @@ const fileEnglishText: Record<string, { role: string; kind: string; requirement:
     avoid: "New settings, creative rules, or personal information."
   },
   "INNER.md": {
-    role: "Internal memory",
     kind: "Internal",
     requirement: "Read-only",
     summary: "Runtime-managed inner memory. It is not a Setup input.",
@@ -213,7 +208,6 @@ function SetupFileMap(props: { locale: ProducerRoomLocale }) {
             <header className="persona-file-map-head">
               <div className="persona-file-map-main">
                 <strong>{file.file}</strong>
-                <span>{text.role}</span>
               </div>
               <div className="persona-file-badges">
                 <span className="persona-badge">{text.kind}</span>
@@ -297,7 +291,7 @@ function SetupFileEditor(props: {
     <section className="settings-section persona-file-editor">
       <div className="persona-file-editor-head">
         <span className="section-title">{info?.file ?? props.layer} {props.locale === "ja" ? "に書くこと" : "inputs"}</span>
-        <span className="muted">{text?.role ?? props.layer} · {text?.summary ?? ""}</span>
+        <span className="muted">{text?.summary ?? props.layer}</span>
       </div>
       {props.layer === "artist" ? (
         <div className="persona-field-list">
@@ -393,7 +387,13 @@ function IdentityProjection(props: { locale: ProducerRoomLocale; value: string }
         <span className="section-title">{t(props.locale, "setupReadonlyIdentityTitle")}</span>
         <span className="muted">{t(props.locale, "setupReadonlyIdentityHelp")}</span>
       </div>
-      <textarea rows={6} value={props.value} readOnly />
+      <div className="persona-readonly-card">
+        <div className="persona-readonly-state">
+          <span className="persona-badge">{props.locale === "ja" ? "自動生成" : "Generated"}</span>
+          <span className="persona-badge">{props.locale === "ja" ? "編集不可" : "Read-only"}</span>
+        </div>
+        <pre>{props.value}</pre>
+      </div>
     </section>
   );
 }
@@ -404,6 +404,22 @@ function InnerFileNote(props: { locale: ProducerRoomLocale }) {
       <div className="persona-file-editor-head">
         <span className="section-title">{t(props.locale, "setupInnerTitle")}</span>
         <span className="muted">{t(props.locale, "setupInnerHelp")}</span>
+      </div>
+      <div className="persona-readonly-card">
+        <div className="persona-readonly-state">
+          <span className="persona-badge">{props.locale === "ja" ? "内部管理" : "Internal"}</span>
+          <span className="persona-badge">{props.locale === "ja" ? "編集不可" : "Read-only"}</span>
+        </div>
+        <dl className="persona-readonly-details">
+          <div>
+            <dt>{props.locale === "ja" ? "状態" : "State"}</dt>
+            <dd>{props.locale === "ja" ? "runtime が管理しています。Setup の入力欄ではありません。" : "Managed by runtime. This is not a Setup input."}</dd>
+          </div>
+          <div>
+            <dt>{props.locale === "ja" ? "既存内容" : "Existing content"}</dt>
+            <dd>{props.locale === "ja" ? "seed/history として保持します。ここには本文を表示しません。" : "Kept as seed/history. Raw text is not shown here."}</dd>
+          </div>
+        </dl>
       </div>
     </section>
   );

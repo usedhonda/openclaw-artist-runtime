@@ -83,7 +83,6 @@ export const producerContextField = {
 export type PersonaLayerInfo = {
   layer: PersonaDraftLayer;
   file: string;
-  role: string;
   summary: string;
   kind: string;
   requirement: string;
@@ -98,11 +97,11 @@ export type PersonaLayerInfo = {
  * layers can still be shown as read-only runtime projections.
  */
 export const personaLayerMap: PersonaLayerInfo[] = [
-  { layer: "artist", file: "ARTIST.md", role: "曲づくりの核", summary: personaFileContracts["ARTIST.md"].uiSummary, kind: personaFileContracts["ARTIST.md"].uiKind, requirement: personaFileContracts["ARTIST.md"].uiRequirement, purpose: personaFileContracts["ARTIST.md"].uiPurpose, write: personaFileContracts["ARTIST.md"].uiWrite, avoid: personaFileContracts["ARTIST.md"].uiAvoid, editable: true },
-  { layer: "soul", file: "SOUL.md", role: "話し方", summary: personaFileContracts["SOUL.md"].uiSummary, kind: personaFileContracts["SOUL.md"].uiKind, requirement: personaFileContracts["SOUL.md"].uiRequirement, purpose: personaFileContracts["SOUL.md"].uiPurpose, write: personaFileContracts["SOUL.md"].uiWrite, avoid: personaFileContracts["SOUL.md"].uiAvoid, editable: true },
-  { layer: "producer", file: "PRODUCER.md", role: "プロデューサー情報", summary: personaFileContracts["PRODUCER.md"].uiSummary, kind: personaFileContracts["PRODUCER.md"].uiKind, requirement: personaFileContracts["PRODUCER.md"].uiRequirement, purpose: personaFileContracts["PRODUCER.md"].uiPurpose, write: personaFileContracts["PRODUCER.md"].uiWrite, avoid: personaFileContracts["PRODUCER.md"].uiAvoid, editable: true },
-  { layer: "identity", file: "IDENTITY.md", role: "自己紹介", summary: personaFileContracts["IDENTITY.md"].uiSummary, kind: personaFileContracts["IDENTITY.md"].uiKind, requirement: personaFileContracts["IDENTITY.md"].uiRequirement, purpose: personaFileContracts["IDENTITY.md"].uiPurpose, write: personaFileContracts["IDENTITY.md"].uiWrite, avoid: personaFileContracts["IDENTITY.md"].uiAvoid, editable: false },
-  { layer: "inner", file: "INNER.md", role: "内部メモ", summary: personaFileContracts["INNER.md"].uiSummary, kind: personaFileContracts["INNER.md"].uiKind, requirement: personaFileContracts["INNER.md"].uiRequirement, purpose: personaFileContracts["INNER.md"].uiPurpose, write: personaFileContracts["INNER.md"].uiWrite, avoid: personaFileContracts["INNER.md"].uiAvoid, editable: false }
+  { layer: "artist", file: "ARTIST.md", summary: personaFileContracts["ARTIST.md"].uiSummary, kind: personaFileContracts["ARTIST.md"].uiKind, requirement: personaFileContracts["ARTIST.md"].uiRequirement, purpose: personaFileContracts["ARTIST.md"].uiPurpose, write: personaFileContracts["ARTIST.md"].uiWrite, avoid: personaFileContracts["ARTIST.md"].uiAvoid, editable: true },
+  { layer: "soul", file: "SOUL.md", summary: personaFileContracts["SOUL.md"].uiSummary, kind: personaFileContracts["SOUL.md"].uiKind, requirement: personaFileContracts["SOUL.md"].uiRequirement, purpose: personaFileContracts["SOUL.md"].uiPurpose, write: personaFileContracts["SOUL.md"].uiWrite, avoid: personaFileContracts["SOUL.md"].uiAvoid, editable: true },
+  { layer: "producer", file: "PRODUCER.md", summary: personaFileContracts["PRODUCER.md"].uiSummary, kind: personaFileContracts["PRODUCER.md"].uiKind, requirement: personaFileContracts["PRODUCER.md"].uiRequirement, purpose: personaFileContracts["PRODUCER.md"].uiPurpose, write: personaFileContracts["PRODUCER.md"].uiWrite, avoid: personaFileContracts["PRODUCER.md"].uiAvoid, editable: true },
+  { layer: "identity", file: "IDENTITY.md", summary: personaFileContracts["IDENTITY.md"].uiSummary, kind: personaFileContracts["IDENTITY.md"].uiKind, requirement: personaFileContracts["IDENTITY.md"].uiRequirement, purpose: personaFileContracts["IDENTITY.md"].uiPurpose, write: personaFileContracts["IDENTITY.md"].uiWrite, avoid: personaFileContracts["IDENTITY.md"].uiAvoid, editable: false },
+  { layer: "inner", file: "INNER.md", summary: personaFileContracts["INNER.md"].uiSummary, kind: personaFileContracts["INNER.md"].uiKind, requirement: personaFileContracts["INNER.md"].uiRequirement, purpose: personaFileContracts["INNER.md"].uiPurpose, write: personaFileContracts["INNER.md"].uiWrite, avoid: personaFileContracts["INNER.md"].uiAvoid, editable: false }
 ];
 
 export function buildPersonaDraft(source: PersonaEditorSource): PersonaDraft {

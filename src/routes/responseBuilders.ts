@@ -30,6 +30,7 @@ import { readDistributionDetectionState } from "../services/songDistributionPoll
 import { secretLikePattern } from "../services/personaMigrator.js";
 import { cleanupCanonicalPersonaSources } from "../services/personaCanonicalCleanup.js";
 import { auditPersonaCompleteness } from "../services/personaFieldAuditor.js";
+import { readProducerPersonaSummary, writeProducerPersona } from "../services/producerFileBuilder.js";
 import { proposePersonaFields } from "../services/personaProposer.js";
 import { personaCanonicalLegacyFields } from "../services/personaCanonical.js";
 import { readArtistPersonaSummary, writeArtistPersona, writePersonaCompletionMarker } from "../services/personaFileBuilder.js";
@@ -678,11 +679,10 @@ export async function buildPersonaResponse(config?: Partial<ArtistRuntimeConfig>
   const mergedConfig = await resolveRuntimeConfig(config);
   const root = mergedConfig.artist.workspaceRoot;
   await cleanupCanonicalPersonaSources(root);
-  const [artist, soul, producer, inner, setupStatus, audit] = await Promise.all([
+  const [artist, soul, producer, setupStatus, audit] = await Promise.all([
     readArtistPersonaSummary(root),
     readSoulPersonaSummary(root),
-    readSnapshotPersonaFile(root, snapshotPersonaFilenames.producer),
-    readSnapshotPersonaFile(root, snapshotPersonaFilenames.inner),
+    readProducerPersonaSummary(root),
     readPersonaSetupStatus(root),
     auditPersonaCompleteness(root)
   ]);
@@ -694,8 +694,8 @@ export async function buildPersonaResponse(config?: Partial<ArtistRuntimeConfig>
     artist: responseArtist,
     soul,
     identity: { text: buildDerivedIdentityProjection(mergedConfig, responseArtist, soul), readOnly: true, source: "derived" },
-    producer: { text: producer },
-    inner: { text: inner, readOnly: true, source: "internal" },
+    producer: { text: producer.producerFacts },
+    inner: { text: "", readOnly: true, source: "internal" },
     setup: { ...setupStatus, reasonsText: describePersonaSetupReasons(setupStatus.reasons) },
     audit: userFacingPersonaAudit(audit),
     aiDraftSupported: ["artist", "soul", "producer"],
@@ -721,7 +721,9 @@ export async function buildPersonaWriteResponse(
       ? await writeArtistPersona(root, artistPersonaFromPayload(payload))
       : layer === "soul"
         ? await writeSoulPersona(root, soulPersonaFromPayload(payload))
-        : await writeSnapshotPersonaFile(root, snapshotPersonaFilenames[layer], snapshotTextFromPayload(payload, layer));
+        : layer === "producer"
+          ? await writeProducerPersona(root, { producerFacts: snapshotTextFromPayload(payload, layer) })
+          : await writeSnapshotPersonaFile(root, snapshotPersonaFilenames[layer], snapshotTextFromPayload(payload, layer));
     return { ok: true, layer, result, persona: await buildPersonaResponse(mergedConfig) };
   } catch (error) {
     return personaRouteError(error);

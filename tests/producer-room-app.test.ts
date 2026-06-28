@@ -390,6 +390,7 @@ describe("ProducerRoomApp Songs and Settings views", () => {
     expect(html).toContain("Suno prompt と日々の曲案に一番強く効く");
     expect(html).toContain("任意なので空でも setup 完了は止めない");
     expect(html).toContain("曲を作る時の核");
+    expect(html).not.toContain("曲づくりの核");
     expect(html).toContain("住所、連絡先、実名詳細");
     expect(html).toContain("音の核");
     expect(html).toContain("断り方");
@@ -411,6 +412,9 @@ describe("ProducerRoomApp Songs and Settings views", () => {
     expect(html).toContain("Suno Style と曲調に効く音の核");
     expect(html).not.toContain("全文をそのまま保存します。");
     expect(html).not.toContain("raw inner");
+    expect(html).toContain("内部管理");
+    expect(html).toContain("ここには本文を表示しません");
+    expect(html).not.toContain("readonly=\"\"");
     expect(html).not.toContain("<summary");
     expect(html).toContain("不足を埋めると完了");
     expect(html).not.toContain("初期設定を完了");
@@ -552,7 +556,8 @@ describe("ProducerRoomApp Songs and Settings views", () => {
 
     expect(html).toContain("Artist setup");
     expect(html).toContain("This is the map of the five persona files");
-    expect(html).toContain("Music core");
+    expect(html).toContain("The creative core");
+    expect(html).not.toContain("Music core");
     expect(html).toContain("Input");
     expect(html).toContain("Required");
     expect(html).toContain("AI review all");

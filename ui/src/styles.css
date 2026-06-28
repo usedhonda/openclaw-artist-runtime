@@ -882,6 +882,53 @@ textarea {
   gap: 4px;
 }
 
+.persona-readonly-card {
+  display: grid;
+  gap: 10px;
+  border: 1px solid var(--pr-line);
+  border-radius: 10px;
+  background: var(--pr-soft);
+  padding: 12px;
+}
+
+.persona-readonly-state {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.persona-readonly-card pre {
+  margin: 0;
+  max-height: 220px;
+  overflow: auto;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  color: var(--pr-ink);
+  font: 0.86rem/1.5 ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
+}
+
+.persona-readonly-details {
+  display: grid;
+  gap: 8px;
+  margin: 0;
+}
+
+.persona-readonly-details > div {
+  display: grid;
+  grid-template-columns: minmax(5em, max-content) minmax(0, 1fr);
+  gap: 10px;
+}
+
+.persona-readonly-details dt {
+  color: var(--pr-indigo);
+  font-weight: 700;
+}
+
+.persona-readonly-details dd {
+  margin: 0;
+  color: var(--muted);
+}
+
 @media (max-width: 720px) {
   .persona-layer-chip,
   .persona-file-tab,
@@ -910,6 +957,11 @@ textarea {
 
   .persona-ai-menu-row {
     grid-template-columns: minmax(0, 1fr);
+  }
+
+  .persona-readonly-details > div {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 2px;
   }
 }
 

@@ -102,10 +102,13 @@ describe("persona route", () => {
     expect(response.identity.readOnly).toBe(true);
     expect(response.identity.source).toBe("derived");
     expect(response.identity.text).toContain("Display name: Neon Relay");
-    expect(response.producer.text).toContain("raw producer");
-    expect(response.inner.text).toContain("raw inner");
+    expect(response.producer.text).toBe("");
+    expect(response.inner.text).toBe("");
     expect(response.inner.readOnly).toBe(true);
     expect(response.inner.source).toBe("internal");
+    expect(readFileSync(join(root, "PRODUCER.md"), "utf8")).toContain("artist-runtime:persona:producer:start");
+    expect(readFileSync(join(root, "PRODUCER.md"), "utf8")).not.toContain("raw producer");
+    expect(readFileSync(join(root, "runtime", "persona-legacy", "manifest.jsonl"), "utf8")).toContain("PRODUCER.md");
     expect(response.aiDraftSupported).toEqual(["artist", "soul", "producer"]);
     expect(response.setup.needsSetup).toBe(false);
     expect(response.setup.reasonsText).toBe("");
@@ -204,6 +207,9 @@ describe("persona route", () => {
     const rejected = await callPersona(handler, "POST", "/producer", root, {
       producer: { text: "TELEGRAM_BOT_TOKEN=do-not-write" }
     });
+    const producer = await callPersona(handler, "POST", "/producer", root, {
+      producer: { text: "avoid vague praise" }
+    });
     const inner = await callPersona(handler, "POST", "/inner", root, {
       inner: { text: "# INNER.md\n\nplain snapshot" }
     });
@@ -214,6 +220,8 @@ describe("persona route", () => {
     expect(inner.statusCode).toBe(400);
     expect(rejected.error).toBe("persona_block_contains_secret_like_text");
     expect(rejected.statusCode).toBe(400);
+    expect(producer.ok).toBe(true);
+    expect(readFileSync(join(root, "PRODUCER.md"), "utf8")).toContain("Producer decision notes: avoid vague praise");
   });
 
   it("proposes whitelisted setup fields and marks setup complete from web", async () => {
