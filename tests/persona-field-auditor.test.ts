@@ -127,7 +127,7 @@ describe("persona field auditor", () => {
     expect(report.soulFile).toEqual({ exists: true, markerPresent: false });
     expect(byField.get("artistName")?.status).toBe("filled");
     expect(byField.get("artistName")?.setupInput).toBe(false);
-    expect(byField.get("producerCallname")?.status).toBe("missing");
+    expect(byField.get("producerCallname")?.status).toBe("filled");
     expect(byField.get("producerCallname")?.setupInput).toBe(false);
     expect(byField.get("soundDna")?.status).toBe("filled");
     expect(byField.get("obsessions")?.status).toBe("thin");
@@ -135,7 +135,7 @@ describe("persona field auditor", () => {
     expect(byField.get("soul-tone")?.status).toBe("missing");
     expect(byField.get("soul-refusal")?.status).toBe("missing");
     expect(report.customSections).toEqual(expect.arrayContaining(["Voice", "Listener", "Conversational Core", "Ritual"]));
-    expect(report.summary).toMatchObject({ filled: 4, thin: 1, missing: 4 });
+    expect(report.summary).toMatchObject({ filled: 3, thin: 1, missing: 3 });
   });
 
   it("formats a compact operator-facing audit report", async () => {

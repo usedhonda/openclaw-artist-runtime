@@ -149,6 +149,7 @@ function SetupFileMap() {
           </div>
           <p>{file.summary}</p>
           <dl>
+            <div><dt>決まること</dt><dd>{file.purpose}</dd></div>
             <div><dt>書く</dt><dd>{file.write}</dd></div>
             <div><dt>書かない</dt><dd>{file.avoid}</dd></div>
           </dl>

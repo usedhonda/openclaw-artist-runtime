@@ -378,6 +378,9 @@ describe("ProducerRoomApp Songs and Settings views", () => {
     expect(html).toContain("内部");
     expect(html).toContain("書く");
     expect(html).toContain("書かない");
+    expect(html).toContain("決まること");
+    expect(html).toContain("Suno prompt と日々の曲案に一番強く効く");
+    expect(html).toContain("任意なので空でも setup 完了は止めない");
     expect(html).toContain("曲を作る時の核");
     expect(html).toContain("住所、連絡先、実名詳細");
     expect(html).toContain("音の核");
@@ -392,6 +395,7 @@ describe("ProducerRoomApp Songs and Settings views", () => {
     expect(html).toContain("設定の不足");
     expect(html).toContain("音の核: 薄い");
     expect(html).toContain("SNS の声: 未入力");
+    expect(html).not.toContain("artistName: 薄い");
     expect(html).toContain("5つのファイルの全体像");
     expect(html).not.toContain("role=\"tablist\"");
     expect(html).toContain("Suno Style と曲調に効く音の核");

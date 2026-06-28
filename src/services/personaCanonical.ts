@@ -273,6 +273,7 @@ export const personaFileContracts = {
     uiKind: "入力",
     uiRequirement: "必須",
     uiSummary: "曲を作る時の核。何に惹かれ、どんな音で、どんな歌詞を書くか。",
+    uiPurpose: "曲の題材、音の方向、歌詞の癖、公開投稿の声を決める。Suno prompt と日々の曲案に一番強く効く。",
     uiWrite: "テーマ、音の質感、歌詞の制約、公開投稿の声、Suno に渡す音楽的特徴。",
     uiAvoid: "アーティスト名、producer の情報、会話口調、内部メモ。",
     forbidden: [
@@ -294,6 +295,7 @@ export const personaFileContracts = {
     uiKind: "入力",
     uiRequirement: "必須",
     uiSummary: "あなたと話す時の声。制作相談、報告、断り方の温度を決める。",
+    uiPurpose: "producer への返事、相談時の距離感、弱い案を止める態度を決める。曲のジャンルや音色はここでは決めない。",
     uiWrite: "会話の距離感、言い回し、弱い案を止める時の態度。",
     uiAvoid: "音楽ジャンル、Suno 設定、producer 呼称、artist のプロフィール。",
     forbidden: [
@@ -313,6 +315,7 @@ export const personaFileContracts = {
     uiKind: "自動",
     uiRequirement: "編集不可",
     uiSummary: "名前と入力内容から作る確認用プロフィール。正本ではない。",
+    uiPurpose: "設定済みの名前と入力内容を束ねた表示用プロフィール。確認用であり、ここに新しいルールを書いても正本にはならない。",
     uiWrite: "ユーザーは書かない。runtime が config、ARTIST.md、SOUL.md から表示する。",
     uiAvoid: "新しい設定、制作ルール、個人情報。",
     forbidden: [
@@ -329,6 +332,7 @@ export const personaFileContracts = {
     uiKind: "内部",
     uiRequirement: "編集不可",
     uiSummary: "runtime が扱う内面メモ。Setup の入力欄ではない。",
+    uiPurpose: "制作履歴や内部の揺れを runtime が持ち越す場所。ユーザーが初期設定で埋めるファイルではなく、公開プロフィールにも使わない。",
     uiWrite: "通常はユーザーが書かない。既存内容は seed/history として保持する。",
     uiAvoid: "Setup 入力、公開プロフィール、producer 情報。",
     forbidden: [
@@ -345,6 +349,7 @@ export const personaFileContracts = {
     uiKind: "入力",
     uiRequirement: "任意",
     uiSummary: "制作判断に効く producer 側の好み・制約・境界だけを書く。",
+    uiPurpose: "producer の好み、避けたい方向、公開前の境界を決める。任意なので空でも setup 完了は止めない。",
     uiWrite: "避けたい方向、好きな密度、公開前に確認したい境界、判断材料。",
     uiAvoid: "住所、連絡先、実名詳細、秘密情報、artist の声や音楽性。",
     forbidden: [

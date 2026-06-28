@@ -62,13 +62,16 @@ function truncateCurrent(value: string): string | undefined {
 
 function auditField(field: PersonaField, value: string): PersonaFieldAudit {
   const current = truncateCurrent(value);
+  if (field === "artistName" || field === "producerCallname") {
+    return current ? { field, status: "filled", current } : { field, status: "filled" };
+  }
   if (!current) {
     return { field, status: "missing", reason: "empty_or_absent" };
   }
   if (placeholderPattern.test(current)) {
     return { field, status: "thin", reason: "default_placeholder", current };
   }
-  if (field === "artistName" || field === "producerCallname" || field === "identityLine") {
+  if (field === "identityLine") {
     return { field, status: "filled", current };
   }
   if (current.length < minFilledLength) {
@@ -86,7 +89,7 @@ function customSectionsFor(contents: string, standard: Set<string>): string[] {
 }
 
 function countSummary(fields: PersonaFieldAudit[]): PersonaAuditReport["summary"] {
-  return fields.reduce(
+  return fields.filter((field) => field.setupInput !== false).reduce(
     (summary, field) => ({ ...summary, [field.status]: summary[field.status] + 1 }),
     { filled: 0, thin: 0, missing: 0 }
   );
