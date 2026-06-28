@@ -290,7 +290,7 @@ export function RoomHeader(props: {
           <span className="grammar-label">次</span>
           {summary.kind === "paused" ? (
             <button type="button" className="primary" disabled={props.resumeBusy} onClick={props.onResume}>
-              {props.resumeBusy ? "Resuming..." : "Resume"}
+              {props.resumeBusy ? "再開中..." : "再開"}
             </button>
           ) : (
             <span>{canLine(summary)}</span>

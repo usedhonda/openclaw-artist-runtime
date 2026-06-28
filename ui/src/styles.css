@@ -662,6 +662,10 @@ textarea {
   background: var(--pr-soft);
 }
 
+.settings-view .field-grid {
+  grid-template-columns: minmax(0, 1fr);
+}
+
 .persona-layer-map {
   display: grid;
   grid-template-columns: minmax(0, 1fr);
@@ -1628,6 +1632,14 @@ textarea {
   font-size: 12px;
   max-height: 400px;
   overflow-y: auto;
+}
+
+.song-detail-pager {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  align-items: center;
+  margin: 4px 0 10px;
 }
 
 .link-button {

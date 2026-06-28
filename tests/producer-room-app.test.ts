@@ -43,7 +43,7 @@ describe("ProducerRoomApp room header", () => {
     expect(html).not.toContain("<button");
   });
 
-  it("renders exactly one Resume CTA for paused states", () => {
+  it("renders exactly one resume CTA for paused states", () => {
     const html = renderToStaticMarkup(
       React.createElement(RoomHeader, {
         summary: summary({
@@ -61,7 +61,8 @@ describe("ProducerRoomApp room header", () => {
     expect(html).toContain("理由");
     expect(html).toContain("user_paused");
     expect(html.match(/<button/g)?.length).toBe(1);
-    expect(html).toContain("Resume");
+    expect(html).toContain("再開");
+    expect(html).not.toContain("Resume");
   });
 
   it("renders reauth_required as guidance without a false fix button", () => {
