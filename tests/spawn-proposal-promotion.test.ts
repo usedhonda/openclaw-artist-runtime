@@ -159,6 +159,43 @@ describe("spawn proposal draft-box creation", () => {
     expect((await loadSpawnProposalQueue(root)).find((entry) => entry.proposalId === "spawn_waiting")).toMatchObject({ status: "draft" });
   });
 
+  it("allows a new draft when a stale currentSongId is already URL-ready", async () => {
+    process.env.OPENCLAW_SONG_SPAWN_ENABLED = "on";
+    const root = workspace();
+    await ensureArtistWorkspace(root);
+    await ensureSongState(root, "song-active", "前の曲");
+    await updateSongState(root, "song-active", {
+      status: "suno_take_url_ready",
+      reason: "Suno take URL ready",
+      selectedTakeId: "take-ready",
+      appendPublicLinks: ["https://suno.com/song/take-ready"]
+    });
+    await writeAutopilotRunState(root, {
+      runId: "active-run",
+      currentSongId: "song-active",
+      stage: "suno_generation",
+      paused: false,
+      retryCount: 0,
+      cycleCount: 0,
+      updatedAt: "2026-05-28T00:00:00.000Z"
+    });
+    await appendSpawnProposal(root, proposal());
+    const entry = await registerInject(root);
+    const result = await routeTelegramCallback({
+      root,
+      client: client(),
+      callbackQueryId: "inject-after-url-ready",
+      data: `cb:${entry.callbackId}`,
+      fromUserId: 123,
+      chatId: 123,
+      messageId: 77
+    });
+
+    expect(result).toMatchObject({ result: "applied", reason: "song_spawn_injected" });
+    expect(await readAutopilotRunState(root)).toMatchObject({ currentSongId: "spawn_waiting", stage: "planning" });
+    expect((await loadSpawnProposalQueue(root)).find((entry) => entry.proposalId === "spawn_waiting")).toMatchObject({ status: "building" });
+  });
+
   it("does not auto-promote old accepted_waiting ledger rows after the current song is released", async () => {
     process.env.OPENCLAW_SONG_SPAWN_ENABLED = "on";
     const root = workspace();

@@ -141,6 +141,14 @@ function releaseAfterSunoTakeUrlReady(baseState: AutopilotRunState): AutopilotRu
   };
 }
 
+function firstSunoTakeUrl(urls: string[] = []): string | undefined {
+  return urls.find((url) => /^https?:\/\/(?:www\.)?suno\.com\/song\/[^/?#]+/i.test(url)) ?? urls.find(Boolean);
+}
+
+function takeIdFromSunoUrl(url: string | undefined): string | undefined {
+  return url?.match(/https?:\/\/(?:www\.)?suno\.com\/song\/([^/?#]+)/i)?.[1] ?? url;
+}
+
 export function shouldEmitOperationalEpisode(existing: AutopilotRunState, marker: string): boolean {
   return existing.blockedReason !== marker && existing.lastError !== marker;
 }
@@ -523,6 +531,45 @@ async function importPendingSunoGeneration(
     config
   });
   return { imported: true };
+}
+
+async function recoverAcceptedRunUrlReady(
+  root: string,
+  existing: AutopilotRunState,
+  baseState: AutopilotRunState,
+  song: SongState
+): Promise<AutopilotRunState | undefined> {
+  if (song.status === "suno_take_url_ready") {
+    return undefined;
+  }
+  const latestRun = await readLatestSunoRun(root, song.songId).catch(() => undefined);
+  if (latestRun?.status !== "accepted") {
+    return undefined;
+  }
+  const firstTakeUrl = firstSunoTakeUrl(latestRun.urls);
+  if (!firstTakeUrl) {
+    return undefined;
+  }
+  const selectedTakeId = takeIdFromSunoUrl(firstTakeUrl);
+  await updateSongState(root, song.songId, {
+    status: "suno_take_url_ready",
+    reason: "Suno take URL ready; recovered stale generation lane",
+    selectedTakeId,
+    appendPublicLinks: latestRun.urls
+  });
+  emitRuntimeEvent({
+    type: "suno_take_url_ready",
+    songId: song.songId,
+    runId: latestRun.runId,
+    urls: latestRun.urls,
+    selectedTakeId,
+    timestamp: Date.now()
+  });
+  await markBuildingDraftDone(root, song.songId);
+  return writeStageState(root, existing, {
+    ...releaseAfterSunoTakeUrlReady(baseState),
+    cycleCount: existing.cycleCount + 1
+  });
 }
 
 // Songs at "suno_take_url_ready" are excluded from currentSong() selection, so once
@@ -1353,6 +1400,10 @@ export class ArtistAutopilotService {
           });
         }
         case "suno_generation": {
+          const recoveredUrlReady = await recoverAcceptedRunUrlReady(input.workspaceRoot, existing, baseState, song);
+          if (recoveredUrlReady) {
+            return recoveredUrlReady;
+          }
           const generationLimit = await evaluateSunoGenerationLimits(input.workspaceRoot, config);
           if (generationLimit) {
             return writeStageState(input.workspaceRoot, existing, {

@@ -148,6 +148,47 @@ describe("Suno take URL ready flow", () => {
     }));
   });
 
+  it("recovers a stale generation lane when an accepted Suno run already has URLs", async () => {
+    const root = workspace();
+    await seedPromptPack(root);
+    await updateSongState(root, "song-url", { status: "suno_prompt_pack", reason: "stale prompt pack state" });
+    await writeAcceptedRun(root);
+    connectorStatusMock.mockResolvedValue({ state: "generating", currentRunId: "run-ready" });
+    const events: RuntimeEvent[] = [];
+    const unsubscribe = getRuntimeEventBus().subscribe((event) => events.push(event));
+
+    const state = await new ArtistAutopilotService().runCycle({
+      workspaceRoot: root,
+      config: {
+        artist: { workspaceRoot: root },
+        autopilot: { enabled: true, dryRun: false },
+        music: { suno: { driver: "playwright", submitMode: "live", authority: "auto_create_and_select_take" } },
+        telegram: { enabled: false }
+      }
+    });
+
+    unsubscribe();
+    expect(connectorCreateMock).not.toHaveBeenCalled();
+    expect(connectorImportMock).not.toHaveBeenCalled();
+    expect(await readSongState(root, "song-url")).toMatchObject({
+      status: "suno_take_url_ready",
+      selectedTakeId: "take-ready",
+      publicLinks: ["https://suno.com/song/take-ready"]
+    });
+    expect(state).toMatchObject({
+      stage: "idle",
+      currentSongId: undefined,
+      paused: false,
+      blockedReason: undefined,
+      lastSuccessfulStage: "suno_generation"
+    });
+    expect(events).toContainEqual(expect.objectContaining({
+      type: "suno_take_url_ready",
+      songId: "song-url",
+      runId: "run-ready"
+    }));
+  });
+
   it("formats and sends the URL-ready Telegram notification with adoption buttons", async () => {
     const root = workspace();
     await ensureArtistWorkspace(root);

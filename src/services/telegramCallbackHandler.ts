@@ -177,7 +177,7 @@ function isExternalPublishCallbackAction(action: string): boolean {
   return action === "daily_voice_publish" || action === "x_publish_confirm";
 }
 
-const TERMINAL_SONG_STATUSES = new Set(["scheduled", "published", "archived", "discarded", "failed"]);
+const LANE_RELEASED_SONG_STATUSES = new Set(["suno_take_url_ready", "scheduled", "published", "archived", "discarded", "failed"]);
 
 async function markProposalStatusIfPresent(
   action: (root: string, proposalId: string) => Promise<unknown>,
@@ -199,7 +199,7 @@ async function currentSongLaneBusy(root: string, state: Awaited<ReturnType<typeo
   if (currentSongId === proposalSongId && state.suspendedAt === "spawn_proposal_ready") return false;
   const current = await readSongState(root, currentSongId).catch(() => undefined);
   if (!current) return false;
-  return !TERMINAL_SONG_STATUSES.has(current.status);
+  return !LANE_RELEASED_SONG_STATUSES.has(current.status);
 }
 
 async function releaseDiscardedCurrentSongLane(root: string, songId: string | undefined, now: number): Promise<void> {
