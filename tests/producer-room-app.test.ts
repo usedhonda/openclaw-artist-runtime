@@ -307,7 +307,7 @@ describe("ProducerRoomApp Songs and Settings views", () => {
     expect(html).toMatch(/<button type=\"button\" disabled=\"\">Reset changes<\/button>/);
   });
 
-  it("renders the Setup tab editor with AI draft only on ARTIST/SOUL layers", () => {
+  it("renders Setup as canonical inputs without raw MD tabs", () => {
     const persona = {
       artist: {
         artistName: "Glass Commuter",
@@ -359,9 +359,10 @@ describe("ProducerRoomApp Songs and Settings views", () => {
     );
 
     expect(html).toContain("アーティスト設定");
-    expect(html).toContain("創作の核");
-    expect(html).toContain("会話人格");
-    expect(html).toContain("自己紹介");
+    expect(html).toContain("Artist Core");
+    expect(html).toContain("Conversation Voice");
+    expect(html).toContain("Producer Context");
+    expect(html).toContain("Generated Identity");
     expect(html).toContain("初回 setup が未完了です");
     expect(html).toContain("設定の警告");
     expect(html).toContain("日本語/英語比率が矛盾");
@@ -369,15 +370,13 @@ describe("ProducerRoomApp Songs and Settings views", () => {
     expect(html).toContain("設定の不足");
     expect(html).toContain("音の核: 薄い");
     expect(html).toContain("SNS の声: 未入力");
-    expect(html).toContain("編集する Markdown ファイルを選びます。ファイル名が正本です。");
-    expect(html).toContain("role=\"tablist\"");
-    expect(html).toContain("ARTIST.md");
-    expect(html).toContain("SOUL.md");
+    expect(html).toContain("Artist Core、Conversation Voice、Producer Context だけを編集します");
+    expect(html).not.toContain("role=\"tablist\"");
     expect(html).toContain("IDENTITY.md");
-    expect(html).toContain("PRODUCER.md");
-    expect(html).toContain("INNER.md");
+    expect(html).not.toContain("INNER.md");
     expect(html).toContain("Suno Style と曲調に効く音の核");
     expect(html).not.toContain("全文をそのまま保存します。");
+    expect(html).not.toContain("raw inner");
     expect(html).not.toContain("<summary");
     expect(html).toContain("不足を埋めると完了");
     expect(html).not.toContain("初期設定を完了");

@@ -78,7 +78,7 @@ async function callPersona(handler: RouteHandler, method: string, path: string, 
 }
 
 describe("persona route", () => {
-  it("returns all five persona layers plus setup status", async () => {
+  it("returns canonical persona inputs plus generated/internal projections", async () => {
     const root = makeWorkspace();
     await writeArtistPersona(root, { artistName: "Neon Relay" });
     await patchResolvedConfig(root, {
@@ -103,6 +103,8 @@ describe("persona route", () => {
     expect(response.identity.text).toContain("Display name: Neon Relay");
     expect(response.producer.text).toContain("raw producer");
     expect(response.inner.text).toContain("raw inner");
+    expect(response.inner.readOnly).toBe(true);
+    expect(response.inner.source).toBe("internal");
     expect(response.aiDraftSupported).toEqual(["artist", "soul"]);
     expect(response.setup.needsSetup).toBe(false);
     expect(response.setup.reasonsText).toBe("");
@@ -148,7 +150,7 @@ describe("persona route", () => {
     expect(contents).not.toContain("old block");
   });
 
-  it("keeps IDENTITY.md read-only and rejects secret-like snapshot text", async () => {
+  it("keeps IDENTITY.md and INNER.md read-only and rejects secret-like snapshot text", async () => {
     const root = makeWorkspace();
     const handler = personaHandler();
 
@@ -158,9 +160,14 @@ describe("persona route", () => {
     const rejected = await callPersona(handler, "POST", "/producer", root, {
       producer: { text: "TELEGRAM_BOT_TOKEN=do-not-write" }
     });
+    const inner = await callPersona(handler, "POST", "/inner", root, {
+      inner: { text: "# INNER.md\n\nplain snapshot" }
+    });
 
     expect(written.error).toBe("identity_projection_read_only");
     expect(written.statusCode).toBe(400);
+    expect(inner.error).toBe("inner_projection_read_only");
+    expect(inner.statusCode).toBe(400);
     expect(rejected.error).toBe("persona_block_contains_secret_like_text");
     expect(rejected.statusCode).toBe(400);
   });

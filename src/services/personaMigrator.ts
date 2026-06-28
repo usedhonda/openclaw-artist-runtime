@@ -289,7 +289,7 @@ async function proposeDrafts(
     return { drafts: [] };
   }
   const report = await auditPersonaCompleteness(root);
-  const candidates = report.fields.filter((field) => field.status === "missing" || field.status === "thin");
+  const candidates = report.fields.filter((field) => field.setupInput !== false && (field.status === "missing" || field.status === "thin"));
   if (candidates.length === 0) {
     return { provider: options.aiReviewProvider ?? "mock", drafts: [] };
   }

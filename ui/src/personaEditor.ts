@@ -26,7 +26,7 @@ export type PersonaEditorSource = {
   soul: SoulPersonaDraft;
   identity: { text: string; readOnly?: boolean; source?: "derived" };
   producer: { text: string };
-  inner: { text: string };
+  inner: { text: string; readOnly?: boolean; source?: "internal" };
   setup: {
     completed: boolean;
     needsSetup: boolean;
@@ -35,7 +35,7 @@ export type PersonaEditorSource = {
   };
   audit?: {
     summary: { filled: number; thin: number; missing: number };
-    fields: Array<{ field: string; status: "filled" | "thin" | "missing"; reason?: string; current?: string }>;
+    fields: Array<{ field: string; status: "filled" | "thin" | "missing"; reason?: string; current?: string; setupInput?: boolean }>;
     issues: Array<{ code: string; file: string; detail: string }>;
     customSections: string[];
   };
@@ -72,6 +72,11 @@ export const soulPersonaFields: Array<PersonaFieldMeta<keyof SoulPersonaDraft>> 
   { field: "refusalStyle", label: personaCanonicalField("refusalStyle").label, help: personaCanonicalField("refusalStyle").help, aiField: "soul-refusal", multiline: true }
 ];
 
+export const producerContextField = {
+  label: personaCanonicalField("producerFacts").label,
+  help: personaCanonicalField("producerFacts").help
+};
+
 export type PersonaLayerInfo = {
   layer: PersonaDraftLayer;
   file: string;
@@ -81,15 +86,15 @@ export type PersonaLayerInfo = {
 };
 
 /**
- * 5層マップ用のメタ。Setup タブ上部の概観カードと各 section の役割見出しに使う。
- * ファイル名は残しつつ、人間語の役割を主役にするための情報源。
+ * Persona layer metadata. Setup edits only user-input layers; generated/internal
+ * layers can still be shown as read-only runtime projections.
  */
 export const personaLayerMap: PersonaLayerInfo[] = [
-  { layer: "artist", file: "ARTIST.md", role: "創作の核", summary: "音・主題・歌詞ルールなど曲づくりの土台", editable: true },
-  { layer: "soul", file: "SOUL.md", role: "会話人格", summary: "話すときの声・温度・断り方", editable: true },
+  { layer: "artist", file: "ARTIST.md", role: "Artist Core", summary: "音・主題・歌詞ルールなど曲づくりの土台", editable: true },
+  { layer: "soul", file: "SOUL.md", role: "Conversation Voice", summary: "話すときの声・温度・断り方", editable: true },
   { layer: "identity", file: "IDENTITY.md", role: "自己紹介", summary: "config と persona から生成される表示カード", editable: false },
-  { layer: "producer", file: "PRODUCER.md", role: "プロデューサー像", summary: "制作判断に効く事実", editable: true },
-  { layer: "inner", file: "INNER.md", role: "内面", summary: "表に出ない創作圧", editable: true }
+  { layer: "producer", file: "PRODUCER.md", role: "Producer Context", summary: "制作判断に効く事実と好み", editable: true },
+  { layer: "inner", file: "INNER.md", role: "内部生成", summary: "runtime 管理の内部履歴", editable: false }
 ];
 
 export function buildPersonaDraft(source: PersonaEditorSource): PersonaDraft {
@@ -111,11 +116,7 @@ export function validatePersonaDraft(draft: PersonaDraft, layer?: PersonaDraftLa
   if ((!layer || layer === "soul") && draft.soul.refusalStyle.trim().length < 8) {
     return "refusalStyle must be at least 8 characters";
   }
-  const snapshotEntries: Array<[PersonaDraftLayer, string]> = [
-    ["identity", draft.snapshots.identity],
-    ["producer", draft.snapshots.producer],
-    ["inner", draft.snapshots.inner]
-  ];
+  const snapshotEntries: Array<[PersonaDraftLayer, string]> = [["producer", draft.snapshots.producer]];
   const tooLong = snapshotEntries.find(([entryLayer, text]) => (!layer || layer === entryLayer) && text.length > 20_000);
   return tooLong ? `${tooLong[0]} text must be 20000 characters or fewer` : null;
 }

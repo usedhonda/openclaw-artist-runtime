@@ -38,8 +38,8 @@ describe("personaEditor", () => {
     expect(buildPersonaArtistPatch(draft).artist).not.toHaveProperty("artistName");
     expect(buildPersonaArtistPatch(draft).artist.identityLine).toBe("Turns commute damage into songs.");
     expect(buildPersonaSoulPatch(draft).soul.conversationTone).toBe("short and precise");
-    expect(buildPersonaSnapshotPatch(draft, "identity")).toEqual({
-      identity: { text: "# IDENTITY\n\nraw identity\n" }
+    expect(buildPersonaSnapshotPatch(draft, "producer")).toEqual({
+      producer: { text: "# PRODUCER\n\nraw producer\n" }
     });
   });
 
@@ -53,10 +53,11 @@ describe("personaEditor", () => {
     expect(validatePersonaDraft(draft, "identity")).toBeNull();
   });
 
-  it("rejects oversized snapshot text before route submission", () => {
+  it("rejects oversized producer context text before route submission", () => {
     const draft = buildPersonaDraft(source());
-    draft.snapshots.inner = "x".repeat(20_001);
+    draft.snapshots.producer = "x".repeat(20_001);
 
-    expect(validatePersonaDraft(draft, "inner")).toBe("inner text must be 20000 characters or fewer");
+    expect(validatePersonaDraft(draft, "producer")).toBe("producer text must be 20000 characters or fewer");
+    expect(validatePersonaDraft(draft, "inner")).toBeNull();
   });
 });

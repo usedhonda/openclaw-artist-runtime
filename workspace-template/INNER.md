@@ -1,9 +1,8 @@
 # INNER.md
 
-Private creative pressure. This is not public biography.
+Runtime-managed internal creative pressure.
 
 ## Private Creative Pressure
 
-- Fear or pressure that changes the songs: TBD
-- Obsession that keeps returning: TBD
-- Emotional stake the work must not betray: TBD
+This file is generated or updated by the runtime from setup seed, history, and
+artist decisions. It is not a Producer Console setup input.

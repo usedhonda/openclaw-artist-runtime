@@ -28,7 +28,7 @@ describe("persona setup detector", () => {
     expect(status.reasons).toContain("missing_artist_file");
   });
 
-  it("requires setup when the default TBD fields remain", async () => {
+  it("requires setup when only legacy name placeholders remain", async () => {
     const root = makeRoot();
     await writeCompletedMarker(root);
     await writeFile(
@@ -40,18 +40,22 @@ describe("persona setup detector", () => {
     const status = await readPersonaSetupStatus(root);
 
     expect(status.needsSetup).toBe(true);
-    expect(status.reasons).toEqual(expect.arrayContaining(["artist_name_tbd", "suno_profile_name_tbd"]));
+    expect(status.reasons).toEqual(expect.arrayContaining(["artist_concept_tbd"]));
   });
 
-  it("requires setup when the artist name placeholder is still empty", async () => {
+  it("does not treat the artist name placeholder as a canonical setup field when artist sections exist", async () => {
     const root = makeRoot();
     await writeCompletedMarker(root);
-    await writeFile(join(root, "ARTIST.md"), "# ARTIST.md\n\nArtist name: \n", "utf8");
+    await writeFile(
+      join(root, "ARTIST.md"),
+      ["# ARTIST.md", "", "Artist name: ", "", "## Artist Concept", "", "A public artist built from local observations."].join("\n"),
+      "utf8"
+    );
 
     const status = await readPersonaSetupStatus(root);
 
-    expect(status.needsSetup).toBe(true);
-    expect(status.reasons).toContain("artist_name_tbd");
+    expect(status.needsSetup).toBe(false);
+    expect(status.reasons).toEqual([]);
   });
 
   it("treats a completion marker plus customized ARTIST.md as complete", async () => {
@@ -137,19 +141,18 @@ describe("describePersonaSetupReasons", () => {
       describePersonaSetupReasons([
         "missing_completion_marker",
         "missing_artist_file",
-        "artist_name_tbd",
-        "suno_profile_name_tbd",
+        "artist_concept_tbd",
         "matches_default_template_hash"
       ])
     ).toBe(
-      "setup not completed, ARTIST.md missing, artist name not set, Suno profile name not set, still the example template"
+      "setup not completed, ARTIST.md missing, artist concept not set, still the example template"
     );
   });
 
   it("does not surface raw reason codes for known codes", () => {
-    const text = describePersonaSetupReasons(["artist_name_tbd"]);
-    expect(text).not.toContain("artist_name_tbd");
-    expect(text).toBe("artist name not set");
+    const text = describePersonaSetupReasons(["artist_concept_tbd"]);
+    expect(text).not.toContain("artist_concept_tbd");
+    expect(text).toBe("artist concept not set");
   });
 
   it("falls back to the raw value for unknown codes and returns empty text for complete setup", () => {

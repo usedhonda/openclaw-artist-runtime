@@ -83,12 +83,16 @@ describe("persona field auditor", () => {
       kind: "config",
       path: "artist.identity.displayName"
     });
+    expect(personaCanonicalField("artistDisplayName").uiExposure).toBe("derived");
     expect(personaCanonicalField("producerCallname").owner).toEqual({
       kind: "config",
       path: "artist.identity.producerCallname"
     });
+    expect(personaCanonicalField("producerCallname").uiExposure).toBe("derived");
     expect(personaCanonicalField("artistDisplayName").forbiddenFiles).toContain("ARTIST.md");
     expect(personaCanonicalField("producerCallname").forbiddenFiles).toContain("SOUL.md");
+    expect(personaCanonicalField("privateTensions").uiExposure).toBe("internal");
+    expect(personaCanonicalField("privateTensions").setupEditable).toBe(false);
   });
 
   it("keeps the workspace template free of persona responsibility overlap", async () => {
@@ -122,7 +126,9 @@ describe("persona field auditor", () => {
     expect(report.artistFile).toEqual({ exists: true, markerPresent: false, externalImport: true });
     expect(report.soulFile).toEqual({ exists: true, markerPresent: false });
     expect(byField.get("artistName")?.status).toBe("filled");
+    expect(byField.get("artistName")?.setupInput).toBe(false);
     expect(byField.get("producerCallname")?.status).toBe("missing");
+    expect(byField.get("producerCallname")?.setupInput).toBe(false);
     expect(byField.get("soundDna")?.status).toBe("filled");
     expect(byField.get("obsessions")?.status).toBe("thin");
     expect(byField.get("socialVoice")?.status).toBe("missing");

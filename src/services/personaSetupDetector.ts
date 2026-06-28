@@ -74,9 +74,11 @@ export async function readPersonaSetupStatus(
   const sunoProfileNameTbd = sunoProfileNameTbdPattern.test(artistContents);
   const artistConceptTbd = artistConceptTbdPattern.test(artistContents);
   const templateTbd = templateTbdPattern.test(artistContents);
+  const hasCanonicalArtistSections = /^##\s+(?:Artist Concept|Current Artist Core|Sound|Lyrics|Social Voice)\s*$/m.test(artistContents);
+  const legacyNameOnlyPlaceholder = (artistNameTbd || sunoProfileNameTbd) && !hasCanonicalArtistSections;
   const defaultTemplateMatch = await matchesTemplate(artistContents, options.templateArtistPath);
   const completedExternalImport =
-    !marker && !missingArtistFile && !artistNameTbd && !sunoProfileNameTbd && !artistConceptTbd && !templateTbd && !defaultTemplateMatch;
+    !marker && !missingArtistFile && !legacyNameOnlyPlaceholder && !artistConceptTbd && !templateTbd && !defaultTemplateMatch;
 
   if (!marker && !completedExternalImport) {
     reasons.push("missing_completion_marker");
@@ -84,13 +86,7 @@ export async function readPersonaSetupStatus(
   if (missingArtistFile) {
     reasons.push("missing_artist_file");
   }
-  if (artistNameTbd) {
-    reasons.push("artist_name_tbd");
-  }
-  if (sunoProfileNameTbd) {
-    reasons.push("suno_profile_name_tbd");
-  }
-  if (artistConceptTbd || templateTbd) {
+  if (legacyNameOnlyPlaceholder || artistConceptTbd || templateTbd) {
     reasons.push("artist_concept_tbd");
   }
   if (defaultTemplateMatch) {
@@ -108,8 +104,6 @@ export async function readPersonaSetupStatus(
 const personaSetupReasonText: Record<string, string> = {
   missing_completion_marker: "setup not completed",
   missing_artist_file: "ARTIST.md missing",
-  artist_name_tbd: "artist name not set",
-  suno_profile_name_tbd: "Suno profile name not set",
   artist_concept_tbd: "artist concept not set",
   matches_default_template_hash: "still the example template"
 };

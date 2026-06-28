@@ -2,6 +2,7 @@ import React from "react";
 import {
   artistPersonaFields,
   personaLayerMap,
+  producerContextField,
   soulPersonaFields,
   validatePersonaDraft,
   type ArtistPersonaDraft,
@@ -23,7 +24,7 @@ const emptyTouchedMap: LayerTouchedMap = {
   inner: false
 };
 
-const setupLayers: PersonaDraftLayer[] = ["artist", "soul", "identity", "producer", "inner"];
+const editableSetupLayers: PersonaDraftLayer[] = ["artist", "soul", "producer"];
 
 const layerInfo = (layer: PersonaDraftLayer) =>
   personaLayerMap.find((entry) => entry.layer === layer);
@@ -117,27 +118,6 @@ function SaveRow(props: {
   );
 }
 
-function SetupFileTab(props: {
-  layer: PersonaDraftLayer;
-  active: boolean;
-  gap?: string;
-  onSelect: () => void;
-}) {
-  const info = layerInfo(props.layer);
-  return (
-    <button
-      type="button"
-      className={`persona-file-tab${props.active ? " is-active" : ""}`}
-      onClick={props.onSelect}
-      aria-pressed={props.active}
-    >
-      <span className="persona-file-tab-file">{info?.file ?? props.layer}</span>
-      <span className="persona-file-tab-role">{info?.role ?? props.layer}</span>
-      {props.gap ? <span className="persona-file-tab-gap">{props.gap}</span> : null}
-    </button>
-  );
-}
-
 function SetupFileEditor(props: {
   layer: PersonaDraftLayer;
   draft: PersonaDraft;
@@ -146,7 +126,7 @@ function SetupFileEditor(props: {
   validationError: string | null;
   onUpdateArtist: (field: keyof ArtistPersonaDraft, value: string) => void;
   onUpdateSoul: (field: keyof SoulPersonaDraft, value: string) => void;
-  onUpdateSnapshot: (layer: "identity" | "producer" | "inner", value: string) => void;
+  onUpdateSnapshot: (layer: "producer", value: string) => void;
   onSave: () => void;
   onReset: () => void;
   onTouched: () => void;
@@ -155,7 +135,7 @@ function SetupFileEditor(props: {
   return (
     <section className="settings-section persona-file-editor">
       <div className="persona-file-editor-head">
-        <span className="section-title">{info?.file ?? props.layer}</span>
+        <span className="section-title">{info?.role ?? props.layer}</span>
         <span className="muted">{info?.role ?? props.layer} · {info?.summary}</span>
       </div>
       {props.layer === "artist" ? (
@@ -188,22 +168,16 @@ function SetupFileEditor(props: {
           ))}
         </div>
       ) : null}
-      {props.layer === "identity" ? (
+      {props.layer === "producer" ? (
         <>
-          <div className="muted">config と persona から生成される読み取り専用の表示です。</div>
-          <textarea rows={10} value={props.draft.snapshots.identity} readOnly />
-        </>
-      ) : null}
-      {props.layer === "producer" || props.layer === "inner" ? (
-        <>
-          <div className="muted">全文をそのまま保存します。</div>
-          <textarea
-            rows={10}
-            value={props.draft.snapshots[props.layer]}
-            onBlur={props.onTouched}
-            onChange={(event) => props.onUpdateSnapshot(props.layer, event.target.value)}
+          <PersonaTextInput
+            label={producerContextField.label}
+            help={producerContextField.help}
+            value={props.draft.snapshots.producer}
+            multiline
+            onChange={(value) => props.onUpdateSnapshot("producer", value)}
+            onTouched={props.onTouched}
           />
-          {props.draft.snapshots[props.layer].trim().length === 0 ? <div className="muted">未入力</div> : null}
         </>
       ) : null}
       <SaveRow
@@ -218,6 +192,18 @@ function SetupFileEditor(props: {
   );
 }
 
+function IdentityProjection(props: { value: string }) {
+  return (
+    <section className="settings-section persona-file-editor">
+      <div className="persona-file-editor-head">
+        <span className="section-title">Generated Identity</span>
+        <span className="muted">IDENTITY.md · config と persona から生成される読み取り専用の表示</span>
+      </div>
+      <textarea rows={6} value={props.value} readOnly />
+    </section>
+  );
+}
+
 export function SetupView(props: {
   persona: PersonaEditorSource | null;
   draft: PersonaDraft | null;
@@ -225,7 +211,7 @@ export function SetupView(props: {
   busyKey: string | null;
   onUpdateArtist: (field: keyof ArtistPersonaDraft, value: string) => void;
   onUpdateSoul: (field: keyof SoulPersonaDraft, value: string) => void;
-  onUpdateSnapshot: (layer: "identity" | "producer" | "inner", value: string) => void;
+  onUpdateSnapshot: (layer: "producer", value: string) => void;
   onSaveLayer: (layer: PersonaDraftLayer) => void;
   onReset: () => void;
   onRefresh: () => void;
@@ -234,9 +220,8 @@ export function SetupView(props: {
 }) {
   const draft = props.draft;
   const setup = props.persona?.setup;
-  const weakPersonaFields = props.persona?.audit?.fields.filter((field) => field.status !== "filled") ?? [];
+  const weakPersonaFields = props.persona?.audit?.fields.filter((field) => field.setupInput !== false && field.status !== "filled") ?? [];
   const setupBlocked = Boolean(weakPersonaFields.length || props.persona?.audit?.issues.length);
-  const [activeLayer, setActiveLayer] = React.useState<PersonaDraftLayer>("artist");
   const weakFieldSummaryForFile = (file: string) => {
     const fields = weakPersonaFields.filter((field) => personaFieldFile(field.field) === file);
     if (!fields.length) {
@@ -273,7 +258,7 @@ export function SetupView(props: {
     <section className="single-column setup-view">
       <article className="panel settings-panel">
         <div className="section-title">アーティスト設定</div>
-        <div className="muted">編集する Markdown ファイルを選びます。ファイル名が正本です。</div>
+        <div className="muted">Artist Core、Conversation Voice、Producer Context だけを編集します。IDENTITY は生成表示、INNER は runtime 管理です。</div>
         {setup?.needsSetup ? (
           <div className="warning-banner">初回 setup が未完了です: {setup.reasonsText}</div>
         ) : null}
@@ -307,30 +292,27 @@ export function SetupView(props: {
           <div className="item muted">Loading persona.</div>
         ) : (
           <div className="settings-sections">
-            <div className="persona-file-tabs" role="tablist" aria-label="編集する設定ファイル">
-              {setupLayers.map((layer) => (
-                <SetupFileTab
-                  key={layer}
+            {editableSetupLayers.map((layer) => (
+              <React.Fragment key={layer}>
+                {weakFieldSummaryForFile(layerInfo(layer)?.file ?? "") ? (
+                  <div className="muted">{weakFieldSummaryForFile(layerInfo(layer)?.file ?? "")}</div>
+                ) : null}
+                <SetupFileEditor
                   layer={layer}
-                  active={activeLayer === layer}
-                  gap={weakFieldSummaryForFile(layerInfo(layer)?.file ?? "")}
-                  onSelect={() => setActiveLayer(layer)}
+                  draft={draft}
+                  dirty={props.dirty}
+                  busyKey={props.busyKey}
+                  validationError={visibleValidation(layer)}
+                  onUpdateArtist={props.onUpdateArtist}
+                  onUpdateSoul={props.onUpdateSoul}
+                  onUpdateSnapshot={props.onUpdateSnapshot}
+                  onSave={() => saveLayer(layer)}
+                  onReset={resetDraft}
+                  onTouched={() => markTouched(layer)}
                 />
-              ))}
-            </div>
-            <SetupFileEditor
-              layer={activeLayer}
-              draft={draft}
-              dirty={props.dirty}
-              busyKey={props.busyKey}
-              validationError={visibleValidation(activeLayer)}
-              onUpdateArtist={props.onUpdateArtist}
-              onUpdateSoul={props.onUpdateSoul}
-              onUpdateSnapshot={props.onUpdateSnapshot}
-              onSave={() => saveLayer(activeLayer)}
-              onReset={resetDraft}
-              onTouched={() => markTouched(activeLayer)}
-            />
+              </React.Fragment>
+            ))}
+            <IdentityProjection value={draft.snapshots.identity} />
             <div className="inline-actions">
               <button type="button" disabled={props.busyKey !== null} onClick={props.onRefresh}>再読み込み</button>
               {setup?.needsSetup ? (

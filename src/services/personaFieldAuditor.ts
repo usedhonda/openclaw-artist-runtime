@@ -15,6 +15,7 @@ export interface PersonaFieldAudit {
   status: PersonaFieldStatus;
   reason?: string;
   current?: string;
+  setupInput?: boolean;
 }
 
 export interface PersonaAuditIssue {
@@ -183,8 +184,8 @@ export async function auditPersonaCompleteness(root: string): Promise<PersonaAud
   const artistMarkerPresent = artistContents.includes(artistPersonaBlockStart) && artistContents.includes(artistPersonaBlockEnd);
   const soulMarkerPresent = soulContents.includes(soulPersonaBlockStart) && soulContents.includes(soulPersonaBlockEnd);
   const fields: PersonaFieldAudit[] = [
-    auditField("artistName", displayName),
-    auditField("producerCallname", producerCallname),
+    { ...auditField("artistName", displayName), setupInput: false },
+    { ...auditField("producerCallname", producerCallname), setupInput: false },
     auditField("identityLine", artistSummary.identityLine),
     auditField("soundDna", artistSummary.soundDna),
     auditField("obsessions", artistSummary.obsessions),

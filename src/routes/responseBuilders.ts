@@ -581,7 +581,7 @@ export interface PersonaRouteResponse {
   soul: Awaited<ReturnType<typeof readSoulPersonaSummary>>;
   identity: { text: string; readOnly: true; source: "derived" };
   producer: { text: string };
-  inner: { text: string };
+  inner: { text: string; readOnly: true; source: "internal" };
   setup: Awaited<ReturnType<typeof readPersonaSetupStatus>> & { reasonsText: string };
   audit: Awaited<ReturnType<typeof auditPersonaCompleteness>>;
   aiDraftSupported: ["artist", "soul"];
@@ -652,6 +652,9 @@ function personaRouteError(error: unknown): Record<string, unknown> {
   if (message === "identity_projection_read_only") {
     return { error: "identity_projection_read_only", statusCode: 400 };
   }
+  if (message === "inner_projection_read_only") {
+    return { error: "inner_projection_read_only", statusCode: 400 };
+  }
   if (message === "persona_block_contains_secret_like_text") {
     return { error: "persona_block_contains_secret_like_text", statusCode: 400 };
   }
@@ -701,7 +704,7 @@ export async function buildPersonaResponse(config?: Partial<ArtistRuntimeConfig>
     soul,
     identity: { text: buildDerivedIdentityProjection(mergedConfig, responseArtist, soul), readOnly: true, source: "derived" },
     producer: { text: producer },
-    inner: { text: inner },
+    inner: { text: inner, readOnly: true, source: "internal" },
     setup: { ...setupStatus, reasonsText: describePersonaSetupReasons(setupStatus.reasons) },
     audit,
     aiDraftSupported: ["artist", "soul"],
@@ -719,6 +722,9 @@ export async function buildPersonaWriteResponse(
     const root = mergedConfig.artist.workspaceRoot;
     if (layer === "identity") {
       throw new Error("identity_projection_read_only");
+    }
+    if (layer === "inner") {
+      throw new Error("inner_projection_read_only");
     }
     if (layer === "artist") {
       const identity = artistIdentityFromPayload(payload);

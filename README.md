@@ -128,6 +128,22 @@ dispatch under the current OpenClaw Gateway matcher, and CI regression gates on
 
 See `CHANGELOG.md` for the active feature set.
 
+## Persona setup ownership
+
+Producer Console setup is not a raw Markdown editor. The canonical contract lives
+in `src/services/personaCanonical.ts` and exposes only these user-input surfaces:
+
+| Surface | Backing file | User edits |
+| --- | --- | --- |
+| Artist Core | `ARTIST.md` | artist concept, sound, obsessions, lyrics stance, public/social voice |
+| Conversation Voice | `SOUL.md` | conversational tone and refusal style |
+| Producer Context | `PRODUCER.md` | producer facts and preferences that change creative decisions |
+
+`artist.identity.displayName` and `artist.identity.producerCallname` are runtime
+config fields. `IDENTITY.md` is a derived read-only projection, and `INNER.md` is
+runtime-managed internal state. Setup must not ask the producer to edit either
+file directly.
+
 ## Key package files
 
 - `openclaw.plugin.json` — manifest, config schema, UI hints, capability declaration.
