@@ -1,8 +1,11 @@
 import type { AiReviewProvider, PersonaField } from "../types.js";
 import { callAiProvider } from "./aiProviderClient.js";
 import { secretLikePattern, parseIntentDirectives } from "./personaMigrator.js";
+import { personaAiProposableFields, personaCanonicalLegacyKey } from "./personaCanonical.js";
 import { soulPersonaQuestions } from "./soulFileBuilder.js";
 import { extractPersonaMotifs, summarizeMotifs, type PersonaMotifBundle } from "./personaMotifExtractor.js";
+
+export type PersonaProposerMode = "fill_missing" | "review_all" | "dedupe";
 
 export interface PersonaProposerSourceContext {
   artistMd: string;
@@ -22,6 +25,7 @@ export interface PersonaFieldDraft {
 
 export interface PersonaProposerRequest {
   fields: PersonaField[];
+  mode?: PersonaProposerMode;
   source: PersonaProposerSourceContext;
 }
 
@@ -31,8 +35,7 @@ export interface PersonaProposerResult {
   warnings: string[];
 }
 
-export const defaultArtistPersonaFieldValues: Record<Extract<PersonaField, "artistName" | "identityLine" | "soundDna" | "obsessions" | "lyricsRules" | "socialVoice">, string> = {
-  artistName: "Unnamed OpenClaw Artist",
+export const defaultArtistPersonaFieldValues: Record<Extract<PersonaField, "identityLine" | "soundDna" | "obsessions" | "lyricsRules" | "socialVoice">, string> = {
   identityLine: "A public musical artist that turns observations into autonomous songs.",
   soundDna: "alternative pop, glassy synth texture, close controlled vocal",
   obsessions: "night infrastructure, private signals, lonely machines",
@@ -97,7 +100,13 @@ export function buildPersonaProposerPrompt(req: PersonaProposerRequest): string 
     "System: You help build a concise musical artist persona.",
     "Return one line per requested field using: fieldKey: value (origin: source).",
     "Keep each value under 200 characters. Do not include secrets, tokens, cookies, or credentials.",
-    "Anchor every proposal to the persona motifs below; do not propose values that contradict them.",
+  "Anchor every proposal to the persona motifs below; do not propose values that contradict them.",
+    "Do not propose artist display names or producer callnames; those are config identity values, not persona Markdown.",
+    req.mode === "review_all"
+      ? "Mode: review_all. Suggest concise improvements for the requested fields without assuming the user approved saving."
+      : req.mode === "dedupe"
+        ? "Mode: dedupe. Suggest values that move facts back to their canonical owner and remove cross-file duplication."
+        : "Mode: fill_missing. Fill only the requested blank fields.",
     "",
     `Requested fields: ${req.fields.join(", ")}`,
     motifSummary ? `Persona motifs (anchor): ${motifSummary}` : "Persona motifs (anchor): (none)",
@@ -159,6 +168,10 @@ function mockDrafts(fields: PersonaField[], motifs: PersonaMotifBundle): Persona
       reasoning: "mock provider default"
     };
   });
+}
+
+export function personaDefaultProposalFields(): PersonaField[] {
+  return personaAiProposableFields().map((field) => personaCanonicalLegacyKey(field) as PersonaField);
 }
 
 function secretFieldsFromDirectives(value: string | undefined, fields: PersonaField[]): Set<PersonaField> {

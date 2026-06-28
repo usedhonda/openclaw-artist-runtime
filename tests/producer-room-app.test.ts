@@ -338,7 +338,7 @@ describe("ProducerRoomApp Songs and Settings views", () => {
         ],
         customSections: ["Shibuya Lens"]
       },
-      aiDraftSupported: ["artist", "soul"] as ["artist", "soul"],
+      aiDraftSupported: ["artist", "soul", "producer"] as ["artist", "soul", "producer"],
       provider: "mock"
     };
     const html = renderToStaticMarkup(
@@ -355,6 +355,12 @@ describe("ProducerRoomApp Songs and Settings views", () => {
         onRefresh: () => undefined,
         onPropose: () => undefined,
         onProposeMissing: () => undefined,
+        onProposeReview: () => undefined,
+        onProposeDedupe: () => undefined,
+        aiSuggestions: {
+          soundDna: { draft: "dry drums, low synth, sharper field texture", mode: "review_all", reasoning: "tighten sound" }
+        },
+        onApplySuggestion: () => undefined,
         onComplete: () => undefined
       })
     );
@@ -366,12 +372,17 @@ describe("ProducerRoomApp Songs and Settings views", () => {
     expect(html).toContain("PRODUCER.md");
     expect(html).toContain("IDENTITY.md");
     expect(html).toContain("INNER.md");
-    expect(html).toContain("ユーザーが書く / 必須");
-    expect(html).toContain("自動作成 / 編集不可");
-    expect(html).toContain("内部メモ / Setup では編集不可");
-    expect(html).toContain("ARTIST.md / 音の核");
-    expect(html).toContain("SOUL.md / 断り方");
-    expect(html).toContain("PRODUCER.md / 制作判断メモ");
+    expect(html).toContain("入力");
+    expect(html).toContain("必須");
+    expect(html).toContain("自動");
+    expect(html).toContain("内部");
+    expect(html).toContain("書く");
+    expect(html).toContain("書かない");
+    expect(html).toContain("曲を作る時の核");
+    expect(html).toContain("住所、連絡先、実名詳細");
+    expect(html).toContain("音の核");
+    expect(html).toContain("断り方");
+    expect(html).toContain("制作判断メモ");
     expect(html).toContain("IDENTITY.md 自動表示");
     expect(html).toContain("INNER.md の扱い");
     expect(html).toContain("初回 setup が未完了です");
@@ -381,7 +392,7 @@ describe("ProducerRoomApp Songs and Settings views", () => {
     expect(html).toContain("設定の不足");
     expect(html).toContain("音の核: 薄い");
     expect(html).toContain("SNS の声: 未入力");
-    expect(html).toContain("どの欄がどのファイルに入るか");
+    expect(html).toContain("5つのファイルの全体像");
     expect(html).not.toContain("role=\"tablist\"");
     expect(html).toContain("Suno Style と曲調に効く音の核");
     expect(html).not.toContain("全文をそのまま保存します。");
@@ -389,12 +400,17 @@ describe("ProducerRoomApp Songs and Settings views", () => {
     expect(html).not.toContain("<summary");
     expect(html).toContain("不足を埋めると完了");
     expect(html).not.toContain("初期設定を完了");
-    expect(html).toContain("未記入をAIお任せ");
-    expect(html.match(/AIお任せ<\/button>/g)?.length ?? 0).toBe(9);
+    expect(html).toContain("空欄をAI補完");
+    expect(html).toContain("全体をAI添削");
+    expect(html).toContain("重複整理案");
+    expect(html).toContain("AI添削案");
+    expect(html).toContain("案を入れる");
+    expect(html.match(/AI案<\/button>/g)?.length ?? 0).toBe(8);
     expect(html.match(/元に戻す<\/button>/g)?.length ?? 0).toBe(0);
     expect(html).not.toContain("AI下書き");
     expect(html).not.toContain("AIお任せは欄に案を入れるだけ");
     expect(html).not.toContain("AIお任せはありません");
+    expect(html).not.toContain("ユーザーが書く / 必須");
     expect(html).not.toContain("参照ファイル");
     expect(html).not.toContain("参照元:");
     expect(html).not.toContain("Setup 完了");
@@ -429,7 +445,7 @@ describe("ProducerRoomApp Songs and Settings views", () => {
         issues: [],
         customSections: []
       },
-      aiDraftSupported: ["artist", "soul"] as ["artist", "soul"],
+      aiDraftSupported: ["artist", "soul", "producer"] as ["artist", "soul", "producer"],
       provider: "mock"
     };
     const html = renderToStaticMarkup(
@@ -446,6 +462,10 @@ describe("ProducerRoomApp Songs and Settings views", () => {
         onRefresh: () => undefined,
         onPropose: () => undefined,
         onProposeMissing: () => undefined,
+        onProposeReview: () => undefined,
+        onProposeDedupe: () => undefined,
+        aiSuggestions: {},
+        onApplySuggestion: () => undefined,
         onComplete: () => undefined
       })
     );
@@ -473,7 +493,7 @@ describe("ProducerRoomApp Songs and Settings views", () => {
       producer: { text: "" },
       inner: { text: "" },
       setup: { completed: false, needsSetup: true, reasons: ["missing_completion_marker"], reasonsText: "setup not completed" },
-      aiDraftSupported: ["artist", "soul"] as ["artist", "soul"],
+      aiDraftSupported: ["artist", "soul", "producer"] as ["artist", "soul", "producer"],
       provider: "mock"
     };
     const html = renderToStaticMarkup(
@@ -490,6 +510,10 @@ describe("ProducerRoomApp Songs and Settings views", () => {
         onRefresh: () => undefined,
         onPropose: () => undefined,
         onProposeMissing: () => undefined,
+        onProposeReview: () => undefined,
+        onProposeDedupe: () => undefined,
+        aiSuggestions: {},
+        onApplySuggestion: () => undefined,
         onComplete: () => undefined
       })
     );

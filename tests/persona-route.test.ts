@@ -105,7 +105,7 @@ describe("persona route", () => {
     expect(response.inner.text).toContain("raw inner");
     expect(response.inner.readOnly).toBe(true);
     expect(response.inner.source).toBe("internal");
-    expect(response.aiDraftSupported).toEqual(["artist", "soul"]);
+    expect(response.aiDraftSupported).toEqual(["artist", "soul", "producer"]);
     expect(response.setup.needsSetup).toBe(false);
     expect(response.setup.reasonsText).toBe("");
     expect(response.audit.summary.filled).toBeGreaterThan(0);
@@ -141,7 +141,7 @@ describe("persona route", () => {
     const contents = readFileSync(join(root, "ARTIST.md"), "utf8");
 
     expect(response.ok).toBe(true);
-    await expect(readResolvedConfig(root)).resolves.toMatchObject({
+    await expect(readResolvedConfig(root)).resolves.not.toMatchObject({
       artist: { identity: { displayName: "Glass Commuter" } }
     });
     expect(contents).toContain("operator note before");
@@ -178,13 +178,18 @@ describe("persona route", () => {
     await writeSoulPersona(root, { conversationTone: "short and precise", refusalStyle: "refuse weak ideas plainly" });
     const handler = personaHandler();
 
-    const proposed = await callPersona(handler, "POST", "/propose", root, { fields: ["artistName", "soul-tone", "producerFacts"] });
+    const proposed = await callPersona(handler, "POST", "/propose", root, { fields: ["identityLine", "soul-tone", "producerFacts"] });
+    const review = await callPersona(handler, "POST", "/propose", root, { mode: "review_all" });
     const rejected = await callPersona(handler, "POST", "/propose", root, { fields: ["identity"] });
+    const rejectedName = await callPersona(handler, "POST", "/propose", root, { fields: ["artistName"] });
     const completed = await callPersona(handler, "POST", "/complete", root);
 
-    expect((proposed.drafts as Array<{ field: string }>).map((draft) => draft.field)).toEqual(["artistName", "soul-tone", "producerFacts"]);
+    expect((proposed.drafts as Array<{ field: string }>).map((draft) => draft.field)).toEqual(["identityLine", "soul-tone", "producerFacts"]);
+    expect((review.drafts as Array<{ field: string }>).map((draft) => draft.field)).toContain("producerFacts");
     expect(rejected.error).toBe("invalid_persona_fields");
     expect(rejected.statusCode).toBe(400);
+    expect(rejectedName.error).toBe("invalid_persona_fields");
+    expect(rejectedName.statusCode).toBe(400);
     expect((completed.setup as { marker?: { source: string } }).marker?.source).toBe("web");
   });
 });

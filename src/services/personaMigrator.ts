@@ -14,7 +14,7 @@ import {
 import { buildSoulPersonaBlock, readSoulPersonaSummary, soulPersonaBlockEnd, soulPersonaBlockStart } from "./soulFileBuilder.js";
 import { patchResolvedConfig, readResolvedConfig } from "./runtimeConfig.js";
 import { parseVoiceFingerprint } from "./voiceFingerprintParser.js";
-import { artistManagedSections, soulManagedSections } from "./personaCanonical.js";
+import { artistManagedSections, personaCanonicalFieldFromAlias, personaCanonicalLegacyFields, soulManagedSections } from "./personaCanonical.js";
 
 export interface PersonaMigratePlan {
   artistBackupPath: string;
@@ -181,41 +181,11 @@ function normalizeIntent(intent?: string): string | undefined {
   return normalized || undefined;
 }
 
-const personaFields: PersonaField[] = [
-  "artistName",
-  "identityLine",
-  "soundDna",
-  "obsessions",
-  "lyricsRules",
-  "socialVoice",
-  "soul-tone",
-  "soul-refusal",
-  "producerFacts"
-];
+const personaFields = personaCanonicalLegacyFields() as PersonaField[];
 
 function fieldAliases(field: PersonaField): string[] {
-  switch (field) {
-    case "artistName":
-      return ["artistName", "artist name", "name"];
-    case "producerCallname":
-      return ["producerCallname", "producer callname", "callname"];
-    case "identityLine":
-      return ["identityLine", "identity", "manifesto"];
-    case "soundDna":
-      return ["soundDna", "sound"];
-    case "obsessions":
-      return ["obsessions", "themes", "theme"];
-    case "lyricsRules":
-      return ["lyricsRules", "lyrics", "lyrics rule"];
-    case "socialVoice":
-      return ["socialVoice", "social voice", "voice"];
-    case "soul-tone":
-      return ["soul-tone", "soul tone", "conversation tone", "tone"];
-    case "soul-refusal":
-      return ["soul-refusal", "soul refusal", "refusal style", "refusal"];
-    case "producerFacts":
-      return ["producerFacts", "producer facts", "producer context", "producer memo"];
-  }
+  const canonical = personaCanonicalFieldFromAlias(field);
+  return [field, canonical?.id, canonical?.legacyField, ...(canonical?.legacyAliases ?? [])].filter((value): value is string => Boolean(value));
 }
 
 function normalizeDirectiveKey(value: string): string {

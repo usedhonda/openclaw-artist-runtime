@@ -4,7 +4,7 @@ import { ErrorToastStack } from "./ErrorToast";
 import { AwaitingDecisionPanel, groupAwaitingDecisions, type AwaitingDecision } from "./components/AwaitingDecisionPanel";
 import { SongDetailCard } from "./components/SongDetailCard";
 import { SpawnProposalQueuePanel, type SpawnProposalQueueItem } from "./components/SpawnProposalQueuePanel";
-import { SetupView } from "./components/SetupView";
+import { SetupView, type PersonaAiSuggestion } from "./components/SetupView";
 import { useHashRoute } from "./hooks/useHashRoute";
 import {
   buildPersonaArtistPatch,
@@ -12,6 +12,7 @@ import {
   buildPersonaSnapshotPatch,
   buildPersonaSoulPatch,
   emptyPersonaDraftFields,
+  editablePersonaDraftFields,
   validatePersonaDraft,
   type ArtistPersonaDraft,
   type PersonaDraft,
@@ -589,6 +590,7 @@ export function ProducerRoomApp() {
   const [persona, setPersona] = useState<PersonaEditorSource | null>(null);
   const [personaDraft, setPersonaDraft] = useState<PersonaDraft | null>(null);
   const [personaDirty, setPersonaDirty] = useState<PersonaDirtyMap>(emptyPersonaDirty);
+  const [personaAiSuggestions, setPersonaAiSuggestions] = useState<Partial<Record<PersonaField, PersonaAiSuggestion>>>({});
   const personaDirtyRef = useRef(false);
   const [songs, setSongs] = useState<SongSummary[]>([]);
   const [awaitingDecisions, setAwaitingDecisions] = useState<CallbackActionsResponse>({ count: 0, callbacks: [] });
@@ -620,6 +622,7 @@ export function ProducerRoomApp() {
       }
       if (!personaDirtyRef.current) {
         setPersonaDraft(buildPersonaDraft(nextPersona));
+        setPersonaAiSuggestions({});
       }
       setAwaitingDecisions(nextAwaitingDecisions);
       setSpawnProposalQueue(nextSpawnProposalQueue);
@@ -740,6 +743,7 @@ export function ProducerRoomApp() {
     }
     personaDirtyRef.current = false;
     setPersonaDirty(emptyPersonaDirty);
+    setPersonaAiSuggestions({});
     setPersonaDraft(buildPersonaDraft(persona));
   };
 
@@ -851,6 +855,51 @@ export function ProducerRoomApp() {
     } finally {
       setBusy(null);
     }
+  };
+
+  const proposePersonaSuggestions = async (mode: "review_all" | "dedupe") => {
+    setBusy(`persona-ai:${mode}`);
+    try {
+      const response = await apiPost<PersonaProposeResponse>("/persona/propose", {
+        mode,
+        fields: editablePersonaDraftFields()
+      });
+      if (response.error) {
+        throw new Error(response.error);
+      }
+      const nextSuggestions: Partial<Record<PersonaField, PersonaAiSuggestion>> = {};
+      for (const draft of response.drafts ?? []) {
+        if (draft.status === "proposed") {
+          nextSuggestions[draft.field] = { draft: draft.draft, reasoning: draft.reasoning, mode };
+        }
+      }
+      setPersonaAiSuggestions(nextSuggestions);
+      const count = Object.keys(nextSuggestions).length;
+      const warning = response.warnings?.[0];
+      showErrorToast(
+        "runtime",
+        `persona_ai_${mode}_ready`,
+        warning ? `AI案 ${count} 件: ${warning}` : `AI案 ${count} 件を表示しました。保存はまだしていません。`
+      );
+    } catch (caughtError) {
+      const message = caughtError instanceof Error ? caughtError.message : String(caughtError);
+      showErrorToast("runtime", `persona_ai_${mode}_failed`, message);
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  const applyPersonaAiSuggestion = (field: PersonaField) => {
+    const suggestion = personaAiSuggestions[field];
+    if (!suggestion) {
+      return;
+    }
+    applyPersonaDraftProposal(field, suggestion.draft);
+    setPersonaAiSuggestions((current) => {
+      const next = { ...current };
+      delete next[field];
+      return next;
+    });
   };
 
   const missingPersonaFields = (): PersonaField[] => {
@@ -968,6 +1017,10 @@ export function ProducerRoomApp() {
           onRefresh={refresh}
           onPropose={proposePersonaField}
           onProposeMissing={proposeMissingPersonaFields}
+          onProposeReview={() => proposePersonaSuggestions("review_all")}
+          onProposeDedupe={() => proposePersonaSuggestions("dedupe")}
+          aiSuggestions={personaAiSuggestions}
+          onApplySuggestion={applyPersonaAiSuggestion}
           onComplete={completePersonaSetup}
         />
       ) : null}

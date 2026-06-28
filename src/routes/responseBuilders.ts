@@ -30,6 +30,7 @@ import { readDistributionDetectionState } from "../services/songDistributionPoll
 import { secretLikePattern } from "../services/personaMigrator.js";
 import { auditPersonaCompleteness } from "../services/personaFieldAuditor.js";
 import { proposePersonaFields } from "../services/personaProposer.js";
+import { personaCanonicalLegacyFields } from "../services/personaCanonical.js";
 import { readArtistPersonaSummary, writeArtistPersona, writePersonaCompletionMarker } from "../services/personaFileBuilder.js";
 import { describePersonaSetupReasons, readPersonaSetupStatus } from "../services/personaSetupDetector.js";
 import { readSoulPersonaSummary, writeSoulPersona } from "../services/soulFileBuilder.js";
@@ -584,21 +585,11 @@ export interface PersonaRouteResponse {
   inner: { text: string; readOnly: true; source: "internal" };
   setup: Awaited<ReturnType<typeof readPersonaSetupStatus>> & { reasonsText: string };
   audit: Awaited<ReturnType<typeof auditPersonaCompleteness>>;
-  aiDraftSupported: ["artist", "soul"];
+  aiDraftSupported: ["artist", "soul", "producer"];
   provider: AiReviewProvider;
 }
 
-const personaFieldWhitelist = new Set<PersonaField>([
-  "artistName",
-  "identityLine",
-  "soundDna",
-  "obsessions",
-  "lyricsRules",
-  "socialVoice",
-  "soul-tone",
-  "soul-refusal",
-  "producerFacts"
-]);
+const personaFieldWhitelist = new Set<PersonaField>(personaCanonicalLegacyFields({ aiProposableOnly: true }) as PersonaField[]);
 
 const snapshotPersonaLayers = new Set<SnapshotPersonaLayer>(["identity", "producer", "inner"]);
 
@@ -616,21 +607,11 @@ function stringField(record: Record<string, unknown>, key: string): string | und
 function artistPersonaFromPayload(payload: Record<string, unknown>): Partial<PersonaAnswers> {
   const record = recordFromPayload(payload, "artist");
   return {
-    artistName: stringField(record, "artistName"),
     identityLine: stringField(record, "identityLine"),
     soundDna: stringField(record, "soundDna"),
     obsessions: stringField(record, "obsessions"),
     lyricsRules: stringField(record, "lyricsRules"),
     socialVoice: stringField(record, "socialVoice")
-  };
-}
-
-function artistIdentityFromPayload(payload: Record<string, unknown>): { displayName?: string; producerCallname?: string } {
-  const artist = recordFromPayload(payload, "artist");
-  const identity = recordFromPayload(payload, "identity");
-  return {
-    displayName: stringField(artist, "artistName") ?? stringField(identity, "displayName"),
-    producerCallname: stringField(identity, "producerCallname")
   };
 }
 
@@ -708,7 +689,7 @@ export async function buildPersonaResponse(config?: Partial<ArtistRuntimeConfig>
     inner: { text: inner, readOnly: true, source: "internal" },
     setup: { ...setupStatus, reasonsText: describePersonaSetupReasons(setupStatus.reasons) },
     audit,
-    aiDraftSupported: ["artist", "soul"],
+    aiDraftSupported: ["artist", "soul", "producer"],
     provider: mergedConfig.aiReview.provider
   };
 }
@@ -727,21 +708,6 @@ export async function buildPersonaWriteResponse(
     if (layer === "inner") {
       throw new Error("inner_projection_read_only");
     }
-    if (layer === "artist") {
-      const identity = artistIdentityFromPayload(payload);
-      const identityPatch = {
-        ...(identity.displayName?.trim() ? { displayName: identity.displayName.trim() } : {}),
-        ...(identity.producerCallname?.trim() ? { producerCallname: identity.producerCallname.trim() } : {})
-      };
-      if (Object.keys(identityPatch).length > 0) {
-        mergedConfig = await patchResolvedConfig(root, {
-          artist: {
-            ...mergedConfig.artist,
-            identity: { ...mergedConfig.artist.identity, ...identityPatch }
-          }
-        });
-      }
-    }
     const result = layer === "artist"
       ? await writeArtistPersona(root, artistPersonaFromPayload(payload))
       : layer === "soul"
@@ -757,11 +723,20 @@ export async function buildPersonaProposeResponse(
   config: Partial<ArtistRuntimeConfig> | undefined,
   payload: Record<string, unknown>
 ): Promise<unknown> {
+  const mode = typeof payload.mode === "string" ? payload.mode : "fill_missing";
   const rawFields = Array.isArray(payload.fields) ? payload.fields : [];
-  if (rawFields.length === 0 || rawFields.some((field) => typeof field !== "string" || !personaFieldWhitelist.has(field as PersonaField))) {
+  const defaultFields = mode === "review_all" || mode === "dedupe"
+    ? [...personaFieldWhitelist]
+    : [];
+  const requestedFields = rawFields.length > 0 ? rawFields : defaultFields;
+  if (
+    requestedFields.length === 0 ||
+    !["fill_missing", "review_all", "dedupe"].includes(mode) ||
+    requestedFields.some((field) => typeof field !== "string" || !personaFieldWhitelist.has(field as PersonaField))
+  ) {
     return { error: "invalid_persona_fields", statusCode: 400 };
   }
-  const fields = rawFields as PersonaField[];
+  const fields = requestedFields as PersonaField[];
   const mergedConfig = await resolveRuntimeConfig(config);
   const root = mergedConfig.artist.workspaceRoot;
   const [artistMd, soulMd, producerMd] = await Promise.all([
@@ -770,7 +745,7 @@ export async function buildPersonaProposeResponse(
     readFile(join(root, "PRODUCER.md"), "utf8").catch(() => "")
   ]);
   return proposePersonaFields(
-    { fields, source: { artistMd, soulMd, producerMd } },
+    { fields, mode: mode as "fill_missing" | "review_all" | "dedupe", source: { artistMd, soulMd, producerMd } },
     { aiReviewProvider: mergedConfig.aiReview.provider }
   );
 }

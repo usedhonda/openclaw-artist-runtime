@@ -2,6 +2,7 @@ import { join } from "node:path";
 import type { AiReviewProvider, CommissionBrief, PersonaField, SongUpdateField, TelegramInlineKeyboard } from "../types.js";
 import { proposePersonaFields } from "./personaProposer.js";
 import { secretLikePattern } from "./personaMigrator.js";
+import { personaCanonicalTargetForAlias, personaCanonicalLegacyFields } from "./personaCanonical.js";
 import { proposeSongFields } from "./songProposer.js";
 
 export type ChangeSetDomain = "persona" | "song";
@@ -62,9 +63,7 @@ function proposalId(domain: ChangeSetDomain): string {
 }
 
 function personaTargetFile(field: PersonaField): string {
-  if (field === "artistName" || field === "producerCallname") return "runtime/config-overrides.json";
-  if (field === "producerFacts") return "PRODUCER.md";
-  return field === "soul-tone" || field === "soul-refusal" ? "SOUL.md" : "ARTIST.md";
+  return personaCanonicalTargetForAlias(field) ?? "ARTIST.md";
 }
 
 function songTargetFile(root: string, songId: string, field: SongUpdateField): string {
@@ -119,7 +118,7 @@ export async function proposeFreeformChangeSet(req: FreeformChangeSetRequest): P
   }
 
   if (req.domain === "persona") {
-    const fields: PersonaField[] = ["artistName", "identityLine", "soundDna", "obsessions", "lyricsRules", "socialVoice"];
+    const fields = personaCanonicalLegacyFields({ aiProposableOnly: true }) as PersonaField[];
     const result = await proposePersonaFields({
       fields,
       source: {

@@ -16,6 +16,12 @@ import type { PersonaField } from "../../../src/types";
 
 type DirtyMap = Record<PersonaDraftLayer, boolean>;
 type LayerTouchedMap = Record<PersonaDraftLayer, boolean>;
+type PersonaAiSuggestionMode = "review_all" | "dedupe";
+export type PersonaAiSuggestion = {
+  draft: string;
+  reasoning?: string;
+  mode: PersonaAiSuggestionMode;
+};
 
 const emptyTouchedMap: LayerTouchedMap = {
   artist: false,
@@ -71,6 +77,7 @@ function personaFieldStatusLabel(status: "filled" | "thin" | "missing"): string 
 function PersonaTextInput(props: {
   label: string;
   help: string;
+  targetFile: string;
   value: string;
   multiline?: boolean;
   onChange: (value: string) => void;
@@ -78,12 +85,17 @@ function PersonaTextInput(props: {
   aiField?: PersonaField;
   busyKey: string | null;
   onPropose?: (field: PersonaField) => void;
+  suggestion?: PersonaAiSuggestion;
+  onApplySuggestion?: (field: PersonaField) => void;
 }) {
   const isEmpty = props.value.trim().length === 0;
   return (
     <label className="persona-field">
       <div className="persona-field-heading">
-        <div className="eyebrow">{props.label}</div>
+        <div>
+          <div className="eyebrow">{props.label}</div>
+          <span className="persona-target-chip">{props.targetFile}</span>
+        </div>
         {props.aiField && props.onPropose ? (
           <button
             type="button"
@@ -94,11 +106,24 @@ function PersonaTextInput(props: {
               props.onPropose?.(props.aiField as PersonaField);
             }}
           >
-            {props.busyKey === `persona-ai:${props.aiField}` ? "作成中" : "AIお任せ"}
+            {props.busyKey === `persona-ai:${props.aiField}` ? "作成中" : "AI案"}
           </button>
         ) : null}
       </div>
       <div className="field-help">{props.help}</div>
+      {props.suggestion && props.aiField ? (
+        <div className={`persona-ai-suggestion persona-ai-suggestion-${props.suggestion.mode}`}>
+          <div>
+            <strong>{props.suggestion.mode === "dedupe" ? "重複整理案" : "AI添削案"}</strong>
+            <p>{props.suggestion.draft}</p>
+            {props.suggestion.reasoning ? <small>{props.suggestion.reasoning}</small> : null}
+          </div>
+          <button type="button" onClick={(event) => {
+            event.preventDefault();
+            props.onApplySuggestion?.(props.aiField as PersonaField);
+          }}>案を入れる</button>
+        </div>
+      ) : null}
       {props.multiline ? (
         <textarea rows={4} value={props.value} onBlur={props.onTouched} onChange={(event) => props.onChange(event.target.value)} />
       ) : (
@@ -112,31 +137,23 @@ function PersonaTextInput(props: {
 function SetupFileMap() {
   return (
     <div className="persona-file-map" aria-label="5ファイルの役割">
-      <div className="persona-file-map-item is-required">
-        <strong>ARTIST.md</strong>
-        <span>ユーザーが書く / 必須</span>
-        <small>曲のテーマ、音、歌詞、公開投稿の声</small>
-      </div>
-      <div className="persona-file-map-item is-required">
-        <strong>SOUL.md</strong>
-        <span>ユーザーが書く / 必須</span>
-        <small>アーティストがあなたと話す時の口調、断り方</small>
-      </div>
-      <div className="persona-file-map-item">
-        <strong>PRODUCER.md</strong>
-        <span>ユーザーが書く / 任意</span>
-        <small>好み、制約、制作判断に使う材料</small>
-      </div>
-      <div className="persona-file-map-item is-readonly">
-        <strong>IDENTITY.md</strong>
-        <span>自動作成 / 編集不可</span>
-        <small>名前や設定から作る確認用の自己紹介</small>
-      </div>
-      <div className="persona-file-map-item is-readonly">
-        <strong>INNER.md</strong>
-        <span>内部メモ / Setup では編集不可</span>
-        <small>既存内容は消さない。通常は自動処理が扱う</small>
-      </div>
+      {personaLayerMap.map((file) => (
+        <div key={file.file} className={`persona-file-map-item${file.editable ? "" : " is-readonly"}${file.requirement === "必須" ? " is-required" : ""}`}>
+          <div className="persona-file-map-main">
+            <strong>{file.file}</strong>
+            <span>{file.role}</span>
+          </div>
+          <div className="persona-file-badges">
+            <span className="persona-badge">{file.kind}</span>
+            <span className="persona-badge">{file.requirement}</span>
+          </div>
+          <p>{file.summary}</p>
+          <dl>
+            <div><dt>書く</dt><dd>{file.write}</dd></div>
+            <div><dt>書かない</dt><dd>{file.avoid}</dd></div>
+          </dl>
+        </div>
+      ))}
     </div>
   );
 }
@@ -182,6 +199,8 @@ function SetupFileEditor(props: {
   onUpdateSoul: (field: keyof SoulPersonaDraft, value: string) => void;
   onUpdateSnapshot: (layer: "producer", value: string) => void;
   onPropose: (field: PersonaField) => void;
+  suggestions: Partial<Record<PersonaField, PersonaAiSuggestion>>;
+  onApplySuggestion: (field: PersonaField) => void;
   onSave: () => void;
   onReset: () => void;
   onTouched: () => void;
@@ -200,6 +219,7 @@ function SetupFileEditor(props: {
               key={field.field}
               label={field.label}
               help={field.help}
+              targetFile={field.targetFile}
               value={props.draft.artist[field.field]}
               multiline={field.multiline}
               onChange={(value) => props.onUpdateArtist(field.field, value)}
@@ -207,6 +227,8 @@ function SetupFileEditor(props: {
               aiField={field.aiField}
               busyKey={props.busyKey}
               onPropose={props.onPropose}
+              suggestion={props.suggestions[field.aiField]}
+              onApplySuggestion={props.onApplySuggestion}
             />
           ))}
         </div>
@@ -218,6 +240,7 @@ function SetupFileEditor(props: {
               key={field.field}
               label={field.label}
               help={field.help}
+              targetFile={field.targetFile}
               value={props.draft.soul[field.field]}
               multiline={field.multiline}
               onChange={(value) => props.onUpdateSoul(field.field, value)}
@@ -225,6 +248,8 @@ function SetupFileEditor(props: {
               aiField={field.aiField}
               busyKey={props.busyKey}
               onPropose={props.onPropose}
+              suggestion={props.suggestions[field.aiField]}
+              onApplySuggestion={props.onApplySuggestion}
             />
           ))}
         </div>
@@ -234,6 +259,7 @@ function SetupFileEditor(props: {
           <PersonaTextInput
             label={producerContextField.label}
             help={producerContextField.help}
+            targetFile={producerContextField.targetFile}
             value={props.draft.snapshots.producer}
             multiline
             onChange={(value) => props.onUpdateSnapshot("producer", value)}
@@ -241,6 +267,8 @@ function SetupFileEditor(props: {
             aiField={producerContextField.aiField}
             busyKey={props.busyKey}
             onPropose={props.onPropose}
+            suggestion={props.suggestions[producerContextField.aiField]}
+            onApplySuggestion={props.onApplySuggestion}
           />
         </>
       ) : null}
@@ -292,6 +320,10 @@ export function SetupView(props: {
   onRefresh: () => void;
   onPropose: (field: PersonaField) => void;
   onProposeMissing: () => void;
+  onProposeReview: () => void;
+  onProposeDedupe: () => void;
+  aiSuggestions: Partial<Record<PersonaField, PersonaAiSuggestion>>;
+  onApplySuggestion: (field: PersonaField) => void;
   onComplete: () => void;
 }) {
   const draft = props.draft;
@@ -335,7 +367,7 @@ export function SetupView(props: {
     <section className="single-column setup-view">
       <article className="panel settings-panel">
         <div className="section-title">アーティスト設定</div>
-        <div className="muted">5つのファイルのうち、ここで書くのは必要な入力欄だけです。どの欄がどのファイルに入るかを見ながら設定できます。</div>
+        <div className="muted">5つのファイルの全体像です。入力する場所、自動生成される場所、内部管理の場所をここで分けて見ます。</div>
         <SetupFileMap />
         {setup?.needsSetup ? (
           <div className="warning-banner">初回 setup が未完了です: {setup.reasonsText}</div>
@@ -376,9 +408,15 @@ export function SetupView(props: {
                 disabled={props.busyKey !== null || !hasEmptyEditableField}
                 onClick={props.onProposeMissing}
               >
-                {props.busyKey === "persona-ai:missing" ? "AIで作成中" : "未記入をAIお任せ"}
+                {props.busyKey === "persona-ai:missing" ? "作成中" : "空欄をAI補完"}
               </button>
-              <span className="muted">空欄だけを補完します。書いてある欄は上書きしません。</span>
+              <button type="button" disabled={props.busyKey !== null} onClick={props.onProposeReview}>
+                {props.busyKey === "persona-ai:review_all" ? "添削中" : "全体をAI添削"}
+              </button>
+              <button type="button" disabled={props.busyKey !== null} onClick={props.onProposeDedupe}>
+                {props.busyKey === "persona-ai:dedupe" ? "整理中" : "重複整理案"}
+              </button>
+              <span className="muted">AI案は保存前の下書きです。空欄補完以外は、各欄の「案を入れる」で反映します。</span>
             </div>
             {editableSetupLayers.map((layer) => (
               <React.Fragment key={layer}>
@@ -395,6 +433,8 @@ export function SetupView(props: {
                   onUpdateSoul={props.onUpdateSoul}
                   onUpdateSnapshot={props.onUpdateSnapshot}
                   onPropose={props.onPropose}
+                  suggestions={props.aiSuggestions}
+                  onApplySuggestion={props.onApplySuggestion}
                   onSave={() => saveLayer(layer)}
                   onReset={resetDraft}
                   onTouched={() => markTouched(layer)}

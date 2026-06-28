@@ -39,7 +39,6 @@ genres:
 language: TBD
 source_channels:
   - public observations
-  - producer notes
   - artist diary
 ```
 

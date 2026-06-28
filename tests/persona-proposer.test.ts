@@ -8,7 +8,6 @@ import {
 import type { PersonaField } from "../src/types";
 
 const allFields: PersonaField[] = [
-  "artistName",
   "identityLine",
   "soundDna",
   "obsessions",
@@ -28,11 +27,7 @@ describe("persona proposer", () => {
 
     expect(result.provider).toBe("mock");
     expect(result.warnings).toEqual([]);
-    expect(result.drafts).toHaveLength(9);
-    expect(result.drafts.find((draft) => draft.field === "artistName")).toMatchObject({
-      draft: "Unnamed OpenClaw Artist",
-      status: "proposed"
-    });
+    expect(result.drafts).toHaveLength(8);
     expect(result.drafts.find((draft) => draft.field === "soul-refusal")).toMatchObject({
       draft: "Refuse weak or unsafe ideas with a clear reason and one stronger alternative.",
       status: "proposed"
@@ -44,20 +39,20 @@ describe("persona proposer", () => {
 
   it("skips only the field that contains secret-like rough input", async () => {
     const result = await proposePersonaFields({
-      fields: ["artistName", "socialVoice"],
+      fields: ["identityLine", "socialVoice"],
       source: {
         artistMd: "",
         soulMd: "",
-        roughInput: ["artistName: used::honda", `socialVoice: ${["TELEGRAM", "BOT", "TOKEN"].join("_")}=do-not-store`].join(
+        roughInput: ["identityLine: public artist from transit damage", `socialVoice: ${["TELEGRAM", "BOT", "TOKEN"].join("_")}=do-not-store`].join(
           "\n"
         )
       }
     });
 
     expect(result.warnings.join("\n")).toContain("socialVoice");
-    expect(result.drafts.find((draft) => draft.field === "artistName")).toMatchObject({
+    expect(result.drafts.find((draft) => draft.field === "identityLine")).toMatchObject({
       status: "proposed",
-      draft: "Unnamed OpenClaw Artist"
+      draft: "A public musical artist that turns observations into autonomous songs."
     });
     expect(result.drafts.find((draft) => draft.field === "socialVoice")).toMatchObject({
       status: "skipped",
@@ -124,7 +119,7 @@ describe("persona proposer", () => {
       "  - 説明口調"
     ].join("\n");
     const result = await proposePersonaFields({
-      fields: ["soul-tone", "soul-refusal", "artistName"],
+      fields: ["soul-tone", "soul-refusal", "identityLine"],
       source: { artistMd, soulMd: "" }
     });
 
@@ -136,8 +131,8 @@ describe("persona proposer", () => {
     const refusal = result.drafts.find((draft) => draft.field === "soul-refusal");
     expect(refusal?.draft).toContain("自己紹介");
     expect(refusal?.draft).toContain("受け流す");
-    const name = result.drafts.find((draft) => draft.field === "artistName");
-    expect(name?.draft).toBe("Unnamed OpenClaw Artist");
+    const concept = result.drafts.find((draft) => draft.field === "identityLine");
+    expect(concept?.draft).toBe("A public musical artist that turns observations into autonomous songs.");
   });
 
   it("includes the persona motif anchor in the AI prompt when ARTIST.md has motifs", () => {

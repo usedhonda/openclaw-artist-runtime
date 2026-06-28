@@ -27,7 +27,7 @@ function source(): PersonaEditorSource {
     producer: { text: "# PRODUCER\n\nraw producer\n" },
     inner: { text: "# INNER\n\nraw inner\n" },
     setup: { completed: true, needsSetup: false, reasons: [], reasonsText: "" },
-    aiDraftSupported: ["artist", "soul"],
+    aiDraftSupported: ["artist", "soul", "producer"],
     provider: "mock"
   };
 }

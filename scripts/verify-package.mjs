@@ -50,6 +50,25 @@ try {
     console.error(`tarball still ships ${leakedKnowledge.length} legacy .md source(s) under src/suno-production/knowledge/ (remove from package.json files)`);
     ok = false;
   }
+  const leakedWorkspacePersona = tarballFiles.filter((path) =>
+    /^(ARTIST|SOUL|PRODUCER|IDENTITY|INNER)\.md$/.test(path) ||
+    /^\.local\//.test(path) ||
+    /^(runtime|songs|logs|observations)\//.test(path) ||
+    (/PRODUCER\.md$/.test(path) && path !== "workspace-template/PRODUCER.md")
+  );
+  if (leakedWorkspacePersona.length > 0) {
+    console.error(`tarball includes local workspace persona/runtime file(s): ${leakedWorkspacePersona.join(", ")}`);
+    ok = false;
+  }
+  const producerTemplate = readFileSync("workspace-template/PRODUCER.md", "utf8");
+  const producerTemplateLooksPrivate =
+    /[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/i.test(producerTemplate) ||
+    /\+?\d[\d\s().-]{8,}\d/.test(producerTemplate) ||
+    /\bbot\d+:[A-Za-z0-9_-]{30,}\b|(?:^|\W)(?:TELEGRAM_BOT_TOKEN|API[_ -]?KEY|TOKEN|COOKIE|CREDENTIAL|PASSWORD|SECRET)\s*[:=]\s*[A-Za-z0-9+/=_-]{8,}/i.test(producerTemplate);
+  if (producerTemplateLooksPrivate) {
+    console.error("workspace-template/PRODUCER.md contains private-looking contact or secret-like sample data");
+    ok = false;
+  }
 } catch (error) {
   console.error(`npm pack inspection failed: ${error instanceof Error ? error.message : String(error)}`);
   ok = false;
