@@ -157,7 +157,7 @@ describe("ProducerRoomApp Songs and Settings views", () => {
       })
     );
 
-    expect(html).toContain("Songs");
+    expect(html).toContain("作品");
     expect(html).toContain("七万円のスクランブル");
     expect(html).toContain("試聴URLあり");
     expect(html).toContain("採用/破棄は Telegram の通知から");
@@ -230,7 +230,7 @@ describe("ProducerRoomApp Songs and Settings views", () => {
     expect(html).toContain("自動制作");
     expect(html).toContain("Suno 予算");
     expect(html).toContain("配信先");
-    expect(html).toContain("Save Settings");
+    expect(html).toContain("設定を保存");
     expect(html).toContain("凍結中");
     expect(html).toContain("下書きのみ");
     expect(html).not.toContain("/tmp/artist");
@@ -240,6 +240,8 @@ describe("ProducerRoomApp Songs and Settings views", () => {
     expect(html).not.toContain("auto publish");
     expect(html).not.toContain(">mock<");
     expect(html).not.toContain(">skip<");
+    expect(html).not.toContain("Save Settings");
+    expect(html).not.toContain("Reset Draft");
   });
 
   it("renders the Setup tab editor with AI draft only on ARTIST/SOUL layers", () => {
@@ -281,7 +283,7 @@ describe("ProducerRoomApp Songs and Settings views", () => {
     );
 
     expect(html).toContain("Setup");
-    expect(html).toContain("Artist Setup");
+    expect(html).toContain("アーティスト設定");
     expect(html).toContain("創作の核");
     expect(html).toContain("会話人格");
     expect(html).toContain("自己紹介");
@@ -296,6 +298,7 @@ describe("ProducerRoomApp Songs and Settings views", () => {
     expect(html.match(/元に戻す<\/button>/g)?.length).toBe(8);
     expect(html).not.toContain("AI下書き");
     expect(html).not.toContain("創作の核 — ARTIST.md");
+    expect(html).not.toContain("Artist Setup");
   });
 
   it("does not show validation errors for untouched empty setup fields", () => {

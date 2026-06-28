@@ -83,7 +83,7 @@ function SaveRow(props: {
       >
         Save
       </button>
-      <button type="button" disabled={props.busy || !props.dirty} onClick={props.onReset}>Reset Draft</button>
+      <button type="button" disabled={props.busy || !props.dirty} onClick={props.onReset}>変更を破棄</button>
       {props.validationError ? <span className="field-error">{props.validationError}</span> : null}
     </div>
   );
@@ -133,7 +133,7 @@ export function SetupView(props: {
   return (
     <section className="single-column setup-view">
       <article className="panel settings-panel">
-        <div className="section-title">Artist Setup</div>
+        <div className="section-title">アーティスト設定</div>
         <div className="muted">ファイル名は残しつつ、ここでは「何に効く人格か」を先に見せます。</div>
         <div className="eyebrow">参照ファイル</div>
         <div className="persona-layer-map" aria-label="persona layer map">
@@ -233,7 +233,7 @@ export function SetupView(props: {
               </details>
             ))}
             <div className="inline-actions">
-              <button type="button" disabled={props.busyKey !== null} onClick={props.onRefresh}>Refresh</button>
+              <button type="button" disabled={props.busyKey !== null} onClick={props.onRefresh}>再読み込み</button>
               <button type="button" disabled={props.busyKey === "persona-complete"} onClick={props.onComplete}>
                 {props.busyKey === "persona-complete" ? "完了記録中" : "Setup 完了"}
               </button>

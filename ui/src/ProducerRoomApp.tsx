@@ -305,10 +305,10 @@ function RouteNav(props: { activeView: RoomView }) {
   const linkClass = (view: RoomView) => `tab-button${props.activeView === view ? " is-active" : ""}`;
   return (
     <nav className="view-tabs producer-room-tabs" aria-label="Producer Room views">
-      <a className={linkClass("room")} href="#room">Room</a>
-      <a className={linkClass("songs")} href="#songs">Songs</a>
-      <a className={linkClass("setup")} href="#setup">Setup</a>
-      <a className={linkClass("settings")} href="#settings">Settings</a>
+      <a className={linkClass("room")} href="#room">部屋</a>
+      <a className={linkClass("songs")} href="#songs">作品</a>
+      <a className={linkClass("setup")} href="#setup">設定準備</a>
+      <a className={linkClass("settings")} href="#settings">運用設定</a>
       <a className="producer-room-diagnostics-link" href="#diagnostics">診断</a>
     </nav>
   );
@@ -417,7 +417,7 @@ export function SongsView(props: {
   return (
     <section className="single-column songs-view">
       <article className="panel">
-        <div className="section-title">Songs</div>
+        <div className="section-title">作品</div>
         <div className="muted">採用/破棄は Telegram の通知から。Console は作品の歩みを読む mirror です。</div>
         {props.songs.length === 0 ? (
           <div className="item muted">曲台帳はまだ空です。</div>
@@ -528,7 +528,7 @@ export function SettingsView(props: {
   return (
     <section className="single-column settings-view">
       <article className="panel settings-panel">
-        <div className="section-title">Settings</div>
+        <div className="section-title">運用設定</div>
         <div className="muted">制作ペース、Suno 予算、外部公開の許可を決める場所です。</div>
         {!props.config || !draft ? (
           <div className="item muted">Loading config.</div>
@@ -598,9 +598,9 @@ export function SettingsView(props: {
             </section>
             {props.validationError ? <div className="field-error">{props.validationError}</div> : null}
             <div className="inline-actions">
-              <button className="primary" type="button" disabled={props.busy || Boolean(props.validationError)} onClick={props.onSave}>Save Settings</button>
-              <button type="button" disabled={props.busy || !props.dirty} onClick={props.onReset}>Reset Draft</button>
-              <button type="button" disabled={props.busy} onClick={props.onRefresh}>Refresh</button>
+              <button className="primary" type="button" disabled={props.busy || Boolean(props.validationError)} onClick={props.onSave}>設定を保存</button>
+              <button type="button" disabled={props.busy || !props.dirty} onClick={props.onReset}>元に戻す</button>
+              <button type="button" disabled={props.busy} onClick={props.onRefresh}>再読み込み</button>
             </div>
           </div>
         )}
