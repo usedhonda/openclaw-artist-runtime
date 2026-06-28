@@ -95,7 +95,8 @@ describe("awaiting decision panel", () => {
     expect(html.split("みじかいかげ").length - 1).toBe(1);
     expect(html).not.toContain("song-026 / みじかいかげ");
     expect(html).toContain("古い重複通知 2 件をまとめています。");
-    expect(html).toContain("表示は曲単位にまとめています。");
+    expect(html).toContain("同じ曲の古い通知はここでは増やしません。");
+    expect(html).not.toContain("ほか 2 件あります。");
   });
 
   it("can limit the Room surface to the latest decision group", () => {
@@ -136,6 +137,7 @@ describe("awaiting decision panel", () => {
     expect(html).not.toContain("古い曲");
     expect(html).not.toContain("song-old / 古い曲");
     expect(html).toContain("ほか 1 曲の判断待ちは畳んでいます。");
+    expect(html).not.toContain("ほか 1 件あります。");
   });
 
   it("prefers the current archive decision family over stale spawn proposal callbacks", () => {

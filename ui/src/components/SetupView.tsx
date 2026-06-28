@@ -134,17 +134,7 @@ export function SetupView(props: {
     <section className="single-column setup-view">
       <article className="panel settings-panel">
         <div className="section-title">アーティスト設定</div>
-        <div className="muted">ファイル名は残しつつ、ここでは「何に効く人格か」を先に見せます。</div>
-        <div className="eyebrow">参照ファイル</div>
-        <div className="persona-layer-map" aria-label="persona layer map">
-          {personaLayerMap.map((entry) => (
-            <div className="persona-layer-chip" key={entry.layer}>
-              <strong>{entry.role}</strong>
-              <span>{entry.file}</span>
-              <small>{entry.summary}</small>
-            </div>
-          ))}
-        </div>
+        <div className="muted">曲づくりに効く人格だけを並べます。必要なところだけ開いて編集します。</div>
         {setup?.needsSetup ? (
           <div className="warning-banner">初回 setup が未完了です: {setup.reasonsText}</div>
         ) : null}
@@ -156,8 +146,8 @@ export function SetupView(props: {
               <summary>
                 <span className="section-title">創作の核</span>
                 <span className="muted">曲づくりの土台。必要な時だけ開いて編集します。</span>
-                <span className="muted">参照元: ARTIST.md</span>
               </summary>
+              <div className="muted">保存先: ARTIST.md</div>
               <div className="muted">AIお任せは欄に案を入れるだけで、保存するまで反映されません。</div>
               <div className="persona-field-list">
                 {artistPersonaFields.map((field) => (
@@ -189,8 +179,8 @@ export function SetupView(props: {
               <summary>
                 <span className="section-title">会話人格</span>
                 <span className="muted">Telegram や部屋で話す温度。必要な時だけ開いて編集します。</span>
-                <span className="muted">参照元: SOUL.md</span>
               </summary>
+              <div className="muted">保存先: SOUL.md</div>
               <div className="muted">AIお任せは欄に案を入れるだけで、保存するまで反映されません。</div>
               <div className="persona-field-list">
                 {soulPersonaFields.map((field) => (
@@ -223,8 +213,8 @@ export function SetupView(props: {
                 <summary>
                   <span className="section-title">{snapshotLayerInfo(layer)?.role}</span>
                   <span className="muted">{snapshotLayerInfo(layer)?.summary}</span>
-                  <span className="muted">参照元: {snapshotLayerInfo(layer)?.file}</span>
                 </summary>
+                <div className="muted">保存先: {snapshotLayerInfo(layer)?.file}</div>
                 <div className="muted">全文をそのまま保存します。AIお任せはありません。</div>
                 <textarea rows={10} value={draft.snapshots[layer]} onBlur={() => markTouched(layer)} onChange={(event) => props.onUpdateSnapshot(layer, event.target.value)} />
                 {draft.snapshots[layer].trim().length === 0 ? <div className="muted">未入力</div> : null}

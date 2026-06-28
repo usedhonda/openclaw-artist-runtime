@@ -130,6 +130,11 @@ textarea {
   font-weight: 700;
 }
 
+.producer-room-shell label .eyebrow {
+  text-transform: none;
+  letter-spacing: 0.02em;
+}
+
 .card-grid,
 .two-column,
 .single-column {

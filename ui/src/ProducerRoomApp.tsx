@@ -551,13 +551,13 @@ export function SettingsView(props: {
                 <NumberField label="1日の上限" value={draft.dailyCreditLimit} min={1} max={1000} onChange={(value) => props.onUpdateDraft({ dailyCreditLimit: value })} />
                 <NumberField label="月の上限" value={draft.monthlyCreditLimit} min={0} max={50000} onChange={(value) => props.onUpdateDraft({ monthlyCreditLimit: value })} note="0 は無制限。" />
                 <label>
-                  <div className="eyebrow">Suno 操作方法</div>
+                  <div className="eyebrow">曲づくりの実行方法</div>
                   <select value={draft.sunoDriver} onChange={(event) => props.onUpdateDraft({ sunoDriver: event.target.value as ConfigDraft["sunoDriver"] })}>
                     {sunoDriverModes.map((mode) => <option key={mode} value={mode}>{sunoDriverLabel(mode)}</option>)}
                   </select>
                 </label>
                 <label>
-                  <div className="eyebrow">Suno 送信</div>
+                  <div className="eyebrow">作成ボタン</div>
                   <select value={draft.sunoSubmitMode} onChange={(event) => props.onUpdateDraft({ sunoSubmitMode: event.target.value as ConfigDraft["sunoSubmitMode"] })}>
                     {sunoSubmitModes.map((mode) => <option key={mode} value={mode}>{sunoSubmitModeLabel(mode)}</option>)}
                   </select>
@@ -579,7 +579,7 @@ export function SettingsView(props: {
                 <label className="platform-config is-frozen" title="凍結中">
                   <div className="toggle"><input type="checkbox" checked={draft.instagramEnabled} onChange={(event) => props.onUpdateDraft({ instagramEnabled: event.target.checked })} />Instagram を使う</div>
                   <div className="toggle"><input type="checkbox" checked={draft.instagramLiveGoArmed} disabled readOnly />Instagram 公開許可 <span className="badge badge-frozen">凍結中</span></div>
-                  <div className="eyebrow">Instagram 権限</div>
+                  <div className="eyebrow">Instagram の扱い</div>
                   <select value={draft.instagramAuthority} onChange={(event) => props.onUpdateDraft({ instagramAuthority: event.target.value as ConfigDraft["instagramAuthority"] })}>
                     {instagramAuthorityModes.map((mode) => <option key={mode} value={mode}>{authorityLabel(mode)}</option>)}
                   </select>
@@ -588,7 +588,7 @@ export function SettingsView(props: {
                 <label className="platform-config is-frozen" title="アカウント未作成 / 凍結中">
                   <div className="toggle"><input type="checkbox" checked={draft.tiktokEnabled} onChange={(event) => props.onUpdateDraft({ tiktokEnabled: event.target.checked })} />TikTok を使う</div>
                   <div className="toggle"><input type="checkbox" checked={draft.tiktokLiveGoArmed} disabled readOnly />TikTok 公開許可 <span className="badge badge-frozen">凍結中</span></div>
-                  <div className="eyebrow">TikTok 権限</div>
+                  <div className="eyebrow">TikTok の扱い</div>
                   <select value={draft.tiktokAuthority} onChange={(event) => props.onUpdateDraft({ tiktokAuthority: event.target.value as ConfigDraft["tiktokAuthority"] })}>
                     {tiktokAuthorityModes.map((mode) => <option key={mode} value={mode}>{authorityLabel(mode)}</option>)}
                   </select>

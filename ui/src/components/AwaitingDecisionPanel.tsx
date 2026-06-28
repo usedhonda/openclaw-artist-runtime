@@ -139,9 +139,8 @@ export function AwaitingDecisionPanel({ callbacks, count, now = Date.now(), maxG
           ))}
         </div>
       )}
-      {count > callbacks.length ? <div className="muted">ほか {count - callbacks.length} 件あります。</div> : null}
       {hiddenGroupCount > 0 ? <div className="muted">ほか {hiddenGroupCount} 曲の判断待ちは畳んでいます。</div> : null}
-      {callbacks.length > groupedCallbacks.length ? <div className="muted">表示は曲単位にまとめています。</div> : null}
+      {callbacks.length > groupedCallbacks.length ? <div className="muted">同じ曲の古い通知はここでは増やしません。</div> : null}
       <div className="muted">Telegram の最新通知、または /status から現在地を確認できます。</div>
     </article>
   );
