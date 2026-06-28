@@ -30,16 +30,11 @@ function PersonaTextInput(props: {
   label: string;
   help: string;
   value: string;
-  originalValue: string;
   multiline?: boolean;
   onChange: (value: string) => void;
   onTouched: () => void;
-  onAiDraft?: () => void;
-  onResetField: () => void;
-  aiBusy?: boolean;
 }) {
   const isEmpty = props.value.trim().length === 0;
-  const fieldChanged = props.value !== props.originalValue;
   return (
     <label className="persona-field">
       <div className="eyebrow">{props.label}</div>
@@ -50,14 +45,6 @@ function PersonaTextInput(props: {
         <input value={props.value} onBlur={props.onTouched} onChange={(event) => props.onChange(event.target.value)} />
       )}
       {isEmpty ? <div className="muted">未入力</div> : null}
-      {props.onAiDraft ? (
-        <div className="ai-draft-row">
-          <button type="button" className="secondary" disabled={props.aiBusy} onClick={props.onAiDraft}>
-            {props.aiBusy ? "作成中" : "AIお任せ"}
-          </button>
-          <button type="button" disabled={!fieldChanged} onClick={props.onResetField}>元に戻す</button>
-        </div>
-      ) : null}
     </label>
   );
 }
@@ -148,7 +135,6 @@ export function SetupView(props: {
                 <span className="muted">曲づくりの土台。必要な時だけ開いて編集します。</span>
               </summary>
               <div className="muted">保存先: ARTIST.md</div>
-              <div className="muted">AIお任せは欄に案を入れるだけで、保存するまで反映されません。</div>
               <div className="persona-field-list">
                 {artistPersonaFields.map((field) => (
                   <PersonaTextInput
@@ -156,13 +142,9 @@ export function SetupView(props: {
                     label={field.label}
                     help={field.help}
                     value={draft.artist[field.field]}
-                    originalValue={props.persona.artist[field.field]}
                     multiline={field.multiline}
                     onChange={(value) => props.onUpdateArtist(field.field, value)}
                     onTouched={() => markTouched("artist")}
-                    onAiDraft={() => props.onPropose(field.aiField)}
-                    onResetField={() => props.onUpdateArtist(field.field, props.persona?.artist[field.field] ?? "")}
-                    aiBusy={props.busyKey === `persona-ai:${field.aiField}`}
                   />
                 ))}
               </div>
@@ -181,7 +163,6 @@ export function SetupView(props: {
                 <span className="muted">Telegram や部屋で話す温度。必要な時だけ開いて編集します。</span>
               </summary>
               <div className="muted">保存先: SOUL.md</div>
-              <div className="muted">AIお任せは欄に案を入れるだけで、保存するまで反映されません。</div>
               <div className="persona-field-list">
                 {soulPersonaFields.map((field) => (
                   <PersonaTextInput
@@ -189,13 +170,9 @@ export function SetupView(props: {
                     label={field.label}
                     help={field.help}
                     value={draft.soul[field.field]}
-                    originalValue={props.persona.soul[field.field]}
                     multiline={field.multiline}
                     onChange={(value) => props.onUpdateSoul(field.field, value)}
                     onTouched={() => markTouched("soul")}
-                    onAiDraft={() => props.onPropose(field.aiField)}
-                    onResetField={() => props.onUpdateSoul(field.field, props.persona?.soul[field.field] ?? "")}
-                    aiBusy={props.busyKey === `persona-ai:${field.aiField}`}
                   />
                 ))}
               </div>
@@ -215,7 +192,7 @@ export function SetupView(props: {
                   <span className="muted">{snapshotLayerInfo(layer)?.summary}</span>
                 </summary>
                 <div className="muted">保存先: {snapshotLayerInfo(layer)?.file}</div>
-                <div className="muted">全文をそのまま保存します。AIお任せはありません。</div>
+                <div className="muted">全文をそのまま保存します。</div>
                 <textarea rows={10} value={draft.snapshots[layer]} onBlur={() => markTouched(layer)} onChange={(event) => props.onUpdateSnapshot(layer, event.target.value)} />
                 {draft.snapshots[layer].trim().length === 0 ? <div className="muted">未入力</div> : null}
                 <SaveRow

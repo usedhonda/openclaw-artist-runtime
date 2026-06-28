@@ -317,13 +317,14 @@ describe("ProducerRoomApp Songs and Settings views", () => {
     expect(html).toContain("保存先: ARTIST.md");
     expect(html).toContain("保存先: SOUL.md");
     expect(html).toContain("Suno Style と曲調に効く音の核");
-    expect(html).toContain("AIお任せは欄に案を入れるだけ");
     expect(html).toContain("IDENTITY.md");
-    expect(html).toContain("AIお任せはありません");
+    expect(html).toContain("全文をそのまま保存します。");
     expect(html).toContain("初期設定を完了");
-    expect(html.match(/AIお任せ<\/button>/g)?.length).toBe(8);
-    expect(html.match(/元に戻す<\/button>/g)?.length).toBe(8);
+    expect(html.match(/AIお任せ<\/button>/g)?.length ?? 0).toBe(0);
+    expect(html.match(/元に戻す<\/button>/g)?.length ?? 0).toBe(0);
     expect(html).not.toContain("AI下書き");
+    expect(html).not.toContain("AIお任せは欄に案を入れるだけ");
+    expect(html).not.toContain("AIお任せはありません");
     expect(html).not.toContain("参照ファイル");
     expect(html).not.toContain("参照元:");
     expect(html).not.toContain("Setup 完了");
