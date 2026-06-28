@@ -63,9 +63,13 @@ const catalog = {
     setupPurpose: "Decides",
     setupWrite: "Write",
     setupAvoid: "Do not write",
+    setupFileAbout: "What it is",
+    setupFileWrite: "Write here",
+    setupFileAvoid: "Keep out",
     setupIncomplete: "Initial setup is incomplete",
     setupWarningsTitle: "Placement warnings",
-    setupWarningsIntro: "Some content appears to be in the wrong persona file. Music will still run, but the canonical split keeps the artist from drifting.",
+    setupWarningsIntro: "Some content appears to be in the wrong place. This is not a user-error checklist; use Dedupe plan to ask AI for a cleanup draft.",
+    setupWarningsAiHelp: "These warnings do not block setup completion. Fill missing input fields first, then use Dedupe plan if you want AI to organize the scattered facts.",
     setupMissingTitle: "Missing setup",
     setupLoading: "Loading persona.",
     setupMore: "more",
@@ -111,7 +115,8 @@ const catalog = {
     setupOverlapConversation: "{file} appears to contain conversation voice rules. Put speaking tone in SOUL.md.",
     setupOverlapMusic: "{file} appears to contain music or Suno traits. Put music direction in ARTIST.md.",
     setupOverlapPrivate: "{file} appears to contain internal memory. INNER.md is runtime-managed.",
-    setupOverlapGeneric: "{file} contains content that belongs in another persona file. Use Dedupe plan for a move/removal draft."
+    setupOverlapGeneric: "{file} contains content that belongs in another persona file. Use Dedupe plan for a move/removal draft.",
+    setupReadonlyFileIssue: "{file} is generated or runtime-managed. You do not need to edit it directly; use the editable fields or Dedupe plan."
   },
   ja: {
     roomCurrentState: "Current Room State",
@@ -165,9 +170,13 @@ const catalog = {
     setupPurpose: "決まること",
     setupWrite: "書く",
     setupAvoid: "書かない",
+    setupFileAbout: "何のファイルか",
+    setupFileWrite: "ここに書く",
+    setupFileAvoid: "書かない",
     setupIncomplete: "初回 setup が未完了です",
     setupWarningsTitle: "重複・置き場所の確認",
-    setupWarningsIntro: "入力内容が別ファイルの役割に混ざっています。曲づくりは壊れませんが、正本ルールに合わせるとAIが迷いにくくなります。",
+    setupWarningsIntro: "入力内容が別の置き場所に混ざっています。ユーザーが手で全部直すエラーではありません。必要なら重複整理案でAIに整理案を出させます。",
+    setupWarningsAiHelp: "この注意だけでは Setup 完了を止めません。まず不足欄を埋め、散らばりは必要な時に重複整理案でまとめます。",
     setupMissingTitle: "設定の不足",
     setupLoading: "Loading persona.",
     setupMore: "ほか",
@@ -213,7 +222,8 @@ const catalog = {
     setupOverlapConversation: "{file} に会話口調らしき記述があります。話し方は SOUL.md に置きます。",
     setupOverlapMusic: "{file} に音楽性や Suno 設定らしき記述があります。曲づくりの核は ARTIST.md に置きます。",
     setupOverlapPrivate: "{file} に内部メモらしき記述があります。INNER.md は runtime 管理です。",
-    setupOverlapGeneric: "{file} に別ファイルの役割が混ざっています。重複整理案で移動・削除案を出せます。"
+    setupOverlapGeneric: "{file} に別ファイルの役割が混ざっています。重複整理案で移動・削除案を出せます。",
+    setupReadonlyFileIssue: "{file} は自動生成または runtime 管理です。直接編集する必要はありません。入力欄か重複整理案で扱います。"
   }
 } as const;
 

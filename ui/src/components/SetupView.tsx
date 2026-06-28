@@ -126,6 +126,10 @@ function overlapIssueKey(detail: string):
 }
 
 function personaIssueLabel(locale: ProducerRoomLocale, issue: { code: string; file: string; detail: string }): string {
+  const issueFile = personaLayerMap.find((entry) => entry.file === issue.file);
+  if (issueFile && !issueFile.editable) {
+    return t(locale, "setupReadonlyFileIssue", { file: issue.file });
+  }
   switch (issue.code) {
     case "language_policy_outside_artist":
       return t(locale, "setupLanguageOutsideArtist", { file: issue.file });
@@ -238,24 +242,38 @@ function PersonaTextInput(props: {
 function SetupFileMap(props: { locale: ProducerRoomLocale }) {
   return (
     <div className="persona-file-map" aria-label="5ファイルの役割">
-      {personaLayerMap.map((file) => (
-        <div key={file.file} className={`persona-file-map-item${file.editable ? "" : " is-readonly"}${file.requirement === "必須" ? " is-required" : ""}`}>
-          <div className="persona-file-map-main">
-            <strong>{file.file}</strong>
-            <span>{fileText(props.locale, file).role}</span>
-          </div>
-          <div className="persona-file-badges">
-            <span className="persona-badge">{fileText(props.locale, file).kind}</span>
-            <span className="persona-badge">{fileText(props.locale, file).requirement}</span>
-          </div>
-          <p>{fileText(props.locale, file).summary}</p>
-          <dl>
-            <div><dt>{t(props.locale, "setupPurpose")}</dt><dd>{fileText(props.locale, file).purpose}</dd></div>
-            <div><dt>{t(props.locale, "setupWrite")}</dt><dd>{fileText(props.locale, file).write}</dd></div>
-            <div><dt>{t(props.locale, "setupAvoid")}</dt><dd>{fileText(props.locale, file).avoid}</dd></div>
-          </dl>
-        </div>
-      ))}
+      {personaLayerMap.map((file) => {
+        const text = fileText(props.locale, file);
+        return (
+          <article key={file.file} className={`persona-file-map-item${file.editable ? "" : " is-readonly"}${file.requirement === "必須" ? " is-required" : ""}`}>
+            <header className="persona-file-map-head">
+              <div className="persona-file-map-main">
+                <strong>{file.file}</strong>
+                <span>{text.role}</span>
+              </div>
+              <div className="persona-file-badges">
+                <span className="persona-badge">{text.kind}</span>
+                <span className="persona-badge">{text.requirement}</span>
+              </div>
+            </header>
+            <p className="persona-file-summary">{text.summary}</p>
+            <dl className="persona-file-details">
+              <div>
+                <dt>{t(props.locale, "setupFileAbout")}</dt>
+                <dd>{text.purpose}</dd>
+              </div>
+              <div>
+                <dt>{t(props.locale, "setupFileWrite")}</dt>
+                <dd>{text.write}</dd>
+              </div>
+              <div>
+                <dt>{t(props.locale, "setupFileAvoid")}</dt>
+                <dd>{text.avoid}</dd>
+              </div>
+            </dl>
+          </article>
+        );
+      })}
     </div>
   );
 }
@@ -497,7 +515,7 @@ export function SetupView(props: {
   const draft = props.draft;
   const setup = props.persona?.setup;
   const weakPersonaFields = props.persona?.audit?.fields.filter((field) => field.setupInput !== false && field.status !== "filled") ?? [];
-  const setupBlocked = Boolean(weakPersonaFields.length || props.persona?.audit?.issues.length);
+  const setupBlocked = Boolean(weakPersonaFields.length);
   const weakFieldSummaryForFile = (file: string) => {
     const fields = weakPersonaFields.filter((field) => personaFieldFile(field.field) === file);
     if (!fields.length) {
@@ -553,6 +571,7 @@ export function SetupView(props: {
             {props.persona.audit.issues.length > 3 ? (
               <div className="muted">{t(locale, "setupMore")} {props.persona.audit.issues.length - 3}.</div>
             ) : null}
+            <div className="muted">{t(locale, "setupWarningsAiHelp")}</div>
           </div>
         ) : null}
         {weakPersonaFields.length ? (

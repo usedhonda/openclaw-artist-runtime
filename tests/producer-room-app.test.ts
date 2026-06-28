@@ -383,9 +383,10 @@ describe("ProducerRoomApp Songs and Settings views", () => {
     expect(html).toContain("必須");
     expect(html).toContain("自動");
     expect(html).toContain("内部");
-    expect(html).toContain("書く");
+    expect(html).toContain("ここに書く");
     expect(html).toContain("書かない");
-    expect(html).toContain("決まること");
+    expect(html).toContain("何のファイルか");
+    expect(html).not.toContain("決まること");
     expect(html).toContain("Suno prompt と日々の曲案に一番強く効く");
     expect(html).toContain("任意なので空でも setup 完了は止めない");
     expect(html).toContain("曲を作る時の核");
@@ -397,6 +398,8 @@ describe("ProducerRoomApp Songs and Settings views", () => {
     expect(html).toContain("INNER.md の扱い");
     expect(html).toContain("初回 setup が未完了です");
     expect(html).toContain("重複・置き場所の確認");
+    expect(html).toContain("ユーザーが手で全部直すエラーではありません");
+    expect(html).toContain("この注意だけでは Setup 完了を止めません");
     expect(html).toContain("日本語/英語比率が矛盾");
     expect(html).toContain("Suno Production Profile が ARTIST.md 内で重複");
     expect(html).toContain("設定の不足");
@@ -428,9 +431,68 @@ describe("ProducerRoomApp Songs and Settings views", () => {
     expect(html).not.toContain("ユーザーが書く / 必須");
     expect(html).not.toContain("参照ファイル");
     expect(html).not.toContain("参照元:");
-    expect(html).not.toContain("Setup 完了");
+    expect(html).not.toContain(">初期設定を完了</button>");
     expect(html).not.toContain("創作の核 — ARTIST.md");
     expect(html).not.toContain("Artist Setup");
+  });
+
+  it("does not block setup completion for placement warnings alone", () => {
+    const persona = {
+      artist: {
+        artistName: "Glass Commuter",
+        identityLine: "Turns commute damage into songs.",
+        soundDna: "dry drums, low synth texture around station announcements",
+        obsessions: "station light, receipts",
+        lyricsRules: "no slogans",
+        socialVoice: "plain and short"
+      },
+      soul: {
+        conversationTone: "short and precise",
+        refusalStyle: "refuse weak ideas plainly"
+      },
+      identity: { text: "# IDENTITY\n\nraw identity" },
+      producer: { text: "# PRODUCER\n\nraw producer" },
+      inner: { text: "# INNER\n\nraw inner" },
+      setup: { completed: false, needsSetup: true, reasons: ["missing_completion_marker"], reasonsText: "setup not completed" },
+      audit: {
+        summary: { filled: 8, thin: 0, missing: 0 },
+        fields: [
+          { field: "soundDna", status: "filled" },
+          { field: "socialVoice", status: "filled" }
+        ],
+        issues: [
+          { code: "persona_responsibility_overlap", file: "IDENTITY.md", detail: "genre dna belongs outside IDENTITY.md; this file owns derived identity" }
+        ],
+        customSections: []
+      },
+      aiDraftSupported: ["artist", "soul", "producer"] as ["artist", "soul", "producer"],
+      provider: "mock"
+    };
+    const html = renderToStaticMarkup(
+      React.createElement(SetupView, {
+        persona,
+        draft: buildPersonaDraft(persona),
+        dirty: { artist: false, soul: false, identity: false, producer: false, inner: false },
+        busyKey: null,
+        onUpdateArtist: () => undefined,
+        onUpdateSoul: () => undefined,
+        onUpdateSnapshot: () => undefined,
+        onSaveLayer: () => undefined,
+        onReset: () => undefined,
+        onRefresh: () => undefined,
+        onPropose: () => undefined,
+        onProposeMissing: () => undefined,
+        onProposeReview: () => undefined,
+        onProposeDedupe: () => undefined,
+        aiSuggestions: {},
+        onApplySuggestion: () => undefined,
+        onComplete: () => undefined
+      })
+    );
+
+    expect(html).toContain("IDENTITY.md は自動生成または runtime 管理です");
+    expect(html).toContain("初期設定を完了");
+    expect(html).not.toContain("不足を埋めると完了");
   });
 
   it("renders Setup placement warnings in English without leaking raw audit wording", () => {
