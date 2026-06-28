@@ -432,7 +432,7 @@ export function SongsView(props: {
                   </button>
                   {selected === song.songId ? (
                     <div className="song-ledger-detail">
-                      <SongDetailCard key={selected} songId={selected} onBack={props.onBack} />
+                      <SongDetailCard key={selected} songId={selected} onBack={props.onBack} showBreadcrumb={false} />
                     </div>
                   ) : null}
                 </React.Fragment>

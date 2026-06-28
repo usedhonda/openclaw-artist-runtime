@@ -177,6 +177,7 @@ describe("ProducerRoomApp Songs and Settings views", () => {
     expect(nextSongIndex).toBeGreaterThan(detailIndex);
     expect(html).toContain("採用待ちの曲だけ同じ判断を出します");
     expect(html).not.toContain("← 作品へ");
+    expect(html).not.toContain("song-detail-breadcrumb-link");
     expect(html).not.toContain("song-001 · run");
     expect(html).not.toContain("suno_take_url_ready");
   });

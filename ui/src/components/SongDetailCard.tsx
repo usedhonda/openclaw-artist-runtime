@@ -313,6 +313,7 @@ export interface SongDetailCardProps {
   songId: string;
   onBack: () => void;
   eventStreamUrl?: string;
+  showBreadcrumb?: boolean;
 }
 
 export function ProducerReviewButtons(props: {
@@ -341,7 +342,7 @@ export function ProducerReviewButtons(props: {
 }
 
 export function SongDetailCard(props: SongDetailCardProps) {
-  const { songId, onBack } = props;
+  const { songId, onBack, showBreadcrumb = true } = props;
   const [detail, setDetail] = useState<SongDetailResponse | null>(null);
   const [events, setEvents] = useState<RuntimeEvent[]>([]);
   const [loading, setLoading] = useState(true);
@@ -455,12 +456,14 @@ export function SongDetailCard(props: SongDetailCardProps) {
   return (
     <article className="panel song-detail-card">
       <div className="song-detail-header">
-        <Breadcrumb
-          segments={[
-            { label: "作品", onClick: onBack },
-            { label: title }
-          ]}
-        />
+        {showBreadcrumb ? (
+          <Breadcrumb
+            segments={[
+              { label: "作品", onClick: onBack },
+              { label: title }
+            ]}
+          />
+        ) : null}
         <div className="song-detail-title-row">
           <strong>{title}</strong>
           <span className="muted">{statusDisplayLabel(song?.status)}</span>
@@ -476,7 +479,6 @@ export function SongDetailCard(props: SongDetailCardProps) {
       ) : (
         <>
           <div className="song-detail-meta" aria-label="曲の状態">
-            <span>{statusDisplayLabel(song.status)}</span>
             <span>歌詞 v{song.lyricsVersion ?? "-"}</span>
             <span>制作 {song.runCount ?? 0} 回</span>
             <span>テイク {song.selectedTake ? "あり" : "-"}</span>
