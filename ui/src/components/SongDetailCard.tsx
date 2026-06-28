@@ -493,14 +493,14 @@ export function SongDetailCard(props: SongDetailCardProps) {
         <div className="item muted">曲が見つかりません。</div>
       ) : (
         <>
-          <dl className="song-detail-status">
-            <div><dt>状態</dt><dd>{statusDisplayLabel(song.status)}</dd></div>
-            <div><dt>歌詞</dt><dd>v{song.lyricsVersion ?? "-"}</dd></div>
-            <div><dt>制作回数</dt><dd>{song.runCount ?? 0}</dd></div>
-            <div><dt>選ばれたテイク</dt><dd>{song.selectedTake ? "あり" : "-"}</dd></div>
-            <div><dt>更新</dt><dd>{formatTimestamp(song.updatedAt)}</dd></div>
-            <div><dt>歌詞エラー</dt><dd>{song.degradedLyrics ? "あり" : "なし"}</dd></div>
-          </dl>
+          <div className="song-detail-meta" aria-label="曲の状態">
+            <span>{statusDisplayLabel(song.status)}</span>
+            <span>歌詞 v{song.lyricsVersion ?? "-"}</span>
+            <span>制作 {song.runCount ?? 0} 回</span>
+            <span>テイク {song.selectedTake ? "あり" : "-"}</span>
+            <span>更新 {formatTimestamp(song.updatedAt)}</span>
+            <span>歌詞エラー {song.degradedLyrics ? "あり" : "なし"}</span>
+          </div>
 
           {song.lastReason ? (
             <div className="item song-detail-reason">
@@ -528,6 +528,65 @@ export function SongDetailCard(props: SongDetailCardProps) {
               </dl>
             </div>
           ) : null}
+
+          <details className="song-detail-section" open>
+            <summary><strong>選ばれたテイク</strong></summary>
+            {selectedTake ? (
+              <>
+                <dl className="song-detail-status">
+                  <div><dt>テイク</dt><dd>{selectedTake.selectedTakeId ? "あり" : "-"}</dd></div>
+                  <div><dt>制作記録</dt><dd>{selectedTake.runId ? "あり" : "-"}</dd></div>
+                  <div><dt>理由</dt><dd>{producerReasonLabel(selectedTake.reason) ?? "-"}</dd></div>
+                  <div><dt>選択日時</dt><dd>{formatTimestamp(selectedTake.timestamp)}</dd></div>
+                  {selectedTake.url ? <div><dt>URL</dt><dd><a href={selectedTake.url} target="_blank" rel="noreferrer">{selectedTake.url}</a></dd></div> : null}
+                </dl>
+                {canReviewSelectedTake ? (
+                  <>
+                    <div className="muted">Telegram の採用/破棄と同じ判断です。</div>
+                    <ProducerReviewButtons
+                      disabled={reviewBusy !== null}
+                      onArchive={() => void runProducerReviewAction("archive")}
+                      onDiscard={() => void runProducerReviewAction("discard")}
+                    />
+                  </>
+                ) : null}
+                {reviewResult ? <div className="muted">{reviewResult}</div> : null}
+                {reviewError ? <div className="muted">error: {reviewError}</div> : null}
+              </>
+            ) : (
+              <div className="item muted">まだ take は選ばれていません。</div>
+            )}
+          </details>
+
+          {lastSocialAction ? (
+            <div className="song-detail-resources">
+              <div className="muted">最後の外部公開操作</div>
+              <ul>
+                <li>
+                  <strong>{lastSocialAction.platform ?? "social"}</strong>
+                  <span className="muted"> · {lastSocialAction.action ?? "-"} · {lastSocialAction.status ?? "-"}</span>
+                  {lastSocialAction.postedAt ? <span className="muted"> · {formatTimestamp(lastSocialAction.postedAt)}</span> : null}
+                  {lastSocialAction.url ? (
+                    <> · <a href={lastSocialAction.url} target="_blank" rel="noreferrer">{lastSocialAction.url}</a></>
+                  ) : null}
+                </li>
+              </ul>
+            </div>
+          ) : null}
+
+          {publicLinks.length > 0 ? (
+            <div className="song-detail-resources">
+              <div className="muted">公開リンク</div>
+              <ul>
+                {publicLinks.map((link) => (
+                  <li key={link}><a href={link} target="_blank" rel="noreferrer">{link}</a></li>
+                ))}
+              </ul>
+            </div>
+          ) : null}
+
+          <details className="song-detail-section song-detail-diagnostics">
+            <summary><strong>診断用の記録</strong> <span className="muted">制作ログ・台帳・イベント履歴</span></summary>
 
           <details className="song-detail-section">
             <summary><strong>曲の設計</strong> <span className="muted">({(detail?.brief ?? "").length} 字)</span></summary>
@@ -578,35 +637,6 @@ export function SongDetailCard(props: SongDetailCardProps) {
                 ))}
                 </ul>
               </>
-            )}
-          </details>
-
-          <details className="song-detail-section" open>
-            <summary><strong>選ばれたテイク</strong></summary>
-            {selectedTake ? (
-              <>
-                <dl className="song-detail-status">
-                  <div><dt>テイク</dt><dd>{selectedTake.selectedTakeId ? "あり" : "-"}</dd></div>
-                  <div><dt>制作記録</dt><dd>{selectedTake.runId ? "あり" : "-"}</dd></div>
-                  <div><dt>理由</dt><dd>{producerReasonLabel(selectedTake.reason) ?? "-"}</dd></div>
-                  <div><dt>選択日時</dt><dd>{formatTimestamp(selectedTake.timestamp)}</dd></div>
-                  {selectedTake.url ? <div><dt>URL</dt><dd><a href={selectedTake.url} target="_blank" rel="noreferrer">{selectedTake.url}</a></dd></div> : null}
-                </dl>
-                {canReviewSelectedTake ? (
-                  <>
-                    <div className="muted">Telegram の採用/破棄と同じ判断です。</div>
-                    <ProducerReviewButtons
-                      disabled={reviewBusy !== null}
-                      onArchive={() => void runProducerReviewAction("archive")}
-                      onDiscard={() => void runProducerReviewAction("discard")}
-                    />
-                  </>
-                ) : null}
-                {reviewResult ? <div className="muted">{reviewResult}</div> : null}
-                {reviewError ? <div className="muted">error: {reviewError}</div> : null}
-              </>
-            ) : (
-              <div className="item muted">まだ take は選ばれていません。</div>
             )}
           </details>
 
@@ -684,33 +714,6 @@ export function SongDetailCard(props: SongDetailCardProps) {
             )}
           </details>
 
-          {lastSocialAction ? (
-            <div className="song-detail-resources">
-              <div className="muted">最後の外部公開操作</div>
-              <ul>
-                <li>
-                  <strong>{lastSocialAction.platform ?? "social"}</strong>
-                  <span className="muted"> · {lastSocialAction.action ?? "-"} · {lastSocialAction.status ?? "-"}</span>
-                  {lastSocialAction.postedAt ? <span className="muted"> · {formatTimestamp(lastSocialAction.postedAt)}</span> : null}
-                  {lastSocialAction.url ? (
-                    <> · <a href={lastSocialAction.url} target="_blank" rel="noreferrer">{lastSocialAction.url}</a></>
-                  ) : null}
-                </li>
-              </ul>
-            </div>
-          ) : null}
-
-          {publicLinks.length > 0 ? (
-            <div className="song-detail-resources">
-              <div className="muted">公開リンク</div>
-              <ul>
-                {publicLinks.map((link) => (
-                  <li key={link}><a href={link} target="_blank" rel="noreferrer">{link}</a></li>
-                ))}
-              </ul>
-            </div>
-          ) : null}
-
           <details className="song-detail-section">
             <summary><strong>技術情報: ローカルファイル</strong></summary>
             <div className="song-detail-resources">
@@ -766,6 +769,7 @@ export function SongDetailCard(props: SongDetailCardProps) {
                 </ul>
               </>
             )}
+          </details>
           </details>
         </>
       )}

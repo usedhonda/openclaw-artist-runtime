@@ -1398,6 +1398,20 @@ textarea {
   font-size: 18px;
 }
 
+.song-detail-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  color: var(--text-muted, #9aa3b3);
+  font-size: 13px;
+}
+
+.song-detail-meta span {
+  border: 1px solid var(--border, #2a2f3a);
+  border-radius: 999px;
+  padding: 4px 8px;
+}
+
 .song-detail-status {
   display: grid;
   grid-template-columns: minmax(0, 1fr);
