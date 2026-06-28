@@ -770,6 +770,44 @@ textarea {
   font-weight: 700;
 }
 
+.persona-file-map {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 8px;
+  margin: 14px 0;
+}
+
+.persona-file-map-item {
+  display: grid;
+  grid-template-columns: 120px 150px minmax(0, 1fr);
+  gap: 10px;
+  align-items: baseline;
+  padding: 10px 12px;
+  border: 1px solid var(--pr-line);
+  border-radius: 8px;
+  background: var(--pr-canvas);
+}
+
+.persona-file-map-item strong {
+  color: var(--pr-indigo);
+}
+
+.persona-file-map-item span {
+  font-weight: 700;
+}
+
+.persona-file-map-item small {
+  color: var(--muted);
+}
+
+.persona-file-map-item.is-required {
+  border-color: color-mix(in srgb, var(--pr-indigo) 46%, var(--pr-line));
+}
+
+.persona-file-map-item.is-readonly {
+  background: var(--pr-soft);
+}
+
 .persona-file-editor-head {
   display: grid;
   gap: 4px;
@@ -778,6 +816,7 @@ textarea {
 @media (max-width: 720px) {
   .persona-layer-chip,
   .persona-file-tab,
+  .persona-file-map-item,
   .song-ledger-toolbar {
     display: grid;
     grid-template-columns: minmax(0, 1fr);
@@ -797,6 +836,13 @@ textarea {
   border: 1px solid var(--pr-line);
   border-radius: 12px;
   background: var(--pr-canvas);
+}
+
+.persona-field-heading {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  justify-content: space-between;
 }
 
 .persona-field-list {
@@ -1104,6 +1150,13 @@ textarea {
   flex-wrap: wrap;
   align-items: center;
   justify-content: flex-start;
+}
+
+.ghost-button {
+  border: 1px solid var(--pr-line);
+  background: transparent;
+  color: var(--pr-indigo);
+  box-shadow: none;
 }
 
 .pill {

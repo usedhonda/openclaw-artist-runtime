@@ -7,6 +7,7 @@ import { extractPersonaMotifs, summarizeMotifs, type PersonaMotifBundle } from "
 export interface PersonaProposerSourceContext {
   artistMd: string;
   soulMd: string;
+  producerMd?: string;
   roughInput?: string;
   customSections?: string[];
   motifs?: PersonaMotifBundle;
@@ -42,7 +43,8 @@ export const defaultArtistPersonaFieldValues: Record<Extract<PersonaField, "arti
 const fieldDefaults = new Map<PersonaField, string>([
   ...Object.entries(defaultArtistPersonaFieldValues) as Array<[PersonaField, string]>,
   ["soul-tone", soulPersonaQuestions[0].defaultValue],
-  ["soul-refusal", soulPersonaQuestions[1].defaultValue]
+  ["soul-refusal", soulPersonaQuestions[1].defaultValue],
+  ["producerFacts", "制作判断に効く好み、制約、避けたい方向を短くまとめる。"]
 ]);
 
 function truncate(value: string, maxLength: number): string {
@@ -106,7 +108,10 @@ export function buildPersonaProposerPrompt(req: PersonaProposerRequest): string 
     truncate(req.source.artistMd, 4000),
     "",
     "SOUL.md:",
-    truncate(req.source.soulMd, 2000)
+    truncate(req.source.soulMd, 2000),
+    "",
+    "PRODUCER.md:",
+    truncate(req.source.producerMd ?? "", 2000)
   ].join("\n");
 }
 

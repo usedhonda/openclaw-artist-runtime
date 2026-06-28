@@ -172,17 +172,17 @@ describe("persona route", () => {
     expect(rejected.statusCode).toBe(400);
   });
 
-  it("proposes only whitelisted ARTIST/SOUL fields and marks setup complete from web", async () => {
+  it("proposes whitelisted setup fields and marks setup complete from web", async () => {
     const root = makeWorkspace();
     await writeArtistPersona(root, { artistName: "Neon Relay", obsessions: "night trains" });
     await writeSoulPersona(root, { conversationTone: "short and precise", refusalStyle: "refuse weak ideas plainly" });
     const handler = personaHandler();
 
-    const proposed = await callPersona(handler, "POST", "/propose", root, { fields: ["artistName", "soul-tone"] });
+    const proposed = await callPersona(handler, "POST", "/propose", root, { fields: ["artistName", "soul-tone", "producerFacts"] });
     const rejected = await callPersona(handler, "POST", "/propose", root, { fields: ["identity"] });
     const completed = await callPersona(handler, "POST", "/complete", root);
 
-    expect((proposed.drafts as Array<{ field: string }>).map((draft) => draft.field)).toEqual(["artistName", "soul-tone"]);
+    expect((proposed.drafts as Array<{ field: string }>).map((draft) => draft.field)).toEqual(["artistName", "soul-tone", "producerFacts"]);
     expect(rejected.error).toBe("invalid_persona_fields");
     expect(rejected.statusCode).toBe(400);
     expect((completed.setup as { marker?: { source: string } }).marker?.source).toBe("web");

@@ -11,6 +11,7 @@ import {
   buildPersonaDraft,
   buildPersonaSnapshotPatch,
   buildPersonaSoulPatch,
+  emptyPersonaDraftFields,
   validatePersonaDraft,
   type ArtistPersonaDraft,
   type PersonaDraft,
@@ -789,6 +790,10 @@ export function ProducerRoomApp() {
   };
 
   const applyPersonaDraftProposal = (field: PersonaField, value: string) => {
+    if (field === "producerFacts") {
+      updateSnapshotPersonaDraft("producer", value);
+      return;
+    }
     if (field === "soul-tone") {
       updateSoulPersonaDraft("conversationTone", value);
       return;
@@ -798,6 +803,31 @@ export function ProducerRoomApp() {
       return;
     }
     updateArtistPersonaDraft(field as keyof ArtistPersonaDraft, value);
+  };
+
+  const applyPersonaDraftProposalWithoutOverwrite = (field: PersonaField, value: string) => {
+    if (!personaDraft) {
+      return false;
+    }
+    if (field === "producerFacts") {
+      if (personaDraft.snapshots.producer.trim()) return false;
+      updateSnapshotPersonaDraft("producer", value);
+      return true;
+    }
+    if (field === "soul-tone") {
+      if (personaDraft.soul.conversationTone.trim()) return false;
+      updateSoulPersonaDraft("conversationTone", value);
+      return true;
+    }
+    if (field === "soul-refusal") {
+      if (personaDraft.soul.refusalStyle.trim()) return false;
+      updateSoulPersonaDraft("refusalStyle", value);
+      return true;
+    }
+    const artistField = field as keyof ArtistPersonaDraft;
+    if (personaDraft.artist[artistField]?.trim()) return false;
+    updateArtistPersonaDraft(artistField, value);
+    return true;
   };
 
   const proposePersonaField = async (field: PersonaField) => {
@@ -818,6 +848,45 @@ export function ProducerRoomApp() {
     } catch (caughtError) {
       const message = caughtError instanceof Error ? caughtError.message : String(caughtError);
       showErrorToast("runtime", `persona_ai_${field}_failed`, message);
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  const missingPersonaFields = (): PersonaField[] => {
+    if (!personaDraft) {
+      return [];
+    }
+    return emptyPersonaDraftFields(personaDraft);
+  };
+
+  const proposeMissingPersonaFields = async () => {
+    const fields = missingPersonaFields();
+    if (fields.length === 0) {
+      showErrorToast("runtime", "persona_ai_missing_none", "未記入の欄はありません。");
+      return;
+    }
+    setBusy("persona-ai:missing");
+    try {
+      const response = await apiPost<PersonaProposeResponse>("/persona/propose", { fields });
+      if (response.error) {
+        throw new Error(response.error);
+      }
+      let applied = 0;
+      for (const draft of response.drafts ?? []) {
+        if (draft.status === "proposed" && applyPersonaDraftProposalWithoutOverwrite(draft.field, draft.draft)) {
+          applied += 1;
+        }
+      }
+      const warning = response.warnings?.[0];
+      showErrorToast(
+        "runtime",
+        "persona_ai_missing_proposed",
+        warning ? `AIで${applied}件補完しました: ${warning}` : `AIで${applied}件補完しました。`
+      );
+    } catch (caughtError) {
+      const message = caughtError instanceof Error ? caughtError.message : String(caughtError);
+      showErrorToast("runtime", "persona_ai_missing_failed", message);
     } finally {
       setBusy(null);
     }
@@ -898,6 +967,7 @@ export function ProducerRoomApp() {
           onReset={resetPersonaDraft}
           onRefresh={refresh}
           onPropose={proposePersonaField}
+          onProposeMissing={proposeMissingPersonaFields}
           onComplete={completePersonaSetup}
         />
       ) : null}

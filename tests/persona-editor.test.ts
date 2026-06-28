@@ -4,6 +4,7 @@ import {
   buildPersonaDraft,
   buildPersonaSnapshotPatch,
   buildPersonaSoulPatch,
+  emptyPersonaDraftFields,
   validatePersonaDraft,
   type PersonaEditorSource
 } from "../ui/src/personaEditor";
@@ -59,5 +60,16 @@ describe("personaEditor", () => {
 
     expect(validatePersonaDraft(draft, "producer")).toBe("producer text must be 20000 characters or fewer");
     expect(validatePersonaDraft(draft, "inner")).toBeNull();
+  });
+
+  it("lists only empty user-editable setup fields for AI fill", () => {
+    const draft = buildPersonaDraft(source());
+    draft.artist.soundDna = "";
+    draft.soul.refusalStyle = "";
+    draft.snapshots.producer = "";
+    draft.snapshots.identity = "";
+    draft.snapshots.inner = "";
+
+    expect(emptyPersonaDraftFields(draft)).toEqual(["soundDna", "soul-refusal", "producerFacts"]);
   });
 });

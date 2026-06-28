@@ -596,7 +596,8 @@ const personaFieldWhitelist = new Set<PersonaField>([
   "lyricsRules",
   "socialVoice",
   "soul-tone",
-  "soul-refusal"
+  "soul-refusal",
+  "producerFacts"
 ]);
 
 const snapshotPersonaLayers = new Set<SnapshotPersonaLayer>(["identity", "producer", "inner"]);
@@ -763,12 +764,13 @@ export async function buildPersonaProposeResponse(
   const fields = rawFields as PersonaField[];
   const mergedConfig = await resolveRuntimeConfig(config);
   const root = mergedConfig.artist.workspaceRoot;
-  const [artistMd, soulMd] = await Promise.all([
+  const [artistMd, soulMd, producerMd] = await Promise.all([
     readFile(join(root, "ARTIST.md"), "utf8").catch(() => ""),
-    readFile(join(root, "SOUL.md"), "utf8").catch(() => "")
+    readFile(join(root, "SOUL.md"), "utf8").catch(() => ""),
+    readFile(join(root, "PRODUCER.md"), "utf8").catch(() => "")
   ]);
   return proposePersonaFields(
-    { fields, source: { artistMd, soulMd } },
+    { fields, source: { artistMd, soulMd, producerMd } },
     { aiReviewProvider: mergedConfig.aiReview.provider }
   );
 }

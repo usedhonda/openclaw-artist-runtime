@@ -15,7 +15,8 @@ const allFields: PersonaField[] = [
   "lyricsRules",
   "socialVoice",
   "soul-tone",
-  "soul-refusal"
+  "soul-refusal",
+  "producerFacts"
 ];
 
 describe("persona proposer", () => {
@@ -27,13 +28,16 @@ describe("persona proposer", () => {
 
     expect(result.provider).toBe("mock");
     expect(result.warnings).toEqual([]);
-    expect(result.drafts).toHaveLength(8);
+    expect(result.drafts).toHaveLength(9);
     expect(result.drafts.find((draft) => draft.field === "artistName")).toMatchObject({
       draft: "Unnamed OpenClaw Artist",
       status: "proposed"
     });
     expect(result.drafts.find((draft) => draft.field === "soul-refusal")).toMatchObject({
       draft: "Refuse weak or unsafe ideas with a clear reason and one stronger alternative.",
+      status: "proposed"
+    });
+    expect(result.drafts.find((draft) => draft.field === "producerFacts")).toMatchObject({
       status: "proposed"
     });
   });
@@ -67,6 +71,7 @@ describe("persona proposer", () => {
       source: {
         artistMd: "## 人物像\n\n都市の皮肉を歌う。",
         soulMd: "## Voice\n\n短い返答。",
+        producerMd: "制作では説明しすぎを避ける。",
         customSections: ["人物像", "音楽的ルーツ"]
       }
     });
@@ -74,6 +79,7 @@ describe("persona proposer", () => {
     expect(prompt).toContain("Requested fields: obsessions");
     expect(prompt).toContain("人物像, 音楽的ルーツ");
     expect(prompt).toContain("都市の皮肉");
+    expect(prompt).toContain("制作では説明しすぎを避ける");
   });
 
   it("parses provider responses using persona field aliases", () => {
@@ -81,15 +87,17 @@ describe("persona proposer", () => {
       [
         "voice: short and sharp (origin: custom Voice section)",
         "conversation tone: blunt but loyal (origin: SOUL body)",
-        "themes: satire and infrastructure (origin: Lyrics)"
+        "themes: satire and infrastructure (origin: Lyrics)",
+        "producer facts: hates vague praise (origin: PRODUCER)"
       ].join("\n"),
-      ["socialVoice", "soul-tone", "obsessions"]
+      ["socialVoice", "soul-tone", "obsessions", "producerFacts"]
     );
 
     expect(drafts).toEqual([
       { field: "socialVoice", draft: "short and sharp", reasoning: "custom Voice section", status: "proposed" },
       { field: "soul-tone", draft: "blunt but loyal", reasoning: "SOUL body", status: "proposed" },
-      { field: "obsessions", draft: "satire and infrastructure", reasoning: "Lyrics", status: "proposed" }
+      { field: "obsessions", draft: "satire and infrastructure", reasoning: "Lyrics", status: "proposed" },
+      { field: "producerFacts", draft: "hates vague praise", reasoning: "PRODUCER", status: "proposed" }
     ]);
   });
 

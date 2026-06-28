@@ -97,6 +97,10 @@ async function applyField(root: string, proposal: ChangeSetProposal, field: Chan
       await updateSoulPersonaField(root, soulKey, field.proposedValue);
       return;
     }
+    if (field.field === "producerFacts") {
+      await appendSection(join(root, "PRODUCER.md"), "制作判断メモ", field.proposedValue);
+      return;
+    }
     throw new Error(`unsupported_persona_field:${field.field}`);
   }
 

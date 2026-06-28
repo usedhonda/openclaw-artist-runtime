@@ -1,6 +1,7 @@
 import React from "react";
 import {
   artistPersonaFields,
+  emptyPersonaDraftFields,
   personaLayerMap,
   producerContextField,
   soulPersonaFields,
@@ -57,6 +58,9 @@ function personaFieldFile(field: string): string {
   if (soulPersonaFields.some((entry) => entry.aiField === field || entry.field === field)) {
     return "SOUL.md";
   }
+  if (field === producerContextField.aiField) {
+    return "PRODUCER.md";
+  }
   return "persona";
 }
 
@@ -71,11 +75,29 @@ function PersonaTextInput(props: {
   multiline?: boolean;
   onChange: (value: string) => void;
   onTouched: () => void;
+  aiField?: PersonaField;
+  busyKey: string | null;
+  onPropose?: (field: PersonaField) => void;
 }) {
   const isEmpty = props.value.trim().length === 0;
   return (
     <label className="persona-field">
-      <div className="eyebrow">{props.label}</div>
+      <div className="persona-field-heading">
+        <div className="eyebrow">{props.label}</div>
+        {props.aiField && props.onPropose ? (
+          <button
+            type="button"
+            className="ghost-button"
+            disabled={props.busyKey !== null}
+            onClick={(event) => {
+              event.preventDefault();
+              props.onPropose?.(props.aiField as PersonaField);
+            }}
+          >
+            {props.busyKey === `persona-ai:${props.aiField}` ? "作成中" : "AIお任せ"}
+          </button>
+        ) : null}
+      </div>
       <div className="field-help">{props.help}</div>
       {props.multiline ? (
         <textarea rows={4} value={props.value} onBlur={props.onTouched} onChange={(event) => props.onChange(event.target.value)} />
@@ -84,6 +106,38 @@ function PersonaTextInput(props: {
       )}
       {isEmpty ? <div className="muted">未入力</div> : null}
     </label>
+  );
+}
+
+function SetupFileMap() {
+  return (
+    <div className="persona-file-map" aria-label="5ファイルの役割">
+      <div className="persona-file-map-item is-required">
+        <strong>ARTIST.md</strong>
+        <span>ユーザーが書く / 必須</span>
+        <small>曲のテーマ、音、歌詞、公開投稿の声</small>
+      </div>
+      <div className="persona-file-map-item is-required">
+        <strong>SOUL.md</strong>
+        <span>ユーザーが書く / 必須</span>
+        <small>アーティストがあなたと話す時の口調、断り方</small>
+      </div>
+      <div className="persona-file-map-item">
+        <strong>PRODUCER.md</strong>
+        <span>ユーザーが書く / 任意</span>
+        <small>好み、制約、制作判断に使う材料</small>
+      </div>
+      <div className="persona-file-map-item is-readonly">
+        <strong>IDENTITY.md</strong>
+        <span>自動作成 / 編集不可</span>
+        <small>名前や設定から作る確認用の自己紹介</small>
+      </div>
+      <div className="persona-file-map-item is-readonly">
+        <strong>INNER.md</strong>
+        <span>内部メモ / Setup では編集不可</span>
+        <small>既存内容は消さない。通常は自動処理が扱う</small>
+      </div>
+    </div>
   );
 }
 
@@ -127,6 +181,7 @@ function SetupFileEditor(props: {
   onUpdateArtist: (field: keyof ArtistPersonaDraft, value: string) => void;
   onUpdateSoul: (field: keyof SoulPersonaDraft, value: string) => void;
   onUpdateSnapshot: (layer: "producer", value: string) => void;
+  onPropose: (field: PersonaField) => void;
   onSave: () => void;
   onReset: () => void;
   onTouched: () => void;
@@ -135,7 +190,7 @@ function SetupFileEditor(props: {
   return (
     <section className="settings-section persona-file-editor">
       <div className="persona-file-editor-head">
-        <span className="section-title">{info?.role ?? props.layer}</span>
+        <span className="section-title">{info?.file ?? props.layer} に書くこと</span>
         <span className="muted">{info?.role ?? props.layer} · {info?.summary}</span>
       </div>
       {props.layer === "artist" ? (
@@ -149,6 +204,9 @@ function SetupFileEditor(props: {
               multiline={field.multiline}
               onChange={(value) => props.onUpdateArtist(field.field, value)}
               onTouched={props.onTouched}
+              aiField={field.aiField}
+              busyKey={props.busyKey}
+              onPropose={props.onPropose}
             />
           ))}
         </div>
@@ -164,6 +222,9 @@ function SetupFileEditor(props: {
               multiline={field.multiline}
               onChange={(value) => props.onUpdateSoul(field.field, value)}
               onTouched={props.onTouched}
+              aiField={field.aiField}
+              busyKey={props.busyKey}
+              onPropose={props.onPropose}
             />
           ))}
         </div>
@@ -177,6 +238,9 @@ function SetupFileEditor(props: {
             multiline
             onChange={(value) => props.onUpdateSnapshot("producer", value)}
             onTouched={props.onTouched}
+            aiField={producerContextField.aiField}
+            busyKey={props.busyKey}
+            onPropose={props.onPropose}
           />
         </>
       ) : null}
@@ -196,10 +260,21 @@ function IdentityProjection(props: { value: string }) {
   return (
     <section className="settings-section persona-file-editor">
       <div className="persona-file-editor-head">
-        <span className="section-title">Generated Identity</span>
-        <span className="muted">IDENTITY.md · config と persona から生成される読み取り専用の表示</span>
+        <span className="section-title">IDENTITY.md 自動表示</span>
+        <span className="muted">上の入力と設定から作る確認用の自己紹介。直接編集しません。</span>
       </div>
       <textarea rows={6} value={props.value} readOnly />
+    </section>
+  );
+}
+
+function InnerFileNote() {
+  return (
+    <section className="settings-section persona-file-editor">
+      <div className="persona-file-editor-head">
+        <span className="section-title">INNER.md の扱い</span>
+        <span className="muted">内部メモ。Setup では編集しません。既存内容は消しません。</span>
+      </div>
     </section>
   );
 }
@@ -216,6 +291,7 @@ export function SetupView(props: {
   onReset: () => void;
   onRefresh: () => void;
   onPropose: (field: PersonaField) => void;
+  onProposeMissing: () => void;
   onComplete: () => void;
 }) {
   const draft = props.draft;
@@ -231,6 +307,7 @@ export function SetupView(props: {
   };
   const [touched, setTouched] = React.useState<LayerTouchedMap>(emptyTouchedMap);
   const [saveAttempted, setSaveAttempted] = React.useState<LayerTouchedMap>(emptyTouchedMap);
+  const hasEmptyEditableField = Boolean(draft && emptyPersonaDraftFields(draft).length > 0);
   const markTouched = (layer: PersonaDraftLayer) => setTouched((current) => ({ ...current, [layer]: true }));
   const visibleValidation = (layer: PersonaDraftLayer) => {
     if (!draft || (!touched[layer] && !saveAttempted[layer])) {
@@ -258,7 +335,8 @@ export function SetupView(props: {
     <section className="single-column setup-view">
       <article className="panel settings-panel">
         <div className="section-title">アーティスト設定</div>
-        <div className="muted">Artist Core、Conversation Voice、Producer Context だけを編集します。IDENTITY は生成表示、INNER は runtime 管理です。</div>
+        <div className="muted">5つのファイルのうち、ここで書くのは必要な入力欄だけです。どの欄がどのファイルに入るかを見ながら設定できます。</div>
+        <SetupFileMap />
         {setup?.needsSetup ? (
           <div className="warning-banner">初回 setup が未完了です: {setup.reasonsText}</div>
         ) : null}
@@ -292,6 +370,16 @@ export function SetupView(props: {
           <div className="item muted">Loading persona.</div>
         ) : (
           <div className="settings-sections">
+            <div className="inline-actions">
+              <button
+                type="button"
+                disabled={props.busyKey !== null || !hasEmptyEditableField}
+                onClick={props.onProposeMissing}
+              >
+                {props.busyKey === "persona-ai:missing" ? "AIで作成中" : "未記入をAIお任せ"}
+              </button>
+              <span className="muted">空欄だけを補完します。書いてある欄は上書きしません。</span>
+            </div>
             {editableSetupLayers.map((layer) => (
               <React.Fragment key={layer}>
                 {weakFieldSummaryForFile(layerInfo(layer)?.file ?? "") ? (
@@ -306,6 +394,7 @@ export function SetupView(props: {
                   onUpdateArtist={props.onUpdateArtist}
                   onUpdateSoul={props.onUpdateSoul}
                   onUpdateSnapshot={props.onUpdateSnapshot}
+                  onPropose={props.onPropose}
                   onSave={() => saveLayer(layer)}
                   onReset={resetDraft}
                   onTouched={() => markTouched(layer)}
@@ -313,6 +402,7 @@ export function SetupView(props: {
               </React.Fragment>
             ))}
             <IdentityProjection value={draft.snapshots.identity} />
+            <InnerFileNote />
             <div className="inline-actions">
               <button type="button" disabled={props.busyKey !== null} onClick={props.onRefresh}>再読み込み</button>
               {setup?.needsSetup ? (

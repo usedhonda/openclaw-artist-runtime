@@ -248,7 +248,8 @@ export type PersonaField =
   | "lyricsRules"
   | "socialVoice"
   | "soul-tone"
-  | "soul-refusal";
+  | "soul-refusal"
+  | "producerFacts";
 
 export type TelegramPersonaSessionMode = "reset_confirm" | "migrate_confirm";
 

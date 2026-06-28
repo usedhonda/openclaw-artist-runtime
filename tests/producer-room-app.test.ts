@@ -354,15 +354,26 @@ describe("ProducerRoomApp Songs and Settings views", () => {
         onReset: () => undefined,
         onRefresh: () => undefined,
         onPropose: () => undefined,
+        onProposeMissing: () => undefined,
         onComplete: () => undefined
       })
     );
 
     expect(html).toContain("アーティスト設定");
-    expect(html).toContain("Artist Core");
-    expect(html).toContain("Conversation Voice");
-    expect(html).toContain("Producer Context");
-    expect(html).toContain("Generated Identity");
+    expect(html).toContain("5つのファイル");
+    expect(html).toContain("ARTIST.md");
+    expect(html).toContain("SOUL.md");
+    expect(html).toContain("PRODUCER.md");
+    expect(html).toContain("IDENTITY.md");
+    expect(html).toContain("INNER.md");
+    expect(html).toContain("ユーザーが書く / 必須");
+    expect(html).toContain("自動作成 / 編集不可");
+    expect(html).toContain("内部メモ / Setup では編集不可");
+    expect(html).toContain("ARTIST.md / 音の核");
+    expect(html).toContain("SOUL.md / 断り方");
+    expect(html).toContain("PRODUCER.md / 制作判断メモ");
+    expect(html).toContain("IDENTITY.md 自動表示");
+    expect(html).toContain("INNER.md の扱い");
     expect(html).toContain("初回 setup が未完了です");
     expect(html).toContain("設定の警告");
     expect(html).toContain("日本語/英語比率が矛盾");
@@ -370,17 +381,16 @@ describe("ProducerRoomApp Songs and Settings views", () => {
     expect(html).toContain("設定の不足");
     expect(html).toContain("音の核: 薄い");
     expect(html).toContain("SNS の声: 未入力");
-    expect(html).toContain("Artist Core、Conversation Voice、Producer Context だけを編集します");
+    expect(html).toContain("どの欄がどのファイルに入るか");
     expect(html).not.toContain("role=\"tablist\"");
-    expect(html).toContain("IDENTITY.md");
-    expect(html).not.toContain("INNER.md");
     expect(html).toContain("Suno Style と曲調に効く音の核");
     expect(html).not.toContain("全文をそのまま保存します。");
     expect(html).not.toContain("raw inner");
     expect(html).not.toContain("<summary");
     expect(html).toContain("不足を埋めると完了");
     expect(html).not.toContain("初期設定を完了");
-    expect(html.match(/AIお任せ<\/button>/g)?.length ?? 0).toBe(0);
+    expect(html).toContain("未記入をAIお任せ");
+    expect(html.match(/AIお任せ<\/button>/g)?.length ?? 0).toBe(9);
     expect(html.match(/元に戻す<\/button>/g)?.length ?? 0).toBe(0);
     expect(html).not.toContain("AI下書き");
     expect(html).not.toContain("AIお任せは欄に案を入れるだけ");
@@ -435,6 +445,7 @@ describe("ProducerRoomApp Songs and Settings views", () => {
         onReset: () => undefined,
         onRefresh: () => undefined,
         onPropose: () => undefined,
+        onProposeMissing: () => undefined,
         onComplete: () => undefined
       })
     );
@@ -478,6 +489,7 @@ describe("ProducerRoomApp Songs and Settings views", () => {
         onReset: () => undefined,
         onRefresh: () => undefined,
         onPropose: () => undefined,
+        onProposeMissing: () => undefined,
         onComplete: () => undefined
       })
     );

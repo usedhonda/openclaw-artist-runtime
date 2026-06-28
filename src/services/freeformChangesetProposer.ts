@@ -63,6 +63,7 @@ function proposalId(domain: ChangeSetDomain): string {
 
 function personaTargetFile(field: PersonaField): string {
   if (field === "artistName" || field === "producerCallname") return "runtime/config-overrides.json";
+  if (field === "producerFacts") return "PRODUCER.md";
   return field === "soul-tone" || field === "soul-refusal" ? "SOUL.md" : "ARTIST.md";
 }
 

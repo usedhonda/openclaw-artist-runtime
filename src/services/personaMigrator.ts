@@ -189,7 +189,8 @@ const personaFields: PersonaField[] = [
   "lyricsRules",
   "socialVoice",
   "soul-tone",
-  "soul-refusal"
+  "soul-refusal",
+  "producerFacts"
 ];
 
 function fieldAliases(field: PersonaField): string[] {
@@ -212,6 +213,8 @@ function fieldAliases(field: PersonaField): string[] {
       return ["soul-tone", "soul tone", "conversation tone", "tone"];
     case "soul-refusal":
       return ["soul-refusal", "soul refusal", "refusal style", "refusal"];
+    case "producerFacts":
+      return ["producerFacts", "producer facts", "producer context", "producer memo"];
   }
 }
 

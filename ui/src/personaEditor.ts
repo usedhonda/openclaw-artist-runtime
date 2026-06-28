@@ -60,21 +60,22 @@ export type PersonaFieldMeta<K> = {
 };
 
 export const artistPersonaFields: Array<PersonaFieldMeta<keyof ArtistPersonaDraft>> = [
-  { field: "identityLine", label: personaCanonicalField("artistConcept").label, help: personaCanonicalField("artistConcept").help, aiField: "identityLine", multiline: true },
-  { field: "soundDna", label: personaCanonicalField("soundDna").label, help: personaCanonicalField("soundDna").help, aiField: "soundDna", multiline: true },
-  { field: "obsessions", label: personaCanonicalField("obsessions").label, help: personaCanonicalField("obsessions").help, aiField: "obsessions", multiline: true },
-  { field: "lyricsRules", label: personaCanonicalField("lyricsRules").label, help: personaCanonicalField("lyricsRules").help, aiField: "lyricsRules", multiline: true },
-  { field: "socialVoice", label: personaCanonicalField("socialVoice").label, help: personaCanonicalField("socialVoice").help, aiField: "socialVoice", multiline: true }
+  { field: "identityLine", label: `ARTIST.md / ${personaCanonicalField("artistConcept").label}`, help: personaCanonicalField("artistConcept").help, aiField: "identityLine", multiline: true },
+  { field: "soundDna", label: `ARTIST.md / ${personaCanonicalField("soundDna").label}`, help: personaCanonicalField("soundDna").help, aiField: "soundDna", multiline: true },
+  { field: "obsessions", label: `ARTIST.md / ${personaCanonicalField("obsessions").label}`, help: personaCanonicalField("obsessions").help, aiField: "obsessions", multiline: true },
+  { field: "lyricsRules", label: `ARTIST.md / ${personaCanonicalField("lyricsRules").label}`, help: personaCanonicalField("lyricsRules").help, aiField: "lyricsRules", multiline: true },
+  { field: "socialVoice", label: `ARTIST.md / ${personaCanonicalField("socialVoice").label}`, help: personaCanonicalField("socialVoice").help, aiField: "socialVoice", multiline: true }
 ];
 
 export const soulPersonaFields: Array<PersonaFieldMeta<keyof SoulPersonaDraft>> = [
-  { field: "conversationTone", label: personaCanonicalField("conversationTone").label, help: personaCanonicalField("conversationTone").help, aiField: "soul-tone", multiline: true },
-  { field: "refusalStyle", label: personaCanonicalField("refusalStyle").label, help: personaCanonicalField("refusalStyle").help, aiField: "soul-refusal", multiline: true }
+  { field: "conversationTone", label: `SOUL.md / ${personaCanonicalField("conversationTone").label}`, help: personaCanonicalField("conversationTone").help, aiField: "soul-tone", multiline: true },
+  { field: "refusalStyle", label: `SOUL.md / ${personaCanonicalField("refusalStyle").label}`, help: personaCanonicalField("refusalStyle").help, aiField: "soul-refusal", multiline: true }
 ];
 
 export const producerContextField = {
-  label: personaCanonicalField("producerFacts").label,
-  help: personaCanonicalField("producerFacts").help
+  label: "PRODUCER.md / 制作判断メモ",
+  help: personaCanonicalField("producerFacts").help,
+  aiField: "producerFacts" as PersonaField
 };
 
 export type PersonaLayerInfo = {
@@ -90,11 +91,11 @@ export type PersonaLayerInfo = {
  * layers can still be shown as read-only runtime projections.
  */
 export const personaLayerMap: PersonaLayerInfo[] = [
-  { layer: "artist", file: "ARTIST.md", role: "Artist Core", summary: "音・主題・歌詞ルールなど曲づくりの土台", editable: true },
-  { layer: "soul", file: "SOUL.md", role: "Conversation Voice", summary: "話すときの声・温度・断り方", editable: true },
-  { layer: "identity", file: "IDENTITY.md", role: "自己紹介", summary: "config と persona から生成される表示カード", editable: false },
-  { layer: "producer", file: "PRODUCER.md", role: "Producer Context", summary: "制作判断に効く事実と好み", editable: true },
-  { layer: "inner", file: "INNER.md", role: "内部生成", summary: "runtime 管理の内部履歴", editable: false }
+  { layer: "artist", file: "ARTIST.md", role: "曲づくりの核", summary: "テーマ・音・歌詞・公開投稿の声", editable: true },
+  { layer: "soul", file: "SOUL.md", role: "話し方", summary: "あなたと話す時の口調・断り方", editable: true },
+  { layer: "identity", file: "IDENTITY.md", role: "自己紹介", summary: "名前や入力内容から自動で作る表示", editable: false },
+  { layer: "producer", file: "PRODUCER.md", role: "プロデューサー情報", summary: "好み・制約・判断材料", editable: true },
+  { layer: "inner", file: "INNER.md", role: "内部メモ", summary: "Setup では編集しない。既存内容は保持", editable: false }
 ];
 
 export function buildPersonaDraft(source: PersonaEditorSource): PersonaDraft {
@@ -132,4 +133,16 @@ export function buildPersonaSoulPatch(draft: PersonaDraft): { soul: SoulPersonaD
 
 export function buildPersonaSnapshotPatch(draft: PersonaDraft, layer: "identity" | "producer" | "inner"): Record<string, { text: string }> {
   return { [layer]: { text: draft.snapshots[layer] } };
+}
+
+export function emptyPersonaDraftFields(draft: PersonaDraft): PersonaField[] {
+  const fields: PersonaField[] = [];
+  for (const field of artistPersonaFields) {
+    if (!draft.artist[field.field].trim()) fields.push(field.aiField);
+  }
+  for (const field of soulPersonaFields) {
+    if (!draft.soul[field.field].trim()) fields.push(field.aiField);
+  }
+  if (!draft.snapshots.producer.trim()) fields.push(producerContextField.aiField);
+  return fields;
 }
