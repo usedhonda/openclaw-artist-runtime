@@ -411,9 +411,9 @@ describe("ProducerRoomApp Songs and Settings views", () => {
     expect(html).not.toContain("role=\"tablist\"");
     expect(html).toContain("Suno Style と曲調に効く音の核");
     expect(html).not.toContain("全文をそのまま保存します。");
-    expect(html).not.toContain("raw inner");
+    expect(html).toContain("raw inner");
     expect(html).toContain("内部管理");
-    expect(html).toContain("ここには本文を表示しません");
+    expect(html).toContain("読み取り専用で表示します");
     expect(html).not.toContain("readonly=\"\"");
     expect(html).not.toContain("<summary");
     expect(html).toContain("不足を埋めると完了");

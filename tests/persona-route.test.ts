@@ -103,7 +103,7 @@ describe("persona route", () => {
     expect(response.identity.source).toBe("derived");
     expect(response.identity.text).toContain("Display name: Neon Relay");
     expect(response.producer.text).toBe("");
-    expect(response.inner.text).toBe("");
+    expect(response.inner.text).toContain("raw inner");
     expect(response.inner.readOnly).toBe(true);
     expect(response.inner.source).toBe("internal");
     expect(readFileSync(join(root, "PRODUCER.md"), "utf8")).toContain("artist-runtime:persona:producer:start");

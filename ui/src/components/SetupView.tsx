@@ -398,7 +398,7 @@ function IdentityProjection(props: { locale: ProducerRoomLocale; value: string }
   );
 }
 
-function InnerFileNote(props: { locale: ProducerRoomLocale }) {
+function InnerFileNote(props: { locale: ProducerRoomLocale; value: string }) {
   return (
     <section className="settings-section persona-file-editor">
       <div className="persona-file-editor-head">
@@ -417,9 +417,10 @@ function InnerFileNote(props: { locale: ProducerRoomLocale }) {
           </div>
           <div>
             <dt>{props.locale === "ja" ? "既存内容" : "Existing content"}</dt>
-            <dd>{props.locale === "ja" ? "seed/history として保持します。ここには本文を表示しません。" : "Kept as seed/history. Raw text is not shown here."}</dd>
+            <dd>{props.locale === "ja" ? "seed/history として保持します。読み取り専用で表示します。" : "Kept as seed/history and shown read-only."}</dd>
           </div>
         </dl>
+        <pre>{props.value.trim() || (props.locale === "ja" ? "まだ INNER.md の内容はありません。" : "INNER.md has no content yet.")}</pre>
       </div>
     </section>
   );
@@ -590,7 +591,7 @@ export function SetupView(props: {
               </React.Fragment>
             ))}
             <IdentityProjection locale={locale} value={draft.snapshots.identity} />
-            <InnerFileNote locale={locale} />
+            <InnerFileNote locale={locale} value={draft.snapshots.inner} />
             <div className="inline-actions">
               <button type="button" disabled={props.busyKey !== null} onClick={props.onRefresh}>{t(locale, "setupReload")}</button>
               {setup?.needsSetup ? (

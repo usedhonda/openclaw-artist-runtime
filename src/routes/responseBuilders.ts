@@ -679,10 +679,11 @@ export async function buildPersonaResponse(config?: Partial<ArtistRuntimeConfig>
   const mergedConfig = await resolveRuntimeConfig(config);
   const root = mergedConfig.artist.workspaceRoot;
   await cleanupCanonicalPersonaSources(root);
-  const [artist, soul, producer, setupStatus, audit] = await Promise.all([
+  const [artist, soul, producer, inner, setupStatus, audit] = await Promise.all([
     readArtistPersonaSummary(root),
     readSoulPersonaSummary(root),
     readProducerPersonaSummary(root),
+    readSnapshotPersonaFile(root, snapshotPersonaFilenames.inner),
     readPersonaSetupStatus(root),
     auditPersonaCompleteness(root)
   ]);
@@ -695,7 +696,7 @@ export async function buildPersonaResponse(config?: Partial<ArtistRuntimeConfig>
     soul,
     identity: { text: buildDerivedIdentityProjection(mergedConfig, responseArtist, soul), readOnly: true, source: "derived" },
     producer: { text: producer.producerFacts },
-    inner: { text: "", readOnly: true, source: "internal" },
+    inner: { text: inner, readOnly: true, source: "internal" },
     setup: { ...setupStatus, reasonsText: describePersonaSetupReasons(setupStatus.reasons) },
     audit: userFacingPersonaAudit(audit),
     aiDraftSupported: ["artist", "soul", "producer"],
