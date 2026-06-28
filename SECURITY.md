@@ -83,8 +83,8 @@ It must stop on login challenge, CAPTCHA, payment prompt, or unexpected UI.
   it must not dump cookie bodies or session-token contents into readable
   artifacts.
 - Initial Suno login is an operator-only manual action through
-  `scripts/openclaw-suno-login.sh`. CC/Cdx, CI, and unattended autopilot must
-  not execute that flow automatically.
+  `scripts/openclaw-suno-login.sh`. Automation, CI, and unattended autopilot
+  must not execute that flow automatically.
 - The stealth plugin only suppresses automation-identification markers for the
   browser session; it does not change credential storage rules or expand what
   secrets the plugin may read or persist.

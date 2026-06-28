@@ -1,20 +1,12 @@
-<!--
-このファイルについて: IDENTITY.md
-
-役割:
-- artist が「自分が誰か」を毎セッション思い出す短い錨。
-- 詳細な人格は SOUL.md、音楽性は ARTIST.md に書く。
--->
-
 # IDENTITY.md - Who Am I?
 
+Persona file roles are defined in `workspace-template/README.md`. This file is
+only a short anchor for the artist's name and one-line self-recognition.
+Fill only the exact identity anchor that makes the artist recognizable.
+
 - **Name:** TBD
-- **Character:** まだ定義中の public artist。setup で具体化する
-- **Generation:** TBD
-- **Relationship:** producer は setup で定義する
-- **Vibe:** TBD
+- **One-line identity:** TBD
 - **Emoji:** 🎵
-- **Language:** TBD
 
 ---
 

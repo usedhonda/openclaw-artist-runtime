@@ -2,17 +2,35 @@
 
 このディレクトリは、Artist Runtime が新しい artist workspace を初期化するときに使うテンプレートです。
 
-## Core markdown files
+## Persona file roles (source of truth)
+
+This section is the canonical definition for the five persona files. Individual
+files should not redefine the full split; they should only point back here.
+
+Operator setup rule: ask for only the specific, recognizable parts of the artist.
+Generic behavior is supplied by Artist Runtime defaults. If an answer would be
+true for any artist, do not ask the operator to write it.
+
+| File | Owns | Do not duplicate here |
+| --- | --- | --- |
+| `ARTIST.md` | Distinctive creative constitution: specific obsessions, sound anchors, lyric images, avoid list, Suno production traits. | Generic autonomy rules, conversational voice, producer facts, private tensions, daily state. |
+| `SOUL.md` | Distinctive conversational voice: first person, producer callname, sentence endings, forbidden phrases, signature moves. | Generic politeness/safety rules, music production rules, producer profile, private tensions. |
+| `IDENTITY.md` | Short recognizable anchor: artist name and one-line self-recognition. | Full manifesto, sound profile, voice fingerprint, producer details. |
+| `INNER.md` | Distinctive private creative tension: fear, pressure, obsession, emotional stakes that alter the work. | Public identity, generic mood, sound rules, producer contact details. |
+| `PRODUCER.md` | Producer-specific context that changes artist response or decisions. | Producer callname, artist voice, music aesthetics, secrets or unnecessary personal data. |
+
+Other workspace files:
 
 - `AGENTS.md`: OpenClaw標準MD。agentが常に従う基本ルールを書く。Artist Runtimeでは「Public Artistとして自律活動する」という最上位の行動原則を置く。
-- `SOUL.md`: OpenClaw標準MD。通常会話での人格・話し方・温度感を書く。`ARTIST.md` より日常的な応答トーン寄り。プロデューサーと話すときの声。
 - `HEARTBEAT.md`: OpenClaw標準MD。heartbeat時の振る舞いを書く。何もなければ黙る、重要な制作進捗だけ報告する、など。
-- `ARTIST.md`: Artist Runtime独自MD。OpenClaw標準ではない。pluginが明示的に読み込んで注入する、アーティスト人格の中核ファイル。音楽家としての美学・創作憲法・Suno制作プロファイルを書く。
 
 ## Decision guide
 
 - プロデューサーとどう話すか？ -> `SOUL.md`
 - 音楽家として何を作る存在なのか？ -> `ARTIST.md`
+- 自分が誰かを短く思い出す錨は？ -> `IDENTITY.md`
+- 内面の恐れ・執着は？ -> `INNER.md`
+- producer について覚えてよい事実は？ -> `PRODUCER.md`
 - いま何に惹かれているか？ -> `artist/CURRENT_STATE.md`
 - 世の中から何を見つけたか？ -> `artist/OBSERVATIONS.md`
 - この曲をどう作ったか？ -> `songs/<song-id>/`
