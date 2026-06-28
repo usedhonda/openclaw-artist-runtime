@@ -159,8 +159,10 @@ describe("ProducerRoomApp Songs and Settings views", () => {
 
     expect(html).toContain("作品");
     expect(html).toContain("七万円のスクランブル");
+    expect(html).toContain("制作 2 回");
     expect(html).toContain("試聴URLあり");
-    expect(html).toContain("採用/破棄は Telegram の通知から");
+    expect(html).toContain("ここでは作品の歩みだけを読みます");
+    expect(html).not.toContain("song-001 · run");
     expect(html).not.toContain("suno_take_url_ready");
   });
 
@@ -188,9 +190,11 @@ describe("ProducerRoomApp Songs and Settings views", () => {
     expect(html).toContain("1-10 / 12 曲");
     expect(html).toContain("Song 001");
     expect(html).toContain("Song 010");
+    expect(html).toContain("制作 0 回");
     expect(html).toContain("採用済み");
     expect(html).toContain("採用待ち");
     expect(html).not.toContain("Song 011");
+    expect(html).not.toContain("song-001 · run");
     expect(html).not.toContain("take-001");
     expect(html).not.toContain("take_selected");
     expect(html).not.toContain("archived");
@@ -282,7 +286,6 @@ describe("ProducerRoomApp Songs and Settings views", () => {
       })
     );
 
-    expect(html).toContain("Setup");
     expect(html).toContain("アーティスト設定");
     expect(html).toContain("創作の核");
     expect(html).toContain("会話人格");
@@ -294,9 +297,11 @@ describe("ProducerRoomApp Songs and Settings views", () => {
     expect(html).toContain("AIお任せは欄に案を入れるだけ");
     expect(html).toContain("IDENTITY.md");
     expect(html).toContain("AIお任せはありません");
+    expect(html).toContain("初期設定を完了");
     expect(html.match(/AIお任せ<\/button>/g)?.length).toBe(8);
     expect(html.match(/元に戻す<\/button>/g)?.length).toBe(8);
     expect(html).not.toContain("AI下書き");
+    expect(html).not.toContain("Setup 完了");
     expect(html).not.toContain("創作の核 — ARTIST.md");
     expect(html).not.toContain("Artist Setup");
   });
@@ -350,7 +355,8 @@ describe("ProducerRoomApp diagnostics", () => {
     const html = renderToStaticMarkup(React.createElement(DiagnosticsView));
 
     expect(html).toContain("診断");
-    expect(html).toContain("旧 Console");
+    expect(html).toContain("旧操作画面");
+    expect(html).not.toContain("旧 Console");
     expect(html).not.toContain("Run Cycle");
     expect(html).not.toContain("Config Editor");
   });

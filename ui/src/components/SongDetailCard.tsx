@@ -384,11 +384,11 @@ export function SongDetailCard(props: SongDetailCardProps) {
       <div className="song-detail-header">
         <Breadcrumb
           segments={[
-            { label: "Songs", onClick: onBack },
+            { label: "作品", onClick: onBack },
             { label: title }
           ]}
         />
-        <button type="button" className="song-detail-back" onClick={onBack}>&larr; Songs</button>
+        <button type="button" className="song-detail-back" onClick={onBack}>&larr; 作品へ</button>
         <div className="song-detail-title-row">
           <strong>{title}</strong>
           <span className="muted">{songId}</span>
@@ -396,24 +396,24 @@ export function SongDetailCard(props: SongDetailCardProps) {
       </div>
 
       {loading ? (
-        <div className="item muted">Loading song detail…</div>
+        <div className="item muted">曲の詳細を読み込み中。</div>
       ) : error ? (
-        <div className="item muted">Failed to load: {error}</div>
+        <div className="item muted">読み込めませんでした: {error}</div>
       ) : !song ? (
-        <div className="item muted">Song not found.</div>
+        <div className="item muted">曲が見つかりません。</div>
       ) : (
         <>
           <dl className="song-detail-status">
-            <div><dt>Status</dt><dd>{song.status ?? "-"}</dd></div>
-            <div><dt>Lyrics</dt><dd>v{song.lyricsVersion ?? "-"}</dd></div>
-            <div><dt>Runs</dt><dd>{song.runCount ?? 0}</dd></div>
-            <div><dt>Selected Take</dt><dd>{song.selectedTake || "-"}</dd></div>
-            <div><dt>Updated</dt><dd>{formatTimestamp(song.updatedAt)}</dd></div>
-            <div><dt>Degraded</dt><dd>{song.degradedLyrics ? "yes" : "no"}</dd></div>
+            <div><dt>状態</dt><dd>{song.status ?? "-"}</dd></div>
+            <div><dt>歌詞</dt><dd>v{song.lyricsVersion ?? "-"}</dd></div>
+            <div><dt>制作回数</dt><dd>{song.runCount ?? 0}</dd></div>
+            <div><dt>選ばれた take</dt><dd>{song.selectedTake || "-"}</dd></div>
+            <div><dt>更新</dt><dd>{formatTimestamp(song.updatedAt)}</dd></div>
+            <div><dt>歌詞エラー</dt><dd>{song.degradedLyrics ? "あり" : "なし"}</dd></div>
           </dl>
 
           <div className="item song-detail-suno-handoff">
-            <div className="muted">Suno worker</div>
+            <div className="muted">Suno 接続</div>
             <button
               type="button"
               className="link-button"
@@ -423,7 +423,7 @@ export function SongDetailCard(props: SongDetailCardProps) {
               Suno ログイン済を記録
             </button>
             <div className="muted">
-              scripts/openclaw-suno-login.mjs で sign in した後に押す
+              scripts/openclaw-suno-login.mjs でログインした後に押す
             </div>
             {sunoHandoffResult ? <div className="muted">{sunoHandoffResult}</div> : null}
             {sunoHandoffError ? <div className="muted">error: {sunoHandoffError}</div> : null}
@@ -431,38 +431,38 @@ export function SongDetailCard(props: SongDetailCardProps) {
 
           {song.lastReason ? (
             <div className="item song-detail-reason">
-              <div className="muted">Last reason</div>
+              <div className="muted">最後の理由</div>
               <div>{song.lastReason}</div>
             </div>
           ) : null}
 
           {song.observationSummary ? (
             <div className="item song-detail-reason">
-              <div className="muted">Observation summary</div>
+              <div className="muted">観察の要約</div>
               <div>{song.observationSummary}</div>
             </div>
           ) : null}
 
           {cascadeTrace ? (
             <div className="item song-detail-reason">
-              <div className="muted">Cascade trace</div>
+              <div className="muted">制作の流れ</div>
               <dl className="song-detail-status">
                 <div><dt>観察 source</dt><dd>{cascadeSource?.url ? <a href={cascadeSource.url} target="_blank" rel="noreferrer">{cascadeSource.quote ?? cascadeSource.label}</a> : cascadeSource?.quote ?? cascadeSource?.label ?? "未記録"}</dd></div>
-                <div><dt>artist voice</dt><dd>{cascadeTrace.artistVoice}</dd></div>
+                <div><dt>アーティストの声</dt><dd>{cascadeTrace.artistVoice}</dd></div>
                 <div><dt>title</dt><dd>{cascadeTrace.title}</dd></div>
-                <div><dt>lyrics theme</dt><dd>{cascadeTrace.lyricsTheme}</dd></div>
-                <div><dt>style layer</dt><dd>{cascadeTrace.styleLayer}</dd></div>
+                <div><dt>歌詞テーマ</dt><dd>{cascadeTrace.lyricsTheme}</dd></div>
+                <div><dt>音の方向</dt><dd>{cascadeTrace.styleLayer}</dd></div>
               </dl>
             </div>
           ) : null}
 
           <details className="song-detail-section" open>
-            <summary><strong>Brief</strong> <span className="muted">({(detail?.brief ?? "").length} chars)</span></summary>
+            <summary><strong>曲の設計</strong> <span className="muted">({(detail?.brief ?? "").length} 字)</span></summary>
             <pre className="song-detail-pre">{detail?.brief || "(no brief)"}</pre>
           </details>
 
           <details className="song-detail-section">
-            <summary><strong>Lyrics</strong> <span className="muted">({(detail?.lyrics ?? "").length} chars)</span></summary>
+            <summary><strong>歌詞</strong> <span className="muted">({(detail?.lyrics ?? "").length} 字)</span></summary>
             <pre className="song-detail-pre">{detail?.lyrics || "(no lyrics)"}</pre>
           </details>
 
@@ -472,9 +472,9 @@ export function SongDetailCard(props: SongDetailCardProps) {
           </details>
 
           <details className="song-detail-section" open>
-            <summary><strong>Suno runs</strong> <span className="muted">({sunoRuns.length})</span></summary>
+            <summary><strong>Suno 制作</strong> <span className="muted">({sunoRuns.length})</span></summary>
             {sunoRuns.length === 0 ? (
-              <div className="item muted">No runs yet.</div>
+              <div className="item muted">まだ制作記録はありません。</div>
             ) : (
               <ul className="song-detail-runs">
                 {sunoRuns.map((run, idx) => (
@@ -506,14 +506,14 @@ export function SongDetailCard(props: SongDetailCardProps) {
           </details>
 
           <details className="song-detail-section" open>
-            <summary><strong>Selected take</strong></summary>
+            <summary><strong>選ばれた take</strong></summary>
             {selectedTake ? (
               <>
                 <dl className="song-detail-status">
                   <div><dt>Take ID</dt><dd>{selectedTake.selectedTakeId ?? "-"}</dd></div>
                   <div><dt>Run</dt><dd>{selectedTake.runId ?? "-"}</dd></div>
-                  <div><dt>Reason</dt><dd>{selectedTake.reason ?? "-"}</dd></div>
-                  <div><dt>Picked at</dt><dd>{formatTimestamp(selectedTake.timestamp)}</dd></div>
+                  <div><dt>理由</dt><dd>{selectedTake.reason ?? "-"}</dd></div>
+                  <div><dt>選択日時</dt><dd>{formatTimestamp(selectedTake.timestamp)}</dd></div>
                   {selectedTake.url ? <div><dt>URL</dt><dd><a href={selectedTake.url} target="_blank" rel="noreferrer">{selectedTake.url}</a></dd></div> : null}
                 </dl>
                 {canReviewSelectedTake ? (
@@ -527,14 +527,14 @@ export function SongDetailCard(props: SongDetailCardProps) {
                 {reviewError ? <div className="muted">error: {reviewError}</div> : null}
               </>
             ) : (
-              <div className="item muted">No take selected yet.</div>
+              <div className="item muted">まだ take は選ばれていません。</div>
             )}
           </details>
 
           <details className="song-detail-section">
-            <summary><strong>Take history</strong> <span className="muted">({takeHistory.length})</span></summary>
+            <summary><strong>take の履歴</strong> <span className="muted">({takeHistory.length})</span></summary>
             {takeHistory.length === 0 ? (
-              <div className="item muted">No prior selections.</div>
+              <div className="item muted">過去の選択はありません。</div>
             ) : (
               <ul className="song-detail-take-history">
                 {takeHistory.map((entry, idx) => (
@@ -550,9 +550,9 @@ export function SongDetailCard(props: SongDetailCardProps) {
           </details>
 
           <details className="song-detail-section">
-            <summary><strong>Prompt ledger</strong> <span className="muted">({promptLedger.length})</span></summary>
+            <summary><strong>プロンプト台帳</strong> <span className="muted">({promptLedger.length})</span></summary>
             {promptLedger.length === 0 ? (
-              <div className="item muted">No prompt ledger entries.</div>
+              <div className="item muted">プロンプト記録はまだありません。</div>
             ) : (
               <ul className="song-detail-ledger">
                 {promptLedger.map((entry, idx) => (

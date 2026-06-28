@@ -44,7 +44,7 @@ class DiagnosticsErrorBoundary extends React.Component<{ children: React.ReactNo
 
   render() {
     if (this.state.failed) {
-      return <div className="item muted">旧 Console を読み込めませんでした。Room / Songs / Settings はそのまま使えます。</div>;
+      return <div className="item muted">旧操作画面を読み込めませんでした。部屋 / 作品 / 運用設定はそのまま使えます。</div>;
     }
     return this.props.children;
   }
@@ -332,7 +332,7 @@ function RoomViewPanel(props: {
       {props.persona?.setup.needsSetup ? (
         <article className="panel">
           <div className="warning-banner">
-            Setup が未完了です: {props.persona.setup.reasonsText} <a href="#setup">Setup を開く</a>
+            初期設定が未完了です: {props.persona.setup.reasonsText} <a href="#setup">設定準備を開く</a>
           </div>
         </article>
       ) : null}
@@ -418,7 +418,7 @@ export function SongsView(props: {
     <section className="single-column songs-view">
       <article className="panel">
         <div className="section-title">作品</div>
-        <div className="muted">採用/破棄は Telegram の通知から。Console は作品の歩みを読む mirror です。</div>
+        <div className="muted">採用/破棄は Telegram の通知から。ここでは作品の歩みだけを読みます。</div>
         {props.songs.length === 0 ? (
           <div className="item muted">曲台帳はまだ空です。</div>
         ) : (
@@ -440,7 +440,7 @@ export function SongsView(props: {
                 >
                   <span>
                     <strong>{song.title || song.songId}</strong>
-                    <span className="muted">{song.songId} · run {song.runCount}</span>
+                    <span className="muted">制作 {song.runCount} 回</span>
                   </span>
                   <span>
                     <StatusPill status={song.status} />
@@ -537,7 +537,7 @@ export function SettingsView(props: {
             <section className="settings-section">
               <div className="section-title">自動制作</div>
               <label className="toggle"><input type="checkbox" checked={draft.autopilotEnabled} onChange={(event) => props.onUpdateDraft({ autopilotEnabled: event.target.checked })} />自動制作を動かす</label>
-              <label className="toggle"><input type="checkbox" checked={draft.dryRun} onChange={(event) => props.onUpdateDraft({ dryRun: event.target.checked })} />外部送信を止める (dry-run)</label>
+              <label className="toggle"><input type="checkbox" checked={draft.dryRun} onChange={(event) => props.onUpdateDraft({ dryRun: event.target.checked })} />外部送信を止める</label>
               <label className="toggle"><input type="checkbox" checked={draft.distributionLiveGoArmed} onChange={(event) => props.onUpdateDraft({ distributionLiveGoArmed: event.target.checked })} />外部公開を許可する (全体)</label>
               {globalArmHeld ? <div className="warning-banner">外部公開は全体で止まっています。各配信先の許可も上流で保留されます。</div> : null}
               <div className="field-grid">
@@ -583,7 +583,7 @@ export function SettingsView(props: {
                   <select value={draft.instagramAuthority} onChange={(event) => props.onUpdateDraft({ instagramAuthority: event.target.value as ConfigDraft["instagramAuthority"] })}>
                     {instagramAuthorityModes.map((mode) => <option key={mode} value={mode}>{authorityLabel(mode)}</option>)}
                   </select>
-                  <div className="muted">Instagram は operator review まで凍結中。</div>
+                  <div className="muted">Instagram は運用確認まで凍結中。</div>
                 </label>
                 <label className="platform-config is-frozen" title="アカウント未作成 / 凍結中">
                   <div className="toggle"><input type="checkbox" checked={draft.tiktokEnabled} onChange={(event) => props.onUpdateDraft({ tiktokEnabled: event.target.checked })} />TikTok を使う</div>
@@ -592,7 +592,7 @@ export function SettingsView(props: {
                   <select value={draft.tiktokAuthority} onChange={(event) => props.onUpdateDraft({ tiktokAuthority: event.target.value as ConfigDraft["tiktokAuthority"] })}>
                     {tiktokAuthorityModes.map((mode) => <option key={mode} value={mode}>{authorityLabel(mode)}</option>)}
                   </select>
-                  <div className="muted">TikTok は operator account 準備まで凍結中。</div>
+                  <div className="muted">TikTok は運用アカウント準備まで凍結中。</div>
                 </label>
               </div>
             </section>
@@ -614,10 +614,10 @@ export function DiagnosticsView() {
     <section className="single-column">
       <article className="panel">
         <div className="section-title">診断</div>
-        <p>診断専用の旧 Console を読み込みます。Room / Songs / Settings には内部操作の主導ボタンを戻しません。</p>
-        <div className="item muted">表示されるまで数秒かかる場合があります。空白のままなら旧 Console の読み込みに失敗しています。</div>
+        <p>診断専用の旧操作画面を読み込みます。部屋 / 作品 / 運用設定には内部操作の主導ボタンを戻しません。</p>
+        <div className="item muted">表示されるまで数秒かかる場合があります。空白のままなら旧操作画面の読み込みに失敗しています。</div>
         <DiagnosticsErrorBoundary>
-          <Suspense fallback={<div className="item muted">旧 Console を読み込み中。</div>}>
+          <Suspense fallback={<div className="item muted">旧操作画面を読み込み中。</div>}>
             <LegacyConsole />
           </Suspense>
         </DiagnosticsErrorBoundary>
@@ -863,7 +863,7 @@ export function ProducerRoomApp() {
       }
       applyPersonaDraftProposal(field, draft.draft);
       const warning = response.warnings?.[0];
-      showErrorToast("runtime", `persona_ai_${field}_proposed`, warning ? `AI下書き反映: ${warning}` : "AI下書きを反映しました。");
+      showErrorToast("runtime", `persona_ai_${field}_proposed`, warning ? `AIお任せを反映: ${warning}` : "AIお任せを反映しました。");
     } catch (caughtError) {
       const message = caughtError instanceof Error ? caughtError.message : String(caughtError);
       showErrorToast("runtime", `persona_ai_${field}_failed`, message);
@@ -880,7 +880,7 @@ export function ProducerRoomApp() {
         throw new Error(response.error);
       }
       await refresh();
-      showErrorToast("runtime", "persona_setup_complete", "Setup completion marker を記録しました。");
+      showErrorToast("runtime", "persona_setup_complete", "初期設定の完了を記録しました。");
     } catch (caughtError) {
       const message = caughtError instanceof Error ? caughtError.message : String(caughtError);
       showErrorToast("runtime", "persona_setup_complete_failed", message);
@@ -895,12 +895,12 @@ export function ProducerRoomApp() {
     <main className="console-shell producer-room-shell">
       <header className="hero producer-room-hero">
         <div>
-          <div className="eyebrow">Artist Runtime</div>
+          <div className="eyebrow">アーティスト運用</div>
           <h1>Producer Room</h1>
-          <div className="hero-copy">迷ったら、ここだけ見る。必要な操作は blocked 時に 1 つだけ出す。</div>
+          <div className="hero-copy">迷ったら、ここだけ見る。必要な操作は止まった時に 1 つだけ出す。</div>
         </div>
         <div className="producer-room-refresh-pill">
-          {lastRefreshAt ? `last refresh ${new Date(lastRefreshAt).toLocaleTimeString()}` : "status loading"}
+          {lastRefreshAt ? `更新 ${new Date(lastRefreshAt).toLocaleTimeString()}` : "読み込み中"}
         </div>
       </header>
       <RouteNav activeView={activeView} />
@@ -952,8 +952,8 @@ export function ProducerRoomApp() {
       ) : null}
       {activeView === "diagnostics" ? <DiagnosticsView /> : null}
       <footer className="producer-room-closing-band">
-        <strong>Quiet by default.</strong>
-        <span>Creative milestones, hard stops, and one useful next action.</span>
+        <strong>普段は静かに。</strong>
+        <span>創作の節目、動けない停止、次の一手だけを出します。</span>
       </footer>
       <ErrorToastStack toasts={errorToasts} onDismiss={(id) => setErrorToasts((current) => dismissErrorToast(current, id))} />
     </main>

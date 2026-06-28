@@ -81,7 +81,7 @@ function SaveRow(props: {
         disabled={props.busy || Boolean(props.validationError) || !props.dirty}
         onClick={props.onSave}
       >
-        Save
+        保存
       </button>
       <button type="button" disabled={props.busy || !props.dirty} onClick={props.onReset}>変更を破棄</button>
       {props.validationError ? <span className="field-error">{props.validationError}</span> : null}
@@ -152,10 +152,13 @@ export function SetupView(props: {
           <div className="item muted">Loading persona.</div>
         ) : (
           <div className="settings-sections">
-            <section className="settings-section">
-              <div className="section-title">創作の核</div>
-              <div className="muted">曲の音楽性・作詞・世界観・SNS声に効く設定です。AIお任せは欄に案を入れるだけで、保存するまで反映されません。</div>
-              <div className="muted">参照元: ARTIST.md</div>
+            <details className="settings-section persona-layer-details">
+              <summary>
+                <span className="section-title">創作の核</span>
+                <span className="muted">曲づくりの土台。必要な時だけ開いて編集します。</span>
+                <span className="muted">参照元: ARTIST.md</span>
+              </summary>
+              <div className="muted">AIお任せは欄に案を入れるだけで、保存するまで反映されません。</div>
               <div className="persona-field-list">
                 {artistPersonaFields.map((field) => (
                   <PersonaTextInput
@@ -181,11 +184,14 @@ export function SetupView(props: {
                 onSave={() => saveLayer("artist")}
                 onReset={resetDraft}
               />
-            </section>
-            <section className="settings-section">
-              <div className="section-title">会話人格</div>
-              <div className="muted">Telegram や Producer Room で話す温度、距離感、断り方に効きます。AIお任せは欄に案を入れるだけで、保存するまで反映されません。</div>
-              <div className="muted">参照元: SOUL.md</div>
+            </details>
+            <details className="settings-section persona-layer-details">
+              <summary>
+                <span className="section-title">会話人格</span>
+                <span className="muted">Telegram や部屋で話す温度。必要な時だけ開いて編集します。</span>
+                <span className="muted">参照元: SOUL.md</span>
+              </summary>
+              <div className="muted">AIお任せは欄に案を入れるだけで、保存するまで反映されません。</div>
               <div className="persona-field-list">
                 {soulPersonaFields.map((field) => (
                   <PersonaTextInput
@@ -211,7 +217,7 @@ export function SetupView(props: {
                 onSave={() => saveLayer("soul")}
                 onReset={resetDraft}
               />
-            </section>
+            </details>
             {(["identity", "producer", "inner"] as const).map((layer) => (
               <details className="settings-section persona-layer-details" key={layer}>
                 <summary>
@@ -235,7 +241,7 @@ export function SetupView(props: {
             <div className="inline-actions">
               <button type="button" disabled={props.busyKey !== null} onClick={props.onRefresh}>再読み込み</button>
               <button type="button" disabled={props.busyKey === "persona-complete"} onClick={props.onComplete}>
-                {props.busyKey === "persona-complete" ? "完了記録中" : "Setup 完了"}
+                {props.busyKey === "persona-complete" ? "完了記録中" : "初期設定を完了"}
               </button>
             </div>
           </div>
