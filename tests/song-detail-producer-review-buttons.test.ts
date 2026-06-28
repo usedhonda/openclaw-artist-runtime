@@ -1,5 +1,6 @@
 import React from "../ui/node_modules/react/index.js";
 import { renderToStaticMarkup } from "../ui/node_modules/react-dom/server.node.js";
+import { readFileSync } from "node:fs";
 import { describe, expect, it, vi } from "vitest";
 import { buildSongCascadeTrace, DetailPager, producerObservationLabel, producerReasonLabel, producerStyleLabel, ProducerReviewButtons } from "../ui/src/components/SongDetailCard";
 
@@ -79,5 +80,12 @@ describe("SongDetailCard producer review buttons", () => {
     expect(producerObservationLabel({ label: "brief source" })).toBe("記録済みの観察");
     expect(producerStyleLabel("aggressive jazz drums up front, thick electric bass")).toBe("プロンプト台帳に記録");
     expect(producerStyleLabel("低いベースと乾いたドラム")).toBe("低いベースと乾いたドラム");
+  });
+
+  it("keeps Suno handoff recovery out of the song producer surface", () => {
+    const source = readFileSync("ui/src/components/SongDetailCard.tsx", "utf8");
+
+    expect(source).not.toContain("Suno ログイン済を記録");
+    expect(source).not.toContain("/suno/handoff/complete");
   });
 });

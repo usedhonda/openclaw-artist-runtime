@@ -346,9 +346,6 @@ export function SongDetailCard(props: SongDetailCardProps) {
   const [events, setEvents] = useState<RuntimeEvent[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [sunoHandoffBusy, setSunoHandoffBusy] = useState(false);
-  const [sunoHandoffError, setSunoHandoffError] = useState<string | null>(null);
-  const [sunoHandoffResult, setSunoHandoffResult] = useState<string | null>(null);
   const [reviewBusy, setReviewBusy] = useState<"archive" | "discard" | null>(null);
   const [reviewResult, setReviewResult] = useState<string | null>(null);
   const [reviewError, setReviewError] = useState<string | null>(null);
@@ -356,20 +353,6 @@ export function SongDetailCard(props: SongDetailCardProps) {
   const [takeHistoryPage, setTakeHistoryPage] = useState(0);
   const [promptLedgerPage, setPromptLedgerPage] = useState(0);
   const [eventsPage, setEventsPage] = useState(0);
-
-  const completeSunoHandoff = async () => {
-    setSunoHandoffBusy(true);
-    setSunoHandoffError(null);
-    setSunoHandoffResult(null);
-    try {
-      const res = await postJson<{ state?: string; connected?: boolean }>("/suno/handoff/complete");
-      setSunoHandoffResult(`state=${res.state ?? "-"} · connected=${res.connected ? "true" : "false"}`);
-    } catch (err) {
-      setSunoHandoffError(err instanceof Error ? err.message : String(err));
-    } finally {
-      setSunoHandoffBusy(false);
-    }
-  };
 
   const reloadDetail = async () => {
     const [detailRes, eventsRes] = await Promise.all([
@@ -721,25 +704,6 @@ export function SongDetailCard(props: SongDetailCardProps) {
                 <li><code>{lyricsPath}</code></li>
                 <li><code>{songPath}</code></li>
               </ul>
-            </div>
-          </details>
-
-          <details className="song-detail-section">
-            <summary><strong>技術情報: Suno 接続</strong></summary>
-            <div className="item song-detail-suno-handoff">
-              <button
-                type="button"
-                className="link-button"
-                disabled={sunoHandoffBusy}
-                onClick={() => void completeSunoHandoff()}
-              >
-                Suno ログイン済を記録
-              </button>
-              <div className="muted">
-                Suno ブラウザでログインした後に押す
-              </div>
-              {sunoHandoffResult ? <div className="muted">{sunoHandoffResult}</div> : null}
-              {sunoHandoffError ? <div className="muted">error: {sunoHandoffError}</div> : null}
             </div>
           </details>
 

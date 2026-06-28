@@ -32,7 +32,7 @@ import {
 const refreshIntervalMs = 5000;
 const apiBase = "/plugins/artist-runtime/api";
 const fetchTimeoutMs = 10_000;
-const songLedgerPageSize = 8;
+const songLedgerPageSize = 5;
 
 type RoomView = "room" | "songs" | "settings" | "setup" | "diagnostics";
 
