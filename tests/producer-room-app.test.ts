@@ -340,7 +340,8 @@ describe("ProducerRoomApp Songs and Settings views", () => {
     expect(html).toContain("Suno Style と曲調に効く音の核");
     expect(html).toContain("IDENTITY.md");
     expect(html).toContain("全文をそのまま保存します。");
-    expect(html).toContain("初期設定を完了");
+    expect(html).toContain("不足を埋めると完了");
+    expect(html).not.toContain("初期設定を完了");
     expect(html.match(/AIお任せ<\/button>/g)?.length ?? 0).toBe(0);
     expect(html.match(/元に戻す<\/button>/g)?.length ?? 0).toBe(0);
     expect(html).not.toContain("AI下書き");
@@ -351,6 +352,58 @@ describe("ProducerRoomApp Songs and Settings views", () => {
     expect(html).not.toContain("Setup 完了");
     expect(html).not.toContain("創作の核 — ARTIST.md");
     expect(html).not.toContain("Artist Setup");
+  });
+
+  it("hides the setup completion action after setup is already complete", () => {
+    const persona = {
+      artist: {
+        artistName: "artist",
+        identityLine: "identity line",
+        soundDna: "dry drums, low synth",
+        obsessions: "station light, receipts",
+        lyricsRules: "no slogans",
+        socialVoice: "plain and short"
+      },
+      soul: {
+        conversationTone: "short and precise",
+        refusalStyle: "refuse weak ideas plainly"
+      },
+      identity: { text: "# IDENTITY\n\nraw identity" },
+      producer: { text: "# PRODUCER\n\nraw producer" },
+      inner: { text: "# INNER\n\nraw inner" },
+      setup: { completed: true, needsSetup: false, reasons: [], reasonsText: "" },
+      audit: {
+        summary: { filled: 8, thin: 0, missing: 0 },
+        fields: [
+          { field: "artistName", status: "filled" },
+          { field: "soundDna", status: "filled" }
+        ],
+        issues: [],
+        customSections: []
+      },
+      aiDraftSupported: ["artist", "soul"] as ["artist", "soul"],
+      provider: "mock"
+    };
+    const html = renderToStaticMarkup(
+      React.createElement(SetupView, {
+        persona,
+        draft: buildPersonaDraft(persona),
+        dirty: { artist: false, soul: false, identity: false, producer: false, inner: false },
+        busyKey: null,
+        onUpdateArtist: () => undefined,
+        onUpdateSoul: () => undefined,
+        onUpdateSnapshot: () => undefined,
+        onSaveLayer: () => undefined,
+        onReset: () => undefined,
+        onRefresh: () => undefined,
+        onPropose: () => undefined,
+        onComplete: () => undefined
+      })
+    );
+
+    expect(html).toContain("再読み込み");
+    expect(html).not.toContain("初期設定を完了");
+    expect(html).not.toContain("不足を埋めると完了");
   });
 
   it("does not show validation errors for untouched empty setup fields", () => {

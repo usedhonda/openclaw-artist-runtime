@@ -118,6 +118,7 @@ export function SetupView(props: {
   const draft = props.draft;
   const setup = props.persona?.setup;
   const weakPersonaFields = props.persona?.audit?.fields.filter((field) => field.status !== "filled") ?? [];
+  const setupBlocked = Boolean(weakPersonaFields.length || props.persona?.audit?.issues.length);
   const [touched, setTouched] = React.useState<LayerTouchedMap>(emptyTouchedMap);
   const [saveAttempted, setSaveAttempted] = React.useState<LayerTouchedMap>(emptyTouchedMap);
   const markTouched = (layer: PersonaDraftLayer) => setTouched((current) => ({ ...current, [layer]: true }));
@@ -259,9 +260,11 @@ export function SetupView(props: {
             ))}
             <div className="inline-actions">
               <button type="button" disabled={props.busyKey !== null} onClick={props.onRefresh}>再読み込み</button>
-              <button type="button" disabled={props.busyKey === "persona-complete"} onClick={props.onComplete}>
-                {props.busyKey === "persona-complete" ? "完了記録中" : "初期設定を完了"}
-              </button>
+              {setup?.needsSetup ? (
+                <button type="button" disabled={props.busyKey === "persona-complete" || setupBlocked} onClick={props.onComplete}>
+                  {props.busyKey === "persona-complete" ? "完了記録中" : setupBlocked ? "不足を埋めると完了" : "初期設定を完了"}
+                </button>
+              ) : null}
             </div>
           </div>
         )}
