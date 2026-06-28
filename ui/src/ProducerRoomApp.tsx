@@ -32,7 +32,7 @@ import {
 const refreshIntervalMs = 5000;
 const apiBase = "/plugins/artist-runtime/api";
 const fetchTimeoutMs = 10_000;
-const songLedgerPageSize = 10;
+const songLedgerPageSize = 8;
 const LegacyConsole = React.lazy(() => import("./App").then((module) => ({ default: module.App })));
 
 class DiagnosticsErrorBoundary extends React.Component<{ children: React.ReactNode }, { failed: boolean }> {
@@ -696,7 +696,7 @@ export function ProducerRoomApp() {
     try {
       await apiPost("/resume");
       await refresh();
-      showErrorToast("runtime", "resume_requested", "autopilot resume を送信しました。");
+      showErrorToast("runtime", "resume_requested", "再開を送信しました。");
     } catch (caughtError) {
       const message = caughtError instanceof Error ? caughtError.message : String(caughtError);
       showErrorToast("runtime", "resume_failed", message);
@@ -765,7 +765,7 @@ export function ProducerRoomApp() {
       configDirtyRef.current = false;
       setConfigDirty(false);
       await refresh();
-      showErrorToast("config-patch", "config_updated", "Settings updated.");
+      showErrorToast("config-patch", "config_updated", "運用設定を保存しました。");
     } catch (caughtError) {
       const message = caughtError instanceof Error ? caughtError.message : String(caughtError);
       showErrorToast("config-patch", "config_update_failed", message);
@@ -828,7 +828,7 @@ export function ProducerRoomApp() {
       }
       markPersonaDirty(layer, false);
       await refresh();
-      showErrorToast("config-patch", `persona_${layer}_updated`, `${layer} updated.`);
+      showErrorToast("config-patch", `persona_${layer}_updated`, "設定準備を保存しました。");
     } catch (caughtError) {
       const message = caughtError instanceof Error ? caughtError.message : String(caughtError);
       showErrorToast("config-patch", `persona_${layer}_update_failed`, message);
@@ -858,7 +858,7 @@ export function ProducerRoomApp() {
       }
       const draft = response.drafts?.find((entry) => entry.field === field);
       if (!draft || draft.status !== "proposed") {
-        showErrorToast("runtime", `persona_ai_${field}_skipped`, draft?.reasoning ?? "AI 下書きは返りませんでした。");
+        showErrorToast("runtime", `persona_ai_${field}_skipped`, draft?.reasoning ?? "AIお任せの案は返りませんでした。");
         return;
       }
       applyPersonaDraftProposal(field, draft.draft);

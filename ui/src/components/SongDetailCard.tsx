@@ -199,6 +199,14 @@ function statusDisplayLabel(status?: string): string {
   }
 }
 
+export function producerReasonLabel(reason?: string): string | undefined {
+  if (!reason) return undefined;
+  if (/selected best scored take/i.test(reason)) {
+    return "試聴用テイクを自動選択しました。";
+  }
+  return reason;
+}
+
 function relativePath(absolute: string | undefined, songId: string): string {
   if (!absolute) return "";
   const idx = absolute.indexOf(`/songs/${songId}/`);
@@ -274,7 +282,7 @@ export function buildSongCascadeTrace(detail: SongDetailResponse | null, songId:
   const quote = brief.match(/^- Quote:\s*(.+)$/im)?.[1]?.trim()
     ?? brief.match(/^- Source quote:\s*(.+)$/im)?.[1]?.trim()
     ?? song?.observationSummary;
-  const artistVoice = song?.lastReason ?? detail?.takeHistory?.[0]?.reason ?? "(未記録)";
+  const artistVoice = producerReasonLabel(song?.lastReason ?? detail?.takeHistory?.[0]?.reason) ?? "(未記録)";
   return {
     observationSources: [{
       label: "brief source",
@@ -481,27 +489,10 @@ export function SongDetailCard(props: SongDetailCardProps) {
             <div><dt>歌詞エラー</dt><dd>{song.degradedLyrics ? "あり" : "なし"}</dd></div>
           </dl>
 
-          <div className="item song-detail-suno-handoff">
-            <div className="muted">Suno 接続</div>
-            <button
-              type="button"
-              className="link-button"
-              disabled={sunoHandoffBusy}
-              onClick={() => void completeSunoHandoff()}
-            >
-              Suno ログイン済を記録
-            </button>
-            <div className="muted">
-              Suno ブラウザでログインした後に押す
-            </div>
-            {sunoHandoffResult ? <div className="muted">{sunoHandoffResult}</div> : null}
-            {sunoHandoffError ? <div className="muted">error: {sunoHandoffError}</div> : null}
-          </div>
-
           {song.lastReason ? (
             <div className="item song-detail-reason">
-              <div className="muted">最後の理由</div>
-              <div>{song.lastReason}</div>
+              <div className="muted">現在の判断理由</div>
+              <div>{producerReasonLabel(song.lastReason)}</div>
             </div>
           ) : null}
 
@@ -517,7 +508,7 @@ export function SongDetailCard(props: SongDetailCardProps) {
               <div className="muted">制作の流れ</div>
               <dl className="song-detail-status">
                 <div><dt>観察元</dt><dd>{cascadeSource?.url ? <a href={cascadeSource.url} target="_blank" rel="noreferrer">{cascadeSource.quote ?? cascadeSource.label}</a> : cascadeSource?.quote ?? cascadeSource?.label ?? "未記録"}</dd></div>
-                <div><dt>アーティストの声</dt><dd>{cascadeTrace.artistVoice}</dd></div>
+                <div><dt>アーティストの声</dt><dd>{producerReasonLabel(cascadeTrace.artistVoice) ?? cascadeTrace.artistVoice}</dd></div>
                 <div><dt>曲名</dt><dd>{cascadeTrace.title}</dd></div>
                 <div><dt>歌詞テーマ</dt><dd>{cascadeTrace.lyricsTheme}</dd></div>
                 <div><dt>音の方向</dt><dd>{cascadeTrace.styleLayer}</dd></div>
@@ -584,7 +575,7 @@ export function SongDetailCard(props: SongDetailCardProps) {
                 <dl className="song-detail-status">
                   <div><dt>テイク</dt><dd>{selectedTake.selectedTakeId ? "あり" : "-"}</dd></div>
                   <div><dt>制作記録</dt><dd>{selectedTake.runId ? "あり" : "-"}</dd></div>
-                  <div><dt>理由</dt><dd>{selectedTake.reason ?? "-"}</dd></div>
+                  <div><dt>理由</dt><dd>{producerReasonLabel(selectedTake.reason) ?? "-"}</dd></div>
                   <div><dt>選択日時</dt><dd>{formatTimestamp(selectedTake.timestamp)}</dd></div>
                   {selectedTake.url ? <div><dt>URL</dt><dd><a href={selectedTake.url} target="_blank" rel="noreferrer">{selectedTake.url}</a></dd></div> : null}
                 </dl>
@@ -619,7 +610,7 @@ export function SongDetailCard(props: SongDetailCardProps) {
                     <span className="song-detail-event-time">{formatTimestamp(entry.timestamp)}</span>
                     <span className="song-detail-take-id"> · {entry.selectedTakeId ?? "-"}</span>
                     {entry.runId ? <span className="muted"> · {entry.runId}</span> : null}
-                    {entry.reason ? <span className="muted"> · {entry.reason}</span> : null}
+                    {entry.reason ? <span className="muted"> · {producerReasonLabel(entry.reason)}</span> : null}
                   </li>
                 ))}
                 </ul>
@@ -629,6 +620,17 @@ export function SongDetailCard(props: SongDetailCardProps) {
 
           <details className="song-detail-section">
             <summary><strong>プロンプト台帳</strong> <span className="muted">({promptLedger.length})</span></summary>
+            {detail?.latestPromptPack ? (
+              <div className="item song-detail-reason">
+                <div className="muted">最新プロンプト</div>
+                <div>v{detail.latestPromptPack.version ?? "-"} · テイク選択 {detail.takeSelections?.length ?? 0} 件</div>
+                {detail.latestPromptPack.metadata?.charCounts ? (
+                  <div className="muted">
+                    スタイル {detail.latestPromptPack.metadata.charCounts.style ?? "-"}字 / 歌詞 {detail.latestPromptPack.metadata.charCounts.lyrics ?? "-"}字 / 曲名 {detail.latestPromptPack.metadata.charCounts.title ?? "-"}字
+                  </div>
+                ) : null}
+              </div>
+            ) : null}
             {promptLedger.length === 0 ? (
               <div className="item muted">プロンプト記録はまだありません。</div>
             ) : (
@@ -650,18 +652,6 @@ export function SongDetailCard(props: SongDetailCardProps) {
               </>
             )}
           </details>
-
-          {detail?.latestPromptPack ? (
-            <div className="item song-detail-reason">
-              <div className="muted">最新プロンプト</div>
-              <div>v{detail.latestPromptPack.version ?? "-"} · テイク選択 {detail.takeSelections?.length ?? 0} 件</div>
-              {detail.latestPromptPack.metadata?.charCounts ? (
-                <div className="muted">
-                  スタイル {detail.latestPromptPack.metadata.charCounts.style ?? "-"}字 / 歌詞 {detail.latestPromptPack.metadata.charCounts.lyrics ?? "-"}字 / 曲名 {detail.latestPromptPack.metadata.charCounts.title ?? "-"}字
-                </div>
-              ) : null}
-            </div>
-          ) : null}
 
           <details className="song-detail-section">
             <summary><strong>投稿素材</strong> <span className="muted">({socialAssets.length})</span></summary>
@@ -716,6 +706,25 @@ export function SongDetailCard(props: SongDetailCardProps) {
                 <li><code>{lyricsPath}</code></li>
                 <li><code>{songPath}</code></li>
               </ul>
+            </div>
+          </details>
+
+          <details className="song-detail-section">
+            <summary><strong>技術情報: Suno 接続</strong></summary>
+            <div className="item song-detail-suno-handoff">
+              <button
+                type="button"
+                className="link-button"
+                disabled={sunoHandoffBusy}
+                onClick={() => void completeSunoHandoff()}
+              >
+                Suno ログイン済を記録
+              </button>
+              <div className="muted">
+                Suno ブラウザでログインした後に押す
+              </div>
+              {sunoHandoffResult ? <div className="muted">{sunoHandoffResult}</div> : null}
+              {sunoHandoffError ? <div className="muted">error: {sunoHandoffError}</div> : null}
             </div>
           </details>
 

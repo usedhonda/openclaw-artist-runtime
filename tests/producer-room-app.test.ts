@@ -188,13 +188,13 @@ describe("ProducerRoomApp Songs and Settings views", () => {
       })
     );
 
-    expect(html).toContain("1-10 / 12 曲");
+    expect(html).toContain("1-8 / 12 曲");
     expect(html).toContain("Song 001");
-    expect(html).toContain("Song 010");
+    expect(html).toContain("Song 008");
     expect(html).toContain("制作 0 回");
     expect(html).toContain("採用済み");
     expect(html).toContain("採用待ち");
-    expect(html).not.toContain("Song 011");
+    expect(html).not.toContain("Song 009");
     expect(html).not.toContain("song-001 · run");
     expect(html).not.toContain("take-001");
     expect(html).not.toContain("take_selected");

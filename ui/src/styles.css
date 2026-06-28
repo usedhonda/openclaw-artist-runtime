@@ -1391,7 +1391,7 @@ textarea {
 
 .song-detail-status {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+  grid-template-columns: minmax(0, 1fr);
   gap: 8px 16px;
   margin: 0;
 }

@@ -1,7 +1,7 @@
 import React from "../ui/node_modules/react/index.js";
 import { renderToStaticMarkup } from "../ui/node_modules/react-dom/server.node.js";
 import { describe, expect, it, vi } from "vitest";
-import { buildSongCascadeTrace, DetailPager, ProducerReviewButtons } from "../ui/src/components/SongDetailCard";
+import { buildSongCascadeTrace, DetailPager, producerReasonLabel, ProducerReviewButtons } from "../ui/src/components/SongDetailCard";
 
 describe("SongDetailCard producer review buttons", () => {
   it("renders archive/discard buttons with plain JA action labels", () => {
@@ -68,5 +68,10 @@ describe("SongDetailCard producer review buttons", () => {
     expect(html).toContain("9-16 / 21");
     expect(html).toContain("前へ");
     expect(html).toContain("次へ");
+  });
+
+  it("maps technical take-selection reasons to producer-facing copy", () => {
+    expect(producerReasonLabel("selected best scored take (0.796)")).toBe("試聴用テイクを自動選択しました。");
+    expect(producerReasonLabel("歌詞生成に失敗して止まった")).toBe("歌詞生成に失敗して止まった");
   });
 });
