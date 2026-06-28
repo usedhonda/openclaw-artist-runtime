@@ -6,6 +6,7 @@ export type AwaitingDecision = {
   label: string;
   effect: string;
   songId?: string;
+  proposalId?: string;
   songTitle?: string;
   stage?: string;
   createdAt: number;
@@ -13,10 +14,17 @@ export type AwaitingDecision = {
   reminderSentAt?: number;
 };
 
+export type AwaitingDecisionGroup = AwaitingDecision & {
+  actions: string[];
+  hiddenDuplicateCount: number;
+  promptPackGoSongId?: string;
+};
+
 export interface AwaitingDecisionPanelProps {
   callbacks: AwaitingDecision[];
   count: number;
   now?: number;
+  maxGroups?: number;
   // Plan v10.65 Layer 2: receive-independent Suno pre-GO. When provided, a
   // prompt_pack_go callback can be advanced from the Console.
   onPromptPackGo?: (songId: string) => void;
@@ -33,10 +41,55 @@ function elapsed(timestamp: number, now: number): string {
 
 function targetLabel(callback: AwaitingDecision): string {
   if (callback.songId && callback.songTitle) return `${callback.songId} / ${callback.songTitle}`;
-  return callback.songId ?? callback.action;
+  return callback.songId ?? callback.proposalId ?? callback.action;
 }
 
-export function AwaitingDecisionPanel({ callbacks, count, now = Date.now(), onPromptPackGo, busyKey }: AwaitingDecisionPanelProps) {
+function groupKey(callback: AwaitingDecision): string {
+  return callback.songId ?? callback.proposalId ?? callback.callbackId;
+}
+
+function actionSummary(callbacks: AwaitingDecision[]): string[] {
+  const labels = relevantCallbacks(callbacks).map((callback) => callback.label).filter(Boolean);
+  return [...new Set(labels)];
+}
+
+function relevantCallbacks(callbacks: AwaitingDecision[]): AwaitingDecision[] {
+  const archiveActions = callbacks.filter((callback) => callback.action === "song_archive" || callback.action === "song_discard");
+  if (archiveActions.length > 0) return archiveActions;
+  const promptPackActions = callbacks.filter((callback) => callback.action.startsWith("prompt_pack_"));
+  if (promptPackActions.length > 0) return promptPackActions;
+  const spawnActions = callbacks.filter((callback) => callback.action.startsWith("song_spawn_"));
+  if (spawnActions.length > 0) return spawnActions;
+  return callbacks;
+}
+
+export function groupAwaitingDecisions(callbacks: AwaitingDecision[]): AwaitingDecisionGroup[] {
+  const groups = new Map<string, AwaitingDecision[]>();
+  for (const callback of callbacks) {
+    const key = groupKey(callback);
+    groups.set(key, [...(groups.get(key) ?? []), callback]);
+  }
+
+  return [...groups.values()]
+    .map((group) => {
+      const sorted = [...group].sort((a, b) => b.createdAt - a.createdAt);
+      const primary = sorted[0];
+      const relevant = relevantCallbacks(sorted);
+      const promptPackGo = relevant.find((callback) => callback.action === "prompt_pack_go" && callback.songId);
+      return {
+        ...primary,
+        actions: actionSummary(relevant),
+        hiddenDuplicateCount: Math.max(0, sorted.length - 1),
+        promptPackGoSongId: promptPackGo?.songId
+      };
+    })
+    .sort((a, b) => b.createdAt - a.createdAt);
+}
+
+export function AwaitingDecisionPanel({ callbacks, count, now = Date.now(), maxGroups, onPromptPackGo, busyKey }: AwaitingDecisionPanelProps) {
+  const groupedCallbacks = groupAwaitingDecisions(callbacks);
+  const visibleGroups = typeof maxGroups === "number" ? groupedCallbacks.slice(0, Math.max(0, maxGroups)) : groupedCallbacks;
+  const hiddenGroupCount = Math.max(0, groupedCallbacks.length - visibleGroups.length);
   return (
     <article className={`panel awaiting-decision-panel${count > 0 ? " has-waiting" : ""}`}>
       <div className="section-title">Awaiting Producer Decision</div>
@@ -44,22 +97,24 @@ export function AwaitingDecisionPanel({ callbacks, count, now = Date.now(), onPr
         <div className="muted">採用/破棄/進行待ちの producer decision はありません。</div>
       ) : (
         <div className="list awaiting-decision-list">
-          {callbacks.map((callback) => (
-            <div className="item awaiting-decision-row" key={callback.callbackId}>
+          {visibleGroups.map((callback) => (
+            <div className="item awaiting-decision-row" key={groupKey(callback)}>
               <div>
                 <strong>{targetLabel(callback)}</strong>
                 <div className="muted">{callback.stage ?? "stage 不明"} · {elapsed(callback.createdAt, now)}待ち</div>
-                <div className="muted">{callback.label}: {callback.effect}</div>
+                <div className="muted">選択肢: {callback.actions.join(" / ")}</div>
+                <div className="muted">次: Telegram の最新通知で選ぶ</div>
+                {callback.hiddenDuplicateCount > 0 ? <div className="muted">古い重複通知 {callback.hiddenDuplicateCount} 件をまとめています。</div> : null}
                 {callback.reminderSentAt ? <div className="muted">reminder 済み: {elapsed(callback.reminderSentAt, now)}前</div> : null}
-                {callback.action === "prompt_pack_go" && callback.songId && onPromptPackGo ? (
+                {callback.promptPackGoSongId && onPromptPackGo ? (
                   <div className="inline-actions">
                     <button
                       type="button"
                       disabled={busyKey != null}
                       title="Suno 生成へ進めます (外部公開はしません)"
-                      onClick={() => onPromptPackGo(callback.songId as string)}
+                      onClick={() => onPromptPackGo(callback.promptPackGoSongId as string)}
                     >
-                      {busyKey === `prompt-pack-go:${callback.songId}` ? "送信中…" : "Suno 生成へ進める"}
+                      {busyKey === `prompt-pack-go:${callback.promptPackGoSongId}` ? "送信中…" : "Suno 生成へ進める"}
                     </button>
                   </div>
                 ) : null}
@@ -69,6 +124,8 @@ export function AwaitingDecisionPanel({ callbacks, count, now = Date.now(), onPr
         </div>
       )}
       {count > callbacks.length ? <div className="muted">ほか {count - callbacks.length} 件あります。</div> : null}
+      {hiddenGroupCount > 0 ? <div className="muted">ほか {hiddenGroupCount} 曲の判断待ちは畳んでいます。</div> : null}
+      {callbacks.length > groupedCallbacks.length ? <div className="muted">表示は曲単位にまとめています。</div> : null}
       <div className="muted">Telegram の最新通知、または /status から現在地を確認できます。</div>
     </article>
   );

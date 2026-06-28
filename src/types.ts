@@ -1058,6 +1058,7 @@ export type DraftBoxNextActionKind =
   | "suno_trouble"
   | "building"
   | "draft_idle"
+  | "decision_pending"
   | "empty"
   | "paused"
   | "hard_stop"

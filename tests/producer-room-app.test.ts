@@ -2,7 +2,7 @@ import React from "../ui/node_modules/react/index.js";
 import { renderToStaticMarkup } from "../ui/node_modules/react-dom/server.node.js";
 import { describe, expect, it } from "vitest";
 import { runCycleFeedback } from "../ui/src/App";
-import { DiagnosticsView, RoomHeader, SettingsView, SongsView } from "../ui/src/ProducerRoomApp";
+import { DiagnosticsView, RoomHeader, SettingsView, SongsView, roomSummaryWithDecisions } from "../ui/src/ProducerRoomApp";
 import { SetupView } from "../ui/src/components/SetupView";
 import { buildConfigDraft, buildConfigUpdatePatch } from "../ui/src/configEditor";
 import { buildPersonaDraft } from "../ui/src/personaEditor";
@@ -79,6 +79,51 @@ describe("ProducerRoomApp room header", () => {
     expect(html).toContain("ai_provider_not_configured");
     expect(html).not.toContain("<button");
   });
+
+  it("promotes pending producer decisions above the healthy empty state", () => {
+    const promoted = roomSummaryWithDecisions(
+      summary({
+        kind: "empty",
+        currentLine: "今: 次の素案を探している",
+        nextAction: "次: 素案通知を待つ。"
+      }),
+      {
+        count: 2,
+        callbacks: [
+          {
+            callbackId: "cb1",
+            action: "song_archive",
+            label: "採用",
+            effect: "この曲を採用する。",
+            songId: "spawn_1610f3",
+            songTitle: "二つの低気圧",
+            stage: "asset_generation",
+            createdAt: Date.parse("2026-06-27T13:25:00.000Z"),
+            expiresAt: Date.parse("2026-07-27T13:25:00.000Z")
+          },
+          {
+            callbackId: "cb2",
+            action: "song_discard",
+            label: "破棄",
+            effect: "この曲を破棄する。",
+            songId: "spawn_1610f3",
+            songTitle: "二つの低気圧",
+            stage: "asset_generation",
+            createdAt: Date.parse("2026-06-27T13:25:00.000Z"),
+            expiresAt: Date.parse("2026-07-27T13:25:00.000Z")
+          }
+        ]
+      }
+    );
+    const html = renderToStaticMarkup(React.createElement(RoomHeader, { summary: promoted }));
+
+    expect(promoted.kind).toBe("decision_pending");
+    expect(html).toContain("判断待ち");
+    expect(html).toContain("今: 二つの低気圧 の判断待ち");
+    expect(html).toContain("Telegram の最新通知で 採用 / 破棄 を選ぶ");
+    expect(html).toContain("最新の producer decision");
+    expect(html).not.toContain("Nothing needed");
+  });
 });
 
 describe("ProducerRoomApp Songs and Settings views", () => {
@@ -143,6 +188,8 @@ describe("ProducerRoomApp Songs and Settings views", () => {
     expect(html).toContain("Platforms");
     expect(html).toContain("Save Settings");
     expect(html).toContain("frozen");
+    expect(html).toContain("workspace configured");
+    expect(html).not.toContain("/tmp/artist");
   });
 
   it("renders the Setup tab editor with AI draft only on ARTIST/SOUL layers", () => {

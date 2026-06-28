@@ -1,7 +1,7 @@
 import React, { Suspense, useEffect, useRef, useState } from "react";
 import { buildConfigDraft, buildConfigUpdatePatch, validateConfigDraft, type ConfigDraft, type ConfigEditorSource } from "./configEditor";
 import { ErrorToastStack } from "./ErrorToast";
-import { AwaitingDecisionPanel, type AwaitingDecision } from "./components/AwaitingDecisionPanel";
+import { AwaitingDecisionPanel, groupAwaitingDecisions, type AwaitingDecision } from "./components/AwaitingDecisionPanel";
 import { SongDetailCard } from "./components/SongDetailCard";
 import { SongLifecycleTimelineCard } from "./components/SongLifecycleTimelineCard";
 import { SpawnProposalQueuePanel, type SpawnProposalQueueItem } from "./components/SpawnProposalQueuePanel";
@@ -174,6 +174,8 @@ function fallbackSummary(status: StatusResponse | null): DraftBoxNextActionSumma
 
 function statusLabel(kind: DraftBoxNextActionSummary["kind"]): string {
   switch (kind) {
+    case "decision_pending":
+      return "判断待ち";
     case "hard_stop":
       return "hard stop";
     case "paused":
@@ -190,11 +192,13 @@ function statusLabel(kind: DraftBoxNextActionSummary["kind"]): string {
 }
 
 function showsWhy(kind: DraftBoxNextActionSummary["kind"]): boolean {
-  return kind === "hard_stop" || kind === "paused" || kind === "reauth_required" || kind === "suno_trouble";
+  return kind === "decision_pending" || kind === "hard_stop" || kind === "paused" || kind === "reauth_required" || kind === "suno_trouble";
 }
 
 function canLine(summary: DraftBoxNextActionSummary): string {
   switch (summary.kind) {
+    case "decision_pending":
+      return summary.nextAction;
     case "reauth_required":
       return "歌詞AIの再認証が必要 (/resume では直りません)";
     case "hard_stop":
@@ -209,6 +213,21 @@ function canLine(summary: DraftBoxNextActionSummary): string {
     default:
       return "Nothing needed — 次の曲を構想中";
   }
+}
+
+export function roomSummaryWithDecisions(summary: DraftBoxNextActionSummary, awaitingDecisions: CallbackActionsResponse): DraftBoxNextActionSummary {
+  if (awaitingDecisions.count <= 0 || awaitingDecisions.callbacks.length === 0) return summary;
+  const [latest] = groupAwaitingDecisions(awaitingDecisions.callbacks);
+  if (!latest) return summary;
+  const target = latest.songTitle ?? latest.songId ?? latest.proposalId ?? "曲";
+  return {
+    ...summary,
+    kind: "decision_pending",
+    currentLine: `今: ${target} の判断待ち`,
+    nextAction: `次: Telegram の最新通知で ${latest.actions.join(" / ")} を選ぶ`,
+    reason: `${latest.stage ?? "stage 不明"} · 最新の producer decision`,
+    stateKey: `decision_pending:${latest.songId ?? latest.proposalId ?? latest.callbackId}`
+  };
 }
 
 export function RoomHeader(props: {
@@ -280,7 +299,7 @@ function RoomViewPanel(props: {
 }) {
   return (
     <section className="single-column producer-room-grid">
-      <RoomHeader summary={props.summary} onResume={props.onResume} resumeBusy={props.busy === "resume"} />
+      <RoomHeader summary={roomSummaryWithDecisions(props.summary, props.awaitingDecisions)} onResume={props.onResume} resumeBusy={props.busy === "resume"} />
       {props.persona?.setup.needsSetup ? (
         <article className="panel">
           <div className="warning-banner">
@@ -303,6 +322,7 @@ function RoomViewPanel(props: {
       <AwaitingDecisionPanel
         callbacks={props.awaitingDecisions.callbacks}
         count={props.awaitingDecisions.count}
+        maxGroups={1}
         onPromptPackGo={props.onPromptPackGo}
         busyKey={props.busy}
       />
@@ -458,7 +478,7 @@ export function SettingsView(props: {
                 </label>
               </div>
             </section>
-            <div className="muted">artist {props.config.artist.artistId} · workspace {props.config.artist.workspaceRoot}</div>
+            <div className="muted">artist {props.config.artist.artistId} · workspace configured</div>
             {props.validationError ? <div className="field-error">{props.validationError}</div> : null}
             <div className="inline-actions">
               <button className="primary" type="button" disabled={props.busy || Boolean(props.validationError)} onClick={props.onSave}>Save Settings</button>
