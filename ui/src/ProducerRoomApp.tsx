@@ -1,4 +1,4 @@
-import React, { Suspense, useEffect, useRef, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import { buildConfigDraft, buildConfigUpdatePatch, validateConfigDraft, type ConfigDraft, type ConfigEditorSource } from "./configEditor";
 import { ErrorToastStack } from "./ErrorToast";
 import { AwaitingDecisionPanel, groupAwaitingDecisions, type AwaitingDecision } from "./components/AwaitingDecisionPanel";
@@ -33,22 +33,6 @@ const refreshIntervalMs = 5000;
 const apiBase = "/plugins/artist-runtime/api";
 const fetchTimeoutMs = 10_000;
 const songLedgerPageSize = 8;
-const LegacyConsole = React.lazy(() => import("./App").then((module) => ({ default: module.App })));
-
-class DiagnosticsErrorBoundary extends React.Component<{ children: React.ReactNode }, { failed: boolean }> {
-  state = { failed: false };
-
-  static getDerivedStateFromError() {
-    return { failed: true };
-  }
-
-  render() {
-    if (this.state.failed) {
-      return <div className="item muted">旧操作画面を読み込めませんでした。部屋 / 作品 / 運用設定はそのまま使えます。</div>;
-    }
-    return this.props.children;
-  }
-}
 
 type RoomView = "room" | "songs" | "settings" | "setup" | "diagnostics";
 
@@ -619,13 +603,8 @@ export function DiagnosticsView() {
     <section className="single-column">
       <article className="panel">
         <div className="section-title">診断</div>
-        <p>診断専用の旧操作画面を読み込みます。部屋 / 作品 / 運用設定には内部操作の主導ボタンを戻しません。</p>
-        <div className="item muted">表示されるまで数秒かかる場合があります。空白のままなら旧操作画面の読み込みに失敗しています。</div>
-        <DiagnosticsErrorBoundary>
-          <Suspense fallback={<div className="item muted">旧操作画面を読み込み中。</div>}>
-            <LegacyConsole />
-          </Suspense>
-        </DiagnosticsErrorBoundary>
+        <p>通常の制作判断には使いません。部屋 / 作品 / 運用設定を主に使います。</p>
+        <div className="item muted">内部操作ボタンは Producer Room に戻しません。詳しい調査が必要な時だけ、ログと API を見ます。</div>
       </article>
     </section>
   );

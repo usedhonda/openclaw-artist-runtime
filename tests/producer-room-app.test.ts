@@ -376,11 +376,12 @@ describe("ProducerRoomApp Songs and Settings views", () => {
 });
 
 describe("ProducerRoomApp diagnostics", () => {
-  it("keeps the legacy console behind a lazy diagnostics boundary", () => {
+  it("keeps diagnostics informational without restoring legacy controls", () => {
     const html = renderToStaticMarkup(React.createElement(DiagnosticsView));
 
     expect(html).toContain("診断");
-    expect(html).toContain("旧操作画面");
+    expect(html).toContain("通常の制作判断には使いません");
+    expect(html).toContain("内部操作ボタンは Producer Room に戻しません");
     expect(html).not.toContain("旧 Console");
     expect(html).not.toContain("Run Cycle");
     expect(html).not.toContain("Config Editor");
