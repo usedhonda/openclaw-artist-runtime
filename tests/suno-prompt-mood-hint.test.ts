@@ -42,7 +42,7 @@ describe("Suno prompt mood hint", () => {
     expect(pack.style).toContain("brushed drums");
   });
 
-  it("honors dopagaki variation from the artist snapshot without per-song prompt text", () => {
+  it("honors autonomous dopagaki variation from the artist snapshot without per-song prompt text", () => {
     const pack = createSunoPromptPack({
       ...base,
       artistReason: "city observation without explicit style request",
@@ -52,8 +52,8 @@ describe("Suno prompt mood hint", () => {
         "## Sound",
         "- Genre DNA: hip-hop",
         "- nu-jazz rap",
-        "- Variation accents: ドパガキ強め / low-slung jazz grit / dry Brooklyn pocket.",
-        "- Dopagaki pressure: explicit high-stimulus accent inside the current style.",
+        "- Autonomous variation policy: the artist may occasionally choose ドパガキ強め to break template repetition.",
+        "- Dopagaki pressure: artist-side high-stimulus fast-development accent inside the current style.",
         "## Lyrics",
         "- Language policy: Japanese 60% / English 40%; chorus may use English up to 40%."
       ].join("\n")
