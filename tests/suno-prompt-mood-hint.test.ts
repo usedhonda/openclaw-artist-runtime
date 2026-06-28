@@ -41,4 +41,28 @@ describe("Suno prompt mood hint", () => {
     expect(pack.style).not.toContain("song intent:");
     expect(pack.style).toContain("brushed drums");
   });
+
+  it("honors dopagaki variation from the artist snapshot without per-song prompt text", () => {
+    const pack = createSunoPromptPack({
+      ...base,
+      artistReason: "city observation without explicit style request",
+      moodHint: "late-night urban pressure",
+      artistSnapshot: [
+        "# ARTIST.md",
+        "## Sound",
+        "- Genre DNA: hip-hop",
+        "- nu-jazz rap",
+        "- Variation accents: ドパガキ強め / low-slung jazz grit / dry Brooklyn pocket.",
+        "- Dopagaki pressure: explicit high-stimulus accent inside the current style.",
+        "## Lyrics",
+        "- Language policy: Japanese 60% / English 40%; chorus may use English up to 40%."
+      ].join("\n")
+    });
+
+    expect(pack.style).toContain("overt dopamine-pop pressure");
+    expect(pack.style).toContain("instant bilingual chant hook");
+    expect(pack.style).toContain("glitch-vocal");
+    expect(String(pack.payload.styleAndFeel)).toContain("overt dopamine-pop pressure");
+    expect(pack.yamlLyrics).toContain("language: Japanese 60% / English 40%");
+  });
 });
