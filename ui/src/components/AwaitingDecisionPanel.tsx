@@ -53,6 +53,21 @@ function actionSummary(callbacks: AwaitingDecision[]): string[] {
   return [...new Set(labels)];
 }
 
+function stageLabel(stage?: string): string {
+  switch (stage) {
+    case "asset_generation":
+    case "take_selected":
+    case "take_selection":
+      return "完成後の採用待ち";
+    case "prompt_pack_ready":
+      return "Suno に進める判断待ち";
+    case "spawn_proposal_ready":
+      return "素案の判断待ち";
+    default:
+      return "判断待ち";
+  }
+}
+
 function relevantCallbacks(callbacks: AwaitingDecision[]): AwaitingDecision[] {
   const archiveActions = callbacks.filter((callback) => callback.action === "song_archive" || callback.action === "song_discard");
   if (archiveActions.length > 0) return archiveActions;
@@ -101,7 +116,7 @@ export function AwaitingDecisionPanel({ callbacks, count, now = Date.now(), maxG
             <div className="item awaiting-decision-row" key={groupKey(callback)}>
               <div>
                 <strong>{targetLabel(callback)}</strong>
-                <div className="muted">{callback.stage ?? "stage 不明"} · {elapsed(callback.createdAt, now)}待ち</div>
+                <div className="muted">{stageLabel(callback.stage)} · {elapsed(callback.createdAt, now)}待ち</div>
                 <div className="muted">選択肢: {callback.actions.join(" / ")}</div>
                 <div className="muted">次: Telegram の最新通知で選ぶ</div>
                 {callback.hiddenDuplicateCount > 0 ? <div className="muted">古い重複通知 {callback.hiddenDuplicateCount} 件をまとめています。</div> : null}

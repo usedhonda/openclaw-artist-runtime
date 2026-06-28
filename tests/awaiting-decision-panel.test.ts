@@ -34,7 +34,8 @@ describe("awaiting decision panel", () => {
 
     expect(html).toContain("Awaiting Producer Decision");
     expect(html).toContain("song-026 / みじかいかげ");
-    expect(html).toContain("take_selection");
+    expect(html).toContain("完成後の採用待ち");
+    expect(html).not.toContain("take_selection");
     expect(html).toContain("9時間待ち");
     expect(html).toContain("破棄");
     expect(html).toContain("次: Telegram の最新通知で選ぶ");

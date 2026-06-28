@@ -35,6 +35,21 @@ const apiBase = "/plugins/artist-runtime/api";
 const fetchTimeoutMs = 10_000;
 const LegacyConsole = React.lazy(() => import("./App").then((module) => ({ default: module.App })));
 
+class DiagnosticsErrorBoundary extends React.Component<{ children: React.ReactNode }, { failed: boolean }> {
+  state = { failed: false };
+
+  static getDerivedStateFromError() {
+    return { failed: true };
+  }
+
+  render() {
+    if (this.state.failed) {
+      return <div className="item muted">旧 Console を読み込めませんでした。Room / Songs / Settings はそのまま使えます。</div>;
+    }
+    return this.props.children;
+  }
+}
+
 type RoomView = "room" | "songs" | "settings" | "setup" | "diagnostics";
 
 type StatusResponse = {
@@ -512,9 +527,11 @@ export function DiagnosticsView() {
         <div className="section-title">診断</div>
         <p>診断専用の旧 Console を読み込みます。Room / Songs / Settings には内部操作の主導ボタンを戻しません。</p>
         <div className="item muted">表示されるまで数秒かかる場合があります。空白のままなら旧 Console の読み込みに失敗しています。</div>
-        <Suspense fallback={<div className="item muted">旧 Console を読み込み中。</div>}>
-          <LegacyConsole />
-        </Suspense>
+        <DiagnosticsErrorBoundary>
+          <Suspense fallback={<div className="item muted">旧 Console を読み込み中。</div>}>
+            <LegacyConsole />
+          </Suspense>
+        </DiagnosticsErrorBoundary>
       </article>
     </section>
   );
