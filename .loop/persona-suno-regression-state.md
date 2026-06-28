@@ -27,6 +27,16 @@ Kind: closed
 ## Done
 
 - Loop contract created to cover Persona Setup canonical ownership, AI draft buttons, generated/internal warning handling, and Suno style/language propagation.
+- Iteration 1 clean pass recorded on 2026-06-28.
+  - `npm run typecheck` passed.
+  - Persona focused gate passed: 7 files / 60 tests.
+  - Suno prompt-pack focused gate passed: 6 files / 22 tests.
+  - `npm test` passed: 335 files / 1300 tests.
+  - `npm run build` passed.
+  - `npm run pack:verify` passed with package verification passed.
+  - Clean confirmation focused gate passed: 13 files / 82 tests.
+  - No code fix needed in this iteration.
+  - Clean streak: 1 / 2.
 
 ## Failed / blocked
 
@@ -34,4 +44,4 @@ Kind: closed
 
 ## Next step
 
-Run `.loop/persona-suno-regression.md` once. Start with the focused persona tests, then prompt-pack tests, then full gates if any code changed.
+Run `.loop/persona-suno-regression.md` once more. If the same gate remains clean, record clean streak 2 / 2 and stop with `FINAL`; otherwise fix the first red criterion and continue with `ITERATING`.
