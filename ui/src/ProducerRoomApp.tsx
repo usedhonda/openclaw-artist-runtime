@@ -260,8 +260,8 @@ function RouteNav(props: { activeView: RoomView }) {
       <nav className="view-tabs producer-room-tabs" aria-label="Producer Room views">
         <a className={linkClass("room")} href="#room">Room</a>
         <a className={linkClass("songs")} href="#songs">Songs</a>
-        <a className={linkClass("settings")} href="#settings">Settings</a>
         <a className={linkClass("setup")} href="#setup">Setup</a>
+        <a className={linkClass("settings")} href="#settings">Settings</a>
       </nav>
       <footer className="producer-room-footer">
         <a href="#diagnostics">診断</a>
@@ -815,6 +815,10 @@ export function ProducerRoomApp() {
         />
       ) : null}
       {activeView === "diagnostics" ? <DiagnosticsView /> : null}
+      <footer className="producer-room-closing-band">
+        <strong>Quiet by default.</strong>
+        <span>Creative milestones, hard stops, and one useful next action.</span>
+      </footer>
       <ErrorToastStack toasts={errorToasts} onDismiss={(id) => setErrorToasts((current) => dismissErrorToast(current, id))} />
     </main>
   );
