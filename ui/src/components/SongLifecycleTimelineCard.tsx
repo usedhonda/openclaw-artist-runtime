@@ -131,6 +131,7 @@ function formatTimestamp(value?: string): string {
 
 export interface SongLifecycleTimelineCardProps {
   eventStreamUrl?: string;
+  limit?: number;
 }
 
 export function SongLifecycleTimelineCard(props: SongLifecycleTimelineCardProps) {
@@ -143,9 +144,10 @@ export function SongLifecycleTimelineCard(props: SongLifecycleTimelineCardProps)
       try {
         const nextSongs = await fetchJson<SongSummary[]>("/songs");
         if (cancelled) return;
+        const limit = props.limit ?? 10;
         const sorted = [...nextSongs]
           .sort((a, b) => new Date(b.updatedAt ?? 0).getTime() - new Date(a.updatedAt ?? 0).getTime())
-          .slice(0, 10);
+          .slice(0, limit);
         setSongs(sorted);
         const eventPairs = await Promise.all(sorted.map(async (song) => [song.songId, await fetchSongEvents(song.songId)] as const));
         if (cancelled) return;
@@ -161,7 +163,7 @@ export function SongLifecycleTimelineCard(props: SongLifecycleTimelineCardProps)
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [props.limit]);
 
   useEffect(() => {
     if (typeof window === "undefined" || typeof window.EventSource !== "function") {
@@ -221,7 +223,7 @@ export function SongLifecycleTimelineCard(props: SongLifecycleTimelineCardProps)
           ))}
         </div>
       )}
-      <div className="muted">Recent 10 songs · live updates from runtime events.</div>
+      <div className="muted">Recent {props.limit ?? 10} songs · live updates from runtime events.</div>
     </article>
   );
 }

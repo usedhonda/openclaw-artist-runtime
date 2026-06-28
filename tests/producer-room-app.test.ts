@@ -4,6 +4,7 @@ import { describe, expect, it } from "vitest";
 import { runCycleFeedback } from "../ui/src/App";
 import { DiagnosticsView, RoomHeader, SettingsView, SongsView, roomSummaryWithDecisions } from "../ui/src/ProducerRoomApp";
 import { SetupView } from "../ui/src/components/SetupView";
+import { SongLifecycleTimelineCard } from "../ui/src/components/SongLifecycleTimelineCard";
 import { buildConfigDraft, buildConfigUpdatePatch } from "../ui/src/configEditor";
 import { buildPersonaDraft } from "../ui/src/personaEditor";
 import type { DraftBoxNextActionSummary } from "../src/types";
@@ -127,6 +128,13 @@ describe("ProducerRoomApp room header", () => {
 });
 
 describe("ProducerRoomApp Songs and Settings views", () => {
+  it("allows Room to keep the lifecycle timeline compact", () => {
+    (globalThis as typeof globalThis & { React?: typeof React }).React = React;
+    const html = renderToStaticMarkup(React.createElement(SongLifecycleTimelineCard, { limit: 3 }));
+
+    expect(html).toContain("Recent 3 songs");
+  });
+
   it("renders the song ledger and selected song detail mirror", () => {
     (globalThis as typeof globalThis & { React?: typeof React }).React = React;
     const html = renderToStaticMarkup(

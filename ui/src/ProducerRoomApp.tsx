@@ -312,18 +312,18 @@ function RoomViewPanel(props: {
         <div className="muted">操作の主役は Telegram。Console は現在地と判断待ちの mirror です。</div>
         {props.selectedSongId ? <div className="muted">選択中 song: {props.selectedSongId}</div> : null}
       </article>
-      <SongLifecycleTimelineCard />
-      <SpawnProposalQueuePanel
-        count={props.spawnProposalQueue.count}
-        proposals={props.spawnProposalQueue.proposals}
-        onDecide={props.onDecideSpawnProposal}
-        busyKey={props.busy}
-      />
       <AwaitingDecisionPanel
         callbacks={props.awaitingDecisions.callbacks}
         count={props.awaitingDecisions.count}
         maxGroups={1}
         onPromptPackGo={props.onPromptPackGo}
+        busyKey={props.busy}
+      />
+      <SongLifecycleTimelineCard limit={3} />
+      <SpawnProposalQueuePanel
+        count={props.spawnProposalQueue.count}
+        proposals={props.spawnProposalQueue.proposals}
+        onDecide={props.onDecideSpawnProposal}
         busyKey={props.busy}
       />
     </section>
