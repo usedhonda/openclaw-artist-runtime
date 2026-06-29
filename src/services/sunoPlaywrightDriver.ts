@@ -719,20 +719,28 @@ export class PlaywrightSunoDriver implements SunoBrowserDriver {
     // data-clip-status, nor /song/ anchors (confirmed against a captured create-page
     // DOM where finished takes were present but undetectable by the old selector — the
     // root cause of false playwright_live_timeout). A finished song now surfaces as a
-    // play button (aria-label="Play <title>" or "Play <title> from start") whose thumbnail image URL carries the song
+    // play control (aria-label="Play <title>" or "Play <title> from start") whose nearby thumbnail image URL carries the song
     // id (cdn2.suno.ai/image[_large]_<uuid>.jpeg). Title-scope via the play button and
     // derive the song URL from that id. Create-page-only; no library navigation, so the
     // Plan v10.42 take-attribution fail-closed contract is preserved.
     const selector = expectedTitle
       ? [
-          `button[aria-label="Play ${this.escapeAttributeValue(expectedTitle)}"]`,
-          `button[aria-label^="Play ${this.escapeAttributeValue(expectedTitle)} "]`
+          `[aria-label="Play ${this.escapeAttributeValue(expectedTitle)}"]`,
+          `[aria-label^="Play ${this.escapeAttributeValue(expectedTitle)} "]`
         ].join(", ")
-      : `button[aria-label^="Play "]`;
-    return page.locator(selector).evaluateAll((buttons) => {
+      : `[aria-label^="Play "]`;
+    return page.locator(selector).evaluateAll((controls) => {
       const urls = new Set<string>();
-      for (const button of buttons) {
-        const img = button.querySelector("img[src*='suno.ai/image'], img[data-src*='suno.ai/image']");
+      for (const control of controls) {
+        let current: Element | null = control;
+        let img: Element | null = null;
+        for (let depth = 0; current && depth < 6; depth += 1) {
+          img = current.querySelector("img[src*='suno.ai/image'], img[data-src*='suno.ai/image']");
+          if (img) {
+            break;
+          }
+          current = current.parentElement;
+        }
         const source = img?.getAttribute("data-src") ?? img?.getAttribute("src") ?? "";
         const match = source.match(
           /image(?:_large)?_([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})/i

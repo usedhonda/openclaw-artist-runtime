@@ -13,10 +13,10 @@ const STYLE_SELECTOR =
 const EXCLUDE_SELECTOR = 'input[placeholder="Exclude styles"]';
 const INSTRUMENTAL_SELECTOR = 'button[aria-label="Check this to generate an instrumental only song"]';
 const CREATE_BUTTON_SELECTOR = 'button[aria-label="Create song"]';
-// Suno's create-page workspace surfaces a finished take as a title-scoped play button
+// Suno's create-page workspace surfaces a finished take as a title-scoped play control
 // whose thumbnail image URL carries the song id. The old clip-row/href selector matched
 // nothing against the live DOM (root cause of false playwright_live_timeout).
-const COMPLETE_TITLE_PLAY_SELECTOR = 'button[aria-label="Play Watapp Groups"]';
+const COMPLETE_TITLE_PLAY_SELECTOR = '[aria-label="Play Watapp Groups"], [aria-label^="Play Watapp Groups "]';
 
 // Mirror of the driver's image-id -> song URL derivation, for fixture assertions.
 function songUrlFromImageSource(source: string): string | undefined {
@@ -154,7 +154,7 @@ function matchesCompound(node: FixtureNode, compound: string): boolean {
     return false;
   }
 
-  const attrPattern = /\[([:\w-]+)(\*?=)(?:"([^"]*)"|'([^']*)')\]/g;
+  const attrPattern = /\[([:\w-]+)([*^]?=)(?:"([^"]*)"|'([^']*)')\]/g;
   let match: RegExpExecArray | null;
   while ((match = attrPattern.exec(compound)) !== null) {
     const actual = node.attrs[match[1]];
@@ -168,9 +168,28 @@ function matchesCompound(node: FixtureNode, compound: string): boolean {
     if (match[2] === "*=" && !actual.includes(expected)) {
       return false;
     }
+    if (match[2] === "^=" && !actual.startsWith(expected)) {
+      return false;
+    }
   }
 
   return true;
+}
+
+function nearestSunoImageSource(node: FixtureNode): string | undefined {
+  let current: FixtureNode | undefined = node;
+  for (let depth = 0; current && depth < 6; depth += 1) {
+    const img = flatten(current).find((candidate) => {
+      const src = candidate.attrs.src ?? "";
+      const dataSrc = candidate.attrs["data-src"] ?? "";
+      return candidate.tag === "img" && (src.includes("suno.ai/image") || dataSrc.includes("suno.ai/image"));
+    });
+    if (img) {
+      return img.attrs["data-src"] ?? img.attrs.src;
+    }
+    current = current.parent;
+  }
+  return undefined;
 }
 
 describe("Suno create selector regression fixture", () => {
@@ -194,22 +213,35 @@ describe("Suno create selector regression fixture", () => {
     expect(queryAll(fixture, 'textarea[placeholder="Exclude styles"]')).toHaveLength(1);
   });
 
-  it("detects a finished take via the title-scoped play button and derives its song URL from the image id", () => {
+  it("detects a finished take via the title-scoped play control and derives its song URL from the image id", () => {
     const playButtons = queryAll(fixture, COMPLETE_TITLE_PLAY_SELECTOR);
     expect(playButtons).toHaveLength(1);
 
-    // The song id lives in the thumbnail image URL inside the play button.
-    const img = queryAll(fixture, `${COMPLETE_TITLE_PLAY_SELECTOR} img`)[0];
-    const source = img?.attrs["data-src"] ?? img?.attrs.src ?? "";
+    // The song id lives in the nearest thumbnail image URL for the play control.
+    const source = nearestSunoImageSource(playButtons[0]) ?? "";
     expect(songUrlFromImageSource(source)).toBe(
       "https://suno.com/song/11111111-1111-4111-8111-111111111111"
     );
 
     // Title scope excludes other songs in the same workspace.
-    expect(queryAll(fixture, 'button[aria-label="Play Other Title"]')).toHaveLength(1);
-    const otherImg = queryAll(fixture, 'button[aria-label="Play Other Title"] img')[0];
-    expect(songUrlFromImageSource(otherImg?.attrs["data-src"] ?? "")).toBe(
+    const otherButtons = queryAll(fixture, '[aria-label="Play Other Title"]');
+    expect(otherButtons).toHaveLength(1);
+    expect(songUrlFromImageSource(nearestSunoImageSource(otherButtons[0]) ?? "")).toBe(
       "https://suno.com/song/22222222-2222-4222-8222-222222222222"
+    );
+  });
+
+  it("detects Suno's current span play control with the thumbnail on a nearby sibling", () => {
+    const liveLike = parseFixtureHtml(`
+      <div class="card">
+        <div><button type="button" aria-label="Play"><img data-src="https://cdn2.suno.ai/image_large_33333333-3333-4333-8333-333333333333.jpeg"></button></div>
+        <div><span role="button" aria-label="Play 父母ラベル from start">父母ラベル</span></div>
+      </div>
+    `);
+    const playControls = queryAll(liveLike, '[aria-label="Play 父母ラベル"], [aria-label^="Play 父母ラベル "]');
+    expect(playControls).toHaveLength(1);
+    expect(songUrlFromImageSource(nearestSunoImageSource(playControls[0]) ?? "")).toBe(
+      "https://suno.com/song/33333333-3333-4333-8333-333333333333"
     );
   });
 
@@ -228,10 +260,10 @@ describe("Suno create selector regression fixture", () => {
       expect(driverSource).toContain(selector);
     }
 
-    // Take detection is now title-scoped to the create-page play button and derives the
+    // Take detection is now title-scoped to the create-page play control and derives the
     // song id from the thumbnail image URL — create-page-only (no library navigation),
     // preserving the Plan v10.42 fail-closed contract.
-    expect(driverSource).toContain('button[aria-label="Play ');
+    expect(driverSource).toContain('[aria-label="Play ');
     expect(driverSource).toContain("image(?:_large)?_");
     expect(driverSource).not.toContain('[data-testid="clip-row"][data-clip-status="complete"]');
   });
