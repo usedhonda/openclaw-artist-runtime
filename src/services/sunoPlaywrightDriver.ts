@@ -736,13 +736,7 @@ export class PlaywrightSunoDriver implements SunoBrowserDriver {
     // id (cdn2.suno.ai/image[_large]_<uuid>.jpeg). Title-scope via the play button and
     // derive the song URL from that id. Create-page-only; no library navigation, so the
     // Plan v10.42 take-attribution fail-closed contract is preserved.
-    const selector = expectedTitle
-      ? [
-          `[aria-label="Play ${this.escapeAttributeValue(expectedTitle)}"]`,
-          `[aria-label^="Play ${this.escapeAttributeValue(expectedTitle)} "]`
-        ].join(", ")
-      : `[aria-label^="Play "]`;
-    return page.locator(selector).evaluateAll((controls) => {
+    const readUrls = (selector: string) => page.locator(selector).evaluateAll((controls) => {
       const urls = new Set<string>();
       for (const control of controls) {
         let current: Element | null = control;
@@ -764,6 +758,26 @@ export class PlaywrightSunoDriver implements SunoBrowserDriver {
       }
       return Array.from(urls);
     });
+
+    if (!expectedTitle) {
+      return readUrls(`[aria-label^="Play "]`);
+    }
+
+    const escapedTitle = this.escapeAttributeValue(expectedTitle);
+    const titleScopedSelectors = [
+      `[aria-label="Play ${escapedTitle}"], [aria-label^="Play ${escapedTitle} "]`,
+      `button[aria-label="Play ${escapedTitle}"]`,
+      `button[aria-label^="Play ${escapedTitle} "]`,
+      `[aria-label="Play ${escapedTitle}"]`,
+      `[aria-label^="Play ${escapedTitle} "]`
+    ];
+    const urls = new Set<string>();
+    for (const selector of titleScopedSelectors) {
+      for (const url of await readUrls(selector)) {
+        urls.add(url);
+      }
+    }
+    return Array.from(urls);
   }
 
   private async recoverGeneratedSongUrlsFromCurrentPage(
@@ -819,6 +833,9 @@ export class PlaywrightSunoDriver implements SunoBrowserDriver {
       const titleMatchedUrls = Array.from(
         new Set((await this.readCreateCardSongUrls(page, expectedTitle)).filter((url) => !baselineUrls.has(url)))
       );
+      if (attempt === 0) {
+        await page.locator(`button[aria-label^="Play "]`).evaluateAll(() => []).catch(() => []);
+      }
       if (titleMatchedUrls.length > bestUrls.length) {
         bestUrls = titleMatchedUrls;
         stablePolls = 0;

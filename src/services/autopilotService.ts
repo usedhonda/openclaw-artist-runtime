@@ -491,6 +491,19 @@ async function importPendingSunoGeneration(
     return { imported: false, reason: "waiting for Suno result import" };
   }
 
+  const existingCollisions = await findTakeAttributionCollisions(root, songId, urls);
+  if (existingCollisions.length > 0) {
+    await appendTakeAttributionAudit(root, "take_attribution_collision_blocked", { songId, runId, collisions: existingCollisions });
+    emitRuntimeEvent({
+      type: "error",
+      source: "take_attribution",
+      reason: "take_attribution_collision_blocked",
+      songId,
+      timestamp: Date.now()
+    });
+    return { imported: false, reason: "take_attribution_collision_blocked", pause: true };
+  }
+
   const result = await connector.importResults({ runId, urls });
   if (result.urls.length === 0) {
     return { imported: false, reason: result.reason ?? "waiting for Suno result import" };
@@ -1425,6 +1438,34 @@ export class ArtistAutopilotService {
           });
         }
         case "suno_generation": {
+          const importBeforeUrlReadyRecovery = song.status === "suno_running";
+          if (importBeforeUrlReadyRecovery) {
+            const pendingImport = await importPendingSunoGeneration(input.workspaceRoot, song.songId, config);
+            if (pendingImport?.imported) {
+              return writeStageState(input.workspaceRoot, existing, {
+                ...baseState,
+                currentSongId: song.songId,
+                stage: "take_selection",
+                blockedReason: undefined,
+                lastError: undefined,
+                lastSuccessfulStage: "suno_generation",
+                retryCount: 0,
+                cycleCount: existing.cycleCount + 1
+              });
+            }
+            if (pendingImport && !pendingImport.imported) {
+              return writeStageState(input.workspaceRoot, existing, {
+                ...baseState,
+                currentSongId: song.songId,
+                paused: pendingImport.pause ? true : baseState.paused,
+                stage: pendingImport.pause ? "paused" : "suno_generation",
+                blockedReason: pendingImport.reason,
+                lastError: pendingImport.reason,
+                lastSuccessfulStage: existing.lastSuccessfulStage,
+                cycleCount: existing.cycleCount + 1
+              });
+            }
+          }
           const recoveredUrlReady = await recoverAcceptedRunUrlReady(input.workspaceRoot, existing, baseState, song);
           if (recoveredUrlReady) {
             return recoveredUrlReady;
@@ -1479,7 +1520,8 @@ export class ArtistAutopilotService {
                 existing.lastError ?? `${SUNO_LYRICS_BOX_DEGRADED_MARKER}:cap_reached`
               );
             }
-          } else {
+          }
+          if (!isDegradedLyricsBoxReason(existing.blockedReason)) {
             const retryDecision = nextSunoRetryDecision(existing);
             if (retryDecision.action === "wait") {
               if (shouldEmitOperationalEpisode(existing, retryDecision.reason)) {
@@ -1506,31 +1548,6 @@ export class ArtistAutopilotService {
             if (retryDecision.action === "failed") {
               return handleSunoGenerateFailure(input.workspaceRoot, existing, baseState, song, retryDecision.reason);
             }
-          }
-          const pendingImport = await importPendingSunoGeneration(input.workspaceRoot, song.songId, config);
-          if (pendingImport?.imported) {
-            return writeStageState(input.workspaceRoot, existing, {
-              ...baseState,
-              currentSongId: song.songId,
-              stage: "take_selection",
-              blockedReason: undefined,
-              lastError: undefined,
-              lastSuccessfulStage: "suno_generation",
-              retryCount: 0,
-              cycleCount: existing.cycleCount + 1
-            });
-          }
-          if (pendingImport && !pendingImport.imported) {
-            return writeStageState(input.workspaceRoot, existing, {
-              ...baseState,
-              currentSongId: song.songId,
-              paused: pendingImport.pause ? true : baseState.paused,
-              stage: pendingImport.pause ? "paused" : "suno_generation",
-              blockedReason: pendingImport.reason,
-              lastError: pendingImport.reason,
-              lastSuccessfulStage: existing.lastSuccessfulStage,
-              cycleCount: existing.cycleCount + 1
-            });
           }
           // A degraded-box self-heal retry already reserved a generation on its first
           // attempt (the create fails before submitting), so skip re-reserving each retry.
