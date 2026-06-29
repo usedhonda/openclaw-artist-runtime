@@ -5,7 +5,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { readSongState } from "../src/services/artistState";
 import { ensureArtistWorkspace } from "../src/services/artistWorkspace";
 import { readAutopilotRunState } from "../src/services/autopilotService";
-import { readCallbackActionEntries } from "../src/services/callbackActionRegistry";
+import { readCallbackActionEntries, registerCallbackAction } from "../src/services/callbackActionRegistry";
 import { routeTelegramCallback } from "../src/services/telegramCallbackHandler";
 import type { TelegramClient } from "../src/services/telegramClient";
 import { TelegramNotifier } from "../src/services/telegramNotifier";
@@ -71,6 +71,24 @@ describe("telegram song spawn callback e2e", () => {
     expect(entries.map((entry) => entry.action).sort()).toEqual(["song_spawn_edit", "song_spawn_inject", "song_spawn_skip"].sort());
     const markupCall = fetchImpl.mock.calls.find((call) => String(call[0]).includes("/editMessageReplyMarkup"));
     expect(String((markupCall?.[1] as RequestInit).body)).toContain("作る");
+    await registerCallbackAction(root, {
+      action: "song_spawn_skip",
+      proposalId: "spawn_e7c3b2",
+      songId: "spawn_e7c3b2",
+      commissionBrief: spawnBrief(),
+      chatId: 123,
+      messageId: 70,
+      userId: 123
+    });
+    await registerCallbackAction(root, {
+      action: "song_spawn_edit",
+      proposalId: "spawn_e7c3b2",
+      songId: "spawn_e7c3b2",
+      commissionBrief: spawnBrief(),
+      chatId: 123,
+      messageId: 70,
+      userId: 123
+    });
 
     const inject = entries.find((entry) => entry.action === "song_spawn_inject");
     const result = await routeTelegramCallback({
@@ -92,5 +110,7 @@ describe("telegram song spawn callback e2e", () => {
     expect(resolvedEntries.find((entry) => entry.callbackId === inject?.callbackId && entry.status === "applied")).toBeTruthy();
     expect(resolvedEntries.find((entry) => entry.action === "song_spawn_skip" && entry.status === "discarded")).toBeTruthy();
     expect(resolvedEntries.find((entry) => entry.action === "song_spawn_edit" && entry.status === "discarded")).toBeTruthy();
+    const latestByCallback = new Map(resolvedEntries.map((entry) => [entry.callbackId, entry]));
+    expect([...latestByCallback.values()].filter((entry) => entry.songId === "spawn_e7c3b2" && entry.action.startsWith("song_spawn_") && entry.status === "pending")).toHaveLength(0);
   });
 });

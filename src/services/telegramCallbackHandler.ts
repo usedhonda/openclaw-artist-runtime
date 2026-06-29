@@ -1,7 +1,7 @@
 import { appendFile, mkdir } from "node:fs/promises";
 import { createHash } from "node:crypto";
 import { dirname, join } from "node:path";
-import { isResurfaceAllowedAction, markCallbackResolved, markSiblingCallbacksResolved, registerCallbackAction, resolveCallbackAction, type CallbackActionEntry, type CallbackActionStatus } from "./callbackActionRegistry.js";
+import { isResurfaceAllowedAction, markCallbackResolved, markPendingCallbacksForSongResolved, markSiblingCallbacksResolved, registerCallbackAction, resolveCallbackAction, type CallbackActionEntry, type CallbackActionStatus } from "./callbackActionRegistry.js";
 import { readSongState, updateSongState } from "./artistState.js";
 import { applyChangeSet } from "./changeSetApplier.js";
 import { handleProposalResponse } from "./conversationalSession.js";
@@ -548,7 +548,8 @@ export async function routeTelegramCallback(ctx: TelegramCallbackContext): Promi
     const proposalId = entry.proposalId ?? entry.songId ?? entry.commissionBrief?.songId;
     if (entry.action === "song_spawn_edit") {
       await markCallbackResolved(ctx.root, callbackId, { status: "updated", reason: "song_spawn_edit_requested", now });
-      await markSiblingCallbacksResolved(ctx.root, entry, {
+      await markPendingCallbacksForSongResolved(ctx.root, {
+        songId: entry.songId ?? entry.proposalId ?? "",
         status: "discarded",
         reason: "sibling_resolved_by:song_spawn_edit",
         now,
@@ -576,7 +577,8 @@ export async function routeTelegramCallback(ctx: TelegramCallbackContext): Promi
       }
       await markSpawned(ctx.root, new Date(now));
       await markCallbackResolved(ctx.root, callbackId, { status: "discarded", reason: "song_spawn_skipped", now });
-      await markSiblingCallbacksResolved(ctx.root, entry, {
+      await markPendingCallbacksForSongResolved(ctx.root, {
+        songId: entry.songId ?? entry.proposalId ?? "",
         status: "discarded",
         reason: "sibling_resolved_by:song_spawn_skip",
         now,
@@ -605,7 +607,8 @@ export async function routeTelegramCallback(ctx: TelegramCallbackContext): Promi
       const injected = await injectCommissionSong(ctx.root, entry.commissionBrief, { now: new Date(now) });
       await markSpawned(ctx.root, new Date(now));
       await markCallbackResolved(ctx.root, callbackId, { status: "applied", reason: "song_spawn_injected", now });
-      await markSiblingCallbacksResolved(ctx.root, entry, {
+      await markPendingCallbacksForSongResolved(ctx.root, {
+        songId: entry.songId ?? entry.proposalId ?? entry.commissionBrief.songId,
         status: "discarded",
         reason: "sibling_resolved_by:song_spawn_inject",
         now,
