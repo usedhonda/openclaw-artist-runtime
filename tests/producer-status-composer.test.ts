@@ -110,12 +110,12 @@ describe("producer status composer", () => {
 
     const text = await composeProducerStatus(workspaceRoot, { now });
 
-    expect(text).toContain("最新通知: new-song / 新しい曲");
+    expect(text).toContain("最新の待ち: new-song / 新しい曲");
     expect(text).toContain("ボタン: 採用 / 破棄");
     expect(text).toContain("URL: https://suno.com/song/new");
-    expect(text).toContain("古い通知: 折りたたみ");
+    expect(text).toContain("古い待ち: 折りたたみ");
     expect(text).not.toContain("2件");
-    expect(text).not.toContain("最新通知: old-song");
+    expect(text).not.toContain("最新の待ち: old-song");
   });
 
   it("routes free-text status intent before the conversational router", async () => {

@@ -51,15 +51,15 @@ async function latestWaitingLines(
   const hiddenCount = Math.max(0, pending.count - visible.length);
   const nextButtons = visible.map((callback) => `「${callback.label}」`).join("または");
   const lines = [
-    `- 最新通知: ${song ? `${song.songId} / ${song.title}` : target} / ${elapsedLabel(latest.createdAt, now)}`,
+    `- 最新の待ち: ${song ? `${song.songId} / ${song.title}` : target} / ${elapsedLabel(latest.createdAt, now)}`,
     `  ボタン: ${buttons}`,
     ...visible.map((callback) => `  - ${callback.label}: ${callback.effect}`),
     ...(song?.publicLinks?.[0] ? [`  URL: ${song.publicLinks[0]}`] : []),
-    ...(hiddenCount > 0 ? ["- 古い通知: 折りたたみ（/status では最新通知だけ表示）"] : [])
+    ...(hiddenCount > 0 ? ["- 古い待ち: 折りたたみ（/status では最新だけ表示）"] : [])
   ];
   return {
     lines,
-    nextLine: `次: 最新通知で${nextButtons || `「${latest.label}」`}を選ぶ。`
+    nextLine: `次: この /status 返信のボタンで${nextButtons || `「${latest.label}」`}を選ぶ。`
   };
 }
 
@@ -97,11 +97,11 @@ export async function composeProducerStatus(root: string, options: ProducerStatu
       && (firstPending.action === "song_archive" || firstPending.action === "song_discard")
     : false;
   const nextLine = firstPendingIsUrlReadyDecision
-    ? "次: 最新のTelegram通知で「採用して音源取得」か「破棄」を押す。採用するとSuno URLを保持し、音源ファイル取得を予約する。"
+    ? "次: この /status 返信のボタンで「採用して音源取得」か「破棄」を押す。採用するとSuno URLを保持し、音源ファイル取得を予約する。"
     : firstPending
     ? latestWaiting.nextLine ?? `次: ${firstPending.label} を押すと、${firstPending.effect}`
     : awaitingUrlReady.length > 0
-      ? "次: 最新のTelegram通知で「採用して音源取得」か「破棄」を押す。採用するとSuno URLを保持し、音源ファイル取得を予約する。"
+      ? "次: この /status 返信のボタンで「採用して音源取得」か「破棄」を押す。採用するとSuno URLを保持し、音源ファイル取得を予約する。"
     : draftBox.nextAction;
 
   return [
@@ -126,7 +126,7 @@ export async function composeProducerStatus(root: string, options: ProducerStatu
           "Suno URL 採用待ち:",
           ...awaitingUrlReady.slice(0, options.limit ?? 6).map((candidate) => [
             `- ${candidate.songId} / ${candidate.title}: ${candidate.publicLinks[0] ?? "URLなし"}`,
-            "  操作: 最新通知の「採用して音源取得」で採用 + 音源取得予約。「破棄」でこの曲を閉じる。"
+            "  操作: /status 返信の「採用して音源取得」で採用 + 音源取得予約。「破棄」でこの曲を閉じる。"
           ].join("\n"))
         ]
       : []),
