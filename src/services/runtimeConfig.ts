@@ -142,6 +142,20 @@ export function isTelegramNotifierEnabled(env: NodeJS.ProcessEnv = process.env):
   return env.OPENCLAW_TELEGRAM_NOTIFIER?.trim().toLowerCase() !== "off";
 }
 
+export function isNewsBrowserResolverEnabled(env: NodeJS.ProcessEnv = process.env): boolean {
+  const value = env.OPENCLAW_NEWS_BROWSER_RESOLVE?.trim().toLowerCase();
+  if (value === "on" || value === "1" || value === "true") return true;
+  if (value === "off" || value === "0" || value === "false") return false;
+  return !env.VITEST_WORKER_ID && env.NODE_ENV !== "test";
+}
+
+export function isNewsArticleResolverEnabled(env: NodeJS.ProcessEnv = process.env): boolean {
+  const value = env.OPENCLAW_NEWS_ARTICLE_RESOLVE?.trim().toLowerCase();
+  if (value === "on" || value === "1" || value === "true") return true;
+  if (value === "off" || value === "0" || value === "false") return false;
+  return !env.VITEST_WORKER_ID && env.NODE_ENV !== "test";
+}
+
 export function isDebugCallbackDispatchEnabled(env: NodeJS.ProcessEnv = process.env): boolean {
   return env.OPENCLAW_DEBUG_CALLBACK_DISPATCH?.trim().toLowerCase() === "on";
 }

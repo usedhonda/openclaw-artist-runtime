@@ -6,6 +6,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   buildMotifNewsSearchUrls,
   collectNewsObservations,
+  defaultNewsArticleResolver,
   parseNewsObservationFile,
   readTodayNewsObservations
 } from "../src/services/newsObservationCollector";
@@ -79,6 +80,7 @@ beforeEach(() => {
 });
 
 afterEach(() => {
+  vi.unstubAllGlobals();
   if (originalRssUrls === undefined) {
     delete process.env.OPENCLAW_NEWS_RSS_URLS;
   } else {
@@ -188,6 +190,58 @@ describe("news observation collector", () => {
     expect(result.entries[0].url).toBeUndefined();
     const cached = await readTodayNewsObservations(root, new Date("2026-05-23T01:30:00.000Z"));
     expect(cached[0].url).toBeUndefined();
+  });
+
+  it("resolves Google News RSS intermediates before writing the daily cache", async () => {
+    const root = workspace();
+    process.env.OPENCLAW_NEWS_RSS_URLS = "https://news.google.com/rss/search?q=test";
+    const fetcher = vi.fn(async () => googleIntermediateOnlySample);
+    const articleResolver = vi.fn(async () => ({
+      url: "https://www.bcnretail.com/news/detail/20260629_638591.html",
+      title: "東京・渋谷で日中から「夜の昆虫観察」ができる体験型昆虫展 - BCN＋R",
+      excerpt: "夜の昆虫観察を日中の渋谷で体験できる展示を紹介。"
+    }));
+
+    const result = await collectNewsObservations(root, {
+      now: new Date("2026-05-23T01:00:00.000Z"),
+      fetcher,
+      articleResolver
+    });
+
+    expect(articleResolver).toHaveBeenCalledWith(expect.objectContaining({
+      candidateUrl: "https://news.google.com/rss/articles/example",
+      source: "BCN+R"
+    }));
+    expect(result.entries[0].url).toBe("https://www.bcnretail.com/news/detail/20260629_638591.html");
+    expect(result.entries[0].text).toContain("夜の昆虫観察");
+
+    const cached = await readFile(join(root, "observations", "news-2026-05-23.md"), "utf8");
+    expect(cached).toContain("https://www.bcnretail.com/news/detail/20260629_638591.html");
+    expect(cached).not.toContain("https://news.google.com/rss/articles/example");
+  });
+
+  it("default article resolver uses canonical article metadata from fetched HTML", async () => {
+    vi.stubGlobal("fetch", vi.fn(async () => new Response(`
+      <html>
+        <head>
+          <link href="/news/detail/20260629_638591.html" rel="canonical">
+          <meta content="https://www.bcnretail.com/news/detail/20260629_638591.html" property="og:url">
+          <meta content="東京・渋谷で日中から夜の昆虫観察" property="og:title">
+          <meta content="体験型昆虫展の開催内容を紹介。" name="description">
+        </head>
+      </html>
+    `, { status: 200 })));
+
+    const resolved = await defaultNewsArticleResolver({
+      title: "夜の昆虫観察、渋谷で開催",
+      text: "夜の昆虫観察、渋谷で開催",
+      source: "BCN+R",
+      candidateUrl: "https://news.google.com/rss/articles/example"
+    });
+
+    expect(resolved?.url).toBe("https://www.bcnretail.com/news/detail/20260629_638591.html");
+    expect(resolved?.title).toContain("夜の昆虫観察");
+    expect(resolved?.excerpt).toContain("体験型昆虫展");
   });
 
   it("returns cached entries on subsequent runs within TTL", async () => {

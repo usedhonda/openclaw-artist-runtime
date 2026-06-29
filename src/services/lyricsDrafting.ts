@@ -71,12 +71,14 @@ function mockStructuredDraft(title: string, briefText: string): string {
     ?? briefText.split(/\r?\n/).find((line) => line.trim() && !line.startsWith("#"))?.trim()
     ?? "街のノイズがまだ消えない。";
   const source = rawSource.replace(/^-\s*text:\s*"?(.+?)"?\s*$/i, "$1");
+  const safeTitle = JSON.stringify(title.split(/\s+/).slice(0, 4).join(" ") || "Night Ledger");
+  const safeSource = JSON.stringify(source.slice(0, 60));
   return [
     "{",
-    `  "title": "${title.split(/\s+/).slice(0, 4).join(" ") || "Night Ledger"}",`,
+    `  "title": ${safeTitle},`,
     "  \"form\": \"nine-section compact pop\",",
     "  \"sections\": [",
-    `    { "tag": "Intro - muted street image", "lines": ["${source.slice(0, 60).replace(/"/g, "'")}"] },`,
+    `    { "tag": "Intro - muted street image", "lines": [${safeSource}] },`,
     "    { \"tag\": \"Verse 1 - tight civic flow\", \"lines\": [\"誰も見ない窓にだけ信号が残る\", \"既読の街で責任だけが遅れる\", \"低いベースが名前を削っていく\", \"朝の手前でまだ息を数える\"] },",
     "    { \"tag\": \"Hook - repeated anchor\", \"lines\": [\"逃げた声を追わない\", \"画面の外で鳴る\", \"逃げた声を追わない\"] },",
     "    { \"tag\": \"Verse 2 - detail turn\", \"lines\": [\"便利な橋ほど足跡を消した\", \"神棚みたいな稟議が白く光る\", \"笑った顔だけログに残って\", \"誰の夜かを誰も言わない\"] },",

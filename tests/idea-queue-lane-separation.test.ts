@@ -25,6 +25,15 @@ async function workspace(): Promise<string> {
   await writeFile(join(root, "SOUL.md"), "Producer: ゆずるさん\nsentence_endings: だ。/な。/どう?\n", "utf8");
   await writeFile(join(root, "runtime", "heartbeat-state.json"), JSON.stringify({ mood: "observational" }), "utf8");
   await writeFile(join(root, "observations", "2026-05-28.md"), "ハンズ前で解散したあと、若者の声だけが道路に残っていた。\n", "utf8");
+  await writeFile(join(root, "observations", "news-2026-05-28.md"), [
+    "# News Observations 2026-05-28",
+    "",
+    "- text: \"ハンズ前で解散したあと、若者の声だけが道路に残っていた\"",
+    "  source: \"fixture news\"",
+    "  url: \"https://example.com/news\"",
+    "  motifMatch: \"渋谷/若者/解散\"",
+    "  motifScore: 9"
+  ].join("\n"), "utf8");
   await ensureSongState(root, "song-026", "Matrix Jury");
   await updateSongState(root, "song-026", { status: "take_selected", reason: "producer review pending" });
   await writeAutopilotRunState(root, {
