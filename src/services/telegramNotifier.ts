@@ -45,7 +45,8 @@ const TELEGRAM_SIGNAL_EVENT_TYPES: ReadonlySet<RuntimeEvent["type"]> = new Set([
   "song_spawn_proposed",
   "prompt_pack_ready",
   "suno_take_url_ready",
-  "song_take_completed"
+  "song_take_completed",
+  "suno_adoption_download_failed"
 ]);
 
 const HARD_STOP_REASON_PATTERNS: Array<{ category: string; pattern: RegExp; message: string }> = [
@@ -1024,6 +1025,7 @@ const RESOURCE_TARGETED_EVENT_TYPES: ReadonlySet<RuntimeEvent["type"]> = new Set
   "song_take_completed",
   "suno_take_url_ready",
   "suno_adoption_download_imported",
+  "suno_adoption_download_failed",
   "song_spawn_proposed",
   "planning_skeleton_incomplete",
   "suno_create_failed",
@@ -1048,6 +1050,7 @@ function extractResourceSongId(event: RuntimeEvent): string | undefined {
     case "song_take_completed":
     case "suno_take_url_ready":
     case "suno_adoption_download_imported":
+    case "suno_adoption_download_failed":
     case "suno_create_failed":
     case "suno_generate_retry":
     case "suno_generate_failed":
@@ -1275,6 +1278,16 @@ async function formatRuntimeEventRaw(
         event.selectedTakeId ? `take: ${event.selectedTakeId}` : undefined,
         `run: ${event.runId}`,
         event.paths.length > 0 ? `保存: ${event.paths.join(", ")}` : "保存: 取得済み",
+        "🔗 試聴:",
+        formatTelegramUrlList(event.urls)
+      ].filter((line): line is string => Boolean(line)).join("\n");
+    case "suno_adoption_download_failed":
+      return [
+        `音源ファイルは取れなかった。${event.songId}。Suno URLは有効、ここから聴ける。`,
+        "",
+        TELEGRAM_SECTION_DIVIDER,
+        event.runId ? `run: ${event.runId}` : undefined,
+        `reason: ${event.reason}`,
         "🔗 試聴:",
         formatTelegramUrlList(event.urls)
       ].filter((line): line is string => Boolean(line)).join("\n");

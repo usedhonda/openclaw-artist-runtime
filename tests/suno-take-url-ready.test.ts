@@ -8,7 +8,8 @@ import { readSongState, updateSongState } from "../src/services/artistState";
 import { ArtistAutopilotService, writeAutopilotRunState } from "../src/services/autopilotService";
 import { readCallbackActionEntries, registerCallbackAction } from "../src/services/callbackActionRegistry";
 import { composeProducerStatus } from "../src/services/producerStatusComposer";
-import { DEFAULT_ADOPTION_DOWNLOAD_DELAY_MS, readAdoptionDownloadJobEntries, rearmQueuedAdoptionDownloadJobs } from "../src/services/sunoAdoptionDownloadJob";
+import { DEFAULT_ADOPTION_DOWNLOAD_DELAY_MS, readAdoptionDownloadJobEntries, rearmQueuedAdoptionDownloadJobs, runDownloadAfterAdoptionJob } from "../src/services/sunoAdoptionDownloadJob";
+import { readFailedNotifyEntries } from "../src/services/failedNotifyLedger";
 import { createAndPersistSunoPromptPack } from "../src/services/sunoPromptPackFiles";
 import { readLatestSunoRun } from "../src/services/sunoRuns";
 import { routeTelegramCallback } from "../src/services/telegramCallbackHandler";
@@ -284,6 +285,45 @@ describe("Suno take URL ready flow", () => {
     expect(String(sendMessage.mock.calls.at(-1)?.[1])).toContain("https://suno.com/song/take-ready");
   });
 
+  it("records failed-notify replay data when adoption download failure notice cannot be delivered", async () => {
+    const root = workspace();
+    await ensureArtistWorkspace(root);
+    await updateSongState(root, "song-url", {
+      title: "URL Gate",
+      status: "suno_take_url_ready",
+      selectedTakeId: "take-ready",
+      appendPublicLinks: ["https://suno.com/song/take-ready"]
+    });
+    await writeAcceptedRun(root);
+    connectorImportMock.mockResolvedValue({
+      runId: "run-ready",
+      urls: [],
+      paths: [],
+      reason: "audio asset not found"
+    });
+
+    await runDownloadAfterAdoptionJob({
+      root,
+      songId: "song-url",
+      chatId: 123,
+      client: { sendMessage: vi.fn().mockRejectedValue(new Error("telegram_send_failed:500")) },
+      now: Date.parse("2026-06-16T00:10:00.000Z")
+    });
+
+    expect(await readFailedNotifyEntries(root)).toEqual([
+      expect.objectContaining({
+        eventType: "suno_adoption_download_failed",
+        songId: "song-url",
+        errorMessage: "telegram_send_failed:500",
+        eventPayload: expect.objectContaining({
+          type: "suno_adoption_download_failed",
+          reason: "audio asset not found",
+          urls: ["https://suno.com/song/take-ready"]
+        })
+      })
+    ]);
+  });
+
   it("resurfaces fresh URL-ready buttons when an old adoption button expired", async () => {
     const root = workspace();
     await ensureArtistWorkspace(root);
@@ -547,6 +587,21 @@ describe("Suno take URL ready flow", () => {
       paths: ["songs/song-url/suno/take-ready.mp3"],
       timestamp: 1
     })).resolves.toContain("音源ファイルも取れた");
+  });
+
+  it("formats failed adoption downloads for replayable Telegram notifications", async () => {
+    const text = await formatRuntimeEvent({
+      type: "suno_adoption_download_failed",
+      songId: "song-url",
+      runId: "run-ready",
+      urls: ["https://suno.com/song/take-ready"],
+      reason: "audio asset not found",
+      timestamp: 1
+    });
+
+    expect(text).toContain("音源ファイルは取れなかった");
+    expect(text).toContain("Suno URLは有効");
+    expect(text).toContain("https://suno.com/song/take-ready");
   });
 
   it("does not schedule an adoption download when the producer discards the URL-ready song", async () => {

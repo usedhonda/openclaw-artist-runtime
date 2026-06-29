@@ -4,6 +4,8 @@ import type { ArtistRuntimeConfig, SunoImportResult } from "../types.js";
 import { BrowserWorkerSunoConnector } from "../connectors/suno/browserWorkerConnector.js";
 import { appendTakeAttributionAudit, findDryRunImportPaths, findTakeAttributionCollisions } from "./takeAttributionGuard.js";
 import { importSunoResults, readLatestSunoRun } from "./sunoRuns.js";
+import { appendFailedNotification } from "./failedNotifyLedger.js";
+import type { RuntimeEvent } from "./runtimeEventBus.js";
 
 export const DEFAULT_ADOPTION_DOWNLOAD_DELAY_MS = 10 * 60 * 1000;
 
@@ -57,15 +59,28 @@ function jobId(songId: string, now: number): string {
   return `adopt_dl_${songId}_${now.toString(36)}`.replace(/[^A-Za-z0-9_-]/g, "-");
 }
 
-async function notifyFailure(input: AdoptionDownloadJobInput, urls: string[], reason: string): Promise<void> {
+async function notifyFailure(input: AdoptionDownloadJobInput, urls: string[], reason: string, runId?: string): Promise<void> {
   if (!input.client || typeof input.chatId !== "number") {
     return;
   }
   const urlText = urls.length > 0 ? `\n${urls.join("\n")}` : "";
+  const event: RuntimeEvent = {
+    type: "suno_adoption_download_failed",
+    songId: input.songId,
+    runId,
+    urls,
+    reason,
+    timestamp: input.now ?? Date.now()
+  };
   await input.client.sendMessage(
     input.chatId,
     `音源ファイルは取れなかった。Suno URLは有効、ここから聴ける。${urlText}\nreason: ${reason}`
-  ).catch(() => undefined);
+  ).catch((error) => appendFailedNotification(input.root, {
+    event,
+    chatId: input.chatId!,
+    error,
+    now: new Date(input.now ?? Date.now())
+  }).catch(() => undefined).then(() => undefined));
 }
 
 export async function runDownloadAfterAdoptionJob(input: AdoptionDownloadJobInput, existingJobId?: string): Promise<AdoptionDownloadJobEntry> {
@@ -78,7 +93,7 @@ export async function runDownloadAfterAdoptionJob(input: AdoptionDownloadJobInpu
     const reason = "adoption_download_missing_suno_url";
     const entry = { jobId: id, songId: input.songId, status: "failed" as const, runId, urls, reason, createdAt: completedAt, completedAt };
     await appendJobEntry(input.root, entry);
-    await notifyFailure(input, urls, reason);
+    await notifyFailure(input, urls, reason, runId);
     return entry;
   }
 
@@ -95,7 +110,7 @@ export async function runDownloadAfterAdoptionJob(input: AdoptionDownloadJobInpu
     const reason = "dryrun_take_import_blocked";
     const entry = { jobId: id, songId: input.songId, status: "failed" as const, runId, urls, reason, createdAt: completedAt, completedAt };
     await appendJobEntry(input.root, entry);
-    await notifyFailure(input, urls, reason);
+    await notifyFailure(input, urls, reason, runId);
     return entry;
   }
   const collisions = await findTakeAttributionCollisions(input.root, input.songId, result.urls);
@@ -104,14 +119,14 @@ export async function runDownloadAfterAdoptionJob(input: AdoptionDownloadJobInpu
     const reason = "take_attribution_collision_blocked";
     const entry = { jobId: id, songId: input.songId, status: "failed" as const, runId, urls, reason, createdAt: completedAt, completedAt };
     await appendJobEntry(input.root, entry);
-    await notifyFailure(input, urls, reason);
+    await notifyFailure(input, urls, reason, runId);
     return entry;
   }
   if ((result.paths ?? []).length === 0 || result.urls.length === 0) {
     const reason = result.reason ?? "audio_asset_not_found";
     const entry = { jobId: id, songId: input.songId, status: "failed" as const, runId, urls, reason, createdAt: completedAt, completedAt };
     await appendJobEntry(input.root, entry);
-    await notifyFailure(input, urls, reason);
+    await notifyFailure(input, urls, reason, runId);
     return entry;
   }
 
