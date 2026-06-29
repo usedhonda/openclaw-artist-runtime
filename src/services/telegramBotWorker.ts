@@ -8,7 +8,7 @@ import { classifyTelegramFreeText, routeTelegramCommand, storeTelegramInbox, typ
 import { routeTelegramCallback } from "./telegramCallbackHandler.js";
 import { handleTelegramPersonaSessionMessage, readTelegramPersonaSession } from "./telegramPersonaSession.js";
 import { getDashboardBaseUrl, getTelegramBotToken, isInlineButtonsEnabled, isLegacyWizardEnabled } from "./runtimeConfig.js";
-import { registerCallbackAction } from "./callbackActionRegistry.js";
+import { markPendingCallbacksForSongResolved, registerCallbackAction } from "./callbackActionRegistry.js";
 import { buildProposalInlineKeyboard } from "./freeformChangesetProposer.js";
 import type { TelegramProposalButtonsRequest } from "./telegramConversationalRouter.js";
 import { buttonVoiceLabels } from "./buttonVoiceLabels.js";
@@ -84,6 +84,13 @@ function statusDecisionButtonLabel(action: TelegramStatusDecisionAction): string
       return buttonVoiceLabels.songCompletion.later;
   }
 }
+
+const STATUS_DECISION_ACTION_SET = new Set<string>([
+  "song_archive",
+  "song_discard",
+  "song_songbook_write",
+  "song_skip"
+]);
 
 export class TelegramBotWorker {
   private running = false;
@@ -313,6 +320,12 @@ export class TelegramBotWorker {
     client: TelegramClient,
     input: TelegramStatusDecisionButtonsRequest & { chatId: number; messageId: number; userId: number }
   ): Promise<void> {
+    await markPendingCallbacksForSongResolved(this.options.root, {
+      songId: input.songId,
+      actions: STATUS_DECISION_ACTION_SET,
+      status: "updated",
+      reason: "superseded_by_status_decision_reissue"
+    });
     const callbacks = await Promise.all(input.actions.map(async (action) => ({
       action,
       entry: await registerCallbackAction(this.options.root, {

@@ -5,7 +5,7 @@ import { join } from "node:path";
 import { describe, expect, it, vi } from "vitest";
 import type { TelegramConfig } from "../src/types";
 import { TelegramBotWorker } from "../src/services/telegramBotWorker";
-import { registerCallbackAction } from "../src/services/callbackActionRegistry";
+import { listPendingCallbackActionSummaries, readCallbackActionEntries, registerCallbackAction } from "../src/services/callbackActionRegistry";
 import { ensureSongState, updateSongState } from "../src/services/artistState";
 
 const enabledConfig: TelegramConfig = {
@@ -194,6 +194,10 @@ describe("telegram bot worker", () => {
     };
     expect(markup.reply_markup.inline_keyboard.flat().map((button) => button.text)).toEqual(["採用", "破棄"]);
     expect(markup.reply_markup.inline_keyboard.flat().every((button) => button.callback_data.startsWith("cb:"))).toBe(true);
+    const pending = await listPendingCallbackActionSummaries(root, { category: "producer_decision" });
+    expect(pending.recent.map((entry) => entry.action).sort()).toEqual(["song_archive", "song_discard"]);
+    const allActions = await readCallbackActionEntries(root);
+    expect(allActions.filter((entry) => entry.resolveReason === "superseded_by_status_decision_reissue").map((entry) => entry.action).sort()).toEqual(["song_archive", "song_discard"]);
   });
 
   it("announces persona setup once on the first owner message when persona is incomplete", async () => {
