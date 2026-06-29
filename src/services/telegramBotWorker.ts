@@ -311,13 +311,13 @@ export class TelegramBotWorker {
         userId: from.id
       });
     }
-    if (route.statusDecisionButtons && isInlineButtonsEnabled()) {
+    if (route.statusDecisionButtons) {
       await this.attachStatusDecisionButtons(client, {
         ...route.statusDecisionButtons,
         chatId: message.chat.id,
         messageId: sent.message_id,
         userId: from.id
-      });
+      }, isInlineButtonsEnabled());
     }
     return true;
   }
@@ -360,7 +360,8 @@ export class TelegramBotWorker {
 
   private async attachStatusDecisionButtons(
     client: TelegramClient,
-    input: TelegramStatusDecisionButtonsRequest & { chatId: number; messageId: number; userId: number }
+    input: TelegramStatusDecisionButtonsRequest & { chatId: number; messageId: number; userId: number },
+    renderButtons = true
   ): Promise<void> {
     const song = await readSongState(this.options.root, input.songId).catch(() => undefined);
     const labelContext = { sunoUrlReady: song?.status === "suno_take_url_ready" };
@@ -384,12 +385,14 @@ export class TelegramBotWorker {
         userId: input.userId
       })
     })));
-    await client.editMessageReplyMarkup(input.chatId, input.messageId, {
-      inline_keyboard: [callbacks.map(({ action, entry }) => ({
-        text: statusDecisionButtonLabel(action, labelContext),
-        callback_data: `cb:${entry.callbackId}`
-      }))]
-    });
+    if (renderButtons) {
+      await client.editMessageReplyMarkup(input.chatId, input.messageId, {
+        inline_keyboard: [callbacks.map(({ action, entry }) => ({
+          text: statusDecisionButtonLabel(action, labelContext),
+          callback_data: `cb:${entry.callbackId}`
+        }))]
+      });
+    }
   }
 
   private async rememberChatId(chatId: number): Promise<void> {

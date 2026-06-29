@@ -56,7 +56,7 @@ export interface TelegramCallbackContext {
   chatId?: number;
   messageId?: number;
   now?: number;
-  actor?: "telegram_callback" | "internal_recovery" | "ui_api" | "watchdog_recovery" | "watchdog_reprompt" | "watchdog_expire";
+  actor?: "telegram_callback" | "telegram_text" | "internal_recovery" | "ui_api" | "watchdog_recovery" | "watchdog_reprompt" | "watchdog_expire";
   auditReason?: string;
   xPublishSpawnImpl?: XPublishActionInput["spawnImpl"];
 }

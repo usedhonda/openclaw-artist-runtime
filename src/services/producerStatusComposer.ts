@@ -36,6 +36,45 @@ function sameDecisionNotice(left: PendingCallback, right: PendingCallback): bool
   return leftTarget === rightTarget && left.messageId === right.messageId;
 }
 
+function textCommandForPending(callback: PendingCallback): string | undefined {
+  const songId = callback.songId;
+  const proposalId = callback.proposalId ?? callback.songId;
+  switch (callback.action) {
+    case "song_archive":
+      return songId ? `/song adopt ${songId}` : undefined;
+    case "song_discard":
+      return songId ? `/song discard ${songId}` : undefined;
+    case "song_spawn_inject":
+      return proposalId ? `/draft make ${proposalId}` : undefined;
+    case "song_spawn_skip":
+      return proposalId ? `/draft skip ${proposalId}` : undefined;
+    case "song_spawn_edit":
+      return proposalId ? `/draft edit ${proposalId}` : undefined;
+    case "prompt_pack_go":
+      return songId ? `/suno go ${songId}` : undefined;
+    case "prompt_pack_edit":
+      return songId ? `/suno edit ${songId}` : undefined;
+    case "prompt_pack_skip":
+      return songId ? `/suno hold ${songId}` : undefined;
+    case "lyrics_redraft":
+      return songId ? `/lyrics redo ${songId}` : undefined;
+    case "planning_skeleton_apply":
+      return songId ? `/plan apply ${songId}` : undefined;
+    case "planning_skeleton_skip":
+      return songId ? `/plan skip ${songId}` : undefined;
+    case "planning_skeleton_edit":
+      return songId ? `/plan edit ${songId}` : undefined;
+    case "take_select_accept":
+      return songId ? `/take accept ${songId}` : undefined;
+    case "take_select_regenerate":
+      return songId ? `/take regen ${songId}` : undefined;
+    case "take_select_skip":
+      return songId ? `/take skip ${songId}` : undefined;
+    default:
+      return undefined;
+  }
+}
+
 async function latestWaitingLines(
   root: string,
   pending: PendingSummary,
@@ -49,18 +88,22 @@ async function latestWaitingLines(
   const target = latest.songId ?? latest.proposalId ?? latest.action;
   const song = latest.songId ? await readSongState(root, latest.songId).catch(() => undefined) : undefined;
   const buttons = visible.map((callback) => callback.label).join(" / ");
+  const textCommands = [...new Set(visible.map(textCommandForPending).filter((command): command is string => Boolean(command)))];
   const hiddenCount = Math.max(0, pending.count - visible.length);
   const nextButtons = visible.map((callback) => `「${callback.label}」`).join("または");
   const lines = [
     `- 最新の待ち: ${song ? `${song.songId} / ${song.title}` : target} / ${elapsedLabel(latest.createdAt, now)}`,
     `  ボタン: ${buttons}`,
+    ...(textCommands.length > 0 ? [`  文字: ${textCommands.join(" / ")}`] : []),
     ...visible.map((callback) => `  - ${callback.label}: ${callback.effect}`),
     ...(song?.publicLinks?.[0] ? [`  URL: ${song.publicLinks[0]}`] : []),
     ...(hiddenCount > 0 ? ["- 古い待ち: 折りたたみ（/status では最新だけ表示）"] : [])
   ];
   return {
     lines,
-    nextLine: `次: この /status 返信のボタンで${nextButtons || `「${latest.label}」`}を選ぶ。`
+    nextLine: textCommands.length > 0
+      ? `次: この /status 返信のボタンで${nextButtons || `「${latest.label}」`}を選ぶ。ボタン不可なら ${textCommands.join(" / ")}。`
+      : `次: この /status 返信のボタンで${nextButtons || `「${latest.label}」`}を選ぶ。`
   };
 }
 
@@ -132,17 +175,17 @@ export async function composeProducerStatus(root: string, options: ProducerStatu
       ? undefined
       : rawBlockedReason;
   const nextLine = firstPendingIsUrlReadyDecision
-    ? "次: この /status 返信のボタンで「採用して音源取得」か「破棄」を押す。採用するとSuno URLを保持し、音源ファイル取得を予約する。"
+    ? `次: この /status 返信のボタンで「採用して音源取得」か「破棄」を押す。ボタン不可なら /song adopt ${firstPending?.songId ?? "<songId>"} または /song discard ${firstPending?.songId ?? "<songId>"}。`
     : firstPending
     ? latestWaiting.nextLine ?? `次: ${firstPending.label} を押すと、${firstPending.effect}`
     : awaitingUrlReady.length > 0
       ? "次: この /status 返信のボタンで「採用して音源取得」か「破棄」を押す。ボタンが使えない時は /song adopt <songId> または /song discard <songId>。"
     : isPromptPackReadyWait
-      ? "次: この /status 返信のボタンで「Suno 生成へ」「lyrics-suno.md を編集」「保留」を選ぶ。"
+      ? `次: この /status 返信のボタンで「Suno 生成へ」「lyrics-suno.md を編集」「保留」を選ぶ。ボタン不可なら /suno go ${currentSongId} / /suno edit ${currentSongId} / /suno hold ${currentSongId}。`
     : degradedLyricsSong
-      ? "次: この /status 返信のボタンで「歌詞を作り直す」か「破棄」を選ぶ。"
+      ? `次: この /status 返信のボタンで「歌詞を作り直す」か「破棄」を選ぶ。ボタン不可なら /lyrics redo ${degradedLyricsSong.songId} または /song discard ${degradedLyricsSong.songId}。`
     : isPlanningSkeletonWait
-      ? "次: この /status 返信のボタンで「進める」「中止」「書き直す」を選ぶ。"
+      ? `次: この /status 返信のボタンで「進める」「中止」「書き直す」を選ぶ。ボタン不可なら /plan apply ${currentSongId} / /plan skip ${currentSongId} / /plan edit ${currentSongId}。`
     : awaitingTakeReview
       ? "次: この /status 返信のボタンで「採用」か「破棄」を選ぶ。ボタンが使えない時は /song adopt <songId> または /song discard <songId>。"
     : draftBox.nextAction;
@@ -186,7 +229,7 @@ export async function composeProducerStatus(root: string, options: ProducerStatu
           "",
           "Suno 生成GO待ち:",
           `- ${currentSongId}${song?.title ? ` / ${song.title}` : ""}`,
-          "  操作: /status 返信の「Suno 生成へ」で生成開始。「lyrics-suno.md を編集」で歌詞へ戻す。「保留」で止める。"
+          `  操作: /status 返信の「Suno 生成へ」で生成開始。「lyrics-suno.md を編集」で歌詞へ戻す。「保留」で止める。ボタン不可なら /suno go ${currentSongId} / /suno edit ${currentSongId} / /suno hold ${currentSongId}`
         ]
       : []),
     ...(degradedLyricsSong
@@ -195,7 +238,7 @@ export async function composeProducerStatus(root: string, options: ProducerStatu
           "歌詞生成停止:",
           `- ${degradedLyricsSong.songId} / ${degradedLyricsSong.title}`,
           `  理由: ${degradedLyricsSong.lastReason ?? rawBlockedReason ?? "歌詞生成に失敗"}`,
-          "  操作: /status 返信の「歌詞を作り直す」で再作成。「破棄」でこの曲を閉じる。"
+          `  操作: /status 返信の「歌詞を作り直す」で再作成。「破棄」でこの曲を閉じる。ボタン不可なら /lyrics redo ${degradedLyricsSong.songId} または /song discard ${degradedLyricsSong.songId}`
         ]
       : []),
     ...(isPlanningSkeletonWait
@@ -204,7 +247,7 @@ export async function composeProducerStatus(root: string, options: ProducerStatu
           "Planning補完待ち:",
           `- ${currentSongId}${song?.title ? ` / ${song.title}` : ""}`,
           `  不足: ${(rawBlockedReason ?? "").replace(/^planning_skeleton_incomplete:/, "") || "曲の骨組み"}`,
-          "  操作: /status 返信の「進める」で補完案を反映。「中止」で見送り。「書き直す」で編集待ちにする。"
+          `  操作: /status 返信の「進める」で補完案を反映。「中止」で見送り。「書き直す」で編集待ちにする。ボタン不可なら /plan apply ${currentSongId} / /plan skip ${currentSongId} / /plan edit ${currentSongId}`
         ]
       : []),
     ...(!firstPending && awaitingTakeReview

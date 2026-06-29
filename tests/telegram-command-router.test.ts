@@ -512,6 +512,114 @@ describe("telegram command router", () => {
     expect(runNow).toHaveBeenCalledTimes(1);
   });
 
+  it("dispatches prompt-pack GO from text through the pending decision handler", async () => {
+    const root = makeRoot();
+    const now = Date.now();
+    await ensureSongState(root, "song-prompt", "Prompt Ready Song");
+    await updateSongState(root, "song-prompt", { status: "suno_prompt_pack" });
+    await writeAutopilotRunState(root, {
+      runId: "prompt-ready",
+      currentSongId: "song-prompt",
+      stage: "prompt_pack",
+      suspendedAt: "prompt_pack_ready",
+      paused: false,
+      retryCount: 0,
+      cycleCount: 1,
+      updatedAt: new Date(0).toISOString()
+    });
+    await registerCallbackAction(root, {
+      action: "prompt_pack_go",
+      songId: "song-prompt",
+      chatId: 456,
+      messageId: 77,
+      userId: 123,
+      now
+    });
+
+    const result = await routeTelegramCommand({ ...baseInput, text: "/suno go song-prompt", workspaceRoot: root });
+
+    expect(result.kind).toBe("free_text");
+    expect(result.responseText).toContain("Suno 行く");
+    expect(await readAutopilotRunState(root)).toMatchObject({ stage: "suno_generation", suspendedAt: null });
+    const latestCallbacks = [...(await latestCallbackEntriesById(root)).values()];
+    expect(latestCallbacks.find((entry) => entry.action === "prompt_pack_go")).toMatchObject({
+      status: "applied",
+      resolveReason: "prompt_pack_go"
+    });
+  });
+
+  it("dispatches low-score take regeneration from text through the pending decision handler", async () => {
+    const root = makeRoot();
+    const now = Date.now();
+    await ensureSongState(root, "song-low", "Low Score Song");
+    await updateSongState(root, "song-low", { status: "takes_imported" });
+    await writeAutopilotRunState(root, {
+      runId: "take-low",
+      currentSongId: "song-low",
+      stage: "take_selection",
+      paused: false,
+      retryCount: 0,
+      cycleCount: 1,
+      updatedAt: new Date(0).toISOString()
+    });
+    await registerCallbackAction(root, {
+      action: "take_select_regenerate",
+      songId: "song-low",
+      chatId: 456,
+      messageId: 77,
+      userId: 123,
+      now
+    });
+
+    const result = await routeTelegramCommand({ ...baseInput, text: "/take regen song-low", workspaceRoot: root });
+
+    expect(result.kind).toBe("free_text");
+    expect(result.responseText).toContain("Suno regeneration queued");
+    expect(await readSongState(root, "song-low")).toMatchObject({
+      status: "suno_prompt_pack",
+      lastReason: "take_select_regenerate_requested"
+    });
+    expect(await readAutopilotRunState(root)).toMatchObject({
+      stage: "suno_generation",
+      blockedReason: "take_select_regenerate_requested"
+    });
+  });
+
+  it("dispatches draft-box skip from text through the pending decision handler", async () => {
+    vi.stubEnv("OPENCLAW_SONG_SPAWN_ENABLED", "on");
+    const root = makeRoot();
+    const now = Date.now();
+    await appendSpawnProposal(root, spawnProposal("spawn-ready"));
+    await writeAutopilotRunState(root, {
+      runId: "spawn-wait",
+      currentSongId: "spawn-ready",
+      stage: "planning",
+      suspendedAt: "spawn_proposal_ready",
+      paused: false,
+      retryCount: 0,
+      cycleCount: 1,
+      updatedAt: new Date(0).toISOString()
+    });
+    await registerCallbackAction(root, {
+      action: "song_spawn_skip",
+      songId: "spawn-ready",
+      proposalId: "spawn-ready",
+      chatId: 456,
+      messageId: 77,
+      userId: 123,
+      now
+    });
+
+    const result = await routeTelegramCommand({ ...baseInput, text: "/draft skip spawn-ready", workspaceRoot: root });
+
+    expect(result.kind).toBe("free_text");
+    expect(result.responseText).toContain("見送った");
+    expect(await readAutopilotRunState(root)).toMatchObject({
+      stage: "planning",
+      suspendedAt: null
+    });
+  });
+
   it("lists recent songs", async () => {
     const root = makeRoot();
     await ensureSongState(root, "song-001", "Ash Road");

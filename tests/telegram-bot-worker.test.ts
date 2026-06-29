@@ -2,7 +2,7 @@ import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import type { SpawnProposal, TelegramConfig } from "../src/types";
 import { TelegramBotWorker } from "../src/services/telegramBotWorker";
 import { listPendingCallbackActionSummaries, readCallbackActionEntries, registerCallbackAction } from "../src/services/callbackActionRegistry";
@@ -63,6 +63,10 @@ function spawnProposal(songId = "spawn-status"): SpawnProposal {
     }
   };
 }
+
+afterEach(() => {
+  vi.unstubAllEnvs();
+});
 
 describe("telegram bot worker", () => {
   it("stays disabled with config off and never fetches", async () => {
@@ -443,6 +447,60 @@ describe("telegram bot worker", () => {
       messageId: 2
     })).resolves.toMatchObject({ result: "applied", reason: "prompt_pack_go" });
     expect(await readAutopilotRunState(root)).toMatchObject({ stage: "suno_generation", suspendedAt: null });
+  });
+
+  it("registers status decisions for text fallback even when inline buttons are disabled", async () => {
+    vi.stubEnv("OPENCLAW_INLINE_BUTTONS", "off");
+    const root = makeRoot();
+    await ensureArtistWorkspace(root);
+    await ensureSongState(root, "song-prompt", "Prompt Ready Song");
+    await updateSongState(root, "song-prompt", { status: "suno_prompt_pack" });
+    await writeAutopilotRunState(root, {
+      runId: "prompt-ready",
+      currentSongId: "song-prompt",
+      stage: "prompt_pack",
+      suspendedAt: "prompt_pack_ready",
+      paused: false,
+      retryCount: 0,
+      cycleCount: 0,
+      updatedAt: new Date().toISOString()
+    });
+    const fetchImpl = vi
+      .fn()
+      .mockResolvedValueOnce(jsonResponse({
+        ok: true,
+        result: [{
+          update_id: 10,
+          message: {
+            message_id: 1,
+            text: "/status",
+            chat: { id: 555 },
+            from: { id: 123 }
+          }
+        }]
+      }))
+      .mockResolvedValueOnce(jsonResponse({ ok: true, result: { message_id: 2, text: "status", chat: { id: 555 } } }));
+    const worker = new TelegramBotWorker({
+      root,
+      config: enabledConfig,
+      token: "token",
+      ownerUserIds: new Set(["123"]),
+      fetchImpl
+    });
+
+    const result = await worker.pollOnce();
+    worker.stop();
+
+    expect(result).toMatchObject({ enabled: true, fetched: true, processed: 1 });
+    expect(fetchImpl).toHaveBeenCalledTimes(2);
+    const statusBody = JSON.parse(fetchImpl.mock.calls[1][1].body as string) as { text: string };
+    expect(statusBody.text).toContain("/suno go song-prompt");
+    const entries = await readCallbackActionEntries(root);
+    expect(entries.filter((entry) => entry.songId === "song-prompt").map((entry) => entry.action).sort()).toEqual([
+      "prompt_pack_edit",
+      "prompt_pack_go",
+      "prompt_pack_skip"
+    ]);
   });
 
   it("recreates degraded-lyrics recovery buttons on /status and redraft clears the stop", async () => {

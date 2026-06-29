@@ -222,6 +222,7 @@ describe("producer status composer", () => {
 
     expect(text).toContain("Suno 生成GO待ち");
     expect(text).toContain("次: この /status 返信のボタンで「Suno 生成へ」");
+    expect(text).toContain("/suno go song-prompt");
     expect(text).toContain("lyrics-suno.md を編集");
   });
 
@@ -248,6 +249,7 @@ describe("producer status composer", () => {
 
     expect(text).toContain("歌詞生成停止");
     expect(text).toContain("次: この /status 返信のボタンで「歌詞を作り直す」か「破棄」を選ぶ。");
+    expect(text).toContain("/lyrics redo song-lyrics");
     expect(text).toContain("provider fallback response");
   });
 
@@ -272,6 +274,7 @@ describe("producer status composer", () => {
     expect(text).toContain("Planning補完待ち");
     expect(text).toContain("不足: tempo,duration,style notes");
     expect(text).toContain("次: この /status 返信のボタンで「進める」「中止」「書き直す」を選ぶ。");
+    expect(text).toContain("/plan apply song-plan");
   });
 
   it("routes free-text status intent before the conversational router", async () => {

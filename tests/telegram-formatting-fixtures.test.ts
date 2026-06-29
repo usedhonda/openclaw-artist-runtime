@@ -24,7 +24,8 @@ describe("telegram formatting fixtures", () => {
       "",
       "─────",
       "次:",
-      "ボタンで選ぶ"
+      "ボタンで選ぶ",
+      "ボタン不可: /song adopt song-fixture / /song discard song-fixture"
     ].join("\n"));
   });
 
@@ -61,7 +62,8 @@ describe("telegram formatting fixtures", () => {
       "",
       "─────",
       "次:",
-      "ボタンで選ぶ"
+      "ボタンで選ぶ",
+      "ボタン不可: /draft make spawn_fixture / /draft skip spawn_fixture / /draft edit spawn_fixture"
     ].join("\n"));
   });
 
@@ -94,7 +96,8 @@ describe("telegram formatting fixtures", () => {
       "",
       "─────",
       "次:",
-      "ボタンで選ぶ"
+      "ボタンで選ぶ",
+      "ボタン不可: /suno go song-fixture / /suno edit song-fixture / /suno hold song-fixture"
     ].join("\n"));
   });
 });

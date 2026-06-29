@@ -19,7 +19,7 @@ import { isConversationalSongCreate, routeTelegramConversation, type TelegramPro
 import { readObservationsReport, type ObservationReport } from "./xObservationCollector.js";
 import { wrapCommandVoice, type CommandVoiceKind } from "./commandVoiceWrapper.js";
 import { composeProducerStatus } from "./producerStatusComposer.js";
-import { isProposalConfirmationAction, listPendingCallbackActionSummaries, markPendingCallbacksForSongResolved, resolveCallbackAction } from "./callbackActionRegistry.js";
+import { isProposalConfirmationAction, listPendingCallbackActionSummaries, markPendingCallbacksForSongResolved, readCallbackActionEntries, resolveCallbackAction, type CallbackActionEntry } from "./callbackActionRegistry.js";
 import { emitRuntimeEvent } from "./runtimeEventBus.js";
 import { appendFailedNotifyReplayRecord, latestFailedNotifyEntry, listUnreplayedFailedNotifications } from "./failedNotifyLedger.js";
 import { resurfaceDegradedLyrics } from "./degradedLyricsResurfaceService.js";
@@ -30,6 +30,8 @@ import { appendConversationTurn, listPendingProposalDetails } from "./conversati
 import { validatePlanningFiles } from "./planningSkeletonValidator.js";
 import { handleSongPublishActionRequest, type SongPublishAction } from "./songPublishActionRegistry.js";
 import { scheduleDownloadAfterAdoptionJob } from "./sunoAdoptionDownloadJob.js";
+import { routeTelegramCallback, type TelegramCallbackResult } from "./telegramCallbackHandler.js";
+import type { TelegramClient } from "./telegramClient.js";
 
 export type TelegramCommandKind =
   | "help"
@@ -226,6 +228,149 @@ const STATUS_DECISION_ACTIONS: readonly TelegramStatusDecisionAction[] = [
   "take_select_skip"
 ];
 const SONG_REVIEW_ACTIONS = new Set(["song_archive", "song_discard", "song_songbook_write", "song_skip"]);
+const TEXT_DECISION_ACTIONS = new Set<TelegramStatusDecisionAction>([
+  "song_spawn_inject",
+  "song_spawn_skip",
+  "song_spawn_edit",
+  "prompt_pack_go",
+  "prompt_pack_edit",
+  "prompt_pack_skip",
+  "lyrics_redraft",
+  "planning_skeleton_apply",
+  "planning_skeleton_skip",
+  "planning_skeleton_edit",
+  "take_select_accept",
+  "take_select_regenerate",
+  "take_select_skip"
+]);
+
+interface TextDecisionRequest {
+  action: TelegramStatusDecisionAction;
+  songId?: string;
+  proposalId?: string;
+  help: string;
+}
+
+type CapturedTelegramClient = TelegramClient & { sentMessages: string[] };
+
+function captureTelegramClient(): CapturedTelegramClient {
+  const sentMessages: string[] = [];
+  return {
+    sentMessages,
+    answerCallbackQuery: async () => true,
+    editMessageReplyMarkup: async () => true,
+    editMessageText: async () => true,
+    sendMessage: async (chatId: number | string, text: string) => {
+      sentMessages.push(text);
+      return { message_id: 0, chat: { id: Number(chatId) || 0, type: "private" }, date: Math.floor(Date.now() / 1000) };
+    }
+  } as unknown as CapturedTelegramClient;
+}
+
+function parseTextDecision(command: string, args: string[]): TextDecisionRequest | undefined {
+  const subcommand = args[0]?.toLowerCase();
+  const target = args[1];
+  if (command === "/suno") {
+    const action = subcommand === "go" || subcommand === "start"
+      ? "prompt_pack_go"
+      : subcommand === "edit" || subcommand === "lyrics"
+        ? "prompt_pack_edit"
+        : subcommand === "hold" || subcommand === "skip"
+          ? "prompt_pack_skip"
+          : undefined;
+    return action ? { action, songId: target, help: "Usage: /suno go <songId> | /suno edit <songId> | /suno hold <songId>" } : undefined;
+  }
+  if (command === "/lyrics") {
+    const action = subcommand === "redo" || subcommand === "redraft"
+      ? "lyrics_redraft"
+      : undefined;
+    return action ? { action, songId: target, help: "Usage: /lyrics redo <songId>" } : undefined;
+  }
+  if (command === "/plan") {
+    const action = subcommand === "apply" || subcommand === "go"
+      ? "planning_skeleton_apply"
+      : subcommand === "skip" || subcommand === "cancel"
+        ? "planning_skeleton_skip"
+        : subcommand === "edit" || subcommand === "rewrite"
+          ? "planning_skeleton_edit"
+          : undefined;
+    return action ? { action, songId: target, help: "Usage: /plan apply <songId> | /plan skip <songId> | /plan edit <songId>" } : undefined;
+  }
+  if (command === "/take") {
+    const action = subcommand === "accept" || subcommand === "adopt"
+      ? "take_select_accept"
+      : subcommand === "regen" || subcommand === "regenerate"
+        ? "take_select_regenerate"
+        : subcommand === "skip" || subcommand === "hold"
+          ? "take_select_skip"
+          : undefined;
+    return action ? { action, songId: target, help: "Usage: /take accept <songId> | /take regen <songId> | /take skip <songId>" } : undefined;
+  }
+  if (command === "/draft" || command === "/spawn") {
+    const action = subcommand === "make" || subcommand === "go" || subcommand === "start" || subcommand === "create"
+      ? "song_spawn_inject"
+      : subcommand === "skip" || subcommand === "hold"
+        ? "song_spawn_skip"
+        : subcommand === "edit" || subcommand === "rewrite"
+          ? "song_spawn_edit"
+          : undefined;
+    return action ? { action, proposalId: target, help: "Usage: /draft make <proposalId> | /draft skip <proposalId> | /draft edit <proposalId>" } : undefined;
+  }
+  return undefined;
+}
+
+async function findLatestPendingTextDecision(root: string, request: TextDecisionRequest, chatId: number, userId: number): Promise<CallbackActionEntry | undefined> {
+  const entries = await readCallbackActionEntries(root);
+  return entries
+    .filter((entry) => entry.status === "pending")
+    .filter((entry) => entry.action === request.action)
+    .filter((entry) => entry.chatId === chatId && entry.userId === userId)
+    .filter((entry) => request.songId ? entry.songId === request.songId : true)
+    .filter((entry) => request.proposalId ? (entry.proposalId === request.proposalId || entry.songId === request.proposalId) : true)
+    .sort((a, b) => b.createdAt - a.createdAt)[0];
+}
+
+function textDecisionResultMessage(result: TelegramCallbackResult, captured: CapturedTelegramClient): string {
+  if (captured.sentMessages.length > 0) {
+    return captured.sentMessages.join("\n");
+  }
+  if (result.result === "applied" || result.result === "updated" || result.result === "discarded") {
+    return `実行しました: ${result.reason ?? result.result}`;
+  }
+  return `実行できませんでした: ${result.reason ?? result.result}`;
+}
+
+async function runTelegramTextDecision(input: {
+  root: string;
+  request: TextDecisionRequest;
+  chatId: number;
+  userId: number;
+  now?: number;
+}): Promise<string> {
+  if (!TEXT_DECISION_ACTIONS.has(input.request.action)) {
+    throw new Error(`text_decision_action_not_allowed:${input.request.action}`);
+  }
+  const entry = await findLatestPendingTextDecision(input.root, input.request, input.chatId, input.userId);
+  if (!entry) {
+    throw new Error(`pending_decision_not_found:${input.request.action}`);
+  }
+  const client = captureTelegramClient();
+  const result = await routeTelegramCallback({
+    root: input.root,
+    client,
+    callbackQueryId: `telegram_text:${entry.callbackId}`,
+    data: `cb:${entry.callbackId}`,
+    fromUserId: entry.userId,
+    chatId: entry.chatId,
+    messageId: entry.messageId,
+    now: input.now,
+    actor: "telegram_text"
+  });
+  if (result.result === "failed" || result.result === "blocked" || result.result === "unauthorized" || result.result === "expired") {
+    throw new Error(result.reason ?? result.result);
+  }
+  return textDecisionResultMessage(result, client);
+}
 
 interface StatusDecisionContext {
   chatId: number;
@@ -506,6 +651,11 @@ function helpInfo(): string {
     "/song <songId> - show song detail",
     "/song adopt <songId> - adopt a selected/URL-ready song without publishing",
     "/song discard <songId> - discard a song and keep its brief for reuse",
+    "/suno go|edit|hold <songId> - decide a prompt-pack/Suno wait without buttons",
+    "/lyrics redo <songId> - redraft degraded lyrics without buttons",
+    "/plan apply|skip|edit <songId> - decide a planning-completion wait without buttons",
+    "/take accept|regen|skip <songId> - decide a low-score take wait without buttons",
+    "/draft make|skip|edit <proposalId> - decide a draft-box proposal without buttons",
     "/song create [hint] - ask the artist to make a song",
     "/commission <brief> - propose a producer commission for autopilot",
     "/regen <songId> - queue a dry-run regeneration note",
@@ -609,6 +759,36 @@ export async function routeTelegramCommand(input: TelegramRouteInput): Promise<T
       statusDecisionButtons,
       proposalButtons: statusDecisionButtons ? undefined : await latestProposalButtons(input.workspaceRoot)
     };
+  }
+  const textDecision = parseTextDecision(command, args);
+  if (textDecision) {
+    if (!input.workspaceRoot || (!textDecision.songId && !textDecision.proposalId)) {
+      return {
+        kind: "free_text",
+        responseText: await voiceCommand("error", textDecision.help, input, "text decision usage"),
+        shouldStoreFreeText: false
+      };
+    }
+    try {
+      const message = await runTelegramTextDecision({
+        root: input.workspaceRoot,
+        request: textDecision,
+        chatId: input.chatId,
+        userId: input.fromUserId
+      });
+      return {
+        kind: "free_text",
+        responseText: await voiceCommand("ack", message, input, `text decision ${textDecision.action}`),
+        shouldStoreFreeText: false
+      };
+    } catch (error) {
+      const reason = error instanceof Error ? error.message : String(error);
+      return {
+        kind: "free_text",
+        responseText: await voiceCommand("error", `Decision failed: ${reason}. ${textDecision.help}`, input, `text decision ${textDecision.action} failed`),
+        shouldStoreFreeText: false
+      };
+    }
   }
   if (input.workspaceRoot && !isLegacyWizardEnabled()) {
     if (

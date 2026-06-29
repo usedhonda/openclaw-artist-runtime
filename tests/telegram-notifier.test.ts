@@ -17,7 +17,8 @@ const songCompletionButtonEffects = [
   "",
   "─────",
   "次:",
-  "ボタンで選ぶ"
+  "ボタンで選ぶ",
+  "ボタン不可: /song adopt song-004 / /song discard song-004"
 ];
 
 describe("TelegramNotifier", () => {

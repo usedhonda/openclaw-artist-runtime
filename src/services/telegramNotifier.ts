@@ -1218,12 +1218,37 @@ function callbackActionsForRuntimeEvent(event: RuntimeEvent): string[] {
   }
 }
 
+function textCommandsForRuntimeEvent(event: RuntimeEvent): string[] {
+  switch (event.type) {
+    case "song_take_completed":
+    case "suno_take_url_ready":
+      return [`/song adopt ${event.songId}`, `/song discard ${event.songId}`];
+    case "song_spawn_proposed":
+      return [`/draft make ${event.candidateSongId}`, `/draft skip ${event.candidateSongId}`, `/draft edit ${event.candidateSongId}`];
+    case "prompt_pack_ready":
+      return [`/suno go ${event.songId}`, `/suno edit ${event.songId}`, `/suno hold ${event.songId}`];
+    case "lyrics_generation_degraded":
+      return [`/lyrics redo ${event.songId}`, `/song discard ${event.songId}`];
+    case "planning_skeleton_incomplete":
+      return [`/plan apply ${event.songId}`, `/plan skip ${event.songId}`, `/plan edit ${event.songId}`];
+    case "take_select_low_score":
+      return [`/take accept ${event.songId}`, `/take regen ${event.songId}`, `/take skip ${event.songId}`];
+    default:
+      return [];
+  }
+}
+
 function appendButtonEffectSection(event: RuntimeEvent, body: string): string {
   const actions = callbackActionsForRuntimeEvent(event);
   if (actions.length === 0) {
     return body;
   }
-  return appendTelegramSection(body, "次:\nボタンで選ぶ");
+  const commands = textCommandsForRuntimeEvent(event);
+  return appendTelegramSection(body, [
+    "次:",
+    "ボタンで選ぶ",
+    ...(commands.length > 0 ? [`ボタン不可: ${commands.join(" / ")}`] : [])
+  ].join("\n"));
 }
 
 async function appendDraftBoxNextActionSection(

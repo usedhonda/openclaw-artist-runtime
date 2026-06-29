@@ -15,6 +15,7 @@ describe("telegram button effect section", () => {
     });
 
     expect(text).toContain("次:\nボタンで選ぶ");
+    expect(text).toContain("ボタン不可: /suno go song-018 / /suno edit song-018 / /suno hold song-018");
     expect(text).not.toContain("次のボタン:");
     expect(text).not.toContain("prompt_pack の停止を解除");
   });
