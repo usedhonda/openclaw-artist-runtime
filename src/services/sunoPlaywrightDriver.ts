@@ -174,7 +174,7 @@ export class PlaywrightSunoDriver implements SunoBrowserDriver {
       await page.locator('button[aria-label="Create song"]').click({ timeout: 10_000 });
       await page.waitForLoadState("domcontentloaded").catch(() => undefined);
       const generated = await this.pollForGeneratedSongs(page, baselineCreateUrls, title);
-      if (generated.urls.length > 0) {
+      if (generated.urls.length >= PLAYWRIGHT_EXPECTED_CREATE_CARD_COUNT) {
         return {
           accepted: true,
           runId,
@@ -186,7 +186,7 @@ export class PlaywrightSunoDriver implements SunoBrowserDriver {
       }
 
       const recoveredUrls = await this.recoverGeneratedSongUrlsFromCurrentPage(page, baselineCreateUrls, title);
-      if (recoveredUrls.length > 0) {
+      if (recoveredUrls.length >= PLAYWRIGHT_EXPECTED_CREATE_CARD_COUNT) {
         return {
           accepted: true,
           runId,
@@ -724,6 +724,11 @@ export class PlaywrightSunoDriver implements SunoBrowserDriver {
       return { urls: createCardUrls, reason: PLAYWRIGHT_CREATE_CARD_REASON };
     }
 
+    const libraryUrls = await this.pollLibrarySongs(page, baselineUrls, createCardAttempts, expectedTitle, PLAYWRIGHT_EXPECTED_CREATE_CARD_COUNT);
+    if (libraryUrls.length >= PLAYWRIGHT_EXPECTED_CREATE_CARD_COUNT) {
+      return { urls: libraryUrls, reason: PLAYWRIGHT_CREATE_SNAPSHOT_RECOVERY_REASON };
+    }
+
     return { urls: [] };
   }
 
@@ -795,6 +800,33 @@ export class PlaywrightSunoDriver implements SunoBrowserDriver {
     return this.extractTitleScopedSongUrlsFromHtml(html, expectedTitle).filter((url) => !baselineUrls.has(url));
   }
 
+  private async readLibrarySongUrls(page: Page, expectedTitle?: string): Promise<string[]> {
+    const expected = expectedTitle?.trim().toLowerCase();
+    return page.locator('a[href*="/song/"]').evaluateAll((anchors, title) => {
+      const urls: string[] = [];
+      const seen = new Set<string>();
+      for (const anchor of anchors) {
+        const href = anchor.getAttribute("href") ?? "";
+        let normalized = "";
+        try {
+          normalized = new URL(href, location.href).href.replace(/\?.*$/, "");
+        } catch {
+          continue;
+        }
+        if (!/^https:\/\/suno\.com\/song\/[0-9a-f-]+$/i.test(normalized)) continue;
+        const cardText = (anchor.textContent ?? anchor.closest("article, li, div")?.textContent ?? "")
+          .replace(/\s+/g, " ")
+          .trim()
+          .toLowerCase();
+        if (title && !cardText.includes(title)) continue;
+        if (seen.has(normalized)) continue;
+        seen.add(normalized);
+        urls.push(normalized);
+      }
+      return urls;
+    }, expected);
+  }
+
   private extractTitleScopedSongUrlsFromHtml(html: string, expectedTitle: string): string[] {
     const titleIndex = html.indexOf(expectedTitle);
     if (titleIndex < 0) {
@@ -828,7 +860,6 @@ export class PlaywrightSunoDriver implements SunoBrowserDriver {
       return [];
     }
     let bestUrls: string[] = [];
-    let stablePolls = 0;
     for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
       const titleMatchedUrls = Array.from(
         new Set((await this.readCreateCardSongUrls(page, expectedTitle)).filter((url) => !baselineUrls.has(url)))
@@ -838,21 +869,41 @@ export class PlaywrightSunoDriver implements SunoBrowserDriver {
       }
       if (titleMatchedUrls.length > bestUrls.length) {
         bestUrls = titleMatchedUrls;
-        stablePolls = 0;
-      } else if (bestUrls.length > 0) {
-        stablePolls += 1;
       }
       if (bestUrls.length >= expectedCount) {
-        return bestUrls;
-      }
-      if (stablePolls > 0) {
         return bestUrls;
       }
       if (attempt < maxAttempts - 1) {
         await sleep(this.polling.intervalMs);
       }
     }
-    return bestUrls;
+    return bestUrls.length >= expectedCount ? bestUrls : [];
+  }
+
+  private async pollLibrarySongs(
+    page: Page,
+    baselineUrls: Set<string>,
+    maxAttempts: number,
+    expectedTitle?: string,
+    expectedCount = PLAYWRIGHT_EXPECTED_CREATE_CARD_COUNT
+  ): Promise<string[]> {
+    if (!expectedTitle) {
+      return [];
+    }
+    await page.goto(SUNO_LIBRARY_URL, { waitUntil: "domcontentloaded", timeout: 20_000 }).catch(() => undefined);
+    for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
+      const urls = Array.from(
+        new Set((await this.readLibrarySongUrls(page, expectedTitle)).filter((url) => !baselineUrls.has(url)))
+      ).slice(0, expectedCount);
+      if (urls.length >= expectedCount) {
+        return urls;
+      }
+      if (attempt < maxAttempts - 1) {
+        await sleep(this.polling.intervalMs);
+        await page.goto(SUNO_LIBRARY_URL, { waitUntil: "domcontentloaded", timeout: 20_000 }).catch(() => undefined);
+      }
+    }
+    return [];
   }
 
   private async extractSongAudio(

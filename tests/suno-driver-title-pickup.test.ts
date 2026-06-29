@@ -3,7 +3,8 @@ import {
   PLAYWRIGHT_CREATE_CARD_REASON,
   PLAYWRIGHT_LIVE_TIMEOUT_REASON,
   PlaywrightSunoDriver,
-  SUNO_CREATE_URL
+  SUNO_CREATE_URL,
+  SUNO_LIBRARY_URL
 } from "../src/services/sunoPlaywrightDriver";
 
 const { chromiumMock, launchPersistentContextMock, stealthPluginMock } = vi.hoisted(() => ({
@@ -21,7 +22,11 @@ function pageMock() {
   const selectors: string[] = [];
   const snapshots = [
     ["https://suno.com/song/existing"],
-    ["https://suno.com/song/existing", "https://suno.com/song/new-title-match"]
+    [
+      "https://suno.com/song/existing",
+      "https://suno.com/song/new-title-match-1",
+      "https://suno.com/song/new-title-match-2"
+    ]
   ];
   return {
     selectors,
@@ -67,7 +72,7 @@ describe("Suno driver title-based pickup", () => {
     const result = await new PlaywrightSunoDriver(".profile", "live", ".", {
       intervalMs: 1,
       timeoutMs: 2,
-      createCardTimeoutMs: 1
+      createCardTimeoutMs: 2
     }).create({
       dryRun: false,
       authority: "auto_create_and_select_take",
@@ -79,9 +84,13 @@ describe("Suno driver title-based pickup", () => {
     });
 
     expect(result.reason).toBe(PLAYWRIGHT_CREATE_CARD_REASON);
-    expect(result.urls).toEqual(["https://suno.com/song/new-title-match"]);
+    expect(result.urls).toEqual([
+      "https://suno.com/song/new-title-match-1",
+      "https://suno.com/song/new-title-match-2"
+    ]);
     expect(page.selectors).toContain("button[aria-label=\"Play Watapp Groups\"]");
     expect(page.selectors).toContain("button[aria-label^=\"Play \"]");
+    expect(page.goto).not.toHaveBeenCalledWith(SUNO_LIBRARY_URL, expect.anything());
   });
 
   it("fails closed instead of falling back to unrelated completed cards when title mismatch remains", async () => {
