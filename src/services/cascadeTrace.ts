@@ -65,10 +65,15 @@ function sourcesFromCommission(sources: CommissionBriefSource[] | undefined): Ca
   if (!sources) return [];
   return sources.slice(0, 3).map((source) => ({
     kind: source.kind,
-    label: source.author ? `@${source.author.replace(/^@/, "")}` : source.kind,
+    label: source.author
+      ? source.kind === "news"
+        ? source.author
+        : `@${source.author.replace(/^@/, "")}${source.kind === "x_reaction" ? " reaction" : ""}`
+      : source.kind,
     author: source.author,
     quote: safeTraceQuote(source.quote),
-    url: source.url
+    url: source.url,
+    impactScore: source.impactScore
   }));
 }
 

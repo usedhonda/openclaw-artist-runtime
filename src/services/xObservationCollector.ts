@@ -10,6 +10,11 @@ import { rankObservations, summarizeMatches, type ScoredObservation } from "./xO
 export interface XObservationContext {
   personaText?: string;
   query?: string;
+  reactionSeed?: {
+    title: string;
+    url?: string;
+    source?: string;
+  };
   observationHistory?: string;
   manualSeed?: { hint?: string };
   now?: Date;
@@ -208,7 +213,8 @@ function renderObservation(
   entries: XObservationEntry[],
   now: Date,
   query?: string,
-  motifs?: PersonaMotifBundle
+  motifs?: PersonaMotifBundle,
+  reactionSeed?: XObservationContext["reactionSeed"]
 ): string {
   const motifLine = motifs ? summarizeMotifs(motifs) : "";
   const lines = [
@@ -216,6 +222,11 @@ function renderObservation(
     "",
     query ? `Query: ${query}` : "Source: timeline"
   ];
+  if (reactionSeed) {
+    lines.push(`ReactionFor: ${JSON.stringify(reactionSeed.title)}`);
+    if (reactionSeed.url) lines.push(`ReactionUrl: ${JSON.stringify(reactionSeed.url)}`);
+    if (reactionSeed.source) lines.push(`ReactionSource: ${JSON.stringify(reactionSeed.source)}`);
+  }
   if (motifLine) {
     lines.push(`Motifs: ${motifLine}`);
   }
@@ -244,15 +255,23 @@ export interface ObservationReport {
   path: string;
   exists: boolean;
   query?: string;
+  reactionSeed?: {
+    title: string;
+    url?: string;
+    source?: string;
+  };
   entries: XObservationEntry[];
 }
 
 const isoDateOnlyPattern = /^\d{4}-\d{2}-\d{2}$/;
 
-function parseObservationFile(content: string): { query?: string; entries: XObservationEntry[] } {
+function parseObservationFile(content: string): { query?: string; reactionSeed?: ObservationReport["reactionSeed"]; entries: XObservationEntry[] } {
   const lines = content.split(/\r?\n/);
   const queryLine = lines.find((line) => /^Query:\s+/i.test(line) || /^Source:\s+/i.test(line));
   const query = queryLine?.replace(/^(?:Query|Source):\s+/i, "").trim();
+  const reactionTitle = lines.find((line) => /^ReactionFor:\s+/i.test(line))?.replace(/^ReactionFor:\s+/i, "").trim();
+  const reactionUrl = lines.find((line) => /^ReactionUrl:\s+/i.test(line))?.replace(/^ReactionUrl:\s+/i, "").trim();
+  const reactionSource = lines.find((line) => /^ReactionSource:\s+/i.test(line))?.replace(/^ReactionSource:\s+/i, "").trim();
   const entries: XObservationEntry[] = [];
   let current: Partial<XObservationEntry> | undefined;
   let usedKeyedFormat = false;
@@ -313,7 +332,15 @@ function parseObservationFile(content: string): { query?: string; entries: XObse
       entries.push({ text: text || body, author: authorTag, url, postedAt });
     }
   }
-  return { query, entries };
+  return {
+    query,
+    reactionSeed: reactionTitle ? {
+      title: parseQuoted(reactionTitle),
+      url: parseQuoted(reactionUrl ?? "") || undefined,
+      source: parseQuoted(reactionSource ?? "") || undefined
+    } : undefined,
+    entries
+  };
 }
 
 function parseQuoted(value: string): string {
@@ -341,8 +368,8 @@ export async function readObservationsReport(root: string, dateOrNow: string | D
   if (!content) {
     return { date, path, exists: false, entries: [] };
   }
-  const { query, entries } = parseObservationFile(content);
-  return { date, path, exists: true, query, entries };
+  const { query, reactionSeed, entries } = parseObservationFile(content);
+  return { date, path, exists: true, query, reactionSeed, entries };
 }
 
 export async function collectObservations(root: string, context: XObservationContext = {}): Promise<XObservationResult> {
@@ -388,7 +415,7 @@ export async function collectObservations(root: string, context: XObservationCon
     await recordBirdCall(root, now, { query: context.query ?? strategy.query, mode: strategy.mode });
     const filtered = filterObservationEntries(result.stdout, motifs);
     await appendRejectedLog(root, now, filtered.rejected);
-    const observations = renderObservation(filtered.entries, now, context.query ?? strategy.query, motifs);
+    const observations = renderObservation(filtered.entries, now, context.query ?? strategy.query, motifs, context.reactionSeed);
     await mkdir(dirname(path), { recursive: true });
     await writeFile(path, `${observations.trim()}\n`, "utf8");
     const topScored = filtered.scored[0];

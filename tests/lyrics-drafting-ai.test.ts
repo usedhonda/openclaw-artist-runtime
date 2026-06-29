@@ -50,6 +50,9 @@ describe("AI lyrics drafting", () => {
     expect(prompt).toContain("english_lyrics.md");
     expect(prompt).toContain("master_reference.md");
     expect(prompt).toContain("Suno lyrics box limit: 4800 characters total");
+    expect(prompt).toContain("news and x_reaction sources");
+    expect(prompt).toContain("Rap density rule");
+    expect(prompt).toContain("target 2800-3400 lyric-body characters");
     expect(LYRICS_KNOWLEDGE_DIGEST_FILES).toContain("rap_and_flow.md");
     expect(LYRICS_KNOWLEDGE_DIGEST_FILES).toContain("english_lyrics.md");
     expect(LYRICS_KNOWLEDGE_DIGEST_FILES).toContain("master_reference.md");

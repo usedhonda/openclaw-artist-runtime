@@ -26,7 +26,7 @@ import { reserveSunoGenerationBudget, type SunoBudgetGuardResult } from "./sunoB
 import { classifySunoGenerateFailure, nextSunoRetryDecision } from "./sunoRetryHandler.js";
 import { PLAYWRIGHT_LYRICS_BOX_DEGRADED_REASON } from "./sunoPlaywrightDriver.js";
 import { collectObservations, type XObservationContext } from "./xObservationCollector.js";
-import { collectNewsObservations } from "./newsObservationCollector.js";
+import { collectNewsObservations, type NewsObservationEntry } from "./newsObservationCollector.js";
 import { proposeTheme } from "./themeProposer.js";
 import { pollSongDistribution } from "./songDistributionPoller.js";
 import { cleanupExpiredCallbacks } from "./callbackLedgerMaintenance.js";
@@ -230,6 +230,33 @@ function observationFromBrief(contents: string, song: SongState): ObservationSum
   const quote = firstBriefField(contents, ["Quote", "quote"]) ?? firstSectionLine(contents, "Observation source");
   if (!url && !author && !quote) return undefined;
   return { url, author, quote };
+}
+
+function cleanNewsSearchToken(value: string): string {
+  return value
+    .replace(/https?:\/\/\S+/g, " ")
+    .replace(/[^\p{Letter}\p{Number}一-龠ぁ-んァ-ヶー]+/gu, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function buildNewsReactionQuery(entries: NewsObservationEntry[]): { query?: string; seed?: XObservationContext["reactionSeed"] } {
+  const top = entries.find((entry) => entry.url || entry.text.trim().length > 0);
+  if (!top) return {};
+  const tokens = cleanNewsSearchToken(top.text)
+    .split(/\s+/)
+    .filter((token) => Array.from(token).length >= 2)
+    .filter((token) => !/^(?:https?|www|com|news|google|rss)$/i.test(token))
+    .slice(0, 6);
+  if (tokens.length === 0) return {};
+  return {
+    query: tokens.join(" OR "),
+    seed: {
+      title: top.text.slice(0, 140),
+      url: top.url,
+      source: top.source
+    }
+  };
 }
 
 function sourcesFromObservation(summary?: ObservationSummary): CommissionBriefSource[] | undefined {
@@ -1077,26 +1104,24 @@ export class ArtistAutopilotService {
       ? { ...resolvedConfig, autopilot: { ...resolvedConfig.autopilot, enabled: true } }
       : resolvedConfig;
     const artistMind = await readArtistMind(input.workspaceRoot);
+    const newsObservation = await collectNewsObservations(input.workspaceRoot, {
+      personaText: `${artistMind.artist}\n${artistMind.socialVoice}`
+    }).catch((error) => {
+      const reason = error instanceof Error ? error.message : String(error);
+      emitRuntimeEvent({ type: "error", source: "news_observation", reason, timestamp: Date.now() });
+      return { status: "skipped" as const, path: "", entries: [], reason };
+    });
+    const reactionQuery = input.manualSeed ? {} : buildNewsReactionQuery(newsObservation.entries);
     const cycleObservation = await collectObservations(input.workspaceRoot, {
       personaText: `${artistMind.artist}\n${artistMind.socialVoice}`,
-      query: input.manualSeed?.hint ? undefined : "music OR society OR culture",
+      query: input.manualSeed?.hint ? undefined : reactionQuery.query ?? "music OR society OR culture",
+      reactionSeed: reactionQuery.seed,
       manualSeed: input.manualSeed,
       runner: input.observationRunner
     }).catch((error) => {
       const reason = error instanceof Error ? error.message : String(error);
       emitRuntimeEvent({ type: "error", source: "x_observation", reason, timestamp: Date.now() });
       return { status: "skipped" as const, path: join(input.workspaceRoot, "observations"), observations: "", reason };
-    });
-    // Plan v10.38 Phase F: fire news observation collector in parallel with X
-    // so the spawn pool actually sees today's news. No-op when
-    // OPENCLAW_NEWS_RSS_URLS is unset (default), so existing setups keep
-    // their pre-v10.38 behavior.
-    await collectNewsObservations(input.workspaceRoot, {
-      personaText: `${artistMind.artist}\n${artistMind.socialVoice}`
-    }).catch((error) => {
-      const reason = error instanceof Error ? error.message : String(error);
-      emitRuntimeEvent({ type: "error", source: "news_observation", reason, timestamp: Date.now() });
-      return { status: "skipped" as const, path: "", entries: [], reason };
     });
     if (cycleObservation.status === "cooldown") {
       emitRuntimeEvent({

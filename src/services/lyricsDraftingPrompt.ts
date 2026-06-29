@@ -54,6 +54,15 @@ function truncate(value: string, max = 8000): string {
   return value.length <= max ? value : value.slice(0, max);
 }
 
+function sourceDigestFromBrief(briefText: string): string {
+  const lines = briefText.split(/\r?\n/);
+  const sourceLines = lines
+    .filter((line) => /^\s*-\s+(?:news|x_reaction|x):\s+/i.test(line))
+    .map((line) => line.trim().slice(0, 240));
+  if (sourceLines.length === 0) return "none";
+  return sourceLines.slice(0, 5).join("\n");
+}
+
 // Per-file budget tuned to keep the full digest under ~120k chars while still
 // shipping each knowledge file at near-original depth so the AI can actually
 // pull craft-level detail (rhyme tables, structure formulas, V5.5 metatag
@@ -93,10 +102,11 @@ export async function readLyricsKnowledgeDigest(): Promise<string> {
 
 export function buildLyricsDraftingPrompt(input: BuildLyricsPromptInput): string {
   const lyricsBoxLimit = input.lyricsBoxLimit ?? 4800;
-  const lyricBodyLimit = input.lyricBodyLimit ?? Math.max(200, Math.min(2600, lyricsBoxLimit - 900));
+  const lyricBodyLimit = input.lyricBodyLimit ?? Math.max(200, Math.min(3400, lyricsBoxLimit - 900));
   const durationPlan = getDurationPlan();
   const artistName = input.artistName?.trim() || "the configured artist";
   const languagePolicy = input.languagePolicy;
+  const sourceDigest = sourceDigestFromBrief(input.briefText);
   return [
     `Write lyrics for ${artistName} from the provided raw material.`,
     "Use the attributed lyrics-writer system source as the craft policy for this draft.",
@@ -109,7 +119,9 @@ export function buildLyricsDraftingPrompt(input: BuildLyricsPromptInput): string
     LYRICS_KNOWLEDGE_DIGEST_FILES.join(", "),
     "",
     "Extract one motif from the observation-bearing brief, metabolize it through the artist persona, and avoid generic placeholder lyrics.",
+    "If the brief contains both news and x_reaction sources, use both: news supplies the event, x_reaction supplies crowd temperature, slang, irritation, irony, or sympathy. Do not merely summarize them; assign them to lyric sections.",
     "Prioritize 韻, 伏線, 情景, genre-aware flow, hook design, Suno V5.5 section tags, and singable line length.",
+    "Rap density rule: for rap/trap/drill/fast social songs, produce at least two 12-16 bar verses, physical hook repeats, internal rhyme in each verse, and one punchline/perspective turn per verse. If the first draft feels short, expand verse detail before returning JSON.",
     languagePolicy ? `Language policy: ${languagePolicy.instruction}` : "",
     "Return strict JSON only: {\"title\":\"2-4 words\",\"form\":\"duration_plan_v1 form\",\"sections\":[{\"tag\":\"Verse 1 - 16 bars, spacious rap phrasing, no double-time\",\"lines\":[\"line\"]}],\"bilingual_hint\":\"short note\",\"moodHint\":\"2-4 word sonic mood\"}.",
     "Use the DurationPlan section plan below as the only form source. Do not invent a shorter 7-section form.",
@@ -118,6 +130,7 @@ export function buildLyricsDraftingPrompt(input: BuildLyricsPromptInput): string
     "Every section tag must include an annotation after the section name. Do not place commands outside tags. Do not name existing artists or songs. Do not reuse title kanji directly in hook or refrain lines; convert any title phrase used inside lyrics to hiragana.",
     `Suno lyrics box limit: ${lyricsBoxLimit} characters total, including YAML META, marker lines, section tags, lyrics, and blank lines.`,
     `Length budget: total lyric body (joined section lines + tag overhead, before YAML META) must stay within ${lyricBodyLimit} characters. Do not exceed this budget; leave room for the YAML META layer. A short, complete lyric is better than text that Suno silently truncates.`,
+    "Minimum useful density: avoid tiny drafts. For the default 80-bar DurationPlan, target 2800-3400 lyric-body characters when the Suno box allows it; rap/trap/drill should not come back as a sparse sketch.",
     "",
     "DurationPlan SoT (overrides any older source text that asks for compact section cues or shorter forms):",
     formatDurationPlanForPrompt(durationPlan),
@@ -134,6 +147,9 @@ export function buildLyricsDraftingPrompt(input: BuildLyricsPromptInput): string
     truncate(input.currentState, 3000),
     "",
     `title hint: ${input.title}`,
+    "",
+    "source_digest (news and X reaction evidence to metabolize):",
+    sourceDigest,
     "",
     "brief.md (observation source, theme, mood, tempo, duration — anchor the lyric to this):",
     truncate(input.briefText, 3000)

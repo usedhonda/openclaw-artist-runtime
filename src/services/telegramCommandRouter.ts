@@ -461,12 +461,13 @@ async function latestTakeSelectedDecisionButtons(root: string): Promise<Telegram
 
 function commissionSourcesFromSpawnProposal(proposal: SpawnProposal): CommissionBriefSource[] | undefined {
   const sources = proposal.observationSources
-    .filter((source) => (source.kind === "x" || source.kind === "news") && source.url)
+    .filter((source) => (source.kind === "x" || source.kind === "news" || source.kind === "x_reaction") && source.url)
     .map((source) => ({
-      kind: source.kind as "x" | "news",
+      kind: source.kind as "x" | "news" | "x_reaction",
       url: source.url ?? "",
       author: source.author ?? source.label,
-      quote: source.quote
+      quote: source.quote,
+      impactScore: source.impactScore
     }));
   return sources.length > 0 ? sources : undefined;
 }

@@ -1,14 +1,13 @@
 import type { RuntimeEvent, RuntimeEventBus } from "./runtimeEventBus.js";
 import { TelegramClient, telegramAttemptsFromError, type TelegramFetch } from "./telegramClient.js";
 import { generateArtistResponse, readArtistVoiceContext } from "./artistVoiceResponder.js";
-import type { AiReviewProvider, ProducerDigestMode } from "../types.js";
+import type { AiReviewProvider, CommissionBriefSource, ObservationSummary, ProducerDigestMode } from "../types.js";
 import { markPendingCallbacksByActionResolved, markPendingCallbacksForSongResolved, registerCallbackAction } from "./callbackActionRegistry.js";
 import { appendConversationTurn } from "./conversationalSession.js";
 import { proposalForDetection } from "./songDistributionPoller.js";
 import { getTelegramArtistReportTimeoutMs, isInlineButtonsEnabled, isSelfHealNotifyEnabled, isXInlineButtonEnabled } from "./runtimeConfig.js";
 import { readSongState } from "./artistState.js";
 import { secretLikePattern } from "./personaMigrator.js";
-import type { ObservationSummary } from "../types.js";
 import { isUnsafeCommandVoiceTopForTest } from "./commandVoiceWrapper.js";
 import { composePlanningSkeletonVoice } from "./planningSkeletonVoiceComposer.js";
 import { buttonVoiceLabels } from "./buttonVoiceLabels.js";
@@ -785,15 +784,127 @@ function formatObservationMetadata(summary?: ObservationSummary): string[] {
   return [motivation, source, quote];
 }
 
-function formatSongMetadata(title: string, take: string, urls: string, summary?: ObservationSummary): string {
+function parseSourceLine(line: string): CommissionBriefSource | undefined {
+  const match = line.trim().match(/^-\s+(news|x_reaction|x):\s+(\S+)(?:\s+\(([^)]+)\))?(?:\s+—\s+(.+))?$/i);
+  if (!match) return undefined;
+  return {
+    kind: match[1].toLowerCase() as CommissionBriefSource["kind"],
+    url: match[2],
+    author: match[3]?.trim(),
+    quote: match[4]?.trim()
+  };
+}
+
+function sourcesFromBriefText(brief: string): CommissionBriefSource[] {
+  return brief
+    .split(/\r?\n/)
+    .map((line) => parseSourceLine(line))
+    .filter((source): source is CommissionBriefSource => source !== undefined);
+}
+
+function sourcesFromObservationSummary(summary?: ObservationSummary): CommissionBriefSource[] {
+  if (!summary?.url || !isAllowedObservationUrl(summary.url)) return [];
+  return [{
+    kind: "x",
+    url: summary.url,
+    author: summary.author,
+    quote: capQuote(summary.quote ?? "")
+  }];
+}
+
+function sourceKindLabel(kind: CommissionBriefSource["kind"]): string {
+  if (kind === "news") return "News";
+  if (kind === "x_reaction") return "X reaction";
+  return "X";
+}
+
+function formatResultSource(source: CommissionBriefSource | undefined, fallback: string): string[] {
+  if (!source) return [`${fallback}: 記録なし`];
+  const url = source.url && (source.kind === "news" || isAllowedObservationUrl(source.url)) ? source.url : undefined;
+  const quote = source.quote ? capQuote(source.quote, 120) : undefined;
   return [
-    `🎵 ${title}${take}`,
-    "完成しました。採用/破棄は後からで結構です。",
+    `${fallback}: ${sourceKindLabel(source.kind)}${source.author ? ` / ${source.author}` : ""}`,
+    quote ? `抜粋: 「${quote}」` : undefined,
+    url ? `URL: ${url}` : undefined,
+    typeof source.impactScore === "number" ? `反応の強さ: ${source.impactScore}` : undefined
+  ].filter((line): line is string => Boolean(line));
+}
+
+function metadataNumber(metadata: Record<string, unknown> | undefined, key: string): number | undefined {
+  const charCounts = metadata?.charCounts;
+  if (!charCounts || typeof charCounts !== "object") return undefined;
+  const value = (charCounts as Record<string, unknown>)[key];
+  return typeof value === "number" ? value : undefined;
+}
+
+function formatLyricsCheck(metadata: Record<string, unknown> | undefined): string[] {
+  const lyrics = metadataNumber(metadata, "lyrics");
+  const submitted = metadataNumber(metadata, "submittedPayloadChars");
+  const limit = metadataNumber(metadata, "effectiveLyricsBoxLimit");
+  const bars = metadataNumber(metadata, "plannedBars");
+  if (!lyrics && !submitted && !bars) return ["歌詞チェック: 記録なし"];
+  const density = lyrics && bars ? Math.round(lyrics / bars) : undefined;
+  return [
+    `歌詞チェック: lyrics ${lyrics ?? "?"}字${submitted && limit ? ` / submitted ${submitted}/${limit}` : ""}`,
+    bars ? `form: ${bars} bars` : undefined,
+    density ? `rap density: ${density}字/bar` : undefined
+  ].filter((line): line is string => Boolean(line));
+}
+
+async function formatSongResultCard(
+  event: Extract<RuntimeEvent, { type: "song_take_completed" | "suno_take_url_ready" }>,
+  options: Pick<TelegramNotifierOptions, "workspaceRoot">,
+  args: {
+    title: string;
+    statusLine: string;
+    urls: string;
+    selectedTake?: string;
+    observationSummary?: ObservationSummary;
+  }
+): Promise<string> {
+  const brief = event.type === "song_take_completed"
+    ? await readBriefForTrace(event.songId, options.workspaceRoot)
+    : await readBriefForTrace(event.songId, options.workspaceRoot);
+  const sources = [
+    ...sourcesFromBriefText(brief),
+    ...sourcesFromObservationSummary(args.observationSummary)
+  ];
+  const news = sources.find((source) => source.kind === "news");
+  const reaction = sources.find((source) => source.kind === "x_reaction") ?? sources.find((source) => source.kind === "x");
+  const metadata = options.workspaceRoot
+    ? (await readLatestPromptPackMetadata(options.workspaceRoot, event.songId).catch(() => undefined))?.metadata
+    : undefined;
+  const trace = buildCascadeTrace({
+    songId: event.songId,
+    brief,
+    title: args.title,
+    observationSummary: args.observationSummary,
+    commissionSources: sources
+  });
+  return compactLines([
+    args.statusLine,
+    `🎵 ${args.title}${args.selectedTake ? ` (selected: ${args.selectedTake})` : ""}`,
     "🔗 試聴:",
-    urls,
-    ...formatObservationMetadata(summary),
+    args.urls,
+    "",
+    "今回の起点:",
+    ...(news ? formatResultSource(news, "元ニュース") : formatResultSource(sources[0], "元ネタ")),
+    "",
+    "Xで拾った反応:",
+    ...formatResultSource(reaction, "反応"),
+    "",
+    "曲への変換:",
+    `1. ニュース/観察: ${truncatePlain(trace.lyricsTheme, 120)}`,
+    `2. X反応: ${reaction?.quote ? capQuote(reaction.quote, 120) : "記録なし"}`,
+    `3. 音: ${truncatePlain(trace.styleLayer, 120)}`,
+    "4. 揺らぎ: ドパガキ/高速展開/英日比率は prompt pack と artist 設定に従う",
+    "",
+    ...formatLyricsCheck(metadata),
+    "",
+    ...formatObservationMetadata(args.observationSummary),
+    event.type === "suno_take_url_ready" ? "「採用して音源取得」でアーカイブし、音源ファイル取得を予約する。取れなくてもこのURLは有効。" : "完成しました。採用/破棄は後からで結構です。",
     "非公開、御大のみ"
-  ].join("\n");
+  ], 3200);
 }
 
 function compactForArtistTop(value: string | undefined, max: number): string {
@@ -982,7 +1093,6 @@ async function formatSongTakeCompleted(
   event: Extract<RuntimeEvent, { type: "song_take_completed" }>,
   options: Pick<TelegramNotifierOptions, "workspaceRoot" | "aiReviewProvider"> = {}
 ): Promise<string> {
-  const take = event.selectedTakeId ? ` (selected: ${event.selectedTakeId})` : "";
   const urls = formatTelegramUrlList(event.urls);
   const context = await readSongCompletionContext(event, options.workspaceRoot);
   const fallbackTop = buildSongCompletionInspirationTop(context.title, context.observationSummary);
@@ -998,11 +1108,15 @@ async function formatSongTakeCompleted(
     artistVoice: artistTop,
     observationSummary: context.observationSummary
   });
+  const resultCard = await formatSongResultCard(event, options, {
+    title: context.title,
+    statusLine: artistTop,
+    urls,
+    selectedTake: event.selectedTakeId,
+    observationSummary: context.observationSummary
+  });
   const lines = [
-    artistTop,
-    "",
-    TELEGRAM_SECTION_DIVIDER,
-    formatSongMetadata(context.title, take, urls, context.observationSummary)
+    resultCard
   ];
   if (options.workspaceRoot || context.observationSummary) {
     lines.push("", formatTelegramCascadeTrace(trace));
@@ -1316,19 +1430,16 @@ async function formatRuntimeEventRaw(
       return `Autopilot state: enabled=${event.enabled} paused=${event.paused}${event.reason ? ` reason=${event.reason}` : ""}`;
     case "song_take_completed":
       return formatSongTakeCompleted(event, options);
-    case "suno_take_url_ready":
-      return [
-        `生成中、じき完成。${event.songId}。先にURLだけ届ける。`,
-        "",
-        TELEGRAM_SECTION_DIVIDER,
-        event.selectedTakeId ? `take: ${event.selectedTakeId}` : undefined,
-        `run: ${event.runId}`,
-        "🔗 試聴:",
-        formatTelegramUrlList(event.urls),
-        "「採用して音源取得」でアーカイブし、音源ファイル取得を予約する。取れなくてもこのURLは有効。",
-        "",
-        "非公開、御大のみ"
-      ].filter(Boolean).join("\n");
+    case "suno_take_url_ready": {
+      const state = options.workspaceRoot ? await readSongState(options.workspaceRoot, event.songId).catch(() => undefined) : undefined;
+      return formatSongResultCard(event, options, {
+        title: state?.title ?? event.songId,
+        statusLine: `生成中、じき完成。${state?.title ?? event.songId}。先にURLだけ届ける。`,
+        urls: formatTelegramUrlList(event.urls),
+        selectedTake: event.selectedTakeId,
+        observationSummary: state?.observationSummary
+      });
+    }
     case "theme_generated":
       return hybridEventReport(
         event,

@@ -46,9 +46,10 @@ interface ObservationExcerpt {
   text: string;
   author?: string;
   url?: string;
-  sourceKind: "x" | "news";
+  sourceKind: "x" | "news" | "x_reaction";
   motifMatch?: string;
   motifScore?: number;
+  reactionFor?: string;
 }
 
 interface LatestObservationData {
@@ -69,12 +70,19 @@ async function latestObservationData(root: string): Promise<LatestObservationDat
     .sort();
   const latest = xFiles.at(-1);
   let raw = "";
-  let xReportEntries: { text: string; author?: string; url?: string; postedAt?: string; motifMatch?: string; motifScore?: number }[] = [];
+  let xReportEntries: Array<{ text: string; author?: string; url?: string; postedAt?: string; motifMatch?: string; motifScore?: number; sourceKind?: "x" | "x_reaction"; reactionFor?: string }> = [];
   if (latest) {
     raw = await readFile(join(dir, latest), "utf8").catch(() => "");
     const dateStr = latest.replace(/\.md$/, "");
     const report = await readObservationsReport(root, dateStr).catch(() => null);
-    xReportEntries = report?.entries ?? [];
+    xReportEntries = (report?.entries ?? []).map((entry) => ({
+      ...entry,
+      motifMatch: report?.reactionSeed?.title
+        ? [entry.motifMatch, `reaction to: ${report.reactionSeed.title.slice(0, 80)}`].filter(Boolean).join(" / ")
+        : entry.motifMatch,
+      sourceKind: report?.reactionSeed ? "x_reaction" as const : "x" as const,
+      reactionFor: report?.reactionSeed?.title
+    }));
   }
   // Plan v10.38 Phase B: merge today's news cache entries into the same
   // scoring pool. News entries have URLs (RSS link) and source label; they
@@ -91,7 +99,7 @@ async function latestObservationData(root: string): Promise<LatestObservationDat
   }));
   const xAsObservation = xReportEntries.map((entry) => ({
     ...entry,
-    sourceKind: "x" as const
+    sourceKind: entry.sourceKind ?? "x" as const
   }));
   const pool = [...xAsObservation, ...newsAsObservation];
   if (pool.length === 0 && !raw) return { raw: "" };
@@ -114,7 +122,8 @@ async function latestObservationData(root: string): Promise<LatestObservationDat
     url: entry.url,
     sourceKind: entry.sourceKind,
     motifMatch: entry.motifMatch,
-    motifScore: entry.motifScore
+    motifScore: entry.motifScore,
+    reactionFor: "reactionFor" in entry ? entry.reactionFor : undefined
   }));
   for (const entry of sorted) {
     const quote = (entry.text ?? "").trim();
@@ -523,11 +532,14 @@ function buildTopicSection(excerpts?: ObservationExcerpt[]): string[] {
     const author = entry.author
       ? entry.sourceKind === "news"
         ? `[news:${entry.author}]`
+        : entry.sourceKind === "x_reaction"
+          ? `[@${entry.author.replace(/^@/, "")} reaction]`
         : `[@${entry.author.replace(/^@/, "")}]`
       : `[${entry.sourceKind}]`;
     const url = entry.url ? ` (${entry.url})` : "";
     const match = entry.motifMatch ? ` motif:${entry.motifMatch}` : "";
-    lines.push(`- ${entry.text.slice(0, 220)} ${author}${url}${match}`);
+    const reaction = entry.reactionFor ? ` reactionFor:${entry.reactionFor.slice(0, 80)}` : "";
+    lines.push(`- ${entry.text.slice(0, 220)} ${author}${url}${match}${reaction}`);
   }
   return lines;
 }
@@ -612,7 +624,7 @@ function buildPrompt(context: {
     "duration: <'2:45' 等>",
     "style: <english spec keywords + instrumentation roles. 最低 3 要素。例: \"thick bass on low register, restrained hi-hats, vocals nestled between instruments, sparse arrangement, breathing space\">",
     "reason: <**日本語のみ**、 artist 一人称口語、 producer に話しかける 1 行 (e.g. \"" + (context.identity.producerCallname ?? context.fingerprint.producerCallname) + "、 〜の街を切るやつ、 刺さる\")>",
-    "sources: <Today's Topic から実際に使った観察 entry を最低 1 件、 最大 5 件、 改行区切りで列挙。 各行は `- kind:<x|news> url:<https://...> author:<@user or source label> quote:<本文を 60 字以内で抜粋>` の形式。 use していない entry は書かない、 捏造禁止>",
+    "sources: <Today's Topic から実際に使った観察 entry を最低 1 件、 最大 5 件、 改行区切りで列挙。 各行は `- kind:<news|x_reaction|x> url:<https://...> author:<@user or source label> quote:<本文を 60 字以内で抜粋>` の形式。 news と x_reaction が両方ある時は両方を使う。 use していない entry は書かない、 捏造禁止>",
     "",
     ...buildVoiceContractLines(context.fingerprint),
     "",
@@ -672,7 +684,7 @@ function briefFromAi(raw: string, fallback: CommissionBrief, now: Date, context:
 }
 
 // Plan v10.38 Phase F hallucination guard parser. Reads any line starting with
-// "- kind:<x|news>" anywhere under a `sources:` block in the AI response and
+// "- kind:<news|x_reaction|x>" anywhere under a `sources:` block in the AI response and
 // pulls url / author / quote. URLs must match http(s); anything else is
 // rejected so the model can't smuggle in fake citations.
 function parseSourcesFromAi(raw: string): CommissionBriefSource[] {
@@ -706,13 +718,13 @@ function parseSourcesFromAi(raw: string): CommissionBriefSource[] {
 
 function parseSourceLine(line: string): CommissionBriefSource | undefined {
   const body = line.replace(/^-\s*/, "").trim();
-  const kindMatch = body.match(/kind:\s*(x|news)/i);
+  const kindMatch = body.match(/kind:\s*(x_reaction|x|news)/i);
   const urlMatch = body.match(/url:\s*(https?:\/\/\S+)/i);
   if (!kindMatch || !urlMatch) return undefined;
   const authorMatch = body.match(/author:\s*("[^"]+"|\S+)/i);
   const quoteMatch = body.match(/quote:\s*("([^"]+)"|(.+?))(?=\s+(?:kind|url|author):|$)/i);
   return {
-    kind: kindMatch[1].toLowerCase() as "x" | "news",
+    kind: kindMatch[1].toLowerCase() as "x" | "news" | "x_reaction",
     url: urlMatch[1].trim(),
     author: authorMatch?.[1]?.replace(/^["']|["']$/g, "").trim() || undefined,
     quote: (quoteMatch?.[2] ?? quoteMatch?.[3])?.trim().slice(0, 200) || undefined
@@ -729,7 +741,8 @@ function sourcesFromExcerpts(excerpts: ObservationExcerpt[]): CommissionBriefSou
       kind: entry.sourceKind,
       url: entry.url as string,
       author: entry.author,
-      quote: entry.text.slice(0, 200)
+      quote: entry.text.slice(0, 200),
+      impactScore: entry.sourceKind === "x_reaction" ? entry.motifScore : undefined
     }));
 }
 

@@ -315,10 +315,11 @@ export interface DailyVoiceDraft {
 // surfaces (Telegram, Producer Console, song page) can prove the news/X
 // claim came from a real source instead of being fabricated by the model.
 export interface CommissionBriefSource {
-  kind: "x" | "news";
+  kind: "x" | "news" | "x_reaction";
   url: string;
   author?: string;
   quote?: string;
+  impactScore?: number;
 }
 
 export interface CommissionBrief {
@@ -336,11 +337,12 @@ export interface CommissionBrief {
 }
 
 export interface CascadeTraceSource {
-  kind?: "x" | "news" | "unknown";
+  kind?: "x" | "news" | "x_reaction" | "unknown";
   label: string;
   author?: string;
   quote?: string;
   url?: string;
+  impactScore?: number;
 }
 
 export interface CascadeTrace {
