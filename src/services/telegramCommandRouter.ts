@@ -605,6 +605,24 @@ export async function routeTelegramCommand(input: TelegramRouteInput): Promise<T
       ? await readSongState(input.workspaceRoot, afterResume.currentSongId).catch(() => undefined)
       : undefined;
     const terminalStatuses = new Set(["published", "archived", "discarded", "failed"]);
+    if (
+      !afterResume.currentSongId
+      && !afterResume.suspendedAt
+      && state.blockedReason === "song_spawn_waiting_for_proposal"
+    ) {
+      void getAutopilotTicker().runNow().catch((error) => {
+        const reason = error instanceof Error ? error.message : String(error);
+        logCommandSideEffectFailure("resume spawn proposal runNow", error);
+        emitRuntimeEvent({
+          type: "error",
+          source: "telegram_resume_run_now",
+          reason,
+          timestamp: Date.now()
+        });
+      });
+      const info = "Autopilot resumed。次の曲案を今すぐ探す。提案が出たらTelegramに出す。";
+      return { kind: "resume", responseText: await voiceCommand("ack", info, input, "autopilot resumed and spawn proposal cycle kicked"), shouldStoreFreeText: false };
+    }
     if (afterResume.currentSongId && !afterResume.suspendedAt && resumedSong && !terminalStatuses.has(resumedSong.status)) {
       void getAutopilotTicker().runNow().catch((error) => {
         const reason = error instanceof Error ? error.message : String(error);

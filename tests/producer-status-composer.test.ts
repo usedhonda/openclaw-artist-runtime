@@ -34,6 +34,7 @@ describe("producer status composer", () => {
     expect(text.match(/^次:/gm)).toHaveLength(1);
     expect(text).toContain("実行状態:");
     expect(text).toContain("- 操作待ち: なし");
+    expect(text).not.toContain("- blocked: song_spawn_waiting_for_proposal");
     expect(text).not.toContain("callback");
   });
 

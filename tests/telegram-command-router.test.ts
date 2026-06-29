@@ -351,6 +351,33 @@ describe("telegram command router", () => {
     unsubscribe();
   });
 
+  it("kicks an immediate proposal search from /resume when no song is active but spawn is waiting", async () => {
+    const root = makeRoot();
+    await mkdir(join(root, "runtime"), { recursive: true });
+    await writeAutopilotRunState(root, {
+      runId: "auto-spawn-wait",
+      stage: "planning",
+      paused: false,
+      blockedReason: "song_spawn_waiting_for_proposal",
+      retryCount: 0,
+      cycleCount: 4,
+      updatedAt: new Date(1000).toISOString(),
+      lastRunAt: new Date(1000).toISOString()
+    });
+    const runNow = vi.fn().mockResolvedValue({ outcome: "ran", state: {} });
+    vi.spyOn(autopilotTicker, "getAutopilotTicker").mockReturnValue(
+      { runNow } as unknown as ReturnType<typeof autopilotTicker.getAutopilotTicker>
+    );
+
+    const result = await routeTelegramCommand({ ...baseInput, text: "/resume", workspaceRoot: root });
+    const state = await readAutopilotRunState(root);
+
+    expect(result.kind).toBe("resume");
+    expect(runNow).toHaveBeenCalledTimes(1);
+    expect(result.responseText).toContain("次の曲案を今すぐ探す");
+    expect(state.blockedReason).toBeUndefined();
+  });
+
   it("does not kick a cycle from /resume when a producer GO gate is pending (Plan v10.66)", async () => {
     const root = makeRoot();
     await ensureSongState(root, "spawn-gated", "Awaiting GO");

@@ -97,7 +97,7 @@ export async function composeProducerStatus(root: string, options: ProducerStatu
   const draftBox = await composeDraftBoxNextAction(root, { state: autopilot });
   const stage = options.autopilotStatus?.stage ?? autopilot.stage;
   const currentSongId = options.autopilotStatus?.currentSongId ?? autopilot.currentSongId;
-  const blockedReason = options.autopilotStatus?.blockedReason ?? autopilot.blockedReason;
+  const rawBlockedReason = options.autopilotStatus?.blockedReason ?? autopilot.blockedReason;
   const song = currentSongId ? await readSongState(root, currentSongId).catch(() => undefined) : undefined;
   const latestWaiting = await latestWaitingLines(root, pending, now);
   const receiveLines = [
@@ -115,6 +115,11 @@ export async function composeProducerStatus(root: string, options: ProducerStatu
     ? awaitingUrlReady.some((candidate) => candidate.songId === firstPending.songId)
       && (firstPending.action === "song_archive" || firstPending.action === "song_discard")
     : false;
+  const blockedReason = rawBlockedReason === "song_spawn_waiting_for_proposal"
+    && pending.count === 0
+    && draftBox.kind === "empty"
+      ? undefined
+      : rawBlockedReason;
   const nextLine = firstPendingIsUrlReadyDecision
     ? "次: この /status 返信のボタンで「採用して音源取得」か「破棄」を押す。採用するとSuno URLを保持し、音源ファイル取得を予約する。"
     : firstPending
