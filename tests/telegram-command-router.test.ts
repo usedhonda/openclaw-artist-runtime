@@ -132,6 +132,26 @@ describe("telegram command router", () => {
     });
   });
 
+  it("recreates URL-ready decision button metadata for /status when callbacks are missing", async () => {
+    const root = makeRoot();
+    await ensureSongState(root, "song-url", "URL Ready Song");
+    await updateSongState(root, "song-url", {
+      status: "suno_take_url_ready",
+      selectedTakeId: "take-url",
+      appendPublicLinks: ["https://suno.com/song/take-url"]
+    });
+
+    const result = await routeTelegramCommand({ ...baseInput, text: "/status", workspaceRoot: root });
+
+    expect(result.kind).toBe("status");
+    expect(result.responseText).toContain("Suno URL 採用待ち");
+    expect(result.statusDecisionButtons).toEqual({
+      songId: "song-url",
+      selectedTakeId: "take-url",
+      actions: ["song_archive", "song_discard"]
+    });
+  });
+
   it("returns latest spawn proposal button metadata for /status", async () => {
     const root = makeRoot();
     for (const action of ["song_spawn_inject", "song_spawn_skip", "song_spawn_edit"] as const) {

@@ -12,6 +12,7 @@ import { markPendingCallbacksForSongResolved, registerCallbackAction } from "./c
 import { buildProposalInlineKeyboard } from "./freeformChangesetProposer.js";
 import type { TelegramProposalButtonsRequest } from "./telegramConversationalRouter.js";
 import { buttonVoiceLabels } from "./buttonVoiceLabels.js";
+import { readSongState } from "./artistState.js";
 
 export interface TelegramBotWorkerOptions {
   root: string;
@@ -72,11 +73,13 @@ function logTelegramWorkerSideEffectFailure(context: string, error: unknown): vo
   console.error(`[telegram-bot-worker] ${context} failed: ${reason}`);
 }
 
-function statusDecisionButtonLabel(action: TelegramStatusDecisionAction): string {
+function statusDecisionButtonLabel(action: TelegramStatusDecisionAction, context?: { sunoUrlReady?: boolean }): string {
   switch (action) {
     case "song_archive":
+      if (context?.sunoUrlReady) return buttonVoiceLabels.sunoUrlReady.archive;
       return buttonVoiceLabels.songCompletion.archive;
     case "song_discard":
+      if (context?.sunoUrlReady) return buttonVoiceLabels.sunoUrlReady.discard;
       return buttonVoiceLabels.songCompletion.discard;
     case "song_songbook_write":
       return buttonVoiceLabels.songCompletion.write;
@@ -338,6 +341,8 @@ export class TelegramBotWorker {
     client: TelegramClient,
     input: TelegramStatusDecisionButtonsRequest & { chatId: number; messageId: number; userId: number }
   ): Promise<void> {
+    const song = await readSongState(this.options.root, input.songId).catch(() => undefined);
+    const labelContext = { sunoUrlReady: song?.status === "suno_take_url_ready" };
     await markPendingCallbacksForSongResolved(this.options.root, {
       songId: input.songId,
       actions: STATUS_DECISION_ACTION_SET,
@@ -357,7 +362,7 @@ export class TelegramBotWorker {
     })));
     await client.editMessageReplyMarkup(input.chatId, input.messageId, {
       inline_keyboard: [callbacks.map(({ action, entry }) => ({
-        text: statusDecisionButtonLabel(action),
+        text: statusDecisionButtonLabel(action, labelContext),
         callback_data: `cb:${entry.callbackId}`
       }))]
     });

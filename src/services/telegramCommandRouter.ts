@@ -4,7 +4,7 @@ import type { AiReviewProvider, AutopilotStatus } from "../types.js";
 import { readAutopilotRunState, stageFromSong } from "./autopilotService.js";
 import { AutopilotControlService } from "./autopilotControlService.js";
 import { getAutopilotTicker } from "./autopilotTicker.js";
-import { readSongState } from "./artistState.js";
+import { listSongStates, readSongState } from "./artistState.js";
 import { formatDebugAiReviewResult, reviewSongDebugMaterial } from "./debugAiReviewService.js";
 import { auditPersonaCompleteness, formatPersonaAuditReport, type PersonaFieldAudit } from "./personaFieldAuditor.js";
 import { readArtistPersonaSummary } from "./personaFileBuilder.js";
@@ -129,6 +129,22 @@ const STATUS_DECISION_ACTIONS: readonly TelegramStatusDecisionAction[] = [
   "prompt_pack_skip"
 ];
 
+async function latestUrlReadyDecisionButtons(root: string): Promise<TelegramStatusDecisionButtonsRequest | undefined> {
+  const song = (await listSongStates(root)).find((candidate) =>
+    candidate.status === "suno_take_url_ready"
+    && candidate.selectedTakeId
+    && candidate.publicLinks.length > 0
+  );
+  if (!song) {
+    return undefined;
+  }
+  return {
+    songId: song.songId,
+    selectedTakeId: song.selectedTakeId,
+    actions: ["song_archive", "song_discard"]
+  };
+}
+
 async function latestStatusDecisionButtons(root: string, now = Date.now()): Promise<TelegramStatusDecisionButtonsRequest | undefined> {
   const pending = await listPendingCallbackActionSummaries(root, {
     category: "producer_decision",
@@ -137,7 +153,7 @@ async function latestStatusDecisionButtons(root: string, now = Date.now()): Prom
   });
   const latest = pending.recent[0];
   if (!latest?.songId) {
-    return undefined;
+    return latestUrlReadyDecisionButtons(root);
   }
   const actions = STATUS_DECISION_ACTIONS.filter((action) =>
     pending.recent.some((entry) =>
@@ -147,13 +163,13 @@ async function latestStatusDecisionButtons(root: string, now = Date.now()): Prom
     )
   );
   if (actions.length === 0) {
-    return undefined;
+    return latestUrlReadyDecisionButtons(root);
   }
   const songReviewActions = new Set<TelegramStatusDecisionAction>(["song_archive", "song_discard", "song_songbook_write", "song_skip"]);
   const requiresReviewSong = actions.some((action) => songReviewActions.has(action));
   const song = latest.songId ? await readSongState(root, latest.songId).catch(() => undefined) : undefined;
   if (requiresReviewSong && (!song || (song.status !== "take_selected" && song.status !== "suno_take_url_ready"))) {
-    return undefined;
+    return latestUrlReadyDecisionButtons(root);
   }
   return {
     songId: latest.songId,
