@@ -49,16 +49,17 @@ async function latestWaitingLines(
   const song = latest.songId ? await readSongState(root, latest.songId).catch(() => undefined) : undefined;
   const buttons = visible.map((callback) => callback.label).join(" / ");
   const hiddenCount = Math.max(0, pending.count - visible.length);
+  const nextButtons = visible.map((callback) => `「${callback.label}」`).join("または");
   const lines = [
     `- 最新通知: ${song ? `${song.songId} / ${song.title}` : target} / ${elapsedLabel(latest.createdAt, now)}`,
     `  ボタン: ${buttons}`,
     ...visible.map((callback) => `  - ${callback.label}: ${callback.effect}`),
     ...(song?.publicLinks?.[0] ? [`  URL: ${song.publicLinks[0]}`] : []),
-    ...(hiddenCount > 0 ? [`- ほかの古い未処理: ${hiddenCount}件（/status では最新通知だけ表示）`] : [])
+    ...(hiddenCount > 0 ? ["- 古い通知: 折りたたみ（/status では最新通知だけ表示）"] : [])
   ];
   return {
     lines,
-    nextLine: `次: 最新通知の「${visible[0]?.label ?? latest.label}」${visible.length > 1 ? ` または「${visible.slice(1).map((callback) => callback.label).join(" / ")}」` : ""}を選ぶ。`
+    nextLine: `次: 最新通知で${nextButtons || `「${latest.label}」`}を選ぶ。`
   };
 }
 

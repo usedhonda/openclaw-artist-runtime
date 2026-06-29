@@ -113,7 +113,8 @@ describe("producer status composer", () => {
     expect(text).toContain("最新通知: new-song / 新しい曲");
     expect(text).toContain("ボタン: 採用 / 破棄");
     expect(text).toContain("URL: https://suno.com/song/new");
-    expect(text).toContain("ほかの古い未処理: 2件");
+    expect(text).toContain("古い通知: 折りたたみ");
+    expect(text).not.toContain("2件");
     expect(text).not.toContain("最新通知: old-song");
   });
 
