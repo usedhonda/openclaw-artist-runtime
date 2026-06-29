@@ -95,6 +95,7 @@ export interface PendingCallbackSummary {
     createdAt: number;
     expiresAt: number;
     reminderSentAt?: number;
+    messageId: number;
   }>;
 }
 
@@ -264,7 +265,8 @@ export async function listPendingCallbackActionSummaries(
         platform: entry.platform,
         createdAt: entry.createdAt,
         expiresAt: entry.expiresAt,
-        reminderSentAt: entry.reminderSentAt
+        reminderSentAt: entry.reminderSentAt,
+        messageId: entry.messageId
       };
     })
   };

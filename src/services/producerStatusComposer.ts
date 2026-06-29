@@ -12,6 +12,8 @@ export interface ProducerStatusOptions {
   autopilotStatus?: AutopilotStatus;
 }
 
+type PendingCallback = Awaited<ReturnType<typeof listPendingCallbackActionSummaries>>["recent"][number];
+
 function elapsedLabel(timestamp: number, now: number): string {
   const diffMinutes = Math.max(0, Math.floor((now - timestamp) / 60_000));
   if (diffMinutes < 1) return "たった今";
@@ -27,13 +29,46 @@ function dashboardLine(baseUrl: string | undefined, songId: string | undefined):
   return `Dashboard: ${base}/plugins/artist-runtime#song=${encodeURIComponent(songId)}`;
 }
 
+function sameDecisionNotice(left: PendingCallback, right: PendingCallback): boolean {
+  const leftTarget = left.songId ?? left.proposalId ?? left.action;
+  const rightTarget = right.songId ?? right.proposalId ?? right.action;
+  return leftTarget === rightTarget && left.messageId === right.messageId;
+}
+
+async function latestWaitingLines(
+  root: string,
+  pending: Awaited<ReturnType<typeof listPendingCallbackActionSummaries>>,
+  now: number
+): Promise<{ lines: string[]; nextLine?: string }> {
+  const latest = pending.recent[0];
+  if (!latest) {
+    return { lines: ["- 待ち callback: なし"] };
+  }
+  const visible = pending.recent.filter((callback) => sameDecisionNotice(callback, latest));
+  const target = latest.songId ?? latest.proposalId ?? latest.action;
+  const song = latest.songId ? await readSongState(root, latest.songId).catch(() => undefined) : undefined;
+  const buttons = visible.map((callback) => callback.label).join(" / ");
+  const hiddenCount = Math.max(0, pending.count - visible.length);
+  const lines = [
+    `- 最新通知: ${song ? `${song.songId} / ${song.title}` : target} / ${elapsedLabel(latest.createdAt, now)}`,
+    `  ボタン: ${buttons}`,
+    ...visible.map((callback) => `  - ${callback.label}: ${callback.effect}`),
+    ...(song?.publicLinks?.[0] ? [`  URL: ${song.publicLinks[0]}`] : []),
+    ...(hiddenCount > 0 ? [`- ほかの古い未処理: ${hiddenCount}件（/status では最新通知だけ表示）`] : [])
+  ];
+  return {
+    lines,
+    nextLine: `次: 最新通知の「${visible[0]?.label ?? latest.label}」${visible.length > 1 ? ` または「${visible.slice(1).map((callback) => callback.label).join(" / ")}」` : ""}を選ぶ。`
+  };
+}
+
 export async function composeProducerStatus(root: string, options: ProducerStatusOptions = {}): Promise<string> {
   const now = options.now ?? Date.now();
   const [autopilot, pending, receive, songs] = await Promise.all([
     readAutopilotRunState(root),
     listPendingCallbackActionSummaries(root, {
       category: "producer_decision",
-      limit: options.limit ?? 6,
+      limit: Math.max(options.limit ?? 6, 30),
       now
     }),
     readReceiveHealth(root),
@@ -44,12 +79,7 @@ export async function composeProducerStatus(root: string, options: ProducerStatu
   const currentSongId = options.autopilotStatus?.currentSongId ?? autopilot.currentSongId;
   const blockedReason = options.autopilotStatus?.blockedReason ?? autopilot.blockedReason;
   const song = currentSongId ? await readSongState(root, currentSongId).catch(() => undefined) : undefined;
-  const waitingLines = pending.recent.length === 0
-    ? ["- 待ち callback: なし"]
-    : pending.recent.map((callback) => [
-        `- ${callback.label}: ${callback.songId ?? callback.proposalId ?? callback.action} / ${elapsedLabel(callback.createdAt, now)}`,
-        `  効果: ${callback.effect}`
-      ].join("\n"));
+  const latestWaiting = await latestWaitingLines(root, pending, now);
   const receiveLines = [
     receive.lastInboundAt
       ? `- 最後のメッセージ受信: ${elapsedLabel(receive.lastInboundAt, now)} (${new Date(receive.lastInboundAt).toISOString()})`
@@ -68,7 +98,7 @@ export async function composeProducerStatus(root: string, options: ProducerStatu
   const nextLine = firstPendingIsUrlReadyDecision
     ? "次: 最新のTelegram通知で「採用して音源取得」か「破棄」を押す。採用するとSuno URLを保持し、音源ファイル取得を予約する。"
     : firstPending
-    ? `次: ${pending.recent[0].label} を押すと、${pending.recent[0].effect}`
+    ? latestWaiting.nextLine ?? `次: ${firstPending.label} を押すと、${firstPending.effect}`
     : awaitingUrlReady.length > 0
       ? "次: 最新のTelegram通知で「採用して音源取得」か「破棄」を押す。採用するとSuno URLを保持し、音源ファイル取得を予約する。"
     : draftBox.nextAction;
@@ -88,7 +118,7 @@ export async function composeProducerStatus(root: string, options: ProducerStatu
     ...receiveLines,
     "",
     "待ち:",
-    ...waitingLines,
+    ...latestWaiting.lines,
     ...(awaitingUrlReady.length > 0
       ? [
           "",

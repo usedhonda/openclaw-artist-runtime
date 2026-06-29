@@ -62,6 +62,61 @@ describe("producer status composer", () => {
     expect(text).toContain("http://127.0.0.1:8787/plugins/artist-runtime#song=song-026");
   });
 
+  it("shows only the latest Telegram decision notice and folds older pending decisions", async () => {
+    const workspaceRoot = await root();
+    const now = Date.parse("2026-05-26T00:00:00.000Z");
+    await ensureSongState(workspaceRoot, "old-song", "古い曲");
+    await updateSongState(workspaceRoot, "old-song", {
+      status: "take_selected",
+      replacePublicLinks: ["https://suno.com/song/old"]
+    });
+    await ensureSongState(workspaceRoot, "new-song", "新しい曲");
+    await updateSongState(workspaceRoot, "new-song", {
+      status: "take_selected",
+      replacePublicLinks: ["https://suno.com/song/new"]
+    });
+    await registerCallbackAction(workspaceRoot, {
+      action: "song_archive",
+      songId: "old-song",
+      chatId: 1,
+      messageId: 10,
+      userId: 1,
+      now: now - 60_000
+    });
+    await registerCallbackAction(workspaceRoot, {
+      action: "song_discard",
+      songId: "old-song",
+      chatId: 1,
+      messageId: 10,
+      userId: 1,
+      now: now - 60_000
+    });
+    await registerCallbackAction(workspaceRoot, {
+      action: "song_archive",
+      songId: "new-song",
+      chatId: 1,
+      messageId: 11,
+      userId: 1,
+      now
+    });
+    await registerCallbackAction(workspaceRoot, {
+      action: "song_discard",
+      songId: "new-song",
+      chatId: 1,
+      messageId: 11,
+      userId: 1,
+      now
+    });
+
+    const text = await composeProducerStatus(workspaceRoot, { now });
+
+    expect(text).toContain("最新通知: new-song / 新しい曲");
+    expect(text).toContain("ボタン: 採用 / 破棄");
+    expect(text).toContain("URL: https://suno.com/song/new");
+    expect(text).toContain("ほかの古い未処理: 2件");
+    expect(text).not.toContain("最新通知: old-song");
+  });
+
   it("routes free-text status intent before the conversational router", async () => {
     const workspaceRoot = await root();
     await writeAutopilotRunState(workspaceRoot, {
