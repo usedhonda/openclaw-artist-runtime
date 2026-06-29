@@ -11,6 +11,7 @@ import { appendSpawnProposal } from "../src/services/spawnProposalQueue";
 import { ensureArtistWorkspace } from "../src/services/artistWorkspace";
 import { routeTelegramCallback } from "../src/services/telegramCallbackHandler";
 import type { TelegramClient } from "../src/services/telegramClient";
+import { readAutopilotRunState, writeAutopilotRunState } from "../src/services/autopilotService";
 
 const enabledConfig: TelegramConfig = {
   enabled: true,
@@ -283,6 +284,71 @@ describe("telegram bot worker", () => {
     expect(markup.reply_markup.inline_keyboard.flat().every((button) => button.callback_data.startsWith("cb:"))).toBe(true);
     const pending = await listPendingCallbackActionSummaries(root, { category: "producer_decision" });
     expect(pending.recent.map((entry) => entry.action).sort()).toEqual(["song_archive", "song_discard"]);
+  });
+
+  it("recreates prompt-pack GO buttons on /status and the GO callback advances to Suno", async () => {
+    const root = makeRoot();
+    await ensureArtistWorkspace(root);
+    await mkdir(join(root, "runtime"), { recursive: true });
+    await ensureSongState(root, "song-prompt", "Prompt Ready Song");
+    await updateSongState(root, "song-prompt", { status: "suno_prompt_pack" });
+    await writeAutopilotRunState(root, {
+      runId: "prompt-ready",
+      currentSongId: "song-prompt",
+      stage: "prompt_pack",
+      suspendedAt: "prompt_pack_ready",
+      paused: false,
+      retryCount: 0,
+      cycleCount: 0,
+      updatedAt: new Date().toISOString()
+    });
+    const fetchImpl = vi
+      .fn()
+      .mockResolvedValueOnce(jsonResponse({
+        ok: true,
+        result: [{
+          update_id: 10,
+          message: {
+            message_id: 1,
+            text: "/status",
+            chat: { id: 555 },
+            from: { id: 123 }
+          }
+        }]
+      }))
+      .mockResolvedValueOnce(jsonResponse({ ok: true, result: { message_id: 2, text: "status", chat: { id: 555 } } }))
+      .mockResolvedValueOnce(jsonResponse({ ok: true, result: true }));
+    const worker = new TelegramBotWorker({
+      root,
+      config: enabledConfig,
+      token: "token",
+      ownerUserIds: new Set(["123"]),
+      fetchImpl
+    });
+
+    const result = await worker.pollOnce();
+    worker.stop();
+
+    expect(result).toMatchObject({ enabled: true, fetched: true, processed: 1 });
+    const statusBody = JSON.parse(fetchImpl.mock.calls[1][1].body as string) as { text: string };
+    expect(statusBody.text).toContain("Suno 生成GO待ち");
+    const markup = JSON.parse(fetchImpl.mock.calls[2][1].body as string) as {
+      reply_markup: { inline_keyboard: Array<Array<{ text: string; callback_data: string }>> };
+    };
+    expect(markup.reply_markup.inline_keyboard.flat().map((button) => button.text)).toEqual(["Suno 生成へ", "lyrics-suno.md を編集", "保留"]);
+    const go = (await readCallbackActionEntries(root)).find((entry) => entry.action === "prompt_pack_go" && entry.songId === "song-prompt");
+    expect(go).toMatchObject({ status: "pending", songId: "song-prompt" });
+
+    await expect(routeTelegramCallback({
+      root,
+      client: callbackClient(),
+      callbackQueryId: "prompt-go-restored",
+      data: `cb:${go?.callbackId}`,
+      fromUserId: 123,
+      chatId: 555,
+      messageId: 2
+    })).resolves.toMatchObject({ result: "applied", reason: "prompt_pack_go" });
+    expect(await readAutopilotRunState(root)).toMatchObject({ stage: "suno_generation", suspendedAt: null });
   });
 
   it("attaches latest spawn proposal buttons to /status replies", async () => {

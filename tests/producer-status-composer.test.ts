@@ -169,6 +169,29 @@ describe("producer status composer", () => {
     expect(text).not.toContain("急ぐなら /commission");
   });
 
+  it("surfaces prompt-pack GO waits as actionable /status buttons", async () => {
+    const workspaceRoot = await root();
+    await ensureSongState(workspaceRoot, "song-prompt", "Prompt Ready Song");
+    await updateSongState(workspaceRoot, "song-prompt", { status: "suno_prompt_pack" });
+    await writeAutopilotRunState(workspaceRoot, {
+      runId: "prompt-ready",
+      currentSongId: "song-prompt",
+      stage: "prompt_pack",
+      suspendedAt: "prompt_pack_ready",
+      blockedReason: "prompt_pack_ready",
+      paused: false,
+      retryCount: 0,
+      cycleCount: 1,
+      updatedAt: new Date(0).toISOString()
+    });
+
+    const text = await composeProducerStatus(workspaceRoot);
+
+    expect(text).toContain("Suno 生成GO待ち");
+    expect(text).toContain("次: この /status 返信のボタンで「Suno 生成へ」");
+    expect(text).toContain("lyrics-suno.md を編集");
+  });
+
   it("routes free-text status intent before the conversational router", async () => {
     const workspaceRoot = await root();
     await writeAutopilotRunState(workspaceRoot, {

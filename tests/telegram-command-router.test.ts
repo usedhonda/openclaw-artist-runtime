@@ -176,6 +176,31 @@ describe("telegram command router", () => {
     });
   });
 
+  it("recreates prompt-pack GO button metadata for /status when callbacks are missing", async () => {
+    const root = makeRoot();
+    await ensureSongState(root, "song-prompt", "Prompt Ready Song");
+    await updateSongState(root, "song-prompt", { status: "suno_prompt_pack" });
+    await writeAutopilotRunState(root, {
+      runId: "prompt-ready",
+      currentSongId: "song-prompt",
+      stage: "prompt_pack",
+      suspendedAt: "prompt_pack_ready",
+      paused: false,
+      retryCount: 0,
+      cycleCount: 0,
+      updatedAt: new Date().toISOString()
+    });
+
+    const result = await routeTelegramCommand({ ...baseInput, text: "/status", workspaceRoot: root });
+
+    expect(result.kind).toBe("status");
+    expect(result.responseText).toContain("Suno 生成GO待ち");
+    expect(result.statusDecisionButtons).toEqual({
+      songId: "song-prompt",
+      actions: ["prompt_pack_go", "prompt_pack_edit", "prompt_pack_skip"]
+    });
+  });
+
   it("returns latest spawn proposal button metadata for /status", async () => {
     const root = makeRoot();
     await appendSpawnProposal(root, spawnProposal("spawn-ready"));

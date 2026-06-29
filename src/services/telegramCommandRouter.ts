@@ -195,8 +195,23 @@ async function draftSpawnDecisionButtons(root: string, proposalId?: string): Pro
   };
 }
 
+async function promptPackReadyDecisionButtons(root: string): Promise<TelegramStatusDecisionButtonsRequest | undefined> {
+  const state = await readAutopilotRunState(root);
+  if (state.suspendedAt !== "prompt_pack_ready" || !state.currentSongId) {
+    return undefined;
+  }
+  const song = await readSongState(root, state.currentSongId).catch(() => undefined);
+  if (!song || ["scheduled", "published", "archived", "discarded", "failed"].includes(song.status)) {
+    return undefined;
+  }
+  return {
+    songId: song.songId,
+    actions: ["prompt_pack_go", "prompt_pack_edit", "prompt_pack_skip"]
+  };
+}
+
 async function latestRecoverableDecisionButtons(root: string): Promise<TelegramStatusDecisionButtonsRequest | undefined> {
-  return await latestUrlReadyDecisionButtons(root) ?? await draftSpawnDecisionButtons(root);
+  return await latestUrlReadyDecisionButtons(root) ?? await promptPackReadyDecisionButtons(root) ?? await draftSpawnDecisionButtons(root);
 }
 
 async function latestStatusDecisionButtons(root: string, now = Date.now()): Promise<TelegramStatusDecisionButtonsRequest | undefined> {
