@@ -142,7 +142,7 @@ export async function composeDraftBoxNextAction(
     currentLine: "今: 次の素案を探している",
     draftCount: 0,
     buildingCount: 0,
-    nextAction: "次: 素案通知を待つ。急ぐなら /commission <作りたい内容> を送る。",
+    nextAction: "次: 作りたい曲があるなら /song create <方向性> を送る。",
     stateKey: "empty"
   };
 }

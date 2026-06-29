@@ -139,6 +139,35 @@ describe("producer status composer", () => {
     expect(text).not.toContain("最新の待ち: old-song");
   });
 
+  it("shows pending proposal confirmation when no producer decision is pending", async () => {
+    const workspaceRoot = await root();
+    const now = Date.parse("2026-05-26T00:00:00.000Z");
+    for (const action of ["proposal_yes", "proposal_no", "proposal_edit_open"] as const) {
+      await registerCallbackAction(workspaceRoot, {
+        action,
+        proposalId: "commission-next",
+        chatId: 1,
+        messageId: 12,
+        userId: 1,
+        now
+      });
+    }
+
+    const text = await composeProducerStatus(workspaceRoot, { now });
+
+    expect(text).toContain("最新の待ち: commission-next");
+    expect(text).toContain("ボタン: 反映 / 保留 / 編集");
+    expect(text).toContain("次: この /status 返信のボタンで");
+  });
+
+  it("points empty status at the always-available song create command", async () => {
+    const workspaceRoot = await root();
+    const text = await composeProducerStatus(workspaceRoot);
+
+    expect(text).toContain("次: 作りたい曲があるなら /song create <方向性> を送る。");
+    expect(text).not.toContain("急ぐなら /commission");
+  });
+
   it("routes free-text status intent before the conversational router", async () => {
     const workspaceRoot = await root();
     await writeAutopilotRunState(workspaceRoot, {

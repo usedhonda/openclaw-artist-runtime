@@ -79,10 +79,10 @@ function formatChangeSet(proposal: ChangeSetProposal): string {
 
 function formatCommissionProposal(proposal: ChangeSetProposal): string {
   return [
-    "ChangeSet 案できた:",
+    "作る内容の確認:",
     ...proposal.fields.slice(0, 8).map((field) => `- ${field.field}: ${field.proposedValue}`),
     "",
-    "これで autopilot に投げる?",
+    "これで曲作りに進める?",
     "[Yes] [No] [Edit]"
   ].join("\n");
 }

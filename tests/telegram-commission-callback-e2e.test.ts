@@ -54,7 +54,7 @@ describe("telegram commission callback e2e", () => {
     });
     const proposalId = proposed.proposalButtons?.proposalId;
     const sessionProposal = (await readConversationalSession(root, 2, 1))?.pendingChangeSet;
-    expect(proposed.responseText).toContain("autopilot に投げる");
+    expect(proposed.responseText).toContain("曲作りに進める");
     expect(sessionProposal?.source).toBe("commission");
     expect(sessionProposal?.commissionBrief?.songId).toMatch(/^commission_/);
 

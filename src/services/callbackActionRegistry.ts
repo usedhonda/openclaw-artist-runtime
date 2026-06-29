@@ -118,9 +118,19 @@ const CALLBACK_ACTION_CATEGORY: Record<string, TtlCategory> = {
   lyrics_redraft: "producer_decision"
 };
 
+const PROPOSAL_CONFIRMATION_ACTIONS: ReadonlySet<string> = new Set([
+  "proposal_yes",
+  "proposal_no",
+  "proposal_edit_open"
+]);
+
 export function callbackActionTtlCategory(action?: string): TtlCategory {
   if (!action) return "working_confirmation";
   return CALLBACK_ACTION_CATEGORY[action] ?? "working_confirmation";
+}
+
+export function isProposalConfirmationAction(action?: string): boolean {
+  return action ? PROPOSAL_CONFIRMATION_ACTIONS.has(action) : false;
 }
 
 export function isProducerDecisionAction(action?: string): boolean {

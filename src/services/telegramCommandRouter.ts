@@ -19,7 +19,7 @@ import { isConversationalSongCreate, routeTelegramConversation, type TelegramPro
 import { readObservationsReport, type ObservationReport } from "./xObservationCollector.js";
 import { wrapCommandVoice, type CommandVoiceKind } from "./commandVoiceWrapper.js";
 import { composeProducerStatus } from "./producerStatusComposer.js";
-import { listPendingCallbackActionSummaries } from "./callbackActionRegistry.js";
+import { isProposalConfirmationAction, listPendingCallbackActionSummaries } from "./callbackActionRegistry.js";
 import { emitRuntimeEvent } from "./runtimeEventBus.js";
 import { appendFailedNotifyReplayRecord, latestFailedNotifyEntry, listUnreplayedFailedNotifications } from "./failedNotifyLedger.js";
 import { resurfaceDegradedLyrics } from "./degradedLyricsResurfaceService.js";
@@ -162,6 +162,16 @@ async function latestStatusDecisionButtons(root: string, now = Date.now()): Prom
   };
 }
 
+async function latestProposalButtons(root: string, now = Date.now()): Promise<TelegramProposalButtonsRequest | undefined> {
+  const pending = await listPendingCallbackActionSummaries(root, {
+    category: "working_confirmation",
+    limit: 30,
+    now
+  });
+  const latest = pending.recent.find((entry) => entry.proposalId && isProposalConfirmationAction(entry.action));
+  return latest?.proposalId ? { proposalId: latest.proposalId } : undefined;
+}
+
 function helpInfo(): string {
   return [
     "Available commands:",
@@ -257,6 +267,7 @@ export async function routeTelegramCommand(input: TelegramRouteInput): Promise<T
   const [commandRaw, ...args] = text.split(/\s+/);
   const command = commandRaw.toLowerCase();
   if (input.workspaceRoot && (!command.startsWith("/") ? isProducerStatusIntent(text) : command === "/status")) {
+    const statusDecisionButtons = await latestStatusDecisionButtons(input.workspaceRoot);
     return {
       kind: "status",
       responseText: await composeProducerStatus(input.workspaceRoot, {
@@ -264,7 +275,8 @@ export async function routeTelegramCommand(input: TelegramRouteInput): Promise<T
         autopilotStatus: input.autopilotStatus
       }),
       shouldStoreFreeText: false,
-      statusDecisionButtons: await latestStatusDecisionButtons(input.workspaceRoot)
+      statusDecisionButtons,
+      proposalButtons: statusDecisionButtons ? undefined : await latestProposalButtons(input.workspaceRoot)
     };
   }
   if (input.workspaceRoot && !isLegacyWizardEnabled()) {

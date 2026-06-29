@@ -155,6 +155,25 @@ describe("telegram command router", () => {
     });
   });
 
+  it("returns latest confirmation button metadata for /status when no producer decision is pending", async () => {
+    const root = makeRoot();
+    for (const action of ["proposal_yes", "proposal_no", "proposal_edit_open"] as const) {
+      await registerCallbackAction(root, {
+        action,
+        proposalId: "commission-abc",
+        chatId: 456,
+        messageId: 89,
+        userId: 123
+      });
+    }
+
+    const result = await routeTelegramCommand({ ...baseInput, text: "/status", workspaceRoot: root });
+
+    expect(result.kind).toBe("status");
+    expect(result.statusDecisionButtons).toBeUndefined();
+    expect(result.proposalButtons).toEqual({ proposalId: "commission-abc" });
+  });
+
   it("lists recent songs", async () => {
     const root = makeRoot();
     await ensureSongState(root, "song-001", "Ash Road");

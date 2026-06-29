@@ -1,6 +1,6 @@
 import { listSongStates, readSongState } from "./artistState.js";
 import { readAutopilotRunState } from "./autopilotService.js";
-import { listPendingCallbackActionSummaries } from "./callbackActionRegistry.js";
+import { isProposalConfirmationAction, listPendingCallbackActionSummaries } from "./callbackActionRegistry.js";
 import { composeDraftBoxNextAction, formatDraftBoxNextActionSection } from "./draftBoxNextAction.js";
 import { readReceiveHealth } from "./receiveHealthService.js";
 import type { AutopilotStatus } from "../types.js";
@@ -13,6 +13,7 @@ export interface ProducerStatusOptions {
 }
 
 type PendingCallback = Awaited<ReturnType<typeof listPendingCallbackActionSummaries>>["recent"][number];
+type PendingSummary = Awaited<ReturnType<typeof listPendingCallbackActionSummaries>>;
 
 function elapsedLabel(timestamp: number, now: number): string {
   const diffMinutes = Math.max(0, Math.floor((now - timestamp) / 60_000));
@@ -37,7 +38,7 @@ function sameDecisionNotice(left: PendingCallback, right: PendingCallback): bool
 
 async function latestWaitingLines(
   root: string,
-  pending: Awaited<ReturnType<typeof listPendingCallbackActionSummaries>>,
+  pending: PendingSummary,
   now: number
 ): Promise<{ lines: string[]; nextLine?: string }> {
   const latest = pending.recent[0];
@@ -63,18 +64,36 @@ async function latestWaitingLines(
   };
 }
 
+async function listPendingProposalConfirmations(root: string, options: { limit: number; now: number }): Promise<PendingSummary> {
+  const pending = await listPendingCallbackActionSummaries(root, {
+    category: "working_confirmation",
+    limit: Math.max(options.limit, 30),
+    now: options.now
+  });
+  const recent = pending.recent.filter((entry) => entry.proposalId && isProposalConfirmationAction(entry.action));
+  return {
+    count: recent.length,
+    recent: recent.slice(0, options.limit)
+  };
+}
+
 export async function composeProducerStatus(root: string, options: ProducerStatusOptions = {}): Promise<string> {
   const now = options.now ?? Date.now();
-  const [autopilot, pending, receive, songs] = await Promise.all([
+  const [autopilot, pendingDecisions, pendingProposals, receive, songs] = await Promise.all([
     readAutopilotRunState(root),
     listPendingCallbackActionSummaries(root, {
       category: "producer_decision",
       limit: Math.max(options.limit ?? 6, 30),
       now
     }),
+    listPendingProposalConfirmations(root, {
+      limit: Math.max(options.limit ?? 6, 30),
+      now
+    }),
     readReceiveHealth(root),
     listSongStates(root)
   ]);
+  const pending = pendingDecisions.count > 0 ? pendingDecisions : pendingProposals;
   const draftBox = await composeDraftBoxNextAction(root, { state: autopilot });
   const stage = options.autopilotStatus?.stage ?? autopilot.stage;
   const currentSongId = options.autopilotStatus?.currentSongId ?? autopilot.currentSongId;
