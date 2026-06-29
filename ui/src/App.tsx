@@ -25,7 +25,7 @@ import { useHashRoute } from "./hooks/useHashRoute";
 import { deriveConnectionState } from "../../src/services/connectionState";
 import { defaultDistributionEventsFilter, type DistributionEventsFilterState } from "../../src/services/distributionEventsFilter";
 import { dismissErrorToast, expireErrorToasts, pushErrorToast, type ErrorToast, type ErrorToastSource } from "../../src/services/errorToastQueue";
-import { instagramAuthorityModes, sunoDriverModes, sunoSubmitModes, tiktokAuthorityModes, xAuthorityModes, type DistributionEvent, type PlatformStat, type SocialPlatform } from "../../src/types";
+import { instagramAuthorityModes, producerDigestModes, sunoDriverModes, sunoSubmitModes, tiktokAuthorityModes, xAuthorityModes, type DistributionEvent, type PlatformStat, type SocialPlatform } from "../../src/types";
 
 const refreshIntervalMs = 5000;
 
@@ -1286,11 +1286,41 @@ export function App() {
             </label>
             <label>
               <div className="eyebrow">Songs Per Week</div>
-              <input type="number" min={0} max={21} value={configDraft.songsPerWeek} onChange={(event) => updateConfigDraft({ songsPerWeek: event.target.value })} />
+              <input type="number" min={0} max={100} value={configDraft.songsPerWeek} onChange={(event) => updateConfigDraft({ songsPerWeek: event.target.value })} />
             </label>
             <label>
               <div className="eyebrow">Cycle Interval Minutes</div>
               <input type="number" min={15} max={1440} value={configDraft.cycleIntervalMinutes} onChange={(event) => updateConfigDraft({ cycleIntervalMinutes: event.target.value })} />
+            </label>
+            <label>
+              <div className="eyebrow">Planning Timeout Days</div>
+              <input type="number" min={1} max={30} value={configDraft.planningTimeoutDays} onChange={(event) => updateConfigDraft({ planningTimeoutDays: event.target.value })} />
+            </label>
+            <label>
+              <div className="eyebrow">Producer Digest</div>
+              <select value={configDraft.producerDigest} onChange={(event) => updateConfigDraft({ producerDigest: event.target.value as ConfigDraft["producerDigest"] })}>
+                {producerDigestModes.map((mode) => <option key={mode} value={mode}>{mode}</option>)}
+              </select>
+            </label>
+            <label>
+              <div className="eyebrow">Monthly Generation Budget</div>
+              <input type="number" min={0} max={1000} value={configDraft.monthlyGenerationBudget} onChange={(event) => updateConfigDraft({ monthlyGenerationBudget: event.target.value })} />
+            </label>
+            <label>
+              <div className="eyebrow">Max Generations Per Day</div>
+              <input type="number" min={0} max={100} value={configDraft.maxGenerationsPerDay} onChange={(event) => updateConfigDraft({ maxGenerationsPerDay: event.target.value })} />
+            </label>
+            <label>
+              <div className="eyebrow">Minutes Between Creates</div>
+              <input type="number" min={1} max={1440} value={configDraft.minMinutesBetweenCreates} onChange={(event) => updateConfigDraft({ minMinutesBetweenCreates: event.target.value })} />
+            </label>
+            <label className="toggle">
+              <input type="checkbox" checked={configDraft.songSpawnEnabled} onChange={(event) => updateConfigDraft({ songSpawnEnabled: event.target.checked })} />
+              Song idea proposals enabled
+            </label>
+            <label>
+              <div className="eyebrow">Song Idea Interval Hours</div>
+              <input type="number" min={0} max={168} value={configDraft.songSpawnMinIntervalHours} onChange={(event) => updateConfigDraft({ songSpawnMinIntervalHours: event.target.value })} />
             </label>
           </div>
           <div className="field-grid">
@@ -1306,6 +1336,16 @@ export function App() {
               <select value={configDraft.xAuthority} onChange={(event) => updateConfigDraft({ xAuthority: event.target.value as ConfigDraft["xAuthority"] })}>
                 {xAuthorityModes.map((mode) => <option key={mode} value={mode}>{mode}</option>)}
               </select>
+              <div className="field-grid">
+                <label>
+                  <div className="eyebrow">X Posts Per Day</div>
+                  <input type="number" min={0} max={50} value={configDraft.xMaxPostsPerDay} onChange={(event) => updateConfigDraft({ xMaxPostsPerDay: event.target.value })} />
+                </label>
+                <label>
+                  <div className="eyebrow">X Replies Per Day</div>
+                  <input type="number" min={0} max={200} value={configDraft.xMaxRepliesPerDay} onChange={(event) => updateConfigDraft({ xMaxRepliesPerDay: event.target.value })} />
+                </label>
+              </div>
             </label>
             <label className="platform-config is-frozen" title="凍結中 (#4 boundary)">
               <div className="toggle"><input type="checkbox" checked={configDraft.instagramEnabled} onChange={(event) => updateConfigDraft({ instagramEnabled: event.target.checked })} />Instagram enabled</div>

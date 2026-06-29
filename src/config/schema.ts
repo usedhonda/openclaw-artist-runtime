@@ -207,8 +207,8 @@ export function validateConfig(config: unknown): ValidationResult<ArtistRuntimeC
       if ("dryRun" in config.autopilot && typeof config.autopilot.dryRun !== "boolean") {
         errors.push("config.autopilot.dryRun must be a boolean");
       }
-      if ("songsPerWeek" in config.autopilot && !isIntegerInRange(config.autopilot.songsPerWeek, 0, 21)) {
-        errors.push("config.autopilot.songsPerWeek must be an integer between 0 and 21");
+      if ("songsPerWeek" in config.autopilot && !isIntegerInRange(config.autopilot.songsPerWeek, 0, 100)) {
+        errors.push("config.autopilot.songsPerWeek must be an integer between 0 and 100");
       }
       if ("cycleIntervalMinutes" in config.autopilot && !isIntegerInRange(config.autopilot.cycleIntervalMinutes, 15, 1440)) {
         errors.push("config.autopilot.cycleIntervalMinutes must be an integer between 15 and 1440");

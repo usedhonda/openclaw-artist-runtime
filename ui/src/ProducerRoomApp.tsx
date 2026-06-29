@@ -23,6 +23,7 @@ import {
 } from "./personaEditor";
 import { dismissErrorToast, expireErrorToasts, pushErrorToast, type ErrorToast, type ErrorToastSource } from "../../src/services/errorToastQueue";
 import {
+  producerDigestModes,
   xAuthorityModes,
   type DraftBoxNextActionSummary,
   type PersonaField
@@ -528,8 +529,23 @@ export function SettingsView(props: {
               <label className="toggle"><input type="checkbox" checked={draft.distributionLiveGoArmed} onChange={(event) => props.onUpdateDraft({ distributionLiveGoArmed: event.target.checked })} />{t(locale, "settingsAllowPublic")}</label>
               {globalArmHeld ? <div className="warning-banner">{t(locale, "settingsPublicHeld")}</div> : null}
               <div className="field-grid">
-                <NumberField label={t(locale, "settingsSongsPerWeek")} value={draft.songsPerWeek} min={0} max={21} onChange={(value) => props.onUpdateDraft({ songsPerWeek: value })} />
-                <NumberField label={t(locale, "settingsCycleInterval")} value={draft.cycleIntervalMinutes} min={15} max={1440} onChange={(value) => props.onUpdateDraft({ cycleIntervalMinutes: value })} />
+                <NumberField label={t(locale, "settingsSongsPerWeek")} value={draft.songsPerWeek} min={0} max={100} onChange={(value) => props.onUpdateDraft({ songsPerWeek: value })} note={t(locale, "settingsSongsPerWeekHelp")} />
+                <NumberField label={t(locale, "settingsCycleInterval")} value={draft.cycleIntervalMinutes} min={15} max={1440} onChange={(value) => props.onUpdateDraft({ cycleIntervalMinutes: value })} note={t(locale, "settingsCycleIntervalHelp")} />
+                <NumberField label={t(locale, "settingsPlanningTimeout")} value={draft.planningTimeoutDays} min={1} max={30} onChange={(value) => props.onUpdateDraft({ planningTimeoutDays: value })} note={t(locale, "settingsPlanningTimeoutHelp")} />
+                <label>
+                  <div className="eyebrow">{t(locale, "settingsProducerDigest")}</div>
+                  <select value={draft.producerDigest} onChange={(event) => props.onUpdateDraft({ producerDigest: event.target.value as ConfigDraft["producerDigest"] })}>
+                    {producerDigestModes.map((mode) => <option key={mode} value={mode}>{mode.replace(/_/g, " ")}</option>)}
+                  </select>
+                  <div className="muted">{t(locale, "settingsProducerDigestHelp")}</div>
+                </label>
+              </div>
+            </section>
+            <section className="settings-section">
+              <div className="section-title">{t(locale, "settingsSongIdeas")}</div>
+              <label className="toggle"><input type="checkbox" checked={draft.songSpawnEnabled} onChange={(event) => props.onUpdateDraft({ songSpawnEnabled: event.target.checked })} />{t(locale, "settingsSongSpawnEnabled")}</label>
+              <div className="field-grid">
+                <NumberField label={t(locale, "settingsSongSpawnInterval")} value={draft.songSpawnMinIntervalHours} min={0} max={168} onChange={(value) => props.onUpdateDraft({ songSpawnMinIntervalHours: value })} note={t(locale, "settingsSongSpawnIntervalHelp")} />
               </div>
             </section>
             <section className="settings-section">
@@ -537,6 +553,9 @@ export function SettingsView(props: {
               <div className="field-grid">
                 <NumberField label={t(locale, "settingsDailyLimit")} value={draft.dailyCreditLimit} min={1} max={1000} onChange={(value) => props.onUpdateDraft({ dailyCreditLimit: value })} />
                 <NumberField label={t(locale, "settingsMonthlyLimit")} value={draft.monthlyCreditLimit} min={0} max={50000} onChange={(value) => props.onUpdateDraft({ monthlyCreditLimit: value })} note={t(locale, "settingsMonthlyNote")} />
+                <NumberField label={t(locale, "settingsMonthlyGenerationBudget")} value={draft.monthlyGenerationBudget} min={0} max={1000} onChange={(value) => props.onUpdateDraft({ monthlyGenerationBudget: value })} note={t(locale, "settingsMonthlyGenerationBudgetHelp")} />
+                <NumberField label={t(locale, "settingsMaxGenerationsPerDay")} value={draft.maxGenerationsPerDay} min={0} max={100} onChange={(value) => props.onUpdateDraft({ maxGenerationsPerDay: value })} note={t(locale, "settingsMaxGenerationsPerDayHelp")} />
+                <NumberField label={t(locale, "settingsMinMinutesBetweenCreates")} value={draft.minMinutesBetweenCreates} min={1} max={1440} onChange={(value) => props.onUpdateDraft({ minMinutesBetweenCreates: value })} note={t(locale, "settingsMinMinutesBetweenCreatesHelp")} />
                 <div className="settings-readonly">
                   <div className="eyebrow">Creation driver</div>
                   <strong>Browser worker</strong>
@@ -559,6 +578,10 @@ export function SettingsView(props: {
                   <select value={draft.xAuthority} onChange={(event) => props.onUpdateDraft({ xAuthority: event.target.value as ConfigDraft["xAuthority"] })}>
                     {xAuthorityModes.map((mode) => <option key={mode} value={mode}>{authorityLabel(mode)}</option>)}
                   </select>
+                  <div className="field-grid compact-field-grid">
+                    <NumberField label={t(locale, "settingsXPostsPerDay")} value={draft.xMaxPostsPerDay} min={0} max={50} onChange={(value) => props.onUpdateDraft({ xMaxPostsPerDay: value })} />
+                    <NumberField label={t(locale, "settingsXRepliesPerDay")} value={draft.xMaxRepliesPerDay} min={0} max={200} onChange={(value) => props.onUpdateDraft({ xMaxRepliesPerDay: value })} />
+                  </div>
                 </label>
                 <div className="platform-config is-frozen" title="Frozen">
                   <div className="eyebrow">Instagram</div>

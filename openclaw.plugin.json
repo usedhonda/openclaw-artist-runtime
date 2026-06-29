@@ -140,7 +140,7 @@
           "songsPerWeek": {
             "type": "integer",
             "minimum": 0,
-            "maximum": 21,
+            "maximum": 100,
             "default": 3
           },
           "cycleIntervalMinutes": {
