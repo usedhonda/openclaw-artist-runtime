@@ -58,6 +58,45 @@ describe("x observation collector", () => {
     expect(await readTodayObservations(root, new Date("2026-04-29T08:00:00.000Z"))).toContain("second city observation");
   });
 
+  it("refreshes a fresh cache when the requested news reaction query changes", async () => {
+    const root = workspace();
+    await mkdir(join(root, "observations"), { recursive: true });
+    const path = join(root, "observations", "2026-04-29.md");
+    await writeFile(path, [
+      "# X Observations 2026-04-29",
+      "",
+      "Query: music OR society OR culture",
+      "",
+      "- text: \"generic culture chatter\"",
+      "  author: \"watcher\"",
+      "  url: \"https://x.com/watcher/status/1111111111111111111\"",
+      "  postedAt: \"2026-04-29T01:00:00.000Z\"",
+      ""
+    ].join("\n"), "utf8");
+    await utimes(path, new Date("2026-04-29T01:00:00.000Z"), new Date("2026-04-29T01:00:00.000Z"));
+    const runner = vi.fn(async () => ({
+      stdout: "@citywatch 渋谷の昆虫展に反応が集まる https://x.com/citywatch/status/2222222222222222222 2026-04-29T01:30:00.000Z"
+    }));
+
+    const result = await collectObservations(root, {
+      now: new Date("2026-04-29T02:00:00.000Z"),
+      query: "夜の昆虫観察 OR 渋谷 OR 昆虫展",
+      reactionSeed: {
+        title: "夜の昆虫観察、渋谷で開催",
+        source: "BCN+R"
+      },
+      runner
+    });
+
+    expect(result.status).toBe("collected");
+    expect(runner).toHaveBeenCalledOnce();
+    const cache = await readTodayObservations(root, new Date("2026-04-29T02:00:00.000Z"));
+    expect(cache).toContain("Query: 夜の昆虫観察 OR 渋谷 OR 昆虫展");
+    expect(cache).toContain("ReactionFor: \"夜の昆虫観察、渋谷で開催\"");
+    expect(cache).toContain("渋谷の昆虫展");
+    expect(cache).not.toContain("generic culture chatter");
+  });
+
   it("blocks secret-like observation output", async () => {
     const root = workspace();
     const result = await collectObservations(root, {

@@ -116,6 +116,16 @@ function extractTagText(item: string, tag: string): string | undefined {
   return decodeXmlEntities(inner).replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim();
 }
 
+function extractRawTagText(item: string, tag: string): string | undefined {
+  const pattern = new RegExp(`<${tag}\\b[^>]*>([\\s\\S]*?)</${tag}>`, "i");
+  const match = item.match(pattern);
+  if (!match) return undefined;
+  const raw = match[1] ?? "";
+  const cdata = raw.match(/<!\[CDATA\[([\s\S]*?)\]\]>/);
+  const inner = cdata ? cdata[1] : raw;
+  return decodeXmlEntities(inner).trim();
+}
+
 function extractLink(item: string): string | undefined {
   const hrefMatch = item.match(/<link\b[^>]*href=["']([^"']+)["']/i);
   if (hrefMatch?.[1]) return hrefMatch[1].trim();
@@ -123,6 +133,47 @@ function extractLink(item: string): string | undefined {
   if (!inline?.[1]) return undefined;
   const value = decodeXmlEntities(inline[1].replace(/<[^>]+>/g, " ").trim());
   return value || undefined;
+}
+
+function extractSource(item: string): { label?: string; url?: string } {
+  const match = item.match(/<source\b([^>]*)>([\s\S]*?)<\/source>/i);
+  if (!match) return {};
+  const attrs = match[1] ?? "";
+  const url = attrs.match(/\burl=["']([^"']+)["']/i)?.[1]?.trim();
+  const label = decodeXmlEntities((match[2] ?? "").replace(/<[^>]+>/g, " ").trim());
+  return { label: label || undefined, url };
+}
+
+function isGoogleNewsIntermediateUrl(value?: string): boolean {
+  if (!value) return false;
+  try {
+    const parsed = new URL(value);
+    return parsed.hostname === "news.google.com" && parsed.pathname.includes("/rss/articles/");
+  } catch {
+    return false;
+  }
+}
+
+function isUsableArticleUrl(value?: string): boolean {
+  if (!value) return false;
+  try {
+    const parsed = new URL(value);
+    return parsed.protocol === "https:" && !isGoogleNewsIntermediateUrl(value);
+  } catch {
+    return false;
+  }
+}
+
+function extractHtmlArticleHref(...values: Array<string | undefined>): string | undefined {
+  for (const value of values) {
+    if (!value) continue;
+    const matches = value.matchAll(/\bhref=["'](https?:\/\/[^"']+)["']/gi);
+    for (const match of matches) {
+      const url = decodeXmlEntities(match[1] ?? "").trim();
+      if (isUsableArticleUrl(url)) return url;
+    }
+  }
+  return undefined;
 }
 
 function extractPubDate(item: string): string | undefined {
@@ -142,6 +193,11 @@ function parseRssXml(xml: string, source: string): NewsObservationEntry[] {
   }
   const entries: NewsObservationEntry[] = [];
   for (const item of items) {
+    const rawTitle = extractRawTagText(item, "title");
+    const rawDescription =
+      extractRawTagText(item, "description") ??
+      extractRawTagText(item, "summary") ??
+      extractRawTagText(item, "content");
     const title = extractTagText(item, "title");
     if (!title) continue;
     const description =
@@ -151,11 +207,15 @@ function parseRssXml(xml: string, source: string): NewsObservationEntry[] {
     const text = [title, description].filter(Boolean).join(" — ").slice(0, 320);
     if (!text) continue;
     if (secretLikePattern.test(text)) continue;
+    const sourceInfo = extractSource(item);
+    const link = extractLink(item);
+    const articleHref = extractHtmlArticleHref(rawTitle, rawDescription);
+    const url = articleHref ?? (isUsableArticleUrl(link) ? link : undefined);
     entries.push({
       text,
-      url: extractLink(item),
+      url,
       postedAt: extractPubDate(item),
-      source
+      source: sourceInfo.label ?? source
     });
   }
   return entries;

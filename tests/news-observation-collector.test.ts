@@ -53,9 +53,23 @@ const encodedHtmlSample = `<?xml version="1.0" encoding="UTF-8"?>
 <channel>
   <title>Google News Search</title>
   <item>
-    <title>&lt;a href="https://news.google.com/rss/articles/${"x".repeat(120)}"&gt;ナフサと赤星&lt;/a&gt;</title>
+    <title>&lt;a href="https://example.com/articles/nafusa-redstar"&gt;ナフサと赤星&lt;/a&gt;</title>
     <description>&lt;a href="https://news.google.com/rss/articles/${"y".repeat(120)}"&gt;石油と野球の夜&lt;/a&gt;</description>
     <link>https://news.google.com/rss/articles/example</link>
+    <source url="https://example.com/">Example News</source>
+  </item>
+</channel>
+</rss>`;
+
+const googleIntermediateOnlySample = `<?xml version="1.0" encoding="UTF-8"?>
+<rss version="2.0">
+<channel>
+  <title>Google News Search</title>
+  <item>
+    <title>夜の昆虫観察、渋谷で開催</title>
+    <description>体験型昆虫展の内容を紹介。</description>
+    <link>https://news.google.com/rss/articles/example</link>
+    <source url="https://www.bcnretail.com/">BCN+R</source>
   </item>
 </channel>
 </rss>`;
@@ -154,7 +168,26 @@ describe("news observation collector", () => {
     expect(result.entries[0].text).toContain("石油と野球の夜");
     expect(result.entries[0].text).not.toContain("<a");
     expect(result.entries[0].text).not.toContain("href=");
-    expect(result.entries[0].source).toBe("news.google.com/search");
+    expect(result.entries[0].source).toBe("Example News");
+    expect(result.entries[0].url).toBe("https://example.com/articles/nafusa-redstar");
+  });
+
+  it("does not cache Google News RSS article intermediates as article URLs", async () => {
+    const root = workspace();
+    process.env.OPENCLAW_NEWS_RSS_URLS = "https://news.google.com/rss/search?q=test";
+    const fetcher = vi.fn(async () => googleIntermediateOnlySample);
+
+    const result = await collectNewsObservations(root, {
+      now: new Date("2026-05-23T01:00:00.000Z"),
+      fetcher
+    });
+
+    expect(result.status).toBe("collected");
+    expect(result.entries).toHaveLength(1);
+    expect(result.entries[0].source).toBe("BCN+R");
+    expect(result.entries[0].url).toBeUndefined();
+    const cached = await readTodayNewsObservations(root, new Date("2026-05-23T01:30:00.000Z"));
+    expect(cached[0].url).toBeUndefined();
   });
 
   it("returns cached entries on subsequent runs within TTL", async () => {

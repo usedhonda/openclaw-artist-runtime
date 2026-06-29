@@ -356,6 +356,32 @@ function parseQuoted(value: string): string {
   return trimmed;
 }
 
+function normalizedCachedQuery(query: string | undefined): string | undefined {
+  return query && query !== "timeline" ? query : undefined;
+}
+
+function sameReactionSeed(
+  cached: ObservationReport["reactionSeed"] | undefined,
+  requested: XObservationContext["reactionSeed"] | undefined
+): boolean {
+  return (cached?.title ?? "") === (requested?.title ?? "")
+    && (cached?.url ?? "") === (requested?.url ?? "")
+    && (cached?.source ?? "") === (requested?.source ?? "");
+}
+
+function cachedObservationMatches(
+  cached: string,
+  targetQuery: string | undefined,
+  reactionSeed: XObservationContext["reactionSeed"] | undefined
+): boolean {
+  const parsed = parseObservationFile(cached);
+  if (!parsed.query && !parsed.reactionSeed) {
+    return reactionSeed === undefined;
+  }
+  return (normalizedCachedQuery(parsed.query) ?? "") === (targetQuery ?? "")
+    && sameReactionSeed(parsed.reactionSeed, reactionSeed);
+}
+
 export async function readObservationsReport(root: string, dateOrNow: string | Date = new Date()): Promise<ObservationReport> {
   const now = typeof dateOrNow === "string" && isoDateOnlyPattern.test(dateOrNow)
     ? new Date(`${dateOrNow}T00:00:00+09:00`)
@@ -375,13 +401,6 @@ export async function readObservationsReport(root: string, dateOrNow: string | D
 export async function collectObservations(root: string, context: XObservationContext = {}): Promise<XObservationResult> {
   const now = context.now ?? new Date();
   const path = observationPath(root, now);
-  const cached = await readFile(path, "utf8").catch(() => "");
-  if (cached) {
-    const cachedStat = await stat(path).catch(() => undefined);
-    if (cachedStat && now.getTime() - cachedStat.mtime.getTime() < observationCacheTtlMs) {
-      return { status: "cached", path, observations: cached };
-    }
-  }
   const motifs = extractPersonaMotifs(context.personaText);
   const strategy = await planQueryStrategy({
     personaText: context.personaText,
@@ -389,17 +408,29 @@ export async function collectObservations(root: string, context: XObservationCon
     manualSeed: context.manualSeed,
     motifs
   });
+  const targetQuery = context.query ?? strategy.query;
+  const cached = await readFile(path, "utf8").catch(() => "");
+  if (cached) {
+    const cachedStat = await stat(path).catch(() => undefined);
+    if (
+      cachedStat
+      && now.getTime() - cachedStat.mtime.getTime() < observationCacheTtlMs
+      && cachedObservationMatches(cached, targetQuery, context.reactionSeed)
+    ) {
+      return { status: "cached", path, observations: cached };
+    }
+  }
   const gate = await tryAcquireBirdCall(root, now);
   if (!gate.allowed) {
     const status = gate.cooldownUntil ? "cooldown" : "skipped";
     return { status, path, observations: "", reason: gate.reason };
   }
-  const runner = context.runner ?? defaultRunner(context.query ?? strategy.query);
+  const runner = context.runner ?? defaultRunner(targetQuery);
   try {
     const result = await runner();
     const combined = `${result.stdout}\n${result.stderr ?? ""}`;
     if (isBirdBanIndication(combined)) {
-      await recordBirdCall(root, now, { query: context.query ?? strategy.query, mode: strategy.mode });
+      await recordBirdCall(root, now, { query: targetQuery, mode: strategy.mode });
       await triggerCooldown(root, combined.slice(0, 240), now);
       emitRuntimeEvent({
         type: "bird_cooldown_triggered",
@@ -412,10 +443,10 @@ export async function collectObservations(root: string, context: XObservationCon
     if (secretLikePattern.test(result.stdout)) {
       throw new Error("x_observation_contains_secret_like_text");
     }
-    await recordBirdCall(root, now, { query: context.query ?? strategy.query, mode: strategy.mode });
+    await recordBirdCall(root, now, { query: targetQuery, mode: strategy.mode });
     const filtered = filterObservationEntries(result.stdout, motifs);
     await appendRejectedLog(root, now, filtered.rejected);
-    const observations = renderObservation(filtered.entries, now, context.query ?? strategy.query, motifs, context.reactionSeed);
+    const observations = renderObservation(filtered.entries, now, targetQuery, motifs, context.reactionSeed);
     await mkdir(dirname(path), { recursive: true });
     await writeFile(path, `${observations.trim()}\n`, "utf8");
     const topScored = filtered.scored[0];
@@ -429,7 +460,7 @@ export async function collectObservations(root: string, context: XObservationCon
     return { status: "collected", path, observations };
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
-    await recordBirdCall(root, now, { query: context.query ?? strategy.query, mode: strategy.mode });
+    await recordBirdCall(root, now, { query: targetQuery, mode: strategy.mode });
     if (isBirdBanIndication(message)) {
       await triggerCooldown(root, message, now);
       emitRuntimeEvent({

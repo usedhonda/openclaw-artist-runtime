@@ -22,17 +22,20 @@ async function workspace(): Promise<string> {
     "- Style notes: fast social rap, clipped hook, distorted 808",
     "",
     "## Frozen sources",
-    "- news: https://example.com/news/luup (example.com) — LUUP事故で街の安全感覚が揺れている",
+    "- news: https://news.google.com/rss/articles/bad-intermediate (example.com) — LUUP事故で街の安全感覚が揺れている",
     "- x_reaction: https://x.com/citywatch/status/123 (citywatch) — 便利って言葉で危なさまで薄めるの、もう限界"
   ].join("\n"), "utf8");
   await updateSongState(root, "song-result", {
     title: "Civic Bounce",
     status: "suno_take_url_ready",
     selectedTakeId: "take-ready",
-    appendPublicLinks: ["https://suno.com/song/take-ready"],
+    appendPublicLinks: [
+      "https://suno.com/song/take-ready-a",
+      "https://suno.com/song/take-ready-b"
+    ],
     observationSummary: {
       author: "example.com",
-      url: "https://example.com/news/luup",
+      url: "https://news.google.com/rss/articles/bad-intermediate",
       quote: "LUUP事故で街の安全感覚が揺れている",
       motivation: "ニュースとX反応を曲に変換"
     }
@@ -57,13 +60,18 @@ describe("Telegram result card", () => {
       songId: "song-result",
       runId: "run-ready",
       selectedTakeId: "take-ready",
-      urls: ["https://suno.com/song/take-ready"],
+      urls: [
+        "https://suno.com/song/take-ready-a",
+        "https://suno.com/song/take-ready-b"
+      ],
       timestamp: 1
     }, { workspaceRoot: root });
 
-    expect(text).toContain("https://suno.com/song/take-ready");
+    expect(text).toContain("1. https://suno.com/song/take-ready-a");
+    expect(text).toContain("2. https://suno.com/song/take-ready-b");
     expect(text).toContain("今回の起点:");
     expect(text).toContain("元ニュース: News / example.com");
+    expect(text).not.toContain("news.google.com/rss/articles");
     expect(text).toContain("Xで拾った反応:");
     expect(text).toContain("反応: X reaction / citywatch");
     expect(text).toContain("曲への変換:");

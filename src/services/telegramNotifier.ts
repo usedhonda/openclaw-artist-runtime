@@ -722,6 +722,26 @@ function isAllowedObservationUrl(value?: string): boolean {
   }
 }
 
+function isGoogleNewsIntermediateUrl(value?: string): boolean {
+  if (!value) return false;
+  try {
+    const parsed = new URL(value);
+    return parsed.hostname === "news.google.com" && parsed.pathname.includes("/rss/articles/");
+  } catch {
+    return false;
+  }
+}
+
+function isDisplayableNewsUrl(value?: string): boolean {
+  if (!value) return false;
+  try {
+    const parsed = new URL(value);
+    return parsed.protocol === "https:" && !isGoogleNewsIntermediateUrl(value);
+  } catch {
+    return false;
+  }
+}
+
 function stripHandles(value: string): string {
   return value.replace(/@[A-Za-z0-9_]{1,20}/g, "[handle]");
 }
@@ -820,7 +840,11 @@ function sourceKindLabel(kind: CommissionBriefSource["kind"]): string {
 
 function formatResultSource(source: CommissionBriefSource | undefined, fallback: string): string[] {
   if (!source) return [`${fallback}: 記録なし`];
-  const url = source.url && (source.kind === "news" || isAllowedObservationUrl(source.url)) ? source.url : undefined;
+  const url = source.kind === "news" ? (
+    isDisplayableNewsUrl(source.url) ? source.url : undefined
+  ) : (
+    isAllowedObservationUrl(source.url) ? source.url : undefined
+  );
   const quote = source.quote ? capQuote(source.quote, 120) : undefined;
   return [
     `${fallback}: ${sourceKindLabel(source.kind)}${source.author ? ` / ${source.author}` : ""}`,
