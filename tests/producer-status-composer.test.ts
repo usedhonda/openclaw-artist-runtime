@@ -110,6 +110,8 @@ describe("producer status composer", () => {
     expect(text).toContain("完成曲採用待ち:");
     expect(text).toContain("song-selected / 選ばれた曲");
     expect(text).toContain("take: take-selected");
+    expect(text).toContain("- 操作待ち: 下の項目を /status 返信のボタンで選べる");
+    expect(text).not.toContain("- 操作待ち: なし");
     expect(text).toContain("https://suno.com/song/take-selected");
     expect(text).toContain("次: この /status 返信のボタンで「採用」か「破棄」を選ぶ。");
     expect(text).toContain("http://127.0.0.1:8787/plugins/artist-runtime#song=song-selected");

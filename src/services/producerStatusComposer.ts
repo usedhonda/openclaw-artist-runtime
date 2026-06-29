@@ -146,6 +146,14 @@ export async function composeProducerStatus(root: string, options: ProducerStatu
     : awaitingTakeReview
       ? "次: この /status 返信のボタンで「採用」か「破棄」を選ぶ。採用すると曲をアーカイブし、破棄するとこの曲を閉じる。"
     : draftBox.nextAction;
+  const hasRecoverableWait = awaitingUrlReady.length > 0
+    || isPromptPackReadyWait
+    || Boolean(degradedLyricsSong)
+    || isPlanningSkeletonWait
+    || Boolean(awaitingTakeReview);
+  const waitingLines = pending.count === 0 && hasRecoverableWait
+    ? ["- 操作待ち: 下の項目を /status 返信のボタンで選べる"]
+    : latestWaiting.lines;
 
   return [
     formatDraftBoxNextActionSection(draftBox, { includeNextAction: false }),
@@ -162,7 +170,7 @@ export async function composeProducerStatus(root: string, options: ProducerStatu
     ...receiveLines,
     "",
     "待ち:",
-    ...latestWaiting.lines,
+    ...waitingLines,
     ...(awaitingUrlReady.length > 0
       ? [
           "",
