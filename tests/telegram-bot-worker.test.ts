@@ -6,6 +6,7 @@ import { describe, expect, it, vi } from "vitest";
 import type { TelegramConfig } from "../src/types";
 import { TelegramBotWorker } from "../src/services/telegramBotWorker";
 import { registerCallbackAction } from "../src/services/callbackActionRegistry";
+import { ensureSongState, updateSongState } from "../src/services/artistState";
 
 const enabledConfig: TelegramConfig = {
   enabled: true,
@@ -132,6 +133,67 @@ describe("telegram bot worker", () => {
     });
     const state = JSON.parse(await readFile(join(root, "runtime", "telegram-state.json"), "utf8")) as { offset: number };
     expect(state.offset).toBe(11);
+  });
+
+  it("attaches latest decision buttons to /status replies", async () => {
+    const root = makeRoot();
+    await mkdir(join(root, "runtime"), { recursive: true });
+    await ensureSongState(root, "song-ready", "Ready Song");
+    await updateSongState(root, "song-ready", {
+      status: "take_selected",
+      selectedTakeId: "take-ready",
+      replacePublicLinks: ["https://suno.com/song/take-ready"]
+    });
+    await registerCallbackAction(root, {
+      action: "song_archive",
+      songId: "song-ready",
+      selectedTakeId: "take-ready",
+      chatId: 555,
+      messageId: 70,
+      userId: 123
+    });
+    await registerCallbackAction(root, {
+      action: "song_discard",
+      songId: "song-ready",
+      selectedTakeId: "take-ready",
+      chatId: 555,
+      messageId: 70,
+      userId: 123
+    });
+    const fetchImpl = vi
+      .fn()
+      .mockResolvedValueOnce(jsonResponse({
+        ok: true,
+        result: [{
+          update_id: 10,
+          message: {
+            message_id: 1,
+            text: "/status",
+            chat: { id: 555 },
+            from: { id: 123 }
+          }
+        }]
+      }))
+      .mockResolvedValueOnce(jsonResponse({ ok: true, result: { message_id: 2, text: "status", chat: { id: 555 } } }))
+      .mockResolvedValueOnce(jsonResponse({ ok: true, result: true }));
+    const worker = new TelegramBotWorker({
+      root,
+      config: enabledConfig,
+      token: "token",
+      ownerUserIds: new Set(["123"]),
+      fetchImpl
+    });
+
+    const result = await worker.pollOnce();
+    worker.stop();
+
+    expect(result).toMatchObject({ enabled: true, fetched: true, processed: 1 });
+    expect(fetchImpl).toHaveBeenCalledTimes(3);
+    const markup = JSON.parse(fetchImpl.mock.calls[2][1].body as string) as {
+      reply_markup: { inline_keyboard: Array<Array<{ text: string; callback_data: string }>> };
+    };
+    expect(markup.reply_markup.inline_keyboard.flat().map((button) => button.text)).toEqual(["採用", "破棄"]);
+    expect(markup.reply_markup.inline_keyboard.flat().every((button) => button.callback_data.startsWith("cb:"))).toBe(true);
   });
 
   it("announces persona setup once on the first owner message when persona is incomplete", async () => {

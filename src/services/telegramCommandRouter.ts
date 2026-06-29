@@ -19,6 +19,7 @@ import { isConversationalSongCreate, routeTelegramConversation, type TelegramPro
 import { readObservationsReport, type ObservationReport } from "./xObservationCollector.js";
 import { wrapCommandVoice, type CommandVoiceKind } from "./commandVoiceWrapper.js";
 import { composeProducerStatus } from "./producerStatusComposer.js";
+import { listPendingCallbackActionSummaries } from "./callbackActionRegistry.js";
 import { emitRuntimeEvent } from "./runtimeEventBus.js";
 import { appendFailedNotifyReplayRecord, latestFailedNotifyEntry, listUnreplayedFailedNotifications } from "./failedNotifyLedger.js";
 import { resurfaceDegradedLyrics } from "./degradedLyricsResurfaceService.js";
@@ -57,6 +58,15 @@ export interface TelegramRouteResult {
   responseText: string;
   shouldStoreFreeText: boolean;
   proposalButtons?: TelegramProposalButtonsRequest;
+  statusDecisionButtons?: TelegramStatusDecisionButtonsRequest;
+}
+
+export type TelegramStatusDecisionAction = "song_archive" | "song_discard" | "song_songbook_write" | "song_skip";
+
+export interface TelegramStatusDecisionButtonsRequest {
+  songId: string;
+  selectedTakeId?: string;
+  actions: TelegramStatusDecisionAction[];
 }
 
 function inboxPath(root: string): string {
@@ -94,6 +104,44 @@ async function voiceCommand(kind: CommandVoiceKind, info: string, input: Telegra
 function logCommandSideEffectFailure(context: string, error: unknown): void {
   const reason = error instanceof Error ? error.message : String(error);
   console.error(`[telegram-command] ${context} failed: ${reason}`);
+}
+
+const STATUS_DECISION_ACTIONS: readonly TelegramStatusDecisionAction[] = [
+  "song_archive",
+  "song_discard",
+  "song_songbook_write",
+  "song_skip"
+];
+
+async function latestStatusDecisionButtons(root: string, now = Date.now()): Promise<TelegramStatusDecisionButtonsRequest | undefined> {
+  const pending = await listPendingCallbackActionSummaries(root, {
+    category: "producer_decision",
+    limit: 30,
+    now
+  });
+  const latest = pending.recent[0];
+  if (!latest?.songId) {
+    return undefined;
+  }
+  const actions = STATUS_DECISION_ACTIONS.filter((action) =>
+    pending.recent.some((entry) =>
+      entry.songId === latest.songId
+      && entry.messageId === latest.messageId
+      && entry.action === action
+    )
+  );
+  if (actions.length === 0) {
+    return undefined;
+  }
+  const song = await readSongState(root, latest.songId).catch(() => undefined);
+  if (!song || (song.status !== "take_selected" && song.status !== "suno_take_url_ready")) {
+    return undefined;
+  }
+  return {
+    songId: latest.songId,
+    selectedTakeId: song.selectedTakeId,
+    actions
+  };
 }
 
 function helpInfo(): string {
@@ -197,7 +245,8 @@ export async function routeTelegramCommand(input: TelegramRouteInput): Promise<T
         dashboardBaseUrl: input.dashboardBaseUrl,
         autopilotStatus: input.autopilotStatus
       }),
-      shouldStoreFreeText: false
+      shouldStoreFreeText: false,
+      statusDecisionButtons: await latestStatusDecisionButtons(input.workspaceRoot)
     };
   }
   if (input.workspaceRoot && !isLegacyWizardEnabled()) {

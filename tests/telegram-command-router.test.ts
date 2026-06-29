@@ -5,6 +5,7 @@ import { join } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { ensureSongState, updateSongState, writeSongBrief } from "../src/services/artistState";
 import { readAutopilotRunState, writeAutopilotRunState } from "../src/services/autopilotService";
+import { registerCallbackAction } from "../src/services/callbackActionRegistry";
 import { classifyTelegramFreeText, readTelegramInbox, routeTelegramCommand } from "../src/services/telegramCommandRouter";
 import * as autopilotTicker from "../src/services/autopilotTicker";
 import { appendFailedNotification } from "../src/services/failedNotifyLedger";
@@ -94,6 +95,41 @@ describe("telegram command router", () => {
     expect(result.responseText).toContain("Autopilot: enabled (dry-run)");
     expect(result.responseText).toContain("Stage: planning");
     expect(result.shouldStoreFreeText).toBe(false);
+  });
+
+  it("returns latest decision button metadata for /status", async () => {
+    const root = makeRoot();
+    await ensureSongState(root, "song-ready", "Ready Song");
+    await updateSongState(root, "song-ready", {
+      status: "take_selected",
+      selectedTakeId: "take-ready",
+      replacePublicLinks: ["https://suno.com/song/take-ready"]
+    });
+    await registerCallbackAction(root, {
+      action: "song_archive",
+      songId: "song-ready",
+      selectedTakeId: "take-ready",
+      chatId: 456,
+      messageId: 77,
+      userId: 123
+    });
+    await registerCallbackAction(root, {
+      action: "song_discard",
+      songId: "song-ready",
+      selectedTakeId: "take-ready",
+      chatId: 456,
+      messageId: 77,
+      userId: 123
+    });
+
+    const result = await routeTelegramCommand({ ...baseInput, text: "/status", workspaceRoot: root });
+
+    expect(result.kind).toBe("status");
+    expect(result.statusDecisionButtons).toEqual({
+      songId: "song-ready",
+      selectedTakeId: "take-ready",
+      actions: ["song_archive", "song_discard"]
+    });
   });
 
   it("lists recent songs", async () => {

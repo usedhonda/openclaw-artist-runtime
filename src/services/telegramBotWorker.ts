@@ -4,13 +4,14 @@ import type { AiReviewProvider, AutopilotStatus, TelegramConfig } from "../types
 import { readPersonaSetupStatus } from "./personaSetupDetector.js";
 import { getTelegramOwnerUserIds } from "./telegramAuth.js";
 import { TelegramClient, type TelegramFetch, type TelegramUpdate } from "./telegramClient.js";
-import { classifyTelegramFreeText, routeTelegramCommand, storeTelegramInbox } from "./telegramCommandRouter.js";
+import { classifyTelegramFreeText, routeTelegramCommand, storeTelegramInbox, type TelegramStatusDecisionAction, type TelegramStatusDecisionButtonsRequest } from "./telegramCommandRouter.js";
 import { routeTelegramCallback } from "./telegramCallbackHandler.js";
 import { handleTelegramPersonaSessionMessage, readTelegramPersonaSession } from "./telegramPersonaSession.js";
 import { getDashboardBaseUrl, getTelegramBotToken, isInlineButtonsEnabled, isLegacyWizardEnabled } from "./runtimeConfig.js";
 import { registerCallbackAction } from "./callbackActionRegistry.js";
 import { buildProposalInlineKeyboard } from "./freeformChangesetProposer.js";
 import type { TelegramProposalButtonsRequest } from "./telegramConversationalRouter.js";
+import { buttonVoiceLabels } from "./buttonVoiceLabels.js";
 
 export interface TelegramBotWorkerOptions {
   root: string;
@@ -69,6 +70,19 @@ async function writeState(root: string, state: TelegramWorkerState): Promise<voi
 function logTelegramWorkerSideEffectFailure(context: string, error: unknown): void {
   const reason = error instanceof Error ? error.message : String(error);
   console.error(`[telegram-bot-worker] ${context} failed: ${reason}`);
+}
+
+function statusDecisionButtonLabel(action: TelegramStatusDecisionAction): string {
+  switch (action) {
+    case "song_archive":
+      return buttonVoiceLabels.songCompletion.archive;
+    case "song_discard":
+      return buttonVoiceLabels.songCompletion.discard;
+    case "song_songbook_write":
+      return buttonVoiceLabels.songCompletion.write;
+    case "song_skip":
+      return buttonVoiceLabels.songCompletion.later;
+  }
 }
 
 export class TelegramBotWorker {
@@ -209,7 +223,12 @@ export class TelegramBotWorker {
     const session = isLegacyWizardEnabled() ? await readTelegramPersonaSession(this.options.root) : undefined;
     const sessionResponse = session ? await handleTelegramPersonaSessionMessage(this.options.root, text) : undefined;
     const route = sessionResponse
-      ? { shouldStoreFreeText: false, responseText: sessionResponse, proposalButtons: undefined }
+      ? {
+          shouldStoreFreeText: false,
+          responseText: sessionResponse,
+          proposalButtons: undefined,
+          statusDecisionButtons: undefined
+        }
       : await routeTelegramCommand({
           text,
           fromUserId: from.id,
@@ -238,6 +257,14 @@ export class TelegramBotWorker {
     if (route.proposalButtons && isInlineButtonsEnabled()) {
       await this.attachProposalButtons(client, {
         ...route.proposalButtons,
+        chatId: message.chat.id,
+        messageId: sent.message_id,
+        userId: from.id
+      });
+    }
+    if (route.statusDecisionButtons && isInlineButtonsEnabled()) {
+      await this.attachStatusDecisionButtons(client, {
+        ...route.statusDecisionButtons,
         chatId: message.chat.id,
         messageId: sent.message_id,
         userId: from.id
@@ -279,6 +306,29 @@ export class TelegramBotWorker {
         no: `cb:${no.callbackId}`,
         edit: `cb:${edit.callbackId}`
       })
+    });
+  }
+
+  private async attachStatusDecisionButtons(
+    client: TelegramClient,
+    input: TelegramStatusDecisionButtonsRequest & { chatId: number; messageId: number; userId: number }
+  ): Promise<void> {
+    const callbacks = await Promise.all(input.actions.map(async (action) => ({
+      action,
+      entry: await registerCallbackAction(this.options.root, {
+        action,
+        songId: input.songId,
+        selectedTakeId: input.selectedTakeId,
+        chatId: input.chatId,
+        messageId: input.messageId,
+        userId: input.userId
+      })
+    })));
+    await client.editMessageReplyMarkup(input.chatId, input.messageId, {
+      inline_keyboard: [callbacks.map(({ action, entry }) => ({
+        text: statusDecisionButtonLabel(action),
+        callback_data: `cb:${entry.callbackId}`
+      }))]
     });
   }
 
