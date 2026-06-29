@@ -101,7 +101,7 @@ export function registerCommands(api: unknown): void {
   const apiConfig = isRecord(api) ? (api as PluginApiWithConfig) : {};
   safeRegisterCommand(api, {
     name: "persona",
-    description: "Manage artist-runtime persona setup, audit, fill, migrate, edit, and reset.",
+    description: "Persona setup, audit, fill, migrate, edit, reset.",
     acceptsArgs: true,
     requireAuth: true,
     nativeProgressMessages: { telegram: "Checking artist persona..." },
@@ -109,7 +109,7 @@ export function registerCommands(api: unknown): void {
   }, logRegistration);
   safeRegisterCommand(api, {
     name: "song",
-    description: "Show or update artist-runtime song records with /song update <id> and /song add.",
+    description: "Show or update song records.",
     acceptsArgs: true,
     requireAuth: true,
     nativeProgressMessages: { telegram: "Checking artist song..." },
@@ -117,28 +117,28 @@ export function registerCommands(api: unknown): void {
   }, logRegistration);
   safeRegisterCommand(api, {
     name: "commission",
-    description: "Send a producer song commission to artist-runtime for confirmation and autopilot planning.",
+    description: "Propose a song commission.",
     acceptsArgs: true,
     requireAuth: true,
     handler: (ctx) => handleRoutedCommand("commission", ctx as PluginCommandContextLike, apiConfig)
   }, logRegistration);
   safeRegisterCommand(api, {
     name: "setup",
-    description: "Start artist-runtime Telegram persona setup.",
+    description: "Start persona setup.",
     acceptsArgs: true,
     requireAuth: true,
     handler: (ctx) => handleRoutedCommand("setup", ctx as PluginCommandContextLike, apiConfig)
   }, logRegistration);
   safeRegisterCommand(api, {
     name: "observations",
-    description: "Show what artist-runtime collected from X today (or for a given YYYY-MM-DD).",
+    description: "Show collected X observations.",
     acceptsArgs: true,
     requireAuth: true,
     handler: (ctx) => handleRoutedCommand("observations", ctx as PluginCommandContextLike, apiConfig)
   }, logRegistration);
   safeRegisterCommand(api, {
     name: "resume",
-    description: "Resume artist-runtime autopilot or re-surface a stuck producer recovery choice.",
+    description: "Resume autopilot or recovery.",
     acceptsArgs: true,
     requireAuth: true,
     handler: (ctx) => handleRoutedCommand("resume", ctx as PluginCommandContextLike, apiConfig)
@@ -146,7 +146,22 @@ export function registerCommands(api: unknown): void {
   for (const name of ["confirm", "cancel"]) {
     safeRegisterCommand(api, {
       name,
-      description: `Confirm or cancel an active artist-runtime proposal with /${name}.`,
+      description: `Confirm or cancel an active proposal.`,
+      acceptsArgs: true,
+      requireAuth: true,
+      handler: (ctx) => handleRoutedCommand(name, ctx as PluginCommandContextLike, apiConfig)
+    }, logRegistration);
+  }
+  for (const [name, description] of [
+    ["suno", "Decide Suno wait: go, edit, hold."],
+    ["lyrics", "Redraft degraded lyrics."],
+    ["plan", "Decide planning wait: apply, skip, edit."],
+    ["take", "Decide low-score take: accept, regen, skip."],
+    ["draft", "Decide draft proposal: make, skip, edit."]
+  ] as const) {
+    safeRegisterCommand(api, {
+      name,
+      description,
       acceptsArgs: true,
       requireAuth: true,
       handler: (ctx) => handleRoutedCommand(name, ctx as PluginCommandContextLike, apiConfig)
@@ -155,7 +170,7 @@ export function registerCommands(api: unknown): void {
   for (const name of ["yes", "no", "edit", "one", "talk"]) {
     safeRegisterCommand(api, {
       name,
-      description: `Talk with the artist-runtime conversational artist using /${name}.`,
+      description: `Talk with the artist.`,
       acceptsArgs: true,
       requireAuth: true,
       handler: (ctx) => handleRoutedCommand(name, ctx as PluginCommandContextLike, apiConfig)
