@@ -122,6 +122,34 @@ describe("draft box proactive notices", () => {
     expect(notice?.message).toContain("timeout");
   });
 
+  it("does not tell the producer to fix automatic Suno retry wait", async () => {
+    const root = await workspace();
+    await ensureSongState(root, "spawn_retry", "父母ラベル");
+    const events: RuntimeEvent[] = [];
+    const unsubscribe = getRuntimeEventBus().subscribe((event) => events.push(event));
+    const state: AutopilotRunState = {
+      currentSongId: "spawn_retry",
+      stage: "suno_generation",
+      paused: false,
+      blockedReason: "Suno create cooldown active (17 min remaining)",
+      lastError: "Suno create cooldown active (17 min remaining)",
+      retryCount: 1,
+      cycleCount: 2,
+      updatedAt: "2026-06-01T00:00:00.000Z"
+    };
+
+    expect(await emitDraftBoxProactiveNoticeIfNeeded(root, state)).toBe(true);
+    unsubscribe();
+
+    const notice = events.find((event): event is Extract<RuntimeEvent, { type: "artist_proactive_notice" }> => event.type === "artist_proactive_notice");
+    expect(notice).toMatchObject({
+      trigger: "suno_trouble",
+      message: "Suno は再試行待ち。時間が来たら自動で続ける。",
+      nextAction: "次: Suno の再試行待ち。時間が来たら自動で続ける。"
+    });
+    expect(notice?.message).not.toContain("整えて");
+  });
+
   it("formats proactive notices with the same next-action section", async () => {
     const text = await formatRuntimeEvent({
       type: "artist_proactive_notice",

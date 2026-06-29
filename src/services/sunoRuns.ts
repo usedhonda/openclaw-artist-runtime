@@ -111,7 +111,7 @@ function generatedDurationSec(metadata: SunoImportedAssetMetadata[] | undefined)
 }
 
 function isCreateAttempt(run: SunoRunRecord): boolean {
-  return run.status !== "imported" && run.status !== "blocked_dry_run";
+  return run.status === "accepted";
 }
 
 function sameUtcDay(left: string, right: Date): boolean {

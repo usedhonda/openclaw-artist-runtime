@@ -3,7 +3,8 @@ import { readSongState } from "./artistState.js";
 import { loadSpawnProposalQueue } from "./spawnProposalQueue.js";
 import type { AutopilotRunState, DraftBoxNextActionSummary, SpawnProposal } from "../types.js";
 
-const SUNO_TROUBLE_PATTERN = /(?:playwright_live_timeout|timeout|suno_generate_retry|suno_worker_not_connected|suno_worker_not_ready|disconnected|ECONNRESET|ENETUNREACH|EAI_AGAIN|fetch failed)/i;
+const SUNO_TROUBLE_PATTERN = /(?:playwright_live_timeout|timeout|suno_generate_retry|Suno create cooldown active|suno_worker_not_connected|suno_worker_not_ready|disconnected|ECONNRESET|ENETUNREACH|EAI_AGAIN|fetch failed)/i;
+const SUNO_AUTO_RETRY_WAIT_PATTERN = /(?:Suno create cooldown active|suno_generate_retry_wait_until)/i;
 
 function titleFromProposal(proposal: SpawnProposal | undefined): string | undefined {
   return proposal?.title?.trim() || proposal?.proposalId;
@@ -26,11 +27,19 @@ function reauthRequiredReason(state: AutopilotRunState): string | undefined {
 
 function troubleStatePart(reason: string | undefined): string {
   const value = reason ?? "";
+  if (/suno_generate_retry_wait_until/i.test(value)) return "timeout";
+  if (/Suno create cooldown active/i.test(value)) return "auto_retry_wait";
   if (/playwright_live_timeout|timeout/i.test(value)) return "timeout";
   if (/suno_generate_retry/i.test(value)) return "generate_retry";
   if (/suno_worker_not_connected|suno_worker_not_ready|disconnected/i.test(value)) return "worker_not_ready";
   if (/ECONNRESET|ENETUNREACH|EAI_AGAIN|fetch failed/i.test(value)) return "network";
   return safeStatePart(value);
+}
+
+export function nextActionForSunoTrouble(reason: string | undefined): string {
+  return SUNO_AUTO_RETRY_WAIT_PATTERN.test(reason ?? "")
+    ? "次: Suno の再試行待ち。時間が来たら自動で続ける。"
+    : "次: Suno 接続を整える。戻ったら自動で続きから確認する。";
 }
 
 export async function composeDraftBoxNextAction(
@@ -81,7 +90,7 @@ export async function composeDraftBoxNextAction(
       currentLine: `今: ${title ?? state.currentSongId ?? "曲"} が Suno 生成で詰まっている`,
       draftCount: drafts.length,
       buildingCount: buildings.length,
-      nextAction: "次: Suno 接続を整える。戻ったら自動で続きから確認する。",
+      nextAction: nextActionForSunoTrouble(reason),
       stateKey: `suno_trouble:${safeStatePart(state.currentSongId)}:${troubleStatePart(reason)}`,
       songId: state.currentSongId,
       title,

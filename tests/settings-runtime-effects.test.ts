@@ -15,11 +15,11 @@ function makeRoot(prefix: string): string {
   return mkdtempSync(join(tmpdir(), prefix));
 }
 
-async function appendRun(root: string, songId: string, createdAt: string): Promise<void> {
+async function appendRun(root: string, songId: string, createdAt: string, status = "accepted"): Promise<void> {
   await updateSongState(root, songId, { title: songId, status: "suno_running" });
   const path = join(root, "songs", songId, "suno", "runs.jsonl");
   await mkdir(join(root, "songs", songId, "suno"), { recursive: true });
-  await writeFile(path, `${JSON.stringify({ runId: `run-${songId}`, status: "accepted", createdAt })}\n`, "utf8");
+  await writeFile(path, `${JSON.stringify({ runId: `run-${songId}`, status, createdAt })}\n`, "utf8");
 }
 
 describe("settings runtime effects", () => {
@@ -105,5 +105,12 @@ describe("settings runtime effects", () => {
       music: { suno: { maxGenerationsPerDay: 10, monthlyGenerationBudget: 10, minMinutesBetweenCreates: 20 } }
     }), now);
     expect(cooldown?.policyDecision).toBe("stop_create_cooldown");
+
+    const failedRoot = makeRoot("artist-runtime-suno-failed-run-");
+    await appendRun(failedRoot, "song-failed", "2026-06-28T11:55:00.000Z", "failed");
+    const failed = await evaluateSunoGenerationLimits(failedRoot, applyConfigDefaults({
+      music: { suno: { maxGenerationsPerDay: 1, monthlyGenerationBudget: 1, minMinutesBetweenCreates: 20 } }
+    }), now);
+    expect(failed).toBeUndefined();
   });
 });

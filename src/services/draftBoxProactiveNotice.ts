@@ -1,7 +1,7 @@
 import { appendFile, mkdir, readFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { readAutopilotState } from "./autopilotRecovery.js";
-import { composeDraftBoxNextAction } from "./draftBoxNextAction.js";
+import { composeDraftBoxNextAction, nextActionForSunoTrouble } from "./draftBoxNextAction.js";
 import { emitRuntimeEvent } from "./runtimeEventBus.js";
 import type { AutopilotRunState } from "../types.js";
 
@@ -16,6 +16,12 @@ export interface DraftBoxProactiveNoticeEntry {
 
 export function draftBoxProactiveNoticeLedgerPath(root: string): string {
   return join(root, "runtime", "draft-box-proactive-notices.jsonl");
+}
+
+function sunoTroubleMessage(reason: string | undefined): string {
+  return nextActionForSunoTrouble(reason).includes("再試行待ち")
+    ? "Suno は再試行待ち。時間が来たら自動で続ける。"
+    : "Suno に今つながってない、または timeout で詰まってる。整えて。";
 }
 
 async function readNoticeKeys(root: string): Promise<Set<string>> {
@@ -60,7 +66,7 @@ export async function emitDraftBoxProactiveNoticeIfNeeded(
     trigger: summary.kind,
     message: summary.kind === "draft_idle"
       ? "手が空いてる。草稿箱から作る?"
-      : "Suno に今つながってない、または timeout で詰まってる。整えて。",
+      : sunoTroubleMessage(summary.reason),
     nextAction: summary.nextAction,
     draftCount: summary.draftCount,
     buildingCount: summary.buildingCount,

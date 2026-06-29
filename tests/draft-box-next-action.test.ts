@@ -96,6 +96,27 @@ describe("draft box next action", () => {
     expect(summary.nextAction).toContain("Suno 接続を整える");
   });
 
+  it("surfaces Suno cooldown as automatic retry wait, not producer work", async () => {
+    const root = await workspace();
+    await ensureSongState(root, "spawn_retry", "父母ラベル");
+    await writeAutopilotRunState(root, {
+      currentSongId: "spawn_retry",
+      stage: "suno_generation",
+      paused: false,
+      blockedReason: "Suno create cooldown active (17 min remaining)",
+      lastError: "Suno create cooldown active (17 min remaining)",
+      retryCount: 1,
+      cycleCount: 2,
+      updatedAt: "2026-06-01T00:00:00.000Z"
+    });
+
+    const summary = await composeDraftBoxNextAction(root);
+
+    expect(summary.kind).toBe("suno_trouble");
+    expect(summary.nextAction).toBe("次: Suno の再試行待ち。時間が来たら自動で続ける。");
+    expect(summary.nextAction).not.toContain("整える");
+  });
+
   it("surfaces lyrics AI auth expiry before the generic paused action", async () => {
     const root = await workspace();
     await ensureSongState(root, "spawn_auth", "認証の曲");
