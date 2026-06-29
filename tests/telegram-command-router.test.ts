@@ -10,7 +10,8 @@ import { classifyTelegramFreeText, readTelegramInbox, routeTelegramCommand } fro
 import * as autopilotTicker from "../src/services/autopilotTicker";
 import { appendFailedNotification } from "../src/services/failedNotifyLedger";
 import { getRuntimeEventBus, type RuntimeEvent } from "../src/services/runtimeEventBus";
-import type { CommissionBrief } from "../src/types";
+import { appendSpawnProposal } from "../src/services/spawnProposalQueue";
+import type { CommissionBrief, SpawnProposal } from "../src/types";
 
 const baseInput = {
   fromUserId: 123,
@@ -19,6 +20,29 @@ const baseInput = {
 
 function makeRoot(): string {
   return mkdtempSync(join(tmpdir(), "artist-runtime-telegram-router-"));
+}
+
+function spawnProposal(songId = "spawn-status"): SpawnProposal {
+  return {
+    proposalId: songId,
+    createdAt: "2026-06-20T00:00:00.000Z",
+    status: "draft",
+    title: "Status Draft",
+    voiceTop: "この草稿で作る。",
+    coreTheme: "Telegramだけで戻れる草稿",
+    observationSources: [
+      { kind: "news", label: "fixture", quote: "draft source", url: "https://example.com/draft" }
+    ],
+    cascadeTrace: {
+      observationSources: [
+        { kind: "news", label: "fixture", quote: "draft source", url: "https://example.com/draft" }
+      ],
+      artistVoice: "この草稿で作る。",
+      title: "Status Draft",
+      lyricsTheme: "Telegramだけで戻れる草稿",
+      styleLayer: "fast noisy pop, dry vocal"
+    }
+  };
 }
 
 afterEach(() => {
@@ -154,6 +178,7 @@ describe("telegram command router", () => {
 
   it("returns latest spawn proposal button metadata for /status", async () => {
     const root = makeRoot();
+    await appendSpawnProposal(root, spawnProposal("spawn-ready"));
     for (const action of ["song_spawn_inject", "song_spawn_skip", "song_spawn_edit"] as const) {
       await registerCallbackAction(root, {
         action,
@@ -168,9 +193,33 @@ describe("telegram command router", () => {
     const result = await routeTelegramCommand({ ...baseInput, text: "/status", workspaceRoot: root });
 
     expect(result.kind).toBe("status");
-    expect(result.statusDecisionButtons).toEqual({
+    expect(result.statusDecisionButtons).toMatchObject({
       songId: "spawn-ready",
-      selectedTakeId: undefined,
+      proposalId: "spawn-ready",
+      commissionBrief: {
+        songId: "spawn-ready",
+        title: "Status Draft"
+      },
+      actions: ["song_spawn_inject", "song_spawn_skip", "song_spawn_edit"]
+    });
+  });
+
+  it("recreates draft-box spawn proposal button metadata for /status when callbacks are missing", async () => {
+    const root = makeRoot();
+    await appendSpawnProposal(root, spawnProposal());
+
+    const result = await routeTelegramCommand({ ...baseInput, text: "/status", workspaceRoot: root });
+
+    expect(result.kind).toBe("status");
+    expect(result.responseText).toContain("草稿箱: draft 1件");
+    expect(result.statusDecisionButtons).toMatchObject({
+      songId: "spawn-status",
+      proposalId: "spawn-status",
+      commissionBrief: {
+        songId: "spawn-status",
+        title: "Status Draft",
+        lyricsTheme: "Telegramだけで戻れる草稿"
+      },
       actions: ["song_spawn_inject", "song_spawn_skip", "song_spawn_edit"]
     });
   });

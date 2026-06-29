@@ -1,6 +1,6 @@
 import { appendFile, mkdir, readFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
-import type { AiReviewProvider, AutopilotStatus } from "../types.js";
+import type { AiReviewProvider, AutopilotStatus, CommissionBrief, CommissionBriefSource, SpawnProposal } from "../types.js";
 import { readAutopilotRunState, stageFromSong } from "./autopilotService.js";
 import { AutopilotControlService } from "./autopilotControlService.js";
 import { getAutopilotTicker } from "./autopilotTicker.js";
@@ -19,12 +19,13 @@ import { isConversationalSongCreate, routeTelegramConversation, type TelegramPro
 import { readObservationsReport, type ObservationReport } from "./xObservationCollector.js";
 import { wrapCommandVoice, type CommandVoiceKind } from "./commandVoiceWrapper.js";
 import { composeProducerStatus } from "./producerStatusComposer.js";
-import { isProposalConfirmationAction, listPendingCallbackActionSummaries } from "./callbackActionRegistry.js";
+import { isProposalConfirmationAction, listPendingCallbackActionSummaries, resolveCallbackAction } from "./callbackActionRegistry.js";
 import { emitRuntimeEvent } from "./runtimeEventBus.js";
 import { appendFailedNotifyReplayRecord, latestFailedNotifyEntry, listUnreplayedFailedNotifications } from "./failedNotifyLedger.js";
 import { resurfaceDegradedLyrics } from "./degradedLyricsResurfaceService.js";
 import { resurfacePromptPackReady } from "./promptPackResurfaceService.js";
 import { stampInbound } from "./receiveHealthService.js";
+import { loadSpawnProposalQueue } from "./spawnProposalQueue.js";
 
 export type TelegramCommandKind =
   | "help"
@@ -75,7 +76,10 @@ export type TelegramStatusDecisionAction =
 
 export interface TelegramStatusDecisionButtonsRequest {
   songId: string;
+  proposalId?: string;
   selectedTakeId?: string;
+  commissionBrief?: CommissionBrief;
+  spawnReason?: string;
   actions: TelegramStatusDecisionAction[];
 }
 
@@ -145,6 +149,56 @@ async function latestUrlReadyDecisionButtons(root: string): Promise<TelegramStat
   };
 }
 
+function commissionSourcesFromSpawnProposal(proposal: SpawnProposal): CommissionBriefSource[] | undefined {
+  const sources = proposal.observationSources
+    .filter((source) => (source.kind === "x" || source.kind === "news") && source.url)
+    .map((source) => ({
+      kind: source.kind as "x" | "news",
+      url: source.url ?? "",
+      author: source.author ?? source.label,
+      quote: source.quote
+    }));
+  return sources.length > 0 ? sources : undefined;
+}
+
+function commissionBriefFromSpawnProposal(proposal: SpawnProposal): CommissionBrief {
+  return {
+    songId: proposal.proposalId,
+    title: proposal.title,
+    brief: proposal.voiceTop || proposal.coreTheme,
+    lyricsTheme: proposal.cascadeTrace.lyricsTheme || proposal.coreTheme,
+    mood: "artist decides",
+    tempo: "artist decides",
+    styleNotes: proposal.cascadeTrace.styleLayer || "artist decides",
+    duration: "artist decides",
+    sourceText: "spawn proposal draft box",
+    createdAt: proposal.createdAt,
+    sources: commissionSourcesFromSpawnProposal(proposal)
+  };
+}
+
+async function draftSpawnDecisionButtons(root: string, proposalId?: string): Promise<TelegramStatusDecisionButtonsRequest | undefined> {
+  const proposals = await loadSpawnProposalQueue(root).catch(() => []);
+  const proposal = proposals.find((candidate) =>
+    candidate.status === "draft"
+    && (!proposalId || candidate.proposalId === proposalId)
+  ) ?? proposals.find((candidate) => candidate.status === "draft");
+  if (!proposal) {
+    return undefined;
+  }
+  return {
+    songId: proposal.proposalId,
+    proposalId: proposal.proposalId,
+    commissionBrief: commissionBriefFromSpawnProposal(proposal),
+    spawnReason: "producer approved draft box proposal from /status",
+    actions: ["song_spawn_inject", "song_spawn_skip", "song_spawn_edit"]
+  };
+}
+
+async function latestRecoverableDecisionButtons(root: string): Promise<TelegramStatusDecisionButtonsRequest | undefined> {
+  return await latestUrlReadyDecisionButtons(root) ?? await draftSpawnDecisionButtons(root);
+}
+
 async function latestStatusDecisionButtons(root: string, now = Date.now()): Promise<TelegramStatusDecisionButtonsRequest | undefined> {
   const pending = await listPendingCallbackActionSummaries(root, {
     category: "producer_decision",
@@ -153,7 +207,7 @@ async function latestStatusDecisionButtons(root: string, now = Date.now()): Prom
   });
   const latest = pending.recent[0];
   if (!latest?.songId) {
-    return latestUrlReadyDecisionButtons(root);
+    return latestRecoverableDecisionButtons(root);
   }
   const actions = STATUS_DECISION_ACTIONS.filter((action) =>
     pending.recent.some((entry) =>
@@ -163,13 +217,35 @@ async function latestStatusDecisionButtons(root: string, now = Date.now()): Prom
     )
   );
   if (actions.length === 0) {
-    return latestUrlReadyDecisionButtons(root);
+    return latestRecoverableDecisionButtons(root);
+  }
+  if (actions.some((action) => action === "song_spawn_inject" || action === "song_spawn_skip" || action === "song_spawn_edit")) {
+    const full = await resolveCallbackAction(root, latest.callbackId);
+    const proposalButtons = await draftSpawnDecisionButtons(root, latest.proposalId ?? latest.songId);
+    if (proposalButtons) {
+      return {
+        ...proposalButtons,
+        commissionBrief: full?.commissionBrief ?? proposalButtons.commissionBrief,
+        spawnReason: full?.spawnReason ?? proposalButtons.spawnReason,
+        actions
+      };
+    }
+    if (!full?.commissionBrief) {
+      return undefined;
+    }
+    return {
+      songId: latest.songId ?? full.commissionBrief.songId,
+      proposalId: latest.proposalId,
+      commissionBrief: full.commissionBrief,
+      spawnReason: full.spawnReason,
+      actions
+    };
   }
   const songReviewActions = new Set<TelegramStatusDecisionAction>(["song_archive", "song_discard", "song_songbook_write", "song_skip"]);
   const requiresReviewSong = actions.some((action) => songReviewActions.has(action));
   const song = latest.songId ? await readSongState(root, latest.songId).catch(() => undefined) : undefined;
   if (requiresReviewSong && (!song || (song.status !== "take_selected" && song.status !== "suno_take_url_ready"))) {
-    return latestUrlReadyDecisionButtons(root);
+    return latestRecoverableDecisionButtons(root);
   }
   return {
     songId: latest.songId,

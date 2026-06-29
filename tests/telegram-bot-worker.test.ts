@@ -3,10 +3,14 @@ import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it, vi } from "vitest";
-import type { TelegramConfig } from "../src/types";
+import type { SpawnProposal, TelegramConfig } from "../src/types";
 import { TelegramBotWorker } from "../src/services/telegramBotWorker";
 import { listPendingCallbackActionSummaries, readCallbackActionEntries, registerCallbackAction } from "../src/services/callbackActionRegistry";
-import { ensureSongState, updateSongState } from "../src/services/artistState";
+import { ensureSongState, readSongState, updateSongState } from "../src/services/artistState";
+import { appendSpawnProposal } from "../src/services/spawnProposalQueue";
+import { ensureArtistWorkspace } from "../src/services/artistWorkspace";
+import { routeTelegramCallback } from "../src/services/telegramCallbackHandler";
+import type { TelegramClient } from "../src/services/telegramClient";
 
 const enabledConfig: TelegramConfig = {
   enabled: true,
@@ -25,6 +29,38 @@ function jsonResponse(body: unknown, ok = true, status = 200): Response {
     status,
     json: async () => body
   } as Response;
+}
+
+function callbackClient(): TelegramClient {
+  return {
+    answerCallbackQuery: vi.fn().mockResolvedValue(true),
+    editMessageReplyMarkup: vi.fn().mockResolvedValue(true),
+    editMessageText: vi.fn().mockResolvedValue(true),
+    sendMessage: vi.fn().mockResolvedValue({ message_id: 10, chat: { id: 555 } })
+  } as unknown as TelegramClient;
+}
+
+function spawnProposal(songId = "spawn-status"): SpawnProposal {
+  return {
+    proposalId: songId,
+    createdAt: "2026-06-20T00:00:00.000Z",
+    status: "draft",
+    title: "Status Draft",
+    voiceTop: "この草稿で作る。",
+    coreTheme: "Telegramだけで戻れる草稿",
+    observationSources: [
+      { kind: "news", label: "fixture", quote: "draft source", url: "https://example.com/draft" }
+    ],
+    cascadeTrace: {
+      observationSources: [
+        { kind: "news", label: "fixture", quote: "draft source", url: "https://example.com/draft" }
+      ],
+      artistVoice: "この草稿で作る。",
+      title: "Status Draft",
+      lyricsTheme: "Telegramだけで戻れる草稿",
+      styleLayer: "fast noisy pop, dry vocal"
+    }
+  };
 }
 
 describe("telegram bot worker", () => {
@@ -252,6 +288,7 @@ describe("telegram bot worker", () => {
   it("attaches latest spawn proposal buttons to /status replies", async () => {
     const root = makeRoot();
     await mkdir(join(root, "runtime"), { recursive: true });
+    await appendSpawnProposal(root, spawnProposal("spawn-ready"));
     for (const action of ["song_spawn_inject", "song_spawn_skip", "song_spawn_edit"] as const) {
       await registerCallbackAction(root, {
         action,
@@ -296,6 +333,80 @@ describe("telegram bot worker", () => {
     expect(markup.reply_markup.inline_keyboard.flat().map((button) => button.text)).toEqual(["作る", "保留する", "修正する"]);
     const pending = await listPendingCallbackActionSummaries(root, { category: "producer_decision" });
     expect(pending.recent.map((entry) => entry.action).sort()).toEqual(["song_spawn_edit", "song_spawn_inject", "song_spawn_skip"].sort());
+    const entries = await readCallbackActionEntries(root);
+    expect(entries.findLast((entry) => entry.action === "song_spawn_inject" && entry.songId === "spawn-ready" && entry.status === "pending")?.commissionBrief).toMatchObject({
+      songId: "spawn-ready",
+      title: "Status Draft"
+    });
+  });
+
+  it("recreates draft-box spawn buttons on /status with usable commission briefs", async () => {
+    const originalSpawn = process.env.OPENCLAW_SONG_SPAWN_ENABLED;
+    process.env.OPENCLAW_SONG_SPAWN_ENABLED = "on";
+    const root = makeRoot();
+    try {
+      await ensureArtistWorkspace(root);
+      await mkdir(join(root, "runtime"), { recursive: true });
+      await appendSpawnProposal(root, spawnProposal());
+      const fetchImpl = vi
+        .fn()
+        .mockResolvedValueOnce(jsonResponse({
+          ok: true,
+          result: [{
+            update_id: 10,
+            message: {
+              message_id: 1,
+              text: "/status",
+              chat: { id: 555 },
+              from: { id: 123 }
+            }
+          }]
+        }))
+        .mockResolvedValueOnce(jsonResponse({ ok: true, result: { message_id: 2, text: "status", chat: { id: 555 } } }))
+        .mockResolvedValueOnce(jsonResponse({ ok: true, result: true }));
+      const worker = new TelegramBotWorker({
+        root,
+        config: enabledConfig,
+        token: "token",
+        ownerUserIds: new Set(["123"]),
+        fetchImpl
+      });
+
+      const poll = await worker.pollOnce();
+      worker.stop();
+
+      expect(poll).toMatchObject({ enabled: true, fetched: true, processed: 1 });
+      const markup = JSON.parse(fetchImpl.mock.calls[2][1].body as string) as {
+        reply_markup: { inline_keyboard: Array<Array<{ text: string; callback_data: string }>> };
+      };
+      expect(markup.reply_markup.inline_keyboard.flat().map((button) => button.text)).toEqual(["作る", "保留する", "修正する"]);
+      const entries = await readCallbackActionEntries(root);
+      const inject = entries.find((entry) => entry.action === "song_spawn_inject" && entry.songId === "spawn-status");
+      expect(inject?.commissionBrief).toMatchObject({
+        songId: "spawn-status",
+        title: "Status Draft",
+        lyricsTheme: "Telegramだけで戻れる草稿"
+      });
+
+      const applied = await routeTelegramCallback({
+        root,
+        client: callbackClient(),
+        callbackQueryId: "inject-restored",
+        data: `cb:${inject?.callbackId}`,
+        fromUserId: 123,
+        chatId: 555,
+        messageId: 2
+      });
+
+      expect(applied).toMatchObject({ result: "applied", reason: "song_spawn_injected" });
+      expect(await readSongState(root, "spawn-status")).toMatchObject({ status: "brief", title: "Status Draft" });
+    } finally {
+      if (originalSpawn === undefined) {
+        delete process.env.OPENCLAW_SONG_SPAWN_ENABLED;
+      } else {
+        process.env.OPENCLAW_SONG_SPAWN_ENABLED = originalSpawn;
+      }
+    }
   });
 
   it("attaches latest proposal confirmation buttons to /status replies", async () => {

@@ -353,8 +353,11 @@ export class TelegramBotWorker {
       action,
       entry: await registerCallbackAction(this.options.root, {
         action,
+        proposalId: input.proposalId,
         songId: input.songId,
         selectedTakeId: input.selectedTakeId,
+        commissionBrief: input.commissionBrief,
+        spawnReason: input.spawnReason,
         chatId: input.chatId,
         messageId: input.messageId,
         userId: input.userId
