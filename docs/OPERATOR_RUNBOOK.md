@@ -239,6 +239,10 @@ path:
    Telegram is not enabled, configured, running, connected, or has a recorded
    transport error. A green plugin status alone is not enough for a
    Telegram-only workflow.
+5. The doctor also checks `telegram_inbound` from artist-runtime status. It
+   warns when no Telegram inbound/callback has been recorded recently, so a
+   connected-but-not-delivering polling path is visible before production work
+   depends on it.
 
 For migration guidance, prefer explicit `field: value` lines after
 `/persona migrate`. Values may span multiple lines until the next recognized

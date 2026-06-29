@@ -12,6 +12,8 @@ DISK_FAIL_GB="${OPENCLAW_DOCTOR_DISK_FAIL_GB:-50}"
 GATEWAY_LOG_LINES="${OPENCLAW_DOCTOR_GATEWAY_LOG_LINES:-240}"
 STATUS_PROBE_TIMEOUT="${OPENCLAW_DOCTOR_STATUS_TIMEOUT:-5}"
 STATUS_PROBE_ATTEMPTS="${OPENCLAW_DOCTOR_STATUS_ATTEMPTS:-3}"
+TELEGRAM_INBOUND_WARN_MINUTES="${OPENCLAW_DOCTOR_TELEGRAM_INBOUND_WARN_MINUTES:-360}"
+STATUS_PAYLOAD=""
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
@@ -130,8 +132,10 @@ read_gateway_health_payload() {
 
 probe_status_endpoint() {
   local attempt=1
+  local payload=""
   while [[ "$attempt" -le "$STATUS_PROBE_ATTEMPTS" ]]; do
-    if curl -fsS --max-time "$STATUS_PROBE_TIMEOUT" "$STATUS_URL" >/dev/null 2>&1; then
+    if payload="$(curl -fsS --max-time "$STATUS_PROBE_TIMEOUT" "$STATUS_URL" 2>/dev/null)"; then
+      STATUS_PAYLOAD="$payload"
       return 0
     fi
     attempt=$((attempt + 1))
@@ -208,6 +212,43 @@ if [[ -f "$GATEWAY_LOG" ]]; then
   fi
 else
   record_check "telegram_commands" "warn" "gateway log not found; skipped fallback command registration check: $GATEWAY_LOG"
+fi
+
+if [[ -n "$STATUS_PAYLOAD" ]]; then
+  TELEGRAM_INBOUND="$(printf '%s' "$STATUS_PAYLOAD" | node -e '
+const fs = require("node:fs");
+const warnMinutes = Number(process.argv[1]);
+try {
+  const status = JSON.parse(fs.readFileSync(0, "utf8"));
+  const inbound = status.telegramInbound;
+  if (!inbound) {
+    console.log("warn\ttelegram inbound health missing from artist-runtime status");
+    process.exit(0);
+  }
+  const candidates = [inbound.lastInboundAt, inbound.lastCallbackAt, Date.parse(inbound.updatedAt ?? "")].filter((value) => Number.isFinite(Number(value)));
+  const latest = candidates.length > 0 ? Math.max(...candidates.map((value) => Number(value))) : 0;
+  if (latest <= 0) {
+    console.log("warn\tno Telegram inbound or callback has been recorded yet");
+    process.exit(0);
+  }
+  const ageMinutes = Math.max(0, Math.round((Date.now() - latest) / 60000));
+  if (Number.isFinite(warnMinutes) && warnMinutes >= 0 && ageMinutes > warnMinutes) {
+    console.log(`warn\tlast Telegram inbound/callback was ${ageMinutes} minutes ago`);
+    process.exit(0);
+  }
+  console.log(`ok\tlast Telegram inbound/callback was ${ageMinutes} minutes ago`);
+} catch {
+  console.log("warn\tartist-runtime status JSON could not be parsed; skipped Telegram inbound freshness check");
+}
+' "$TELEGRAM_INBOUND_WARN_MINUTES" 2>/dev/null || true)"
+  if [[ -n "$TELEGRAM_INBOUND" ]]; then
+    IFS=$'\t' read -r TELEGRAM_INBOUND_STATUS TELEGRAM_INBOUND_DETAIL <<< "$TELEGRAM_INBOUND"
+    record_check "telegram_inbound" "$TELEGRAM_INBOUND_STATUS" "$TELEGRAM_INBOUND_DETAIL"
+  else
+    record_check "telegram_inbound" "warn" "artist-runtime status did not produce a Telegram inbound result"
+  fi
+else
+  record_check "telegram_inbound" "warn" "artist-runtime status payload unavailable; skipped Telegram inbound freshness check"
 fi
 
 CONFIG_PATH="${ROOT%/}/runtime/config-overrides.json"

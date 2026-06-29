@@ -53,7 +53,7 @@ describe("openclaw-doctor.sh", () => {
       ].join("\n"),
       "utf8"
     );
-    await writeFile(join(root, "status.json"), '{"ok":true}', "utf8");
+    await writeFile(join(root, "status.json"), JSON.stringify({ telegramInbound: { lastInboundAt: Date.now() - 60_000 } }), "utf8");
     const statusUrl = `file://${join(root, "status.json")}`;
 
     const result = spawnSync("bash", [
@@ -80,6 +80,7 @@ describe("openclaw-doctor.sh", () => {
       "gateway",
       "telegram_transport",
       "telegram_commands",
+      "telegram_inbound",
       "x_probe",
       "suno_budget",
       "disk_usage",
@@ -123,7 +124,7 @@ describe("openclaw-doctor.sh", () => {
       ].join("\n"),
       "utf8"
     );
-    await writeFile(join(root, "status.json"), '{"ok":true}', "utf8");
+    await writeFile(join(root, "status.json"), JSON.stringify({ telegramInbound: { lastInboundAt: Date.now() - 60_000 } }), "utf8");
     const statusUrl = `file://${join(root, "status.json")}`;
 
     const result = spawnSync("bash", [
@@ -190,7 +191,7 @@ describe("openclaw-doctor.sh", () => {
       }),
       "utf8"
     );
-    await writeFile(join(root, "status.json"), '{"ok":true}', "utf8");
+    await writeFile(join(root, "status.json"), JSON.stringify({ telegramInbound: { lastInboundAt: Date.now() - 60_000 } }), "utf8");
     const statusUrl = `file://${join(root, "status.json")}`;
 
     const result = spawnSync("bash", [
@@ -217,5 +218,76 @@ describe("openclaw-doctor.sh", () => {
     expect(transportCheck?.status).toBe("fail");
     expect(transportCheck?.detail).toContain("connected=false");
     expect(transportCheck?.detail).toContain("polling timeout");
+  });
+
+  it("warns when Telegram inbound is stale even if transport is connected", async () => {
+    const root = mkdtempSync(join(tmpdir(), "artist-runtime-doctor-telegram-stale-"));
+    await mkdir(join(root, "runtime", "suno"), { recursive: true });
+    await mkdir(join(root, ".openclaw-browser-profiles", "suno"), { recursive: true });
+    await mkdir(join(root, ".local", "openclaw", "logs"), { recursive: true });
+    await writeFile(
+      join(root, "runtime", "config-overrides.json"),
+      JSON.stringify({ distribution: { platforms: { x: { authStatus: "tested" } } } }),
+      "utf8"
+    );
+    await writeFile(join(root, "runtime", "suno", "budget.json"), JSON.stringify({ consumed: 10, limit: 60 }), "utf8");
+    await writeFile(join(root, ".openclaw-browser-profiles", "suno", "Cookies"), "session", "utf8");
+    await writeFile(
+      join(root, ".local", "openclaw", "logs", "gateway.log"),
+      [
+        "[artist-runtime] registered runtime-slash command: suno",
+        "[artist-runtime] registered runtime-slash command: lyrics",
+        "[artist-runtime] registered runtime-slash command: plan",
+        "[artist-runtime] registered runtime-slash command: take",
+        "[artist-runtime] registered runtime-slash command: draft"
+      ].join("\n"),
+      "utf8"
+    );
+    await writeFile(
+      join(root, "gateway-health.json"),
+      JSON.stringify({
+        channels: {
+          telegram: {
+            enabled: true,
+            configured: true,
+            running: true,
+            connected: true,
+            tokenStatus: "available"
+          }
+        }
+      }),
+      "utf8"
+    );
+    await writeFile(join(root, "status.json"), JSON.stringify({ telegramInbound: { lastInboundAt: Date.now() - 120 * 60_000 } }), "utf8");
+    const statusUrl = `file://${join(root, "status.json")}`;
+
+    const result = spawnSync("bash", [
+      "scripts/openclaw-doctor.sh",
+      "--root",
+      root,
+      "--status-url",
+      statusUrl,
+      "--gateway-health-json",
+      join(root, "gateway-health.json"),
+      "--json"
+    ], {
+      cwd: process.cwd(),
+      encoding: "utf8",
+      env: {
+        ...process.env,
+        OPENCLAW_DOCTOR_TELEGRAM_INBOUND_WARN_MINUTES: "30"
+      }
+    });
+
+    expect(result.status).toBe(1);
+    const parsed = JSON.parse(result.stdout) as {
+      checks: Array<{ name: string; status: string; detail: string }>;
+      summary: { ok: number; warn: number; fail: number };
+    };
+    const inboundCheck = parsed.checks.find((check) => check.name === "telegram_inbound");
+    expect(parsed.summary.warn).toBe(1);
+    expect(parsed.summary.fail).toBe(0);
+    expect(inboundCheck?.status).toBe("warn");
+    expect(inboundCheck?.detail).toContain("last Telegram inbound/callback was");
   });
 });
