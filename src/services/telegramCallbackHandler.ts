@@ -554,9 +554,9 @@ export async function routeTelegramCallback(ctx: TelegramCallbackContext): Promi
     try {
       const state = await readAutopilotRunState(ctx.root);
       if (await currentSongLaneBusy(ctx.root, state, entry.commissionBrief.songId)) {
-        await markCallbackResolved(ctx.root, callbackId, { status: "failed", reason: "draft_box_building_busy", now });
         await appendCallbackAudit(ctx.root, auditBase(ctx, callbackId, entry, "blocked", "draft_box_building_busy"));
-        await clearButtonsAndReply(ctx, entry, `今は ${state.currentSongId ?? "別の曲"} を作ってる。終わったら、この草稿箱からもう一回「作る」を押してくれ。待ち行列には入れない。`);
+        await ctx.client.sendMessage(entry.chatId, `今は ${state.currentSongId ?? "別の曲"} を作ってる。終わったら、同じ草稿箱の「作る」をもう一回押してくれ。待ち行列には入れない。`)
+          .catch((error) => logCallbackDeliveryFailure("song_spawn_busy_message", error));
         return { processed: true, result: "blocked", reason: "draft_box_building_busy", callbackId };
       }
       await markProposalStatusIfPresent(markSpawnProposalBuilding, ctx.root, proposalId);

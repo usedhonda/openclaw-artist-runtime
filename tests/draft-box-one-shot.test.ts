@@ -6,7 +6,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { ensureArtistWorkspace } from "../src/services/artistWorkspace";
 import { readSongState } from "../src/services/artistState";
 import { ArtistAutopilotService, readAutopilotRunState, writeAutopilotRunState } from "../src/services/autopilotService";
-import { registerCallbackAction } from "../src/services/callbackActionRegistry";
+import { registerCallbackAction, resolveCallbackAction } from "../src/services/callbackActionRegistry";
 import { getRuntimeEventBus, type RuntimeEvent } from "../src/services/runtimeEventBus";
 import { appendSpawnProposal, clearSpawnProposalQueueCacheForTest, loadSpawnProposalQueue } from "../src/services/spawnProposalQueue";
 import { routeTelegramCallback } from "../src/services/telegramCallbackHandler";
@@ -196,10 +196,11 @@ describe("persistent draft box one-shot create", () => {
       updatedAt: "2026-06-01T00:00:00.000Z"
     });
     const action = await registerCreate(root, "spawn_second");
+    const telegram = client();
 
     const result = await routeTelegramCallback({
       root,
-      client: client(),
+      client: telegram,
       callbackQueryId: "busy",
       data: `cb:${action.callbackId}`,
       fromUserId: 123,
@@ -208,6 +209,8 @@ describe("persistent draft box one-shot create", () => {
     });
 
     expect(result).toMatchObject({ result: "blocked", reason: "draft_box_building_busy" });
+    expect(await resolveCallbackAction(root, action.callbackId)).toMatchObject({ status: "pending" });
+    expect(telegram.editMessageReplyMarkup).not.toHaveBeenCalled();
     const proposals = await loadSpawnProposalQueue(root);
     expect(proposals.find((entry) => entry.proposalId === "spawn_first")).toMatchObject({ status: "building" });
     expect(proposals.find((entry) => entry.proposalId === "spawn_second")).toMatchObject({ status: "draft" });

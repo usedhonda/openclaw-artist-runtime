@@ -5,7 +5,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { ensureArtistWorkspace } from "../src/services/artistWorkspace";
 import { ensureSongState, readSongState, updateSongState } from "../src/services/artistState";
 import { ArtistAutopilotService, readAutopilotRunState, writeAutopilotRunState } from "../src/services/autopilotService";
-import { markCallbackResolved, registerCallbackAction } from "../src/services/callbackActionRegistry";
+import { markCallbackResolved, registerCallbackAction, resolveCallbackAction } from "../src/services/callbackActionRegistry";
 import { getRuntimeEventBus } from "../src/services/runtimeEventBus";
 import {
   appendSpawnProposal,
@@ -155,6 +155,7 @@ describe("spawn proposal draft-box creation", () => {
     });
 
     expect(result).toMatchObject({ result: "blocked", reason: "draft_box_building_busy" });
+    expect(await resolveCallbackAction(root, entry.callbackId)).toMatchObject({ status: "pending" });
     expect(await readAutopilotRunState(root)).toMatchObject({ currentSongId: "song-active", stage: "suno_generation" });
     expect((await loadSpawnProposalQueue(root)).find((entry) => entry.proposalId === "spawn_waiting")).toMatchObject({ status: "draft" });
   });
