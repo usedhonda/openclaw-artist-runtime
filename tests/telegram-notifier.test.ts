@@ -201,7 +201,7 @@ describe("TelegramNotifier", () => {
     expect(fetchImpl).not.toHaveBeenCalled();
   });
 
-  it("sends the four producer-room signal events and preserves inline buttons", async () => {
+  it("sends producer-room signal events once the song is actionable and preserves inline buttons", async () => {
     const root = mkdtempSync(join(tmpdir(), "artist-runtime-signal-notify-"));
     const fetchImpl = vi.fn().mockResolvedValue(jsonResponse({
       ok: true,
@@ -221,8 +221,8 @@ describe("TelegramNotifier", () => {
 
     const sendCalls = fetchImpl.mock.calls.filter((call) => String(call[0]).includes("/sendMessage"));
     const markupCalls = fetchImpl.mock.calls.filter((call) => String(call[0]).includes("/editMessageReplyMarkup"));
-    expect(sendCalls).toHaveLength(4);
-    expect(markupCalls).toHaveLength(4);
+    expect(sendCalls).toHaveLength(3);
+    expect(markupCalls).toHaveLength(3);
     expect(markupCalls.map((call) => String((call[1] as RequestInit).body)).join("\n")).toContain("採用");
     expect(markupCalls.map((call) => String((call[1] as RequestInit).body)).join("\n")).toContain("破棄");
     expect(markupCalls.map((call) => String((call[1] as RequestInit).body)).join("\n")).toContain("作る");

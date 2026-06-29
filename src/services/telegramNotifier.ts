@@ -43,7 +43,6 @@ export interface TelegramNotifierOptions {
 const TELEGRAM_SIGNAL_EVENT_TYPES: ReadonlySet<RuntimeEvent["type"]> = new Set([
   "song_spawn_proposed",
   "prompt_pack_ready",
-  "suno_take_url_ready",
   "song_take_completed",
   "suno_adoption_download_failed"
 ]);
@@ -815,11 +814,25 @@ function parseSourceLine(line: string): CommissionBriefSource | undefined {
   };
 }
 
+function parseObservationSourceBlock(brief: string): CommissionBriefSource | undefined {
+  const url = brief.match(/^- URL:\s+(\S+)\s*$/m)?.[1]?.trim();
+  if (!url) return undefined;
+  const author = brief.match(/^- Author:\s+(.+)\s*$/m)?.[1]?.trim();
+  const quote = brief.match(/^- Quote:\s+(.+)\s*$/m)?.[1]?.trim();
+  const kind: CommissionBriefSource["kind"] = isAllowedObservationUrl(url) ? "x_reaction" : "news";
+  return { kind, url, author, quote };
+}
+
 function sourcesFromBriefText(brief: string): CommissionBriefSource[] {
-  return brief
+  const inlineSources = brief
     .split(/\r?\n/)
     .map((line) => parseSourceLine(line))
     .filter((source): source is CommissionBriefSource => source !== undefined);
+  const observationSource = parseObservationSourceBlock(brief);
+  if (!observationSource || inlineSources.some((source) => source.url === observationSource.url)) {
+    return inlineSources;
+  }
+  return [...inlineSources, observationSource];
 }
 
 function sourcesFromObservationSummary(summary?: ObservationSummary): CommissionBriefSource[] {

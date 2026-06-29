@@ -1,4 +1,5 @@
 import { mkdtempSync } from "node:fs";
+import { mkdir, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
@@ -45,5 +46,37 @@ describe("song take formatter observation source", () => {
     expect(message).toContain("🎯 動機: 自分の都市観察と、いまの静かな違和感を、ここに繋いだ。聴いてみて、どうだろう。");
     expect(message).toContain("🎵 Civic Static (selected: take-2)");
     expect(message).toContain("🔗 試聴:\n1. https://suno.com/song/a\n2. https://suno.com/song/b");
+  });
+
+  it("reads X reactions from Observation source blocks in brief.md", async () => {
+    const root = mkdtempSync(join(tmpdir(), "artist-runtime-song-take-brief-source-"));
+    await ensureArtistWorkspace(root);
+    await mkdir(join(root, "songs", "song-brief-x"), { recursive: true });
+    await writeFile(join(root, "songs", "song-brief-x", "brief.md"), [
+      "# Brief for 追加時間の渋谷",
+      "",
+      "## Observation source",
+      "- Author: X public reaction + manual news seed",
+      "- URL: https://x.com/otsurikan_0/status/2071690874166341774",
+      "- Quote: X reaction around Brazil 2-1 Japan: 惜しい、悔しい、ありがとう、田中碧を責めるな。"
+    ].join("\n"), "utf8");
+    await updateSongState(root, "song-brief-x", {
+      title: "追加時間の渋谷",
+      status: "take_selected",
+      selectedTakeId: "take-x"
+    });
+
+    const message = await formatRuntimeEvent({
+      type: "song_take_completed",
+      songId: "song-brief-x",
+      selectedTakeId: "take-x",
+      urls: ["https://suno.com/song/a"],
+      timestamp: 1
+    }, { workspaceRoot: root });
+
+    expect(message).toContain("Xで拾った反応:");
+    expect(message).toContain("反応: X reaction / X public reaction + manual news seed");
+    expect(message).toContain("惜しい、悔しい、ありがとう、田中碧を責めるな");
+    expect(message).not.toContain("2. X反応: 記録なし");
   });
 });
