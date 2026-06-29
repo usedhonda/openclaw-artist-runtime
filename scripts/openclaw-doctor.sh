@@ -10,6 +10,8 @@ STALE_DAYS="${OPENCLAW_DOCTOR_PROFILE_STALE_DAYS:-30}"
 DISK_WARN_GB="${OPENCLAW_DOCTOR_DISK_WARN_GB:-10}"
 DISK_FAIL_GB="${OPENCLAW_DOCTOR_DISK_FAIL_GB:-50}"
 GATEWAY_LOG_LINES="${OPENCLAW_DOCTOR_GATEWAY_LOG_LINES:-240}"
+STATUS_PROBE_TIMEOUT="${OPENCLAW_DOCTOR_STATUS_TIMEOUT:-5}"
+STATUS_PROBE_ATTEMPTS="${OPENCLAW_DOCTOR_STATUS_ATTEMPTS:-3}"
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
@@ -126,15 +128,27 @@ read_gateway_health_payload() {
   fi
 }
 
+probe_status_endpoint() {
+  local attempt=1
+  while [[ "$attempt" -le "$STATUS_PROBE_ATTEMPTS" ]]; do
+    if curl -fsS --max-time "$STATUS_PROBE_TIMEOUT" "$STATUS_URL" >/dev/null 2>&1; then
+      return 0
+    fi
+    attempt=$((attempt + 1))
+    [[ "$attempt" -le "$STATUS_PROBE_ATTEMPTS" ]] && sleep 1
+  done
+  return 1
+}
+
 if [[ "$JSON" -eq 1 ]]; then
   printf '{"checks":['
 fi
 
 if command -v curl >/dev/null 2>&1; then
-  if curl -fsS --max-time 2 "$STATUS_URL" >/dev/null 2>&1; then
+  if probe_status_endpoint; then
     record_check "gateway" "ok" "gateway status endpoint responded"
   else
-    record_check "gateway" "fail" "gateway status endpoint did not respond: $STATUS_URL"
+    record_check "gateway" "fail" "gateway status endpoint did not respond after ${STATUS_PROBE_ATTEMPTS} attempts: $STATUS_URL"
   fi
 else
   record_check "gateway" "warn" "curl is not available; skipped gateway status probe"
