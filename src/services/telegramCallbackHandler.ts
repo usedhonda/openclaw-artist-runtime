@@ -25,6 +25,7 @@ import { readLatestSunoRun } from "./sunoRuns.js";
 
 export const STALE_CALLBACK_JA_REPLY = "このボタンはもう古い。 最新の通知から選び直して。";
 const SONG_REVIEW_SIBLING_ACTIONS = new Set(["song_archive", "song_discard"]);
+const SONG_SPAWN_SIBLING_ACTIONS = new Set(["song_spawn_inject", "song_spawn_skip", "song_spawn_edit"]);
 
 function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
@@ -547,6 +548,12 @@ export async function routeTelegramCallback(ctx: TelegramCallbackContext): Promi
     const proposalId = entry.proposalId ?? entry.songId ?? entry.commissionBrief?.songId;
     if (entry.action === "song_spawn_edit") {
       await markCallbackResolved(ctx.root, callbackId, { status: "updated", reason: "song_spawn_edit_requested", now });
+      await markSiblingCallbacksResolved(ctx.root, entry, {
+        status: "discarded",
+        reason: "sibling_resolved_by:song_spawn_edit",
+        now,
+        actions: SONG_SPAWN_SIBLING_ACTIONS
+      });
       await appendCallbackAudit(ctx.root, auditBase(ctx, callbackId, entry, "updated", "song_spawn_edit_requested"));
       await ctx.client.sendMessage(entry.chatId, "修正するなら /commission に方向性を書き直して投げてくれ。callback に本文は載せない。")
         .catch((error) => logCallbackDeliveryFailure("song_spawn_edit_message", error));
@@ -569,6 +576,12 @@ export async function routeTelegramCallback(ctx: TelegramCallbackContext): Promi
       }
       await markSpawned(ctx.root, new Date(now));
       await markCallbackResolved(ctx.root, callbackId, { status: "discarded", reason: "song_spawn_skipped", now });
+      await markSiblingCallbacksResolved(ctx.root, entry, {
+        status: "discarded",
+        reason: "sibling_resolved_by:song_spawn_skip",
+        now,
+        actions: SONG_SPAWN_SIBLING_ACTIONS
+      });
       await appendCallbackAudit(ctx.root, auditBase(ctx, callbackId, entry, "discarded", "song_spawn_skipped"));
       await clearButtonsAndReply(ctx, entry, "今は見送った。次の spawn 候補はまた間隔を置いて見る。");
       kickAutopilotCycleAfterProducerDecision("song_spawn_skip");
@@ -592,6 +605,12 @@ export async function routeTelegramCallback(ctx: TelegramCallbackContext): Promi
       const injected = await injectCommissionSong(ctx.root, entry.commissionBrief, { now: new Date(now) });
       await markSpawned(ctx.root, new Date(now));
       await markCallbackResolved(ctx.root, callbackId, { status: "applied", reason: "song_spawn_injected", now });
+      await markSiblingCallbacksResolved(ctx.root, entry, {
+        status: "discarded",
+        reason: "sibling_resolved_by:song_spawn_inject",
+        now,
+        actions: SONG_SPAWN_SIBLING_ACTIONS
+      });
       await appendCallbackAudit(ctx.root, auditBase(ctx, callbackId, entry, "applied", "song_spawn_injected"));
       await clearButtonsAndReply(ctx, entry, `作り始めた。songId=${injected.songId}。Suno 生成まで一気に進める。完成したら報告する。`);
       kickAutopilotCycleAfterProducerDecision("song_spawn_inject");

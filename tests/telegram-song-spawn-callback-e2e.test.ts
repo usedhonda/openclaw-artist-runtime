@@ -88,5 +88,9 @@ describe("telegram song spawn callback e2e", () => {
     expect(state).toMatchObject({ currentSongId: "spawn_e7c3b2", stage: "planning", suspendedAt: null });
     expect((await readSongState(root, "spawn_e7c3b2")).status).toBe("brief");
     expect(readFileSync(join(root, "songs", "spawn_e7c3b2", "brief.md"), "utf8")).toContain("Producer commission");
+    const resolvedEntries = await readCallbackActionEntries(root);
+    expect(resolvedEntries.find((entry) => entry.callbackId === inject?.callbackId && entry.status === "applied")).toBeTruthy();
+    expect(resolvedEntries.find((entry) => entry.action === "song_spawn_skip" && entry.status === "discarded")).toBeTruthy();
+    expect(resolvedEntries.find((entry) => entry.action === "song_spawn_edit" && entry.status === "discarded")).toBeTruthy();
   });
 });
