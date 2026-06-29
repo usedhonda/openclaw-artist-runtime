@@ -42,7 +42,7 @@ async function latestWaitingLines(
 ): Promise<{ lines: string[]; nextLine?: string }> {
   const latest = pending.recent[0];
   if (!latest) {
-    return { lines: ["- 待ち callback: なし"] };
+    return { lines: ["- 操作待ち: なし"] };
   }
   const visible = pending.recent.filter((callback) => sameDecisionNotice(callback, latest));
   const target = latest.songId ?? latest.proposalId ?? latest.action;
@@ -105,9 +105,9 @@ export async function composeProducerStatus(root: string, options: ProducerStatu
     : draftBox.nextAction;
 
   return [
-    formatDraftBoxNextActionSection(draftBox),
+    formatDraftBoxNextActionSection(draftBox, { includeNextAction: false }),
     "",
-    "現在地:",
+    "実行状態:",
     `- Stage: ${stage}`,
     `- song: ${song ? `${song.songId} / ${song.title}` : currentSongId ?? "なし"}`,
     autopilot.suspendedAt ? `- suspendedAt: ${autopilot.suspendedAt}` : undefined,

@@ -16,6 +16,27 @@ async function root(): Promise<string> {
 }
 
 describe("producer status composer", () => {
+  it("keeps idle /status concise with one next action and no internal callback wording", async () => {
+    const workspaceRoot = await root();
+    await writeAutopilotRunState(workspaceRoot, {
+      runId: "run-status",
+      stage: "planning",
+      paused: false,
+      retryCount: 0,
+      cycleCount: 1,
+      blockedReason: "song_spawn_waiting_for_proposal",
+      updatedAt: new Date(0).toISOString()
+    });
+
+    const text = await composeProducerStatus(workspaceRoot, { now: Date.parse("2026-05-26T00:00:00.000Z") });
+
+    expect(text.match(/^現在地:/gm)).toHaveLength(1);
+    expect(text.match(/^次:/gm)).toHaveLength(1);
+    expect(text).toContain("実行状態:");
+    expect(text).toContain("- 操作待ち: なし");
+    expect(text).not.toContain("callback");
+  });
+
   it("summarizes current song, blocked state, public url, and producer decision effects", async () => {
     const workspaceRoot = await root();
     const now = Date.parse("2026-05-26T00:00:00.000Z");
@@ -140,5 +161,6 @@ describe("producer status composer", () => {
     expect(result.kind).toBe("status");
     expect(result.shouldStoreFreeText).toBe(false);
     expect(result.responseText).toContain("現在地:");
+    expect(result.responseText).toContain("実行状態:");
   });
 });

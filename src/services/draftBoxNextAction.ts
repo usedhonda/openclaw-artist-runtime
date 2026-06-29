@@ -147,12 +147,13 @@ export async function composeDraftBoxNextAction(
   };
 }
 
-export function formatDraftBoxNextActionSection(summary: DraftBoxNextActionSummary): string {
+export function formatDraftBoxNextActionSection(summary: DraftBoxNextActionSummary, options: { includeNextAction?: boolean } = {}): string {
+  const includeNextAction = options.includeNextAction ?? true;
   return [
     "現在地:",
     summary.currentLine,
     `草稿箱: draft ${summary.draftCount}件 / building ${summary.buildingCount}件`,
     summary.reason ? `理由: ${summary.reason}` : undefined,
-    summary.nextAction
+    includeNextAction ? summary.nextAction : undefined
   ].filter((line): line is string => Boolean(line)).join("\n");
 }
