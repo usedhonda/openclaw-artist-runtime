@@ -31,6 +31,8 @@ function motifDrivenQuery(motifs: PersonaMotifBundle): { query: string; keywords
   };
 }
 
+const defaultTopicalQuery = "ニュース OR 話題 OR 速報 OR トレンド";
+
 function fromHint(hint: string): XQueryStrategy | undefined {
   if (/最新|ニュース|いま|今|today|news|current/i.test(hint)) {
     return { mode: "topical", query: sanitizeQuery(hint), recencyWindow: 24 };
@@ -64,7 +66,7 @@ export async function planQueryStrategy(input: XQueryStrategyInput = {}): Promis
   if (hinted) {
     return motifQuery ? { ...hinted, motifKeywords: motifQuery.keywords } : hinted;
   }
-  const fallbackQuery = sanitizeQuery(motifQuery?.query || hint || input.personaText || "music society culture") || "music society culture";
+  const fallbackQuery = sanitizeQuery(hint || defaultTopicalQuery) || defaultTopicalQuery;
   const provider = input.aiReviewProvider ?? "mock";
   if (provider === "mock") {
     return {
@@ -78,7 +80,8 @@ export async function planQueryStrategy(input: XQueryStrategyInput = {}): Promis
   const raw = await callAiProvider([
     "System: Choose a safe X/Twitter observation query strategy for an autonomous musical artist.",
     "Return mode: topical|evergreen, query: <short query>, recency: <hours for topical>.",
-    "The query must reflect the artist's persona motifs below — pick keywords that the artist would actually engage with.",
+    "Start from broad topical/news reaction material. Use persona motifs as lens/ranking context, not as the default search terms.",
+    "Only put persona-specific words in query when the producer hint or current news item already points there.",
     "Avoid high-frequency polling and avoid secrets.",
     `Producer hint: ${hint || "(none)"}`,
     `Persona motifs: ${motifLine || "(none)"}`,

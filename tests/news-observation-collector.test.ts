@@ -5,6 +5,7 @@ import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   buildMotifNewsSearchUrls,
+  buildTopicalNewsRssUrls,
   collectNewsObservations,
   defaultNewsArticleResolver,
   parseNewsObservationFile,
@@ -109,6 +110,21 @@ describe("news observation collector", () => {
     expect(decodeURIComponent(urls[0])).toContain("再開発");
     expect(decodeURIComponent(urls[0])).toContain(" OR ");
     expect(urls[0]).toContain("ceid=JP:ja");
+  });
+
+  it("uses a broad topical news RSS before persona motif search", async () => {
+    const root = workspace();
+    const fetcher = vi.fn(async () => rssSample);
+
+    await collectNewsObservations(root, {
+      now: new Date("2026-05-23T01:00:00.000Z"),
+      personaText: "## Geographies\n渋谷\n## Lyrics\n- テーマ: 再開発",
+      fetcher
+    });
+
+    expect(fetcher).toHaveBeenCalled();
+    expect(fetcher.mock.calls[0]?.[0]).toBe(buildTopicalNewsRssUrls()[0]);
+    expect(fetcher.mock.calls.some(([url]) => decodeURIComponent(String(url)).includes("渋谷"))).toBe(true);
   });
 
   it("parses RSS 2.0 items and writes a daily cache", async () => {

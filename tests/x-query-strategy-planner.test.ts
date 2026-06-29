@@ -17,10 +17,13 @@ describe("x query strategy planner", () => {
   });
 
   it("uses mock topical fallback with persona context", async () => {
-    const strategy = await planQueryStrategy({ personaText: "社会風刺と短い言葉" });
+    const strategy = await planQueryStrategy({ personaText: "社会風刺と短い言葉。渋谷を失敗した都市模型として切る。" });
 
     expect(strategy.mode).toBe("topical");
     expect(strategy.recencyWindow).toBe(24);
+    expect(strategy.query).toContain("ニュース");
+    expect(strategy.query).not.toContain("渋谷");
+    expect(strategy.motifKeywords).toContain("渋谷");
   });
 
   it("rejects secret-like hints", async () => {

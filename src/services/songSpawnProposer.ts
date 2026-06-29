@@ -606,7 +606,7 @@ function buildPrompt(context: {
     // and main material (e.g. today's LUUP incident + the X reaction around it),
     // ARTIST.md is the lens that colors the take (六本木 / 経営者 / hip-hop). The
     // ratio is ~40% observation main / 60% persona lens.
-    "Material policy: 観察 (news + X) を主素材、 ARTIST.md / SOUL.md は色付けの lens として使う。 例: news で『LUUP 事故』 が出ていれば、 X 上の LUUP 反応を歌詞に取り込み、 ARTIST.md の六本木の経営者目線で切る。 lens を起点にして同じ motif を毎回繰り返さない。",
+    "Material policy: 観察 (news + X) を主素材、 ARTIST.md / SOUL.md は色付けの lens として使う。まず世間で話題の news を拾い、X の反応を確認してから、必要なら渋谷・再開発・若者退出・都市の失敗へ強引に折り返す。Shibuya は検索語の起点ではなく punchline / critique lens。lens を起点にして同じ motif を毎回繰り返さない。",
     "Avoid any subject or title already listed in recently proposed themes.",
     "Never include secrets. Keep the brief lean enough for autopilot planning.",
     "",

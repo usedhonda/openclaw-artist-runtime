@@ -1,7 +1,8 @@
 // Plan v10.38 Phase B: news observation collector.
 //
-// Builds Google News search RSS feeds from persona motifs, falls back to
-// OPENCLAW_NEWS_RSS_URLS when motifs are unavailable, parses item / entry tags
+// Reads broad topical news first, then optional operator RSS feeds and persona
+// motif search feeds. Persona motifs color/rank the artist take, but they are
+// not the first search target. Parses item / entry tags
 // for RSS 2.0 and Atom, scores entries against the same persona motif bundle
 // the X collector uses, and writes a daily cache under
 // `<workspace>/observations/news-YYYY-MM-DD.md`. The cache schema mirrors
@@ -85,6 +86,10 @@ function googleNewsSearchRssUrl(query: string): string {
   return `https://news.google.com/rss/search?q=${encodeURIComponent(query)}&hl=ja&gl=JP&ceid=JP:ja`;
 }
 
+export function buildTopicalNewsRssUrls(): string[] {
+  return ["https://news.google.com/rss?hl=ja&gl=JP&ceid=JP:ja"];
+}
+
 export function buildMotifNewsSearchUrls(motifs: PersonaMotifBundle, limit = 5): string[] {
   const keywords = topQueryKeywords(motifs, limit);
   if (keywords.length === 0) return [];
@@ -94,7 +99,7 @@ export function buildMotifNewsSearchUrls(motifs: PersonaMotifBundle, limit = 5):
 function newsRssUrlsForRun(motifs: PersonaMotifBundle): string[] {
   const envUrls = rssUrlsFromEnv();
   const motifUrls = buildMotifNewsSearchUrls(motifs);
-  const urls = motifUrls.length > 0 ? [...motifUrls, ...envUrls] : envUrls;
+  const urls = motifUrls.length > 0 ? [...buildTopicalNewsRssUrls(), ...envUrls, ...motifUrls] : envUrls;
   return [...new Set(urls)].slice(0, maxFeedsPerRun);
 }
 
