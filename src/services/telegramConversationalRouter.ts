@@ -96,20 +96,20 @@ function formatSongCreateAccepted(hint?: string): string {
   ].join("\n");
 }
 
-function isTerminalOrReviewStatus(status: string): boolean {
-  return ["scheduled", "published", "archived", "discarded", "failed", "take_selected", "suno_take_url_ready"].includes(status);
+function isClosedForManualCreate(status: string): boolean {
+  return ["scheduled", "published", "archived", "discarded", "failed"].includes(status);
 }
 
 async function activeSongForManualCreate(root: string): Promise<{ songId: string; title?: string; status?: string } | undefined> {
   const state = await readAutopilotRunState(root).catch(() => undefined);
   if (state?.currentSongId) {
     const current = await readSongState(root, state.currentSongId).catch(() => undefined);
-    if (current && !isTerminalOrReviewStatus(current.status)) {
+    if (current && !isClosedForManualCreate(current.status)) {
       return { songId: current.songId, title: current.title, status: current.status };
     }
   }
   const active = (await listSongStates(root).catch(() => []))
-    .find((song) => !isTerminalOrReviewStatus(song.status));
+    .find((song) => !isClosedForManualCreate(song.status));
   return active ? { songId: active.songId, title: active.title, status: active.status } : undefined;
 }
 
@@ -204,7 +204,7 @@ export async function routeTelegramConversation(input: TelegramConversationalRou
         responseText: [
           `いま ${activeSong.songId}${activeSong.title ? ` / ${activeSong.title}` : ""} を作っている。`,
           activeSong.status ? `status: ${activeSong.status}` : undefined,
-          "新しい曲は今の制作が閉じてからにする。進捗は /status。"
+          "新しい曲は今の制作か採用/破棄待ちが閉じてからにする。進捗とボタンは /status。"
         ].filter((line): line is string => Boolean(line)).join("\n"),
         shouldStoreFreeText: false
       };

@@ -89,6 +89,31 @@ describe("telegram song create trigger", () => {
     expect(runCycle).not.toHaveBeenCalled();
   });
 
+  it("does not start a new manual song while a take decision is waiting", async () => {
+    const root = workspace();
+    await ensureArtistWorkspace(root);
+    await ensureSongState(root, "spawn-review", "Review Song");
+    await updateSongState(root, "spawn-review", {
+      status: "suno_take_url_ready",
+      selectedTakeId: "take-ready",
+      appendPublicLinks: ["https://suno.com/song/take-ready"]
+    });
+    const runCycle = vi.spyOn(ArtistAutopilotService.prototype, "runCycle");
+
+    const response = await routeTelegramCommand({
+      text: "/song create 別の新曲",
+      fromUserId: 1,
+      chatId: 2,
+      workspaceRoot: root
+    });
+
+    expect(response.responseText).toContain("spawn-review");
+    expect(response.responseText).toContain("採用/破棄");
+    expect(response.responseText).toContain("/status");
+    expect(response.shouldStoreFreeText).toBe(false);
+    expect(runCycle).not.toHaveBeenCalled();
+  });
+
   it("emits a Telegram-visible failure when manual song create cannot start", async () => {
     const root = workspace();
     await ensureArtistWorkspace(root);
