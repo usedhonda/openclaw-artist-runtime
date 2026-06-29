@@ -4,9 +4,11 @@ set -euo pipefail
 ROOT="."
 JSON=0
 STATUS_URL=""
+GATEWAY_LOG=""
 STALE_DAYS="${OPENCLAW_DOCTOR_PROFILE_STALE_DAYS:-30}"
 DISK_WARN_GB="${OPENCLAW_DOCTOR_DISK_WARN_GB:-10}"
 DISK_FAIL_GB="${OPENCLAW_DOCTOR_DISK_FAIL_GB:-50}"
+GATEWAY_LOG_LINES="${OPENCLAW_DOCTOR_GATEWAY_LOG_LINES:-240}"
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
@@ -30,6 +32,14 @@ while [[ $# -gt 0 ]]; do
       }
       shift 2
       ;;
+    --gateway-log)
+      GATEWAY_LOG="${2:-}"
+      [[ -n "$GATEWAY_LOG" ]] || {
+        echo "--gateway-log requires a path" >&2
+        exit 1
+      }
+      shift 2
+      ;;
     *)
       echo "Unknown option: $1" >&2
       exit 1
@@ -40,6 +50,9 @@ done
 PORT="${OPENCLAW_GATEWAY_PORT:-${OPENCLAW_LOCAL_GATEWAY_PORT:-43134}}"
 if [[ -z "$STATUS_URL" ]]; then
   STATUS_URL="http://127.0.0.1:${PORT}/plugins/artist-runtime/api/status"
+fi
+if [[ -z "$GATEWAY_LOG" ]]; then
+  GATEWAY_LOG="${ROOT%/}/.local/openclaw/logs/gateway.log"
 fi
 
 OK_COUNT=0
@@ -104,6 +117,24 @@ if command -v curl >/dev/null 2>&1; then
   fi
 else
   record_check "gateway" "warn" "curl is not available; skipped gateway status probe"
+fi
+
+REQUIRED_TELEGRAM_COMMANDS=(suno lyrics plan take draft)
+if [[ -f "$GATEWAY_LOG" ]]; then
+  RECENT_GATEWAY_LOG="$(tail -n "$GATEWAY_LOG_LINES" "$GATEWAY_LOG" 2>/dev/null || true)"
+  MISSING_TELEGRAM_COMMANDS=()
+  for command_name in "${REQUIRED_TELEGRAM_COMMANDS[@]}"; do
+    if ! printf '%s\n' "$RECENT_GATEWAY_LOG" | grep -F "[artist-runtime] registered runtime-slash command: ${command_name}" >/dev/null; then
+      MISSING_TELEGRAM_COMMANDS+=("$command_name")
+    fi
+  done
+  if [[ "${#MISSING_TELEGRAM_COMMANDS[@]}" -eq 0 ]]; then
+    record_check "telegram_commands" "ok" "fallback text commands registered: ${REQUIRED_TELEGRAM_COMMANDS[*]}"
+  else
+    record_check "telegram_commands" "fail" "missing fallback command registrations in recent gateway log: ${MISSING_TELEGRAM_COMMANDS[*]}"
+  fi
+else
+  record_check "telegram_commands" "warn" "gateway log not found; skipped fallback command registration check: $GATEWAY_LOG"
 fi
 
 CONFIG_PATH="${ROOT%/}/runtime/config-overrides.json"

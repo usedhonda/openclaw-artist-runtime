@@ -229,7 +229,12 @@ path:
    persona`.
 2. If OpenClaw exposes plugin command specs during registration, startup should
    also log a snapshot like `[artist-runtime] telegram plugin command specs:
-   persona,setup,... (count=7, persona=true)`.
+   persona,song,...,suno,lyrics,plan,take,draft,... (count=18,
+   persona=true)`.
+3. `scripts/openclaw-doctor.sh --json` checks the recent Gateway log for the
+   text fallback commands `suno lyrics plan take draft`. If an old Gateway build
+   is still serving Telegram, the `telegram_commands` check fails instead of
+   leaving the operator to infer it from chat behavior.
 
 For migration guidance, prefer explicit `field: value` lines after
 `/persona migrate`. Values may span multiple lines until the next recognized
