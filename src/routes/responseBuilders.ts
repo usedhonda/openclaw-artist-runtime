@@ -78,6 +78,10 @@ function logRouteFallback(reason: string, path: string, error?: unknown): void {
   console.warn(`[artist-runtime] route fallback ${reason}: ${path}${detail}`);
 }
 
+function isMissingFileError(error: unknown): boolean {
+  return error instanceof Error && "code" in error && error.code === "ENOENT";
+}
+
 async function readTextOrFallback(path: string, fallback: string, reason: string, logLevel: "warn" | "debug" = "warn"): Promise<string> {
   try {
     return await readFile(path, "utf8");
@@ -105,14 +109,27 @@ async function readJsonOrFallback<T>(path: string, fallback: T, reason: string, 
 }
 
 async function readJsonlEntries<T>(path: string): Promise<T[]> {
-  const contents = await readTextOrFallback(path, "", "jsonl_read_fallback", "debug");
+  let contents: string;
+  try {
+    contents = await readFile(path, "utf8");
+  } catch (error) {
+    if (!isMissingFileError(error)) {
+      console.debug(`[artist-runtime] route fallback jsonl_read_fallback: ${path}`);
+    }
+    return [];
+  }
   if (!contents) {
     return [];
   }
-  return contents
-    .split("\n")
-    .filter(Boolean)
-    .map((line) => JSON.parse(line) as T);
+  try {
+    return contents
+      .split("\n")
+      .filter(Boolean)
+      .map((line) => JSON.parse(line) as T);
+  } catch (error) {
+    logRouteFallback("jsonl_parse_fallback", path, error);
+    return [];
+  }
 }
 
 function todayKey(value: string): string {
