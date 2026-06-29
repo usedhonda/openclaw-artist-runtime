@@ -310,8 +310,8 @@ describe("ProducerRoomApp Songs and Settings views", () => {
       })
     );
 
-    expect(html).toMatch(/<button class=\"primary\" type=\"button\" disabled=\"\">Save settings<\/button>/);
-    expect(html).toMatch(/<button type=\"button\" disabled=\"\">Reset changes<\/button>/);
+    expect(html).toMatch(/<button class="primary" type="button" disabled="">Save settings<\/button>/);
+    expect(html).toMatch(/<button type="button" disabled="">Reset changes<\/button>/);
   });
 
   it("renders Setup as canonical inputs without raw MD tabs", () => {

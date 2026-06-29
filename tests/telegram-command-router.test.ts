@@ -12,6 +12,8 @@ import { readAdoptionDownloadJobEntries } from "../src/services/sunoAdoptionDown
 import { appendFailedNotification } from "../src/services/failedNotifyLedger";
 import { getRuntimeEventBus, type RuntimeEvent } from "../src/services/runtimeEventBus";
 import { appendSpawnProposal } from "../src/services/spawnProposalQueue";
+import { appendConversationTurn } from "../src/services/conversationalSession";
+import { proposalForDetection } from "../src/services/songDistributionPoller";
 import type { CommissionBrief, SpawnProposal } from "../src/types";
 
 const baseInput = {
@@ -617,6 +619,71 @@ describe("telegram command router", () => {
     expect(await readAutopilotRunState(root)).toMatchObject({
       stage: "planning",
       suspendedAt: null
+    });
+  });
+
+  it("dispatches daily voice cancel from text through the pending decision handler", async () => {
+    vi.stubEnv("OPENCLAW_ARTIST_PULSE_ENABLED", "on");
+    const root = makeRoot();
+    const now = Date.now();
+    await registerCallbackAction(root, {
+      action: "daily_voice_cancel",
+      draftHash: "daily-hash",
+      draftCharCount: 42,
+      chatId: 456,
+      messageId: 77,
+      userId: 123,
+      now
+    });
+
+    const result = await routeTelegramCommand({ ...baseInput, text: "/pulse cancel", workspaceRoot: root });
+
+    expect(result.kind).toBe("free_text");
+    expect(result.responseText).toContain("普段の投稿は取り消した");
+    const latestCallbacks = [...(await latestCallbackEntriesById(root)).values()];
+    expect(latestCallbacks.find((entry) => entry.action === "daily_voice_cancel")).toMatchObject({
+      status: "discarded",
+      resolveReason: "daily_voice_cancelled"
+    });
+  });
+
+  it("dispatches distribution skip from text through the pending decision handler", async () => {
+    const root = makeRoot();
+    const now = Date.now();
+    const proposal = proposalForDetection({
+      songId: "song-dist",
+      title: "Song Dist",
+      platform: "spotify",
+      url: "https://open.spotify.com/track/dist",
+      detectedAt: new Date(now).toISOString()
+    });
+    await appendConversationTurn(root, {
+      chatId: 456,
+      userId: 123,
+      topic: { kind: "song", songId: "song-dist" },
+      pendingChangeSet: proposal,
+      turn: { role: "artist", text: "配信検出を反映する?" },
+      now
+    });
+    await registerCallbackAction(root, {
+      action: "dist_skip",
+      proposalId: proposal.id,
+      songId: "song-dist",
+      platform: "spotify",
+      chatId: 456,
+      messageId: 77,
+      userId: 123,
+      now
+    });
+
+    const result = await routeTelegramCommand({ ...baseInput, text: `/dist skip ${proposal.id}`, workspaceRoot: root });
+
+    expect(result.kind).toBe("free_text");
+    expect(result.responseText).toContain("Skipped spotify for song-dist");
+    const latestCallbacks = [...(await latestCallbackEntriesById(root)).values()];
+    expect(latestCallbacks.find((entry) => entry.action === "dist_skip")).toMatchObject({
+      status: "discarded",
+      resolveReason: "discarded"
     });
   });
 

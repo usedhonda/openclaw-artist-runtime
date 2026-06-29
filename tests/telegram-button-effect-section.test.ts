@@ -31,4 +31,32 @@ describe("telegram button effect section", () => {
 
     expect(text).not.toContain("次:");
   });
+
+  it("adds text fallback commands to daily voice decision cards", async () => {
+    const text = await formatRuntimeEvent({
+      type: "artist_pulse_drafted",
+      voiceKind: "daily_voice",
+      draftText: "今日の街は、少しだけ速い。",
+      draftHash: "hash-daily-voice",
+      charCount: 15,
+      timestamp: 1
+    });
+
+    expect(text).toContain("次:\nボタンで選ぶ");
+    expect(text).toContain("ボタン不可: /pulse publish / /pulse edit / /pulse cancel");
+  });
+
+  it("adds text fallback commands to distribution decision cards", async () => {
+    const text = await formatRuntimeEvent({
+      type: "distribution_change_detected",
+      songId: "song-dist",
+      platform: "spotify",
+      url: "https://open.spotify.com/track/dist",
+      proposalId: "dist-proposal",
+      timestamp: 1
+    });
+
+    expect(text).toContain("次:\nボタンで選ぶ");
+    expect(text).toContain("ボタン不可: /dist apply dist-proposal / /dist skip dist-proposal");
+  });
 });

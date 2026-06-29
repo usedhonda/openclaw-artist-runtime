@@ -79,6 +79,8 @@ describe("OpenClaw Telegram persona command wire", () => {
     expect(commands.get("plan")?.acceptsArgs).toBe(true);
     expect(commands.get("take")?.acceptsArgs).toBe(true);
     expect(commands.get("draft")?.acceptsArgs).toBe(true);
+    expect(commands.get("dist")?.acceptsArgs).toBe(true);
+    expect(commands.get("pulse")?.acceptsArgs).toBe(true);
   });
 
   it("routes /persona check through the production plugin command handler", async () => {

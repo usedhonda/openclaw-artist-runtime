@@ -914,16 +914,6 @@ function humanizeMood(value?: string): string {
   return "引っかかりのある";
 }
 
-function formatSpawnBriefVoiceDetail(brief: Extract<RuntimeEvent, { type: "song_spawn_proposed" }>["brief"], reason: string): string {
-  const cleanReason = isMachineVoiceArtifact(reason)
-    ? "この切り口、ずっと抱えてた街のざらつきに近い。委ねてみたい。"
-    : reason;
-  return [
-    `『${brief.title}』、${humanizeTempo(brief.tempo)}、${humanizeMood(brief.mood)}${humanizeDuration(brief.duration)}。これで合ってる気がする。`,
-    cleanReason
-  ].join("\n");
-}
-
 function compactReason(value: string | undefined): string {
   if (isMachineVoiceArtifact(value ?? "")) {
     return "この切り口、ずっと抱えてた街のざらつきに近い。委ねてみたい。";
@@ -1233,6 +1223,12 @@ function textCommandsForRuntimeEvent(event: RuntimeEvent): string[] {
       return [`/plan apply ${event.songId}`, `/plan skip ${event.songId}`, `/plan edit ${event.songId}`];
     case "take_select_low_score":
       return [`/take accept ${event.songId}`, `/take regen ${event.songId}`, `/take skip ${event.songId}`];
+    case "distribution_change_detected": {
+      const target = event.proposal?.id ?? event.proposalId ?? event.songId;
+      return [`/dist apply ${target}`, `/dist skip ${target}`];
+    }
+    case "artist_pulse_drafted":
+      return ["/pulse publish", "/pulse edit", "/pulse cancel"];
     default:
       return [];
   }

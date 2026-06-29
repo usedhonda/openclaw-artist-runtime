@@ -91,6 +91,16 @@ function statusDecisionButtonLabel(action: TelegramStatusDecisionAction, context
       return buttonVoiceLabels.songSpawn.skip;
     case "song_spawn_edit":
       return buttonVoiceLabels.songSpawn.edit;
+    case "dist_apply":
+      return buttonVoiceLabels.distribution.apply;
+    case "dist_skip":
+      return buttonVoiceLabels.distribution.later;
+    case "daily_voice_publish":
+      return buttonVoiceLabels.dailyVoice.publish;
+    case "daily_voice_edit":
+      return buttonVoiceLabels.dailyVoice.edit;
+    case "daily_voice_cancel":
+      return buttonVoiceLabels.dailyVoice.cancel;
     case "prompt_pack_go":
       return buttonVoiceLabels.promptPackReady.go;
     case "prompt_pack_edit":
@@ -122,6 +132,11 @@ const STATUS_DECISION_ACTION_SET = new Set<string>([
   "song_spawn_inject",
   "song_spawn_skip",
   "song_spawn_edit",
+  "dist_apply",
+  "dist_skip",
+  "daily_voice_publish",
+  "daily_voice_edit",
+  "daily_voice_cancel",
   "prompt_pack_go",
   "prompt_pack_edit",
   "prompt_pack_skip",

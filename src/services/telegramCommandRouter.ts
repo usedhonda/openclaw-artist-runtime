@@ -76,6 +76,11 @@ export type TelegramStatusDecisionAction =
   | "song_spawn_inject"
   | "song_spawn_skip"
   | "song_spawn_edit"
+  | "dist_apply"
+  | "dist_skip"
+  | "daily_voice_publish"
+  | "daily_voice_edit"
+  | "daily_voice_cancel"
   | "prompt_pack_go"
   | "prompt_pack_edit"
   | "prompt_pack_skip"
@@ -216,6 +221,11 @@ const STATUS_DECISION_ACTIONS: readonly TelegramStatusDecisionAction[] = [
   "song_spawn_inject",
   "song_spawn_skip",
   "song_spawn_edit",
+  "dist_apply",
+  "dist_skip",
+  "daily_voice_publish",
+  "daily_voice_edit",
+  "daily_voice_cancel",
   "prompt_pack_go",
   "prompt_pack_edit",
   "prompt_pack_skip",
@@ -232,6 +242,11 @@ const TEXT_DECISION_ACTIONS = new Set<TelegramStatusDecisionAction>([
   "song_spawn_inject",
   "song_spawn_skip",
   "song_spawn_edit",
+  "dist_apply",
+  "dist_skip",
+  "daily_voice_publish",
+  "daily_voice_edit",
+  "daily_voice_cancel",
   "prompt_pack_go",
   "prompt_pack_edit",
   "prompt_pack_skip",
@@ -315,6 +330,24 @@ function parseTextDecision(command: string, args: string[]): TextDecisionRequest
           ? "song_spawn_edit"
           : undefined;
     return action ? { action, proposalId: target, help: "Usage: /draft make <proposalId> | /draft skip <proposalId> | /draft edit <proposalId>" } : undefined;
+  }
+  if (command === "/dist" || command === "/distribution") {
+    const action = subcommand === "apply" || subcommand === "yes"
+      ? "dist_apply"
+      : subcommand === "skip" || subcommand === "no" || subcommand === "later"
+        ? "dist_skip"
+        : undefined;
+    return action ? { action, proposalId: target, help: "Usage: /dist apply [songId|proposalId] | /dist skip [songId|proposalId]" } : undefined;
+  }
+  if (command === "/voice" || command === "/pulse") {
+    const action = subcommand === "publish" || subcommand === "post"
+      ? "daily_voice_publish"
+      : subcommand === "edit" || subcommand === "rewrite"
+        ? "daily_voice_edit"
+        : subcommand === "cancel" || subcommand === "skip"
+          ? "daily_voice_cancel"
+          : undefined;
+    return action ? { action, help: "Usage: /pulse publish | /pulse edit | /pulse cancel" } : undefined;
   }
   return undefined;
 }
@@ -656,6 +689,8 @@ function helpInfo(): string {
     "/plan apply|skip|edit <songId> - decide a planning-completion wait without buttons",
     "/take accept|regen|skip <songId> - decide a low-score take wait without buttons",
     "/draft make|skip|edit <proposalId> - decide a draft-box proposal without buttons",
+    "/dist apply|skip [id] - decide a distribution detection without buttons",
+    "/pulse publish|edit|cancel - decide the latest daily voice draft without buttons",
     "/song create [hint] - ask the artist to make a song",
     "/commission <brief> - propose a producer commission for autopilot",
     "/regen <songId> - queue a dry-run regeneration note",
@@ -762,7 +797,7 @@ export async function routeTelegramCommand(input: TelegramRouteInput): Promise<T
   }
   const textDecision = parseTextDecision(command, args);
   if (textDecision) {
-    if (!input.workspaceRoot || (!textDecision.songId && !textDecision.proposalId)) {
+    if (!input.workspaceRoot) {
       return {
         kind: "free_text",
         responseText: await voiceCommand("error", textDecision.help, input, "text decision usage"),

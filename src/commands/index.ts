@@ -157,7 +157,9 @@ export function registerCommands(api: unknown): void {
     ["lyrics", "Redraft degraded lyrics."],
     ["plan", "Decide planning wait: apply, skip, edit."],
     ["take", "Decide low-score take: accept, regen, skip."],
-    ["draft", "Decide draft proposal: make, skip, edit."]
+    ["draft", "Decide draft proposal: make, skip, edit."],
+    ["dist", "Decide distribution detection: apply, skip."],
+    ["pulse", "Decide daily voice draft: publish, edit, cancel."]
   ] as const) {
     safeRegisterCommand(api, {
       name,

@@ -13,6 +13,7 @@ GATEWAY_LOG_LINES="${OPENCLAW_DOCTOR_GATEWAY_LOG_LINES:-240}"
 STATUS_PROBE_TIMEOUT="${OPENCLAW_DOCTOR_STATUS_TIMEOUT:-5}"
 STATUS_PROBE_ATTEMPTS="${OPENCLAW_DOCTOR_STATUS_ATTEMPTS:-3}"
 TELEGRAM_INBOUND_WARN_MINUTES="${OPENCLAW_DOCTOR_TELEGRAM_INBOUND_WARN_MINUTES:-360}"
+TELEGRAM_CONNECT_GRACE_MS="${OPENCLAW_DOCTOR_TELEGRAM_CONNECT_GRACE_MS:-120000}"
 STATUS_PAYLOAD=""
 
 while [[ $# -gt 0 ]]; do
@@ -164,6 +165,7 @@ if [[ -n "$GATEWAY_HEALTH_PAYLOAD" ]]; then
 const fs = require("node:fs");
 try {
   const health = JSON.parse(fs.readFileSync(0, "utf8"));
+  const connectGraceMs = Number(process.argv[1]);
   const channel = health.channels?.telegram;
   const account = channel?.accounts?.default ?? channel;
   if (!account) {
@@ -178,6 +180,13 @@ try {
   if (account.tokenStatus && account.tokenStatus !== "available") issues.push(`tokenStatus=${account.tokenStatus}`);
   if (account.lastError) issues.push(`lastError=${account.lastError}`);
   if (issues.length > 0) {
+    const onlyConnecting = issues.length === 1 && issues[0] === "connected=false";
+    const startedAt = Number(account.lastStartAt);
+    const ageMs = Number.isFinite(startedAt) ? Date.now() - startedAt : Number.POSITIVE_INFINITY;
+    if (onlyConnecting && Number.isFinite(connectGraceMs) && connectGraceMs >= 0 && ageMs >= 0 && ageMs <= connectGraceMs) {
+      console.log(`warn\tTelegram transport still connecting (${Math.round(ageMs / 1000)}s since start, grace ${Math.round(connectGraceMs / 1000)}s)`);
+      process.exit(0);
+    }
     console.log(`fail\tTelegram transport not ready: ${issues.join(", ")}`);
     process.exit(0);
   }
@@ -185,7 +194,7 @@ try {
 } catch {
   console.log("warn\tgateway health JSON could not be parsed; skipped Telegram transport check");
 }
-' 2>/dev/null || true)"
+' "$TELEGRAM_CONNECT_GRACE_MS" 2>/dev/null || true)"
   if [[ -n "$TELEGRAM_TRANSPORT" ]]; then
     IFS=$'\t' read -r TELEGRAM_TRANSPORT_STATUS TELEGRAM_TRANSPORT_DETAIL <<< "$TELEGRAM_TRANSPORT"
     record_check "telegram_transport" "$TELEGRAM_TRANSPORT_STATUS" "$TELEGRAM_TRANSPORT_DETAIL"
@@ -196,7 +205,7 @@ else
   record_check "telegram_transport" "warn" "gateway health unavailable; skipped Telegram transport check"
 fi
 
-REQUIRED_TELEGRAM_COMMANDS=(suno lyrics plan take draft)
+REQUIRED_TELEGRAM_COMMANDS=(suno lyrics plan take draft dist pulse)
 if [[ -f "$GATEWAY_LOG" ]]; then
   RECENT_GATEWAY_LOG="$(tail -n "$GATEWAY_LOG_LINES" "$GATEWAY_LOG" 2>/dev/null || true)"
   MISSING_TELEGRAM_COMMANDS=()

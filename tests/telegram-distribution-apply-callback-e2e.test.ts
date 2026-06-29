@@ -14,10 +14,6 @@ function workspace(): string {
   return mkdtempSync(join(tmpdir(), "artist-runtime-dist-callback-"));
 }
 
-function telegramResponse(result: unknown): Response {
-  return new Response(JSON.stringify({ ok: true, result }), { status: 200 });
-}
-
 function callbackClient(): TelegramClient {
   return {
     answerCallbackQuery: vi.fn().mockResolvedValue(true),

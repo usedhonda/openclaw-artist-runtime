@@ -49,7 +49,9 @@ describe("openclaw-doctor.sh", () => {
         "[artist-runtime] registered runtime-slash command: lyrics",
         "[artist-runtime] registered runtime-slash command: plan",
         "[artist-runtime] registered runtime-slash command: take",
-        "[artist-runtime] registered runtime-slash command: draft"
+        "[artist-runtime] registered runtime-slash command: draft",
+        "[artist-runtime] registered runtime-slash command: dist",
+        "[artist-runtime] registered runtime-slash command: pulse"
       ].join("\n"),
       "utf8"
     );
@@ -149,7 +151,7 @@ describe("openclaw-doctor.sh", () => {
     const commandCheck = parsed.checks.find((check) => check.name === "telegram_commands");
     expect(parsed.summary.fail).toBe(1);
     expect(commandCheck?.status).toBe("fail");
-    expect(commandCheck?.detail).toContain("suno lyrics plan take draft");
+    expect(commandCheck?.detail).toContain("suno lyrics plan take draft dist pulse");
   });
 
   it("fails when Telegram transport is not connected", async () => {
@@ -171,7 +173,9 @@ describe("openclaw-doctor.sh", () => {
         "[artist-runtime] registered runtime-slash command: lyrics",
         "[artist-runtime] registered runtime-slash command: plan",
         "[artist-runtime] registered runtime-slash command: take",
-        "[artist-runtime] registered runtime-slash command: draft"
+        "[artist-runtime] registered runtime-slash command: draft",
+        "[artist-runtime] registered runtime-slash command: dist",
+        "[artist-runtime] registered runtime-slash command: pulse"
       ].join("\n"),
       "utf8"
     );
@@ -220,6 +224,80 @@ describe("openclaw-doctor.sh", () => {
     expect(transportCheck?.detail).toContain("polling timeout");
   });
 
+  it("warns instead of failing while Telegram transport is inside startup grace", async () => {
+    const root = mkdtempSync(join(tmpdir(), "artist-runtime-doctor-telegram-grace-"));
+    await mkdir(join(root, "runtime", "suno"), { recursive: true });
+    await mkdir(join(root, ".openclaw-browser-profiles", "suno"), { recursive: true });
+    await mkdir(join(root, ".local", "openclaw", "logs"), { recursive: true });
+    await writeFile(
+      join(root, "runtime", "config-overrides.json"),
+      JSON.stringify({ distribution: { platforms: { x: { authStatus: "tested" } } } }),
+      "utf8"
+    );
+    await writeFile(join(root, "runtime", "suno", "budget.json"), JSON.stringify({ consumed: 10, limit: 60 }), "utf8");
+    await writeFile(join(root, ".openclaw-browser-profiles", "suno", "Cookies"), "session", "utf8");
+    await writeFile(
+      join(root, ".local", "openclaw", "logs", "gateway.log"),
+      [
+        "[artist-runtime] registered runtime-slash command: suno",
+        "[artist-runtime] registered runtime-slash command: lyrics",
+        "[artist-runtime] registered runtime-slash command: plan",
+        "[artist-runtime] registered runtime-slash command: take",
+        "[artist-runtime] registered runtime-slash command: draft",
+        "[artist-runtime] registered runtime-slash command: dist",
+        "[artist-runtime] registered runtime-slash command: pulse"
+      ].join("\n"),
+      "utf8"
+    );
+    await writeFile(
+      join(root, "gateway-health.json"),
+      JSON.stringify({
+        channels: {
+          telegram: {
+            enabled: true,
+            configured: true,
+            running: true,
+            connected: false,
+            tokenStatus: "available",
+            lastStartAt: Date.now()
+          }
+        }
+      }),
+      "utf8"
+    );
+    await writeFile(join(root, "status.json"), JSON.stringify({ telegramInbound: { lastInboundAt: Date.now() - 60_000 } }), "utf8");
+    const statusUrl = `file://${join(root, "status.json")}`;
+
+    const result = spawnSync("bash", [
+      "scripts/openclaw-doctor.sh",
+      "--root",
+      root,
+      "--status-url",
+      statusUrl,
+      "--gateway-health-json",
+      join(root, "gateway-health.json"),
+      "--json"
+    ], {
+      cwd: process.cwd(),
+      encoding: "utf8",
+      env: {
+        ...process.env,
+        OPENCLAW_DOCTOR_TELEGRAM_CONNECT_GRACE_MS: "120000"
+      }
+    });
+
+    expect(result.status).toBe(1);
+    const parsed = JSON.parse(result.stdout) as {
+      checks: Array<{ name: string; status: string; detail: string }>;
+      summary: { ok: number; warn: number; fail: number };
+    };
+    const transportCheck = parsed.checks.find((check) => check.name === "telegram_transport");
+    expect(parsed.summary.warn).toBe(1);
+    expect(parsed.summary.fail).toBe(0);
+    expect(transportCheck?.status).toBe("warn");
+    expect(transportCheck?.detail).toContain("still connecting");
+  });
+
   it("warns when Telegram inbound is stale even if transport is connected", async () => {
     const root = mkdtempSync(join(tmpdir(), "artist-runtime-doctor-telegram-stale-"));
     await mkdir(join(root, "runtime", "suno"), { recursive: true });
@@ -239,7 +317,9 @@ describe("openclaw-doctor.sh", () => {
         "[artist-runtime] registered runtime-slash command: lyrics",
         "[artist-runtime] registered runtime-slash command: plan",
         "[artist-runtime] registered runtime-slash command: take",
-        "[artist-runtime] registered runtime-slash command: draft"
+        "[artist-runtime] registered runtime-slash command: draft",
+        "[artist-runtime] registered runtime-slash command: dist",
+        "[artist-runtime] registered runtime-slash command: pulse"
       ].join("\n"),
       "utf8"
     );

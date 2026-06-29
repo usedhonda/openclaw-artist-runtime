@@ -21,7 +21,7 @@ import { emitRuntimeEvent, getRuntimeEventBus } from "../services/runtimeEventBu
 import { readRuntimeEvents, readSongEventsAsc } from "../services/runtimeEventsLedger.js";
 import { appendFailedNotifyReplayRecord, latestFailedNotifyEntry, listUnreplayedFailedNotifications, summarizeFailedNotifications } from "../services/failedNotifyLedger.js";
 import { getSongPromptLedgerPath } from "../services/promptLedger.js";
-import { getBirdDailyMaxOverride, getBirdMinIntervalMinutesOverride, getSunoDailyBudgetOverride, isDebugCallbackDispatchEnabled, isDebugNotifyReviewEnabled, patchResolvedConfig, readConfigOverrides, resolveRuntimeConfig, resolveSunoDailyBudget, type RuntimeSafetyOverridesPatch } from "../services/runtimeConfig.js";
+import { getBirdDailyMaxOverride, getBirdMinIntervalMinutesOverride, getSunoDailyBudgetOverride, isDebugCallbackDispatchEnabled, isDebugNotifyReviewEnabled, readConfigOverrides, resolveRuntimeConfig, resolveSunoDailyBudget, type RuntimeSafetyOverridesPatch } from "../services/runtimeConfig.js";
 import { readLatestSocialAction } from "../services/socialPublishing.js";
 import { SocialDistributionWorker } from "../services/socialDistributionWorker.js";
 import { listPendingSpawnProposals } from "../services/spawnProposalQueue.js";
@@ -727,7 +727,7 @@ export async function buildPersonaWriteResponse(
   payload: Record<string, unknown>
 ): Promise<Record<string, unknown>> {
   try {
-    let mergedConfig = await resolveRuntimeConfig(config);
+    const mergedConfig = await resolveRuntimeConfig(config);
     const root = mergedConfig.artist.workspaceRoot;
     if (layer === "identity") {
       throw new Error("identity_projection_read_only");

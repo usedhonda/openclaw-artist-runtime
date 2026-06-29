@@ -299,7 +299,7 @@ function normalizeAiStyle(raw: string): BuildStyleResult | undefined {
   if (!text || isAiProviderMockFallbackResponse(text)) {
     return undefined;
   }
-  let total = trimAtPhraseBoundary(text, CANONICAL_STYLE_HARD_MAX_CHARS);
+  const total = trimAtPhraseBoundary(text, CANONICAL_STYLE_HARD_MAX_CHARS);
   const coreSource = text
     .split(/\r?\n/)
     .map((line) => line.replace(/^[-*]\s*/, "").trim())
