@@ -235,6 +235,10 @@ path:
    text fallback commands `suno lyrics plan take draft`. If an old Gateway build
    is still serving Telegram, the `telegram_commands` check fails instead of
    leaving the operator to infer it from chat behavior.
+4. The same doctor reads Gateway health and fails `telegram_transport` when
+   Telegram is not enabled, configured, running, connected, or has a recorded
+   transport error. A green plugin status alone is not enough for a
+   Telegram-only workflow.
 
 For migration guidance, prefer explicit `field: value` lines after
 `/persona migrate`. Values may span multiple lines until the next recognized

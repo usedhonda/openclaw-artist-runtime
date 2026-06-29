@@ -17,6 +17,30 @@ describe("openclaw-doctor.sh", () => {
     );
     await writeFile(join(root, "runtime", "suno", "budget.json"), JSON.stringify({ consumed: 10, limit: 60 }), "utf8");
     await writeFile(join(root, ".openclaw-browser-profiles", "suno", "Cookies"), "session", "utf8");
+    await writeFile(
+      join(root, "gateway-health.json"),
+      JSON.stringify({
+        channels: {
+          telegram: {
+            enabled: true,
+            configured: true,
+            running: true,
+            connected: true,
+            tokenStatus: "available",
+            accounts: {
+              default: {
+                enabled: true,
+                configured: true,
+                running: true,
+                connected: true,
+                tokenStatus: "available"
+              }
+            }
+          }
+        }
+      }),
+      "utf8"
+    );
     await mkdir(join(root, ".local", "openclaw", "logs"), { recursive: true });
     await writeFile(
       join(root, ".local", "openclaw", "logs", "gateway.log"),
@@ -32,7 +56,16 @@ describe("openclaw-doctor.sh", () => {
     await writeFile(join(root, "status.json"), '{"ok":true}', "utf8");
     const statusUrl = `file://${join(root, "status.json")}`;
 
-    const result = spawnSync("bash", ["scripts/openclaw-doctor.sh", "--root", root, "--status-url", statusUrl, "--json"], {
+    const result = spawnSync("bash", [
+      "scripts/openclaw-doctor.sh",
+      "--root",
+      root,
+      "--status-url",
+      statusUrl,
+      "--gateway-health-json",
+      join(root, "gateway-health.json"),
+      "--json"
+    ], {
       cwd: process.cwd(),
       encoding: "utf8"
     });
@@ -45,6 +78,7 @@ describe("openclaw-doctor.sh", () => {
     expect(parsed.summary.fail).toBe(0);
     expect(parsed.checks.map((check) => check.name)).toEqual([
       "gateway",
+      "telegram_transport",
       "telegram_commands",
       "x_probe",
       "suno_budget",
@@ -67,6 +101,21 @@ describe("openclaw-doctor.sh", () => {
     await writeFile(join(root, "runtime", "suno", "budget.json"), JSON.stringify({ consumed: 10, limit: 60 }), "utf8");
     await writeFile(join(root, ".openclaw-browser-profiles", "suno", "Cookies"), "session", "utf8");
     await writeFile(
+      join(root, "gateway-health.json"),
+      JSON.stringify({
+        channels: {
+          telegram: {
+            enabled: true,
+            configured: true,
+            running: true,
+            connected: true,
+            tokenStatus: "available"
+          }
+        }
+      }),
+      "utf8"
+    );
+    await writeFile(
       join(root, ".local", "openclaw", "logs", "gateway.log"),
       [
         "[artist-runtime] registered runtime-slash command: persona",
@@ -77,7 +126,16 @@ describe("openclaw-doctor.sh", () => {
     await writeFile(join(root, "status.json"), '{"ok":true}', "utf8");
     const statusUrl = `file://${join(root, "status.json")}`;
 
-    const result = spawnSync("bash", ["scripts/openclaw-doctor.sh", "--root", root, "--status-url", statusUrl, "--json"], {
+    const result = spawnSync("bash", [
+      "scripts/openclaw-doctor.sh",
+      "--root",
+      root,
+      "--status-url",
+      statusUrl,
+      "--gateway-health-json",
+      join(root, "gateway-health.json"),
+      "--json"
+    ], {
       cwd: process.cwd(),
       encoding: "utf8"
     });
@@ -91,5 +149,73 @@ describe("openclaw-doctor.sh", () => {
     expect(parsed.summary.fail).toBe(1);
     expect(commandCheck?.status).toBe("fail");
     expect(commandCheck?.detail).toContain("suno lyrics plan take draft");
+  });
+
+  it("fails when Telegram transport is not connected", async () => {
+    const root = mkdtempSync(join(tmpdir(), "artist-runtime-doctor-telegram-disconnected-"));
+    await mkdir(join(root, "runtime", "suno"), { recursive: true });
+    await mkdir(join(root, ".openclaw-browser-profiles", "suno"), { recursive: true });
+    await mkdir(join(root, ".local", "openclaw", "logs"), { recursive: true });
+    await writeFile(
+      join(root, "runtime", "config-overrides.json"),
+      JSON.stringify({ distribution: { platforms: { x: { authStatus: "tested" } } } }),
+      "utf8"
+    );
+    await writeFile(join(root, "runtime", "suno", "budget.json"), JSON.stringify({ consumed: 10, limit: 60 }), "utf8");
+    await writeFile(join(root, ".openclaw-browser-profiles", "suno", "Cookies"), "session", "utf8");
+    await writeFile(
+      join(root, ".local", "openclaw", "logs", "gateway.log"),
+      [
+        "[artist-runtime] registered runtime-slash command: suno",
+        "[artist-runtime] registered runtime-slash command: lyrics",
+        "[artist-runtime] registered runtime-slash command: plan",
+        "[artist-runtime] registered runtime-slash command: take",
+        "[artist-runtime] registered runtime-slash command: draft"
+      ].join("\n"),
+      "utf8"
+    );
+    await writeFile(
+      join(root, "gateway-health.json"),
+      JSON.stringify({
+        channels: {
+          telegram: {
+            enabled: true,
+            configured: true,
+            running: true,
+            connected: false,
+            tokenStatus: "available",
+            lastError: "polling timeout"
+          }
+        }
+      }),
+      "utf8"
+    );
+    await writeFile(join(root, "status.json"), '{"ok":true}', "utf8");
+    const statusUrl = `file://${join(root, "status.json")}`;
+
+    const result = spawnSync("bash", [
+      "scripts/openclaw-doctor.sh",
+      "--root",
+      root,
+      "--status-url",
+      statusUrl,
+      "--gateway-health-json",
+      join(root, "gateway-health.json"),
+      "--json"
+    ], {
+      cwd: process.cwd(),
+      encoding: "utf8"
+    });
+
+    expect(result.status).toBe(2);
+    const parsed = JSON.parse(result.stdout) as {
+      checks: Array<{ name: string; status: string; detail: string }>;
+      summary: { ok: number; warn: number; fail: number };
+    };
+    const transportCheck = parsed.checks.find((check) => check.name === "telegram_transport");
+    expect(parsed.summary.fail).toBe(1);
+    expect(transportCheck?.status).toBe("fail");
+    expect(transportCheck?.detail).toContain("connected=false");
+    expect(transportCheck?.detail).toContain("polling timeout");
   });
 });

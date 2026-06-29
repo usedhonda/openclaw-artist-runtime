@@ -5,6 +5,7 @@ ROOT="."
 JSON=0
 STATUS_URL=""
 GATEWAY_LOG=""
+GATEWAY_HEALTH_JSON=""
 STALE_DAYS="${OPENCLAW_DOCTOR_PROFILE_STALE_DAYS:-30}"
 DISK_WARN_GB="${OPENCLAW_DOCTOR_DISK_WARN_GB:-10}"
 DISK_FAIL_GB="${OPENCLAW_DOCTOR_DISK_FAIL_GB:-50}"
@@ -36,6 +37,14 @@ while [[ $# -gt 0 ]]; do
       GATEWAY_LOG="${2:-}"
       [[ -n "$GATEWAY_LOG" ]] || {
         echo "--gateway-log requires a path" >&2
+        exit 1
+      }
+      shift 2
+      ;;
+    --gateway-health-json)
+      GATEWAY_HEALTH_JSON="${2:-}"
+      [[ -n "$GATEWAY_HEALTH_JSON" ]] || {
+        echo "--gateway-health-json requires a path" >&2
         exit 1
       }
       shift 2
@@ -105,6 +114,18 @@ try {
 ' "$file" "$expr"
 }
 
+read_gateway_health_payload() {
+  if [[ -n "$GATEWAY_HEALTH_JSON" ]]; then
+    [[ -f "$GATEWAY_HEALTH_JSON" ]] && cat "$GATEWAY_HEALTH_JSON"
+    return
+  fi
+  local script_dir
+  script_dir="$(cd "$(dirname "$0")" && pwd)"
+  if [[ -x "${script_dir}/openclaw-local-gateway" ]]; then
+    "${script_dir}/openclaw-local-gateway" health 2>/dev/null || true
+  fi
+}
+
 if [[ "$JSON" -eq 1 ]]; then
   printf '{"checks":['
 fi
@@ -117,6 +138,44 @@ if command -v curl >/dev/null 2>&1; then
   fi
 else
   record_check "gateway" "warn" "curl is not available; skipped gateway status probe"
+fi
+
+GATEWAY_HEALTH_PAYLOAD="$(read_gateway_health_payload)"
+if [[ -n "$GATEWAY_HEALTH_PAYLOAD" ]]; then
+  TELEGRAM_TRANSPORT="$(printf '%s' "$GATEWAY_HEALTH_PAYLOAD" | node -e '
+const fs = require("node:fs");
+try {
+  const health = JSON.parse(fs.readFileSync(0, "utf8"));
+  const channel = health.channels?.telegram;
+  const account = channel?.accounts?.default ?? channel;
+  if (!account) {
+    console.log("warn\ttelegram channel missing in gateway health");
+    process.exit(0);
+  }
+  const issues = [];
+  if (account.enabled !== true) issues.push("enabled=false");
+  if (account.configured !== true) issues.push("configured=false");
+  if (account.running !== true) issues.push("running=false");
+  if (account.connected !== true) issues.push("connected=false");
+  if (account.tokenStatus && account.tokenStatus !== "available") issues.push(`tokenStatus=${account.tokenStatus}`);
+  if (account.lastError) issues.push(`lastError=${account.lastError}`);
+  if (issues.length > 0) {
+    console.log(`fail\tTelegram transport not ready: ${issues.join(", ")}`);
+    process.exit(0);
+  }
+  console.log("ok\tTelegram transport ready (running=true, connected=true)");
+} catch {
+  console.log("warn\tgateway health JSON could not be parsed; skipped Telegram transport check");
+}
+' 2>/dev/null || true)"
+  if [[ -n "$TELEGRAM_TRANSPORT" ]]; then
+    IFS=$'\t' read -r TELEGRAM_TRANSPORT_STATUS TELEGRAM_TRANSPORT_DETAIL <<< "$TELEGRAM_TRANSPORT"
+    record_check "telegram_transport" "$TELEGRAM_TRANSPORT_STATUS" "$TELEGRAM_TRANSPORT_DETAIL"
+  else
+    record_check "telegram_transport" "warn" "gateway health did not produce a Telegram transport result"
+  fi
+else
+  record_check "telegram_transport" "warn" "gateway health unavailable; skipped Telegram transport check"
 fi
 
 REQUIRED_TELEGRAM_COMMANDS=(suno lyrics plan take draft)
