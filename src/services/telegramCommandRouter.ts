@@ -26,6 +26,8 @@ import { resurfaceDegradedLyrics } from "./degradedLyricsResurfaceService.js";
 import { resurfacePromptPackReady } from "./promptPackResurfaceService.js";
 import { stampInbound } from "./receiveHealthService.js";
 import { loadSpawnProposalQueue } from "./spawnProposalQueue.js";
+import { appendConversationTurn, listPendingProposalDetails } from "./conversationalSession.js";
+import { validatePlanningFiles } from "./planningSkeletonValidator.js";
 
 export type TelegramCommandKind =
   | "help"
@@ -73,7 +75,10 @@ export type TelegramStatusDecisionAction =
   | "prompt_pack_go"
   | "prompt_pack_edit"
   | "prompt_pack_skip"
-  | "lyrics_redraft";
+  | "lyrics_redraft"
+  | "planning_skeleton_apply"
+  | "planning_skeleton_skip"
+  | "planning_skeleton_edit";
 
 export interface TelegramStatusDecisionButtonsRequest {
   songId: string;
@@ -132,8 +137,17 @@ const STATUS_DECISION_ACTIONS: readonly TelegramStatusDecisionAction[] = [
   "prompt_pack_go",
   "prompt_pack_edit",
   "prompt_pack_skip",
-  "lyrics_redraft"
+  "lyrics_redraft",
+  "planning_skeleton_apply",
+  "planning_skeleton_skip",
+  "planning_skeleton_edit"
 ];
+
+interface StatusDecisionContext {
+  chatId: number;
+  userId: number;
+  aiReviewProvider?: AiReviewProvider;
+}
 
 async function latestUrlReadyDecisionButtons(root: string): Promise<TelegramStatusDecisionButtonsRequest | undefined> {
   const song = (await listSongStates(root)).find((candidate) =>
@@ -230,14 +244,48 @@ async function degradedLyricsDecisionButtons(root: string): Promise<TelegramStat
   };
 }
 
-async function latestRecoverableDecisionButtons(root: string): Promise<TelegramStatusDecisionButtonsRequest | undefined> {
+async function planningSkeletonDecisionButtons(root: string, context?: StatusDecisionContext): Promise<TelegramStatusDecisionButtonsRequest | undefined> {
+  const state = await readAutopilotRunState(root);
+  if (state.suspendedAt !== "planning_skeleton_pending" || !state.currentSongId) {
+    return undefined;
+  }
+  const song = await readSongState(root, state.currentSongId).catch(() => undefined);
+  if (!song || ["scheduled", "published", "archived", "discarded", "failed"].includes(song.status)) {
+    return undefined;
+  }
+  const pendingProposal = (await listPendingProposalDetails(root).catch(() => []))
+    .find((proposal) => proposal.domain === "song" && proposal.songId === state.currentSongId);
+  const proposal = pendingProposal ?? (await validatePlanningFiles(root, state.currentSongId, {
+    aiReviewProvider: context?.aiReviewProvider
+  }).catch(() => undefined))?.proposal;
+  if (!proposal) {
+    return undefined;
+  }
+  if (context) {
+    await appendConversationTurn(root, {
+      chatId: context.chatId,
+      userId: context.userId,
+      topic: { kind: "song", songId: state.currentSongId },
+      pendingChangeSet: proposal,
+      turn: { role: "artist", text: "Planning補完案を /status で再表示した。" }
+    });
+  }
+  return {
+    songId: state.currentSongId,
+    proposalId: proposal.id,
+    actions: ["planning_skeleton_apply", "planning_skeleton_skip", "planning_skeleton_edit"]
+  };
+}
+
+async function latestRecoverableDecisionButtons(root: string, context?: StatusDecisionContext): Promise<TelegramStatusDecisionButtonsRequest | undefined> {
   return await latestUrlReadyDecisionButtons(root)
     ?? await promptPackReadyDecisionButtons(root)
     ?? await degradedLyricsDecisionButtons(root)
+    ?? await planningSkeletonDecisionButtons(root, context)
     ?? await draftSpawnDecisionButtons(root);
 }
 
-async function latestStatusDecisionButtons(root: string, now = Date.now()): Promise<TelegramStatusDecisionButtonsRequest | undefined> {
+async function latestStatusDecisionButtons(root: string, context?: StatusDecisionContext, now = Date.now()): Promise<TelegramStatusDecisionButtonsRequest | undefined> {
   const pending = await listPendingCallbackActionSummaries(root, {
     category: "producer_decision",
     limit: 30,
@@ -245,7 +293,7 @@ async function latestStatusDecisionButtons(root: string, now = Date.now()): Prom
   });
   const latest = pending.recent[0];
   if (!latest?.songId) {
-    return latestRecoverableDecisionButtons(root);
+    return latestRecoverableDecisionButtons(root, context);
   }
   const actions = STATUS_DECISION_ACTIONS.filter((action) =>
     pending.recent.some((entry) =>
@@ -255,7 +303,7 @@ async function latestStatusDecisionButtons(root: string, now = Date.now()): Prom
     )
   );
   if (actions.length === 0) {
-    return latestRecoverableDecisionButtons(root);
+    return latestRecoverableDecisionButtons(root, context);
   }
   if (actions.some((action) => action === "song_spawn_inject" || action === "song_spawn_skip" || action === "song_spawn_edit")) {
     const full = await resolveCallbackAction(root, latest.callbackId);
@@ -279,11 +327,24 @@ async function latestStatusDecisionButtons(root: string, now = Date.now()): Prom
       actions
     };
   }
+  if (actions.some((action) => action === "planning_skeleton_apply" || action === "planning_skeleton_skip" || action === "planning_skeleton_edit")) {
+    const proposal = latest.proposalId
+      ? (await listPendingProposalDetails(root).catch(() => [])).find((candidate) => candidate.id === latest.proposalId)
+      : undefined;
+    if (!proposal) {
+      return latestRecoverableDecisionButtons(root, context);
+    }
+    return {
+      songId: latest.songId,
+      proposalId: latest.proposalId,
+      actions
+    };
+  }
   const songReviewActions = new Set<TelegramStatusDecisionAction>(["song_archive", "song_discard", "song_songbook_write", "song_skip"]);
   const requiresReviewSong = actions.some((action) => songReviewActions.has(action));
   const song = latest.songId ? await readSongState(root, latest.songId).catch(() => undefined) : undefined;
   if (requiresReviewSong && (!song || (song.status !== "take_selected" && song.status !== "suno_take_url_ready"))) {
-    return latestRecoverableDecisionButtons(root);
+    return latestRecoverableDecisionButtons(root, context);
   }
   return {
     songId: latest.songId,
@@ -397,7 +458,11 @@ export async function routeTelegramCommand(input: TelegramRouteInput): Promise<T
   const [commandRaw, ...args] = text.split(/\s+/);
   const command = commandRaw.toLowerCase();
   if (input.workspaceRoot && (!command.startsWith("/") ? isProducerStatusIntent(text) : command === "/status")) {
-    const statusDecisionButtons = await latestStatusDecisionButtons(input.workspaceRoot);
+    const statusDecisionButtons = await latestStatusDecisionButtons(input.workspaceRoot, {
+      chatId: input.chatId,
+      userId: input.fromUserId,
+      aiReviewProvider: input.aiReviewProvider
+    });
     return {
       kind: "status",
       responseText: await composeProducerStatus(input.workspaceRoot, {

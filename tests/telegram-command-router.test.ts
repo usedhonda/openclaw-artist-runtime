@@ -230,6 +230,67 @@ describe("telegram command router", () => {
     });
   });
 
+  it("recreates planning skeleton recovery button metadata for /status when callbacks are missing", async () => {
+    const root = makeRoot();
+    await ensureSongState(root, "song-plan", "Planning Stuck");
+    await writeSongBrief(root, "song-plan", "# Brief\n\n- Mood: cold");
+    await writeAutopilotRunState(root, {
+      runId: "planning-pending",
+      currentSongId: "song-plan",
+      stage: "planning",
+      suspendedAt: "planning_skeleton_pending",
+      blockedReason: "planning_skeleton_incomplete:tempo,duration,style notes",
+      paused: false,
+      retryCount: 0,
+      cycleCount: 1,
+      updatedAt: new Date().toISOString()
+    });
+
+    const result = await routeTelegramCommand({ ...baseInput, text: "/status", workspaceRoot: root });
+
+    expect(result.kind).toBe("status");
+    expect(result.responseText).toContain("Planning補完待ち");
+    expect(result.statusDecisionButtons).toMatchObject({
+      songId: "song-plan",
+      actions: ["planning_skeleton_apply", "planning_skeleton_skip", "planning_skeleton_edit"]
+    });
+    expect(result.statusDecisionButtons?.proposalId).toMatch(/^planning-song-plan-/);
+  });
+
+  it("replaces stale planning skeleton callbacks when the proposal session is gone", async () => {
+    const root = makeRoot();
+    await ensureSongState(root, "song-plan", "Planning Stuck");
+    await writeSongBrief(root, "song-plan", "# Brief\n\n- Mood: cold");
+    await writeAutopilotRunState(root, {
+      runId: "planning-pending",
+      currentSongId: "song-plan",
+      stage: "planning",
+      suspendedAt: "planning_skeleton_pending",
+      blockedReason: "planning_skeleton_incomplete:tempo,duration,style notes",
+      paused: false,
+      retryCount: 0,
+      cycleCount: 1,
+      updatedAt: new Date().toISOString()
+    });
+    await registerCallbackAction(root, {
+      action: "planning_skeleton_apply",
+      proposalId: "expired-proposal",
+      songId: "song-plan",
+      chatId: 456,
+      messageId: 77,
+      userId: 123
+    });
+
+    const result = await routeTelegramCommand({ ...baseInput, text: "/status", workspaceRoot: root });
+
+    expect(result.statusDecisionButtons).toMatchObject({
+      songId: "song-plan",
+      actions: ["planning_skeleton_apply", "planning_skeleton_skip", "planning_skeleton_edit"]
+    });
+    expect(result.statusDecisionButtons?.proposalId).toMatch(/^planning-song-plan-/);
+    expect(result.statusDecisionButtons?.proposalId).not.toBe("expired-proposal");
+  });
+
   it("returns latest spawn proposal button metadata for /status", async () => {
     const root = makeRoot();
     await appendSpawnProposal(root, spawnProposal("spawn-ready"));

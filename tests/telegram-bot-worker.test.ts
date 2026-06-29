@@ -6,7 +6,7 @@ import { describe, expect, it, vi } from "vitest";
 import type { SpawnProposal, TelegramConfig } from "../src/types";
 import { TelegramBotWorker } from "../src/services/telegramBotWorker";
 import { listPendingCallbackActionSummaries, readCallbackActionEntries, registerCallbackAction } from "../src/services/callbackActionRegistry";
-import { ensureSongState, readSongState, updateSongState } from "../src/services/artistState";
+import { ensureSongState, readSongState, updateSongState, writeSongBrief } from "../src/services/artistState";
 import { appendSpawnProposal } from "../src/services/spawnProposalQueue";
 import { ensureArtistWorkspace } from "../src/services/artistWorkspace";
 import { routeTelegramCallback } from "../src/services/telegramCallbackHandler";
@@ -419,6 +419,73 @@ describe("telegram bot worker", () => {
     })).resolves.toMatchObject({ result: "updated", reason: "lyrics_redraft_requested" });
     expect(await readSongState(root, "song-lyrics")).toMatchObject({ status: "brief", degradedLyrics: false });
     expect(await readAutopilotRunState(root)).toMatchObject({ stage: "planning", paused: false, suspendedAt: null });
+  });
+
+  it("recreates planning skeleton buttons on /status and apply advances to prompt pack", async () => {
+    const root = makeRoot();
+    await ensureArtistWorkspace(root);
+    await mkdir(join(root, "runtime"), { recursive: true });
+    await ensureSongState(root, "song-plan", "Planning Stuck");
+    await writeSongBrief(root, "song-plan", "# Brief\n\n- Mood: cold");
+    await writeAutopilotRunState(root, {
+      runId: "planning-pending",
+      currentSongId: "song-plan",
+      stage: "planning",
+      suspendedAt: "planning_skeleton_pending",
+      blockedReason: "planning_skeleton_incomplete:tempo,duration,style notes",
+      paused: false,
+      retryCount: 0,
+      cycleCount: 1,
+      updatedAt: new Date().toISOString()
+    });
+    const fetchImpl = vi
+      .fn()
+      .mockResolvedValueOnce(jsonResponse({
+        ok: true,
+        result: [{
+          update_id: 10,
+          message: {
+            message_id: 1,
+            text: "/status",
+            chat: { id: 555 },
+            from: { id: 123 }
+          }
+        }]
+      }))
+      .mockResolvedValueOnce(jsonResponse({ ok: true, result: { message_id: 2, text: "status", chat: { id: 555 } } }))
+      .mockResolvedValueOnce(jsonResponse({ ok: true, result: true }));
+    const worker = new TelegramBotWorker({
+      root,
+      config: enabledConfig,
+      token: "token",
+      ownerUserIds: new Set(["123"]),
+      fetchImpl
+    });
+
+    const result = await worker.pollOnce();
+    worker.stop();
+
+    expect(result).toMatchObject({ enabled: true, fetched: true, processed: 1 });
+    const statusBody = JSON.parse(fetchImpl.mock.calls[1][1].body as string) as { text: string };
+    expect(statusBody.text).toContain("Planning補完待ち");
+    const markup = JSON.parse(fetchImpl.mock.calls[2][1].body as string) as {
+      reply_markup: { inline_keyboard: Array<Array<{ text: string; callback_data: string }>> };
+    };
+    expect(markup.reply_markup.inline_keyboard.flat().map((button) => button.text)).toEqual(["進める", "中止", "書き直す"]);
+    const apply = (await readCallbackActionEntries(root)).find((entry) => entry.action === "planning_skeleton_apply" && entry.songId === "song-plan");
+    expect(apply).toMatchObject({ status: "pending", songId: "song-plan", proposalId: expect.stringMatching(/^planning-song-plan-/) });
+
+    await expect(routeTelegramCallback({
+      root,
+      client: callbackClient(),
+      callbackQueryId: "planning-apply-restored",
+      data: `cb:${apply?.callbackId}`,
+      fromUserId: 123,
+      chatId: 555,
+      messageId: 2
+    })).resolves.toMatchObject({ result: "applied", reason: "applied" });
+    expect(await readAutopilotRunState(root)).toMatchObject({ stage: "prompt_pack", suspendedAt: null });
+    await expect(readFile(join(root, "songs", "song-plan", "brief.md"), "utf8")).resolves.toContain("Planning Completion");
   });
 
   it("attaches latest spawn proposal buttons to /status replies", async () => {

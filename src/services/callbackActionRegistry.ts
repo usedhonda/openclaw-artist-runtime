@@ -115,7 +115,10 @@ const CALLBACK_ACTION_CATEGORY: Record<string, TtlCategory> = {
   prompt_pack_go: "producer_decision",
   prompt_pack_edit: "producer_decision",
   prompt_pack_skip: "producer_decision",
-  lyrics_redraft: "producer_decision"
+  lyrics_redraft: "producer_decision",
+  planning_skeleton_apply: "producer_decision",
+  planning_skeleton_skip: "producer_decision",
+  planning_skeleton_edit: "producer_decision"
 };
 
 const PROPOSAL_CONFIRMATION_ACTIONS: ReadonlySet<string> = new Set([

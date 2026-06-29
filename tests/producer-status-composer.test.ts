@@ -3,7 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { ensureArtistWorkspace } from "../src/services/artistWorkspace";
-import { ensureSongState, updateSongState } from "../src/services/artistState";
+import { ensureSongState, updateSongState, writeSongBrief } from "../src/services/artistState";
 import { writeAutopilotRunState } from "../src/services/autopilotService";
 import { registerCallbackAction } from "../src/services/callbackActionRegistry";
 import { composeProducerStatus } from "../src/services/producerStatusComposer";
@@ -216,6 +216,29 @@ describe("producer status composer", () => {
     expect(text).toContain("歌詞生成停止");
     expect(text).toContain("次: この /status 返信のボタンで「歌詞を作り直す」か「破棄」を選ぶ。");
     expect(text).toContain("provider fallback response");
+  });
+
+  it("surfaces planning skeleton waits as actionable /status buttons", async () => {
+    const workspaceRoot = await root();
+    await ensureSongState(workspaceRoot, "song-plan", "Planning Stuck");
+    await writeSongBrief(workspaceRoot, "song-plan", "# Brief\n\n- Mood: cold");
+    await writeAutopilotRunState(workspaceRoot, {
+      runId: "planning-pending",
+      currentSongId: "song-plan",
+      stage: "planning",
+      suspendedAt: "planning_skeleton_pending",
+      blockedReason: "planning_skeleton_incomplete:tempo,duration,style notes",
+      paused: false,
+      retryCount: 0,
+      cycleCount: 1,
+      updatedAt: new Date(0).toISOString()
+    });
+
+    const text = await composeProducerStatus(workspaceRoot);
+
+    expect(text).toContain("Planning補完待ち");
+    expect(text).toContain("不足: tempo,duration,style notes");
+    expect(text).toContain("次: この /status 返信のボタンで「進める」「中止」「書き直す」を選ぶ。");
   });
 
   it("routes free-text status intent before the conversational router", async () => {
