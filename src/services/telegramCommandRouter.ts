@@ -1,7 +1,7 @@
 import { appendFile, mkdir, readFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import type { AiReviewProvider, AutopilotStatus, CommissionBrief, CommissionBriefSource, SpawnProposal } from "../types.js";
-import { readAutopilotRunState, stageFromSong } from "./autopilotService.js";
+import { readAutopilotRunState, stageFromSong, writeAutopilotRunState } from "./autopilotService.js";
 import { AutopilotControlService } from "./autopilotControlService.js";
 import { getAutopilotTicker } from "./autopilotTicker.js";
 import { listSongStates, readSongState } from "./artistState.js";
@@ -19,7 +19,7 @@ import { isConversationalSongCreate, routeTelegramConversation, type TelegramPro
 import { readObservationsReport, type ObservationReport } from "./xObservationCollector.js";
 import { wrapCommandVoice, type CommandVoiceKind } from "./commandVoiceWrapper.js";
 import { composeProducerStatus } from "./producerStatusComposer.js";
-import { isProposalConfirmationAction, listPendingCallbackActionSummaries, resolveCallbackAction } from "./callbackActionRegistry.js";
+import { isProposalConfirmationAction, listPendingCallbackActionSummaries, markPendingCallbacksForSongResolved, resolveCallbackAction } from "./callbackActionRegistry.js";
 import { emitRuntimeEvent } from "./runtimeEventBus.js";
 import { appendFailedNotifyReplayRecord, latestFailedNotifyEntry, listUnreplayedFailedNotifications } from "./failedNotifyLedger.js";
 import { resurfaceDegradedLyrics } from "./degradedLyricsResurfaceService.js";
@@ -28,6 +28,8 @@ import { stampInbound } from "./receiveHealthService.js";
 import { loadSpawnProposalQueue } from "./spawnProposalQueue.js";
 import { appendConversationTurn, listPendingProposalDetails } from "./conversationalSession.js";
 import { validatePlanningFiles } from "./planningSkeletonValidator.js";
+import { handleSongPublishActionRequest, type SongPublishAction } from "./songPublishActionRegistry.js";
+import { scheduleDownloadAfterAdoptionJob } from "./sunoAdoptionDownloadJob.js";
 
 export type TelegramCommandKind =
   | "help"
@@ -129,6 +131,81 @@ function logCommandSideEffectFailure(context: string, error: unknown): void {
   console.error(`[telegram-command] ${context} failed: ${reason}`);
 }
 
+function kickAutopilotCycleAfterTextDecision(context: string): void {
+  void getAutopilotTicker().runNow().catch((error) => {
+    const reason = error instanceof Error ? error.message : String(error);
+    logCommandSideEffectFailure(`text decision runNow ${context}`, error);
+    emitRuntimeEvent({
+      type: "error",
+      source: "telegram_text_decision_run_now",
+      reason,
+      timestamp: Date.now()
+    });
+  });
+}
+
+async function releaseDiscardedCurrentSongLane(root: string, songId: string, now: number): Promise<void> {
+  const state = await readAutopilotRunState(root);
+  if (state.currentSongId !== songId) return;
+  await writeAutopilotRunState(root, {
+    ...state,
+    currentSongId: undefined,
+    stage: "idle",
+    paused: false,
+    pausedReason: undefined,
+    hardStopReason: undefined,
+    suspendedAt: undefined,
+    blockedReason: undefined,
+    lastError: undefined,
+    lastRunAt: new Date(now).toISOString()
+  });
+}
+
+async function runTelegramTextSongReviewAction(input: {
+  root: string;
+  action: Extract<SongPublishAction, "song_archive" | "song_discard">;
+  songId: string;
+  chatId: number;
+  userId: number;
+  now?: number;
+}): Promise<string> {
+  const now = input.now ?? Date.now();
+  const previousSong = await readSongState(input.root, input.songId);
+  const result = await handleSongPublishActionRequest({
+    action: input.action,
+    root: input.root,
+    songId: input.songId,
+    now,
+    actor: { kind: "telegram_text", chatId: input.chatId, userId: input.userId }
+  });
+  await markPendingCallbacksForSongResolved(input.root, {
+    songId: input.songId,
+    actions: SONG_REVIEW_ACTIONS,
+    status: input.action === "song_archive" ? "applied" : "discarded",
+    reason: `telegram_text:${input.action}`,
+    now
+  });
+  let message = result.message;
+  if (input.action === "song_archive" && result.status === "applied" && previousSong.status === "suno_take_url_ready") {
+    const job = await scheduleDownloadAfterAdoptionJob({
+      root: input.root,
+      songId: input.songId,
+      chatId: input.chatId,
+      now
+    });
+    message = [
+      result.message,
+      `音源ファイル取得を予約しました${job.scheduledFor ? ` (${job.scheduledFor})` : ""}。`,
+      "取れなくても Suno URL は有効です。"
+    ].join("\n");
+  }
+  if (input.action === "song_discard") {
+    await releaseDiscardedCurrentSongLane(input.root, input.songId, now);
+  }
+  kickAutopilotCycleAfterTextDecision(input.action);
+  return message;
+}
+
 const STATUS_DECISION_ACTIONS: readonly TelegramStatusDecisionAction[] = [
   "song_archive",
   "song_discard",
@@ -148,6 +225,7 @@ const STATUS_DECISION_ACTIONS: readonly TelegramStatusDecisionAction[] = [
   "take_select_regenerate",
   "take_select_skip"
 ];
+const SONG_REVIEW_ACTIONS = new Set(["song_archive", "song_discard", "song_songbook_write", "song_skip"]);
 
 interface StatusDecisionContext {
   chatId: number;
@@ -426,6 +504,8 @@ function helpInfo(): string {
     "/timeline - show song lifecycle timeline",
     "/songs - list recent songs",
     "/song <songId> - show song detail",
+    "/song adopt <songId> - adopt a selected/URL-ready song without publishing",
+    "/song discard <songId> - discard a song and keep its brief for reuse",
     "/song create [hint] - ask the artist to make a song",
     "/commission <brief> - propose a producer commission for autopilot",
     "/regen <songId> - queue a dry-run regeneration note",
@@ -541,7 +621,7 @@ export async function routeTelegramCommand(input: TelegramRouteInput): Promise<T
       || command === "/confirm"
       || command === "/cancel"
       || (command === "/persona" && !["check", "show", "fields", "edit", "reset", "migrate"].includes(args[0]?.toLowerCase() ?? ""))
-      || (command === "/song" && (isConversationalSongCreate(text) || (args.length > 1 && !["update", "add"].includes(args[0]?.toLowerCase() ?? ""))))
+      || (command === "/song" && (isConversationalSongCreate(text) || (args.length > 1 && !["update", "add", "adopt", "archive", "discard"].includes(args[0]?.toLowerCase() ?? ""))))
       || !command.startsWith("/")
     ) {
       const routed = await routeTelegramConversation({
@@ -703,6 +783,37 @@ export async function routeTelegramCommand(input: TelegramRouteInput): Promise<T
 
   if (command === "/song") {
     const subcommand = args[0]?.toLowerCase();
+    if (subcommand === "adopt" || subcommand === "archive" || subcommand === "discard") {
+      if (!input.workspaceRoot || !args[1]) {
+        return {
+          kind: "song",
+          responseText: await voiceCommand("error", "Usage: /song adopt <songId> | /song discard <songId>", input, "song review action usage"),
+          shouldStoreFreeText: false
+        };
+      }
+      const action = subcommand === "discard" ? "song_discard" : "song_archive";
+      try {
+        const message = await runTelegramTextSongReviewAction({
+          root: input.workspaceRoot,
+          action,
+          songId: args[1],
+          chatId: input.chatId,
+          userId: input.fromUserId
+        });
+        return {
+          kind: "song",
+          responseText: await voiceCommand("ack", message, input, `song ${subcommand}`),
+          shouldStoreFreeText: false
+        };
+      } catch (error) {
+        const reason = error instanceof Error ? error.message : String(error);
+        return {
+          kind: "song",
+          responseText: await voiceCommand("error", `Song action failed: ${reason}`, input, `song ${subcommand} failed`),
+          shouldStoreFreeText: false
+        };
+      }
+    }
     if (subcommand === "update") {
       if (!input.workspaceRoot || !args[1]) {
         return { kind: "song", responseText: await voiceCommand("error", "Usage: /song update <songId>", input, "song update usage"), shouldStoreFreeText: false };
@@ -756,8 +867,8 @@ export async function routeTelegramCommand(input: TelegramRouteInput): Promise<T
     const statusDecisionButtons = songReviewDecisionButtons(songState);
     const operationLine = statusDecisionButtons
       ? songState.status === "suno_take_url_ready"
-        ? "操作: この返信の「採用して音源取得」で採用 + 音源取得予約。「破棄」でこの曲を閉じる。"
-        : "操作: この返信の「採用」で残す。「破棄」でこの曲を閉じる。"
+        ? `操作: この返信の「採用して音源取得」で採用 + 音源取得予約。「破棄」でこの曲を閉じる。ボタン不可なら /song adopt ${song.songId} または /song discard ${song.songId}`
+        : `操作: この返信の「採用」で残す。「破棄」でこの曲を閉じる。ボタン不可なら /song adopt ${song.songId} または /song discard ${song.songId}`
       : undefined;
     const info = [
       `${song.songId} | ${song.status} | ${song.title}`,

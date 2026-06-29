@@ -136,7 +136,7 @@ export async function composeProducerStatus(root: string, options: ProducerStatu
     : firstPending
     ? latestWaiting.nextLine ?? `次: ${firstPending.label} を押すと、${firstPending.effect}`
     : awaitingUrlReady.length > 0
-      ? "次: この /status 返信のボタンで「採用して音源取得」か「破棄」を押す。採用するとSuno URLを保持し、音源ファイル取得を予約する。"
+      ? "次: この /status 返信のボタンで「採用して音源取得」か「破棄」を押す。ボタンが使えない時は /song adopt <songId> または /song discard <songId>。"
     : isPromptPackReadyWait
       ? "次: この /status 返信のボタンで「Suno 生成へ」「lyrics-suno.md を編集」「保留」を選ぶ。"
     : degradedLyricsSong
@@ -144,7 +144,7 @@ export async function composeProducerStatus(root: string, options: ProducerStatu
     : isPlanningSkeletonWait
       ? "次: この /status 返信のボタンで「進める」「中止」「書き直す」を選ぶ。"
     : awaitingTakeReview
-      ? "次: この /status 返信のボタンで「採用」か「破棄」を選ぶ。採用すると曲をアーカイブし、破棄するとこの曲を閉じる。"
+      ? "次: この /status 返信のボタンで「採用」か「破棄」を選ぶ。ボタンが使えない時は /song adopt <songId> または /song discard <songId>。"
     : draftBox.nextAction;
   const hasRecoverableWait = awaitingUrlReady.length > 0
     || isPromptPackReadyWait
@@ -177,7 +177,7 @@ export async function composeProducerStatus(root: string, options: ProducerStatu
           "Suno URL 採用待ち:",
           ...awaitingUrlReady.slice(0, options.limit ?? 6).map((candidate) => [
             `- ${candidate.songId} / ${candidate.title}: ${candidate.publicLinks[0] ?? "URLなし"}`,
-            "  操作: /status 返信の「採用して音源取得」で採用 + 音源取得予約。「破棄」でこの曲を閉じる。"
+            `  操作: /status 返信の「採用して音源取得」で採用 + 音源取得予約。「破棄」でこの曲を閉じる。ボタン不可なら /song adopt ${candidate.songId} または /song discard ${candidate.songId}`
           ].join("\n"))
         ]
       : []),
@@ -213,7 +213,7 @@ export async function composeProducerStatus(root: string, options: ProducerStatu
           "完成曲採用待ち:",
           `- ${awaitingTakeReview.songId} / ${awaitingTakeReview.title}`,
           awaitingTakeReview.selectedTakeId ? `  take: ${awaitingTakeReview.selectedTakeId}` : undefined,
-          "  操作: /status 返信の「採用」で残す。「破棄」でこの曲を閉じる。"
+          `  操作: /status 返信の「採用」で残す。「破棄」でこの曲を閉じる。ボタン不可なら /song adopt ${awaitingTakeReview.songId} または /song discard ${awaitingTakeReview.songId}`
         ].filter((line): line is string => Boolean(line))
       : []),
     "",

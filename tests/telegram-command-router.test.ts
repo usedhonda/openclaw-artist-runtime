@@ -3,11 +3,12 @@ import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { ensureSongState, updateSongState, writeSongBrief } from "../src/services/artistState";
+import { ensureSongState, readSongState, updateSongState, writeSongBrief } from "../src/services/artistState";
 import { readAutopilotRunState, writeAutopilotRunState } from "../src/services/autopilotService";
-import { registerCallbackAction } from "../src/services/callbackActionRegistry";
+import { readCallbackActionEntries, registerCallbackAction } from "../src/services/callbackActionRegistry";
 import { classifyTelegramFreeText, readTelegramInbox, routeTelegramCommand } from "../src/services/telegramCommandRouter";
 import * as autopilotTicker from "../src/services/autopilotTicker";
+import { readAdoptionDownloadJobEntries } from "../src/services/sunoAdoptionDownloadJob";
 import { appendFailedNotification } from "../src/services/failedNotifyLedger";
 import { getRuntimeEventBus, type RuntimeEvent } from "../src/services/runtimeEventBus";
 import { appendSpawnProposal } from "../src/services/spawnProposalQueue";
@@ -43,6 +44,10 @@ function spawnProposal(songId = "spawn-status"): SpawnProposal {
       styleLayer: "fast noisy pop, dry vocal"
     }
   };
+}
+
+async function latestCallbackEntriesById(root: string) {
+  return new Map((await readCallbackActionEntries(root)).map((entry) => [entry.callbackId, entry]));
 }
 
 afterEach(() => {
@@ -401,6 +406,110 @@ describe("telegram command router", () => {
     expect(result.kind).toBe("status");
     expect(result.statusDecisionButtons).toBeUndefined();
     expect(result.proposalButtons).toEqual({ proposalId: "commission-abc" });
+  });
+
+  it("adopts a URL-ready song from text when Telegram buttons are unusable", async () => {
+    const root = makeRoot();
+    const runNow = vi.spyOn(autopilotTicker.getAutopilotTicker(), "runNow").mockResolvedValue({
+      outcome: "ran",
+      state: { stage: "planning", paused: false, retryCount: 0, cycleCount: 1, updatedAt: new Date().toISOString() }
+    });
+    await ensureSongState(root, "song-url", "URL Ready Song");
+    await updateSongState(root, "song-url", {
+      status: "suno_take_url_ready",
+      selectedTakeId: "take-url",
+      appendPublicLinks: ["https://suno.com/song/take-url"]
+    });
+    for (const action of ["song_archive", "song_discard"] as const) {
+      await registerCallbackAction(root, {
+        action,
+        songId: "song-url",
+        selectedTakeId: "take-url",
+        chatId: 456,
+        messageId: 77,
+        userId: 123,
+        now: 1000
+      });
+    }
+
+    const result = await routeTelegramCommand({
+      ...baseInput,
+      text: "/song adopt song-url",
+      workspaceRoot: root
+    });
+
+    expect(result.kind).toBe("song");
+    expect(result.responseText).toContain("採用しました");
+    expect(result.responseText).toContain("音源ファイル取得を予約しました");
+    expect(await readSongState(root, "song-url")).toMatchObject({ status: "archived", selectedTakeId: "take-url" });
+    expect(await readAdoptionDownloadJobEntries(root)).toEqual([
+      expect.objectContaining({ songId: "song-url", status: "queued" })
+    ]);
+    const latestCallbacks = [...(await latestCallbackEntriesById(root)).values()];
+    expect(latestCallbacks.filter((entry) => entry.status === "pending")).toEqual([]);
+    expect(latestCallbacks.filter((entry) => entry.resolveReason === "telegram_text:song_archive")).toHaveLength(2);
+    await new Promise((resolve) => setTimeout(resolve, 10));
+    expect(runNow).toHaveBeenCalledTimes(1);
+  });
+
+  it("discards a selected song from text and releases the current autopilot lane", async () => {
+    const root = makeRoot();
+    const runNow = vi.spyOn(autopilotTicker.getAutopilotTicker(), "runNow").mockResolvedValue({
+      outcome: "ran",
+      state: { stage: "planning", paused: false, retryCount: 0, cycleCount: 1, updatedAt: new Date().toISOString() }
+    });
+    await ensureSongState(root, "song-selected", "Selected Song");
+    await writeSongBrief(root, "song-selected", "# Brief\n\nKeep the seed.");
+    await updateSongState(root, "song-selected", {
+      status: "take_selected",
+      selectedTakeId: "take-selected",
+      appendPublicLinks: ["https://suno.com/song/take-selected"]
+    });
+    await writeAutopilotRunState(root, {
+      runId: "take-review",
+      currentSongId: "song-selected",
+      stage: "take_selection",
+      paused: true,
+      suspendedAt: "producer_decision",
+      blockedReason: "waiting_for_song_archive_or_discard",
+      retryCount: 0,
+      cycleCount: 1,
+      updatedAt: new Date(0).toISOString()
+    });
+    for (const action of ["song_archive", "song_discard"] as const) {
+      await registerCallbackAction(root, {
+        action,
+        songId: "song-selected",
+        selectedTakeId: "take-selected",
+        chatId: 456,
+        messageId: 77,
+        userId: 123,
+        now: 1000
+      });
+    }
+
+    const result = await routeTelegramCommand({
+      ...baseInput,
+      text: "/song discard song-selected",
+      workspaceRoot: root
+    });
+
+    expect(result.kind).toBe("song");
+    expect(result.responseText).toContain("破棄しました");
+    const song = await readSongState(root, "song-selected");
+    expect(song).toMatchObject({ status: "discarded" });
+    expect(song.selectedTakeId).toBeUndefined();
+    expect(song.publicLinks).toEqual([]);
+    expect(await readAdoptionDownloadJobEntries(root)).toEqual([]);
+    const state = await readAutopilotRunState(root);
+    expect(state).toMatchObject({ stage: "idle", paused: false });
+    expect(state.currentSongId).toBeUndefined();
+    expect(state.blockedReason).toBeUndefined();
+    const latestCallbacks = [...(await latestCallbackEntriesById(root)).values()];
+    expect(latestCallbacks.filter((entry) => entry.status === "pending")).toEqual([]);
+    expect(latestCallbacks.filter((entry) => entry.resolveReason === "telegram_text:song_discard")).toHaveLength(2);
+    await new Promise((resolve) => setTimeout(resolve, 10));
+    expect(runNow).toHaveBeenCalledTimes(1);
   });
 
   it("lists recent songs", async () => {

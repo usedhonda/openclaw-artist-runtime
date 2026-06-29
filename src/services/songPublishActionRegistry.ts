@@ -23,7 +23,7 @@ export interface SongPublishActionContext {
 export interface SongPublishActionRequest extends SongPublishActionContext {
   action: SongPublishAction;
   actor?: {
-    kind: "telegram_callback" | "ui_api";
+    kind: "telegram_callback" | "telegram_text" | "ui_api";
     chatId?: number;
     userId?: number;
   };
