@@ -29,7 +29,7 @@ describe("residual kanji lyrics lint", () => {
     expect(normalizeAsciiNumbersToHiragana("3つの信号と 42 の窓")).toBe("さんつの信号と よんじゅうに の窓");
   });
 
-  it("adds residual kanji warnings to prompt pack payload without mutating existing English lint", () => {
+  it("fails validation on residual kanji while preserving English lint warnings", () => {
     const pack = createSunoPromptPack({
       songId: "song-kanji",
       songTitle: "安全圏の芝",
@@ -44,5 +44,7 @@ describe("residual kanji lyrics lint", () => {
     expect(warnings).toContain("residual_kanji:安全圏:line_2");
     expect(warnings).not.toContain("ascii_number:4:line_2");
     expect(String(pack.payload.lyrics)).toContain("よん");
+    expect(pack.validation.valid).toBe(false);
+    expect(pack.validation.errors.join("\n")).toContain("non-hiragana Japanese");
   });
 });

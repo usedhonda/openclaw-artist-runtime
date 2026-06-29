@@ -970,6 +970,7 @@ export interface SunoPromptPack {
   songTitle: string;
   artistReason: string;
   lyricsBundle?: {
+    originalLyricsText?: string;
     lyricsText: string;
     yamlLyrics: string;
     moodHint?: string;

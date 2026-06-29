@@ -52,7 +52,7 @@ function chooseTheme(artist: string, currentState: string): string {
 
 function buildTitle(theme: string, index: number): string {
   const themed = titleCase(theme);
-  return themed || `Song ${String(index).padStart(3, "0")}`;
+  return themed.length >= 4 ? themed : `Song ${String(index).padStart(3, "0")}`;
 }
 
 function excerpt(value?: string): string {

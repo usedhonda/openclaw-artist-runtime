@@ -10,13 +10,13 @@ import { validateNoCommandLeak } from "../src/services/lyricsValidator";
 
 const lyrics = [
   "[Intro - muted street image]",
-  "駅前の時計だけが少し遅れる",
+  "えきまえのとけいだけがすこしおくれる",
   "",
   "[Verse 1 - tight civic flow]",
-  "誰も見ない窓にだけ信号が残る",
-  "既読の街で責任だけが遅れる",
-  "低いベースが名前を削っていく",
-  "朝の手前でまだ息を数える"
+  "だれもみないまどにだけしんごうがのこる",
+  "きどくのまちでせきにんだけがおくれる",
+  "ひくいベースがなまえをけずっていく",
+  "あさのてまえでまだいきをかぞえる"
 ].join("\n");
 
 describe("Suno V5.5 prompt pack orchestration", () => {
@@ -100,6 +100,7 @@ describe("Suno V5.5 prompt pack orchestration", () => {
     const exclude = readFileSync(result.artifactPaths.excludeLatest, "utf8");
     const yaml = readFileSync(result.artifactPaths.yamlLatest, "utf8");
     const lyricsSuno = readFileSync(result.artifactPaths.lyricsSunoLatest, "utf8");
+    const lyricsHuman = readFileSync(result.artifactPaths.lyricsVersioned, "utf8");
     const payload = JSON.parse(readFileSync(result.artifactPaths.payloadLatest, "utf8")) as Record<string, unknown>;
     const ledger = readFileSync(result.artifactPaths.promptLedger, "utf8");
 
@@ -113,6 +114,7 @@ describe("Suno V5.5 prompt pack orchestration", () => {
     expect(exclude.length).toBeLessThanOrEqual(201);
     expect(yaml).toContain("LYRICS START");
     expect(lyricsSuno).toContain("[Verse 1 - tight civic flow]");
+    expect(lyricsHuman).toContain("[Verse 1 - tight civic flow]");
     expect(String(payload.lyrics)).toContain(lyrics);
     expect(String(payload.lyricsText)).toContain(lyrics);
     expect(String(payload.lyrics).length).toBeLessThan(1500);

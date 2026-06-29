@@ -91,7 +91,7 @@ describe("suno and social pipelines", () => {
       songId: "song-001",
       songTitle: "Ghost Station",
       artistReason: "night transit residue",
-      lyricsText: "駅の光だけが\nまだ私を覚えている",
+      lyricsText: "えきのひかりだけが\nまだわたしをおぼえている",
       knowledgePackVersion: "test-pack"
     });
 
@@ -174,7 +174,7 @@ describe("suno and social pipelines", () => {
       songId: "song-001",
       songTitle: "Ghost Station",
       artistReason: "night transit residue",
-      lyricsText: "駅の光だけが\nまだ私を覚えている",
+      lyricsText: "えきのひかりだけが\nまだわたしをおぼえている",
       knowledgePackVersion: "test-pack"
     });
     await generateSunoRun({ workspaceRoot: root, songId: "song-001" });

@@ -6,7 +6,7 @@ function pack(vocalGender?: "male" | "female" | "neutral") {
     songId: "song-gender",
     songTitle: "Gender Gate",
     artistReason: "voice gender must be explicit",
-    lyricsText: "[Verse 1]\n街の白い灯りが残る",
+    lyricsText: "[Verse 1]\nまちのしろいあかりがのこる",
     moodHint: "dry civic pulse",
     artistSnapshot: "# ARTIST\n\n### Voice\n\n- gender: male",
     currentStateSnapshot: "# CURRENT",

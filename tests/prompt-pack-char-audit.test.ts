@@ -16,7 +16,7 @@ describe("prompt pack character audit", () => {
       songId: "song-char",
       songTitle: "Character Gate",
       artistReason: "character counts must be visible",
-      lyricsText: "[Verse 1]\n街の灯りが遅れる",
+      lyricsText: "[Verse 1]\nまちのあかりがおくれる",
       moodHint: "dry civic pulse",
       bpm: 142
     });
@@ -41,7 +41,7 @@ describe("prompt pack character audit", () => {
       style: "nu-jazz rap, dry civic pulse, BPM 142, mid-range male rap vocal",
       exclude: "generic reverb",
       yamlLyrics: "gender: male",
-      payload: { lyrics: "短い", payloadYaml: "# META (hints; do not sing)\n=== LYRICS START (do not sing tags) ===\n短い\n=== LYRICS END ===" },
+      payload: { lyrics: "みじかい", payloadYaml: "# META (hints; do not sing)\n=== LYRICS START (do not sing tags) ===\nみじかい\n=== LYRICS END ===" },
       artistSnapshotHash: "a",
       currentStateHash: "b",
       payloadHash: "c",
@@ -82,6 +82,37 @@ describe("prompt pack character audit", () => {
       });
     } finally {
       vi.unstubAllEnvs();
+      unsubscribe();
+    }
+  });
+
+  it("stops the prompt-pack pipeline when Suno registration lyrics still contain kanji", async () => {
+    const root = mkdtempSync(join(tmpdir(), "artist-runtime-v55-kanji-"));
+    const events: RuntimeEvent[] = [];
+    const unsubscribe = getRuntimeEventBus().subscribe((event) => events.push(event));
+
+    try {
+      await expect(createAndPersistSunoPromptPack({
+        workspaceRoot: root,
+        songId: "song-kanji-stop",
+        songTitle: "Kanji Stop",
+        artistReason: "Suno registration lyrics must be hiragana",
+        lyricsText: "[Verse 1]\n街の灯りが遅れる",
+        moodHint: "dry civic pulse",
+        bpm: 142
+      })).rejects.toThrow("suno_prompt_pack_invalid");
+
+      const state = await readSongState(root, "song-kanji-stop");
+      const degraded = events.find((event) => event.type === "lyrics_generation_degraded" && event.songId === "song-kanji-stop");
+      expect(state.status).toBe("brief");
+      expect(state.degradedLyrics).toBe(true);
+      expect(state.lastReason).toContain("suno_prompt_pack_invalid");
+      expect(degraded).toMatchObject({
+        type: "lyrics_generation_degraded",
+        songId: "song-kanji-stop",
+        reason: expect.stringContaining("suno_prompt_pack_invalid")
+      });
+    } finally {
       unsubscribe();
     }
   });

@@ -22,7 +22,7 @@ describe("Suno V5.5 BPM source of truth", () => {
       songId: "song-bpm",
       songTitle: "BPM Civic Gate",
       artistReason: "brief tempo should drive every Suno field",
-      lyricsText: "[Verse 1]\n街の灯りが遅れて戻る",
+      lyricsText: "[Verse 1]\nまちのあかりがおくれてもどる",
       moodHint: "dry civic pulse"
     });
 

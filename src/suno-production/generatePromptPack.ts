@@ -77,7 +77,8 @@ function promptCharCounts(title: string, style: string, lyrics: string, payloadY
 }
 
 export function createSunoPromptPack(input: CreateSunoPromptPackInput): SunoPromptPack {
-  const lyricsText = normalizeAsciiNumbersToHiragana(repairCommandLeak(input.lyricsText).trim());
+  const originalLyricsText = repairCommandLeak(input.lyricsText).trim();
+  const lyricsText = normalizeAsciiNumbersToHiragana(originalLyricsText);
   const genre = `${input.artistReason} ${input.moodHint ?? ""}`;
   const durationPlan = getDurationPlan();
   const bpm = input.bpm ?? durationPlan.bpm.target;
@@ -148,6 +149,7 @@ export function createSunoPromptPack(input: CreateSunoPromptPackInput): SunoProm
     songTitle: input.songTitle,
     artistReason: input.artistReason,
     lyricsBundle: {
+      originalLyricsText,
       lyricsText,
       yamlLyrics,
       moodHint: input.moodHint
@@ -172,7 +174,8 @@ export function createSunoPromptPack(input: CreateSunoPromptPackInput): SunoProm
 export async function createSunoPromptPackWithAi(
   input: CreateSunoPromptPackInput & { aiReviewProvider?: AiReviewProvider }
 ): Promise<SunoPromptPack> {
-  const lyricsText = repairCommandLeak(input.lyricsText).trim();
+  const originalLyricsText = repairCommandLeak(input.lyricsText).trim();
+  const lyricsText = normalizeAsciiNumbersToHiragana(originalLyricsText);
   const genre = `${input.artistReason} ${input.moodHint ?? ""}`;
   const durationPlan = getDurationPlan();
   const bpm = input.bpm ?? durationPlan.bpm.target;
@@ -241,6 +244,7 @@ export async function createSunoPromptPackWithAi(
     songTitle: input.songTitle,
     artistReason: input.artistReason,
     lyricsBundle: {
+      originalLyricsText,
       lyricsText,
       yamlLyrics,
       moodHint: input.moodHint

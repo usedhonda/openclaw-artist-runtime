@@ -53,7 +53,7 @@ describe("prompt pack", () => {
       songId: "song-001",
       songTitle: "Ghost Station",
       artistReason: "night transit residue",
-      lyricsText: "駅の光だけが\nまだ私を覚えている",
+      lyricsText: "えきのひかりだけが\nまだわたしをおぼえている",
       artistSnapshot: "# ARTIST\n",
       currentStateSnapshot: "# CURRENT_STATE\nQuiet.",
       knowledgePackVersion: "test-pack"
@@ -77,7 +77,7 @@ describe("prompt pack", () => {
       songId: "song-001",
       songTitle: "Ghost Station",
       artistReason: "night transit residue",
-      lyricsText: "駅の光だけが\nまだ私を覚えている",
+      lyricsText: "3つのひかりだけが\nまだわたしをおぼえている",
       knowledgePackVersion: "test-pack",
       configSnapshot: { dryRun: true }
     });
@@ -85,7 +85,8 @@ describe("prompt pack", () => {
     expect(result.packVersion).toBe(1);
     expect(result.ledgerEntryIds).toHaveLength(6);
     expect(readFileSync(result.artifactPaths.styleLatest, "utf8")).toContain("BPM");
-    expect(readFileSync(result.artifactPaths.lyricsVersioned, "utf8")).toContain("駅の光だけが");
+    expect(readFileSync(result.artifactPaths.lyricsVersioned, "utf8")).toContain("3つのひかりだけが");
+    expect(readFileSync(result.artifactPaths.lyricsSunoLatest, "utf8")).toContain("さんつのひかりだけが");
     expect(readFileSync(result.artifactPaths.promptLedger, "utf8")).toContain("\"stage\":\"suno_payload_build\"");
   });
 

@@ -109,6 +109,26 @@ async function failClosedLyricsBoxOverflow(input: PersistSunoPromptPackInput, de
   throw Object.assign(error, { repairNotes });
 }
 
+async function failClosedPromptPackValidation(input: PersistSunoPromptPackInput, detail: string): Promise<never> {
+  const repairNotes = [`suno_prompt_pack_invalid: ${detail}`];
+  const reason = `lyrics_generation_degraded: ${repairNotes.join(" | ")}`;
+  emitRuntimeEvent({
+    type: "lyrics_generation_degraded",
+    songId: input.songId,
+    reason,
+    detail,
+    repairNotes,
+    timestamp: Date.now()
+  });
+  await updateSongState(input.workspaceRoot, input.songId, {
+    degradedLyrics: true,
+    reason,
+    status: "brief"
+  });
+  const error = new Error(reason);
+  throw Object.assign(error, { repairNotes });
+}
+
 export async function createAndPersistSunoPromptPack(input: PersistSunoPromptPackInput): Promise<PersistedPromptPackResult> {
   await ensureArtistWorkspace(input.workspaceRoot);
   await createSongSkeleton(input.workspaceRoot, input.songId);
@@ -139,6 +159,9 @@ export async function createAndPersistSunoPromptPack(input: PersistSunoPromptPac
   if (payloadYamlOverflow) {
     await failClosedLyricsBoxOverflow(input, payloadYamlOverflow);
   }
+  if (!pack.validation.valid) {
+    await failClosedPromptPackValidation(input, pack.validation.errors.join("; "));
+  }
   const charCounts = (pack.payload as { promptCharCounts?: {
     style: number;
     lyrics: number;
@@ -161,6 +184,7 @@ export async function createAndPersistSunoPromptPack(input: PersistSunoPromptPac
       timestamp: Date.now()
     });
   }
+  const originalLyricsText = pack.lyricsBundle?.originalLyricsText ?? input.lyricsText;
   const lyricsText = pack.lyricsBundle?.lyricsText ?? input.lyricsText;
 
   const promptsDir = join(input.workspaceRoot, "songs", input.songId, "prompts");
@@ -182,7 +206,7 @@ export async function createAndPersistSunoPromptPack(input: PersistSunoPromptPac
   const ledgerPath = getSongPromptLedgerPath(input.workspaceRoot, input.songId);
 
   await Promise.all([
-    writeText(lyricsVersioned, `${lyricsText}\n`),
+    writeText(lyricsVersioned, `${originalLyricsText}\n`),
     writeText(lyricsSunoLatest, `${lyricsText}\n`),
     writeText(yamlLatest, `${pack.yamlLyrics}\n`),
     writeText(styleLatest, `${pack.style}\n`),
@@ -190,7 +214,7 @@ export async function createAndPersistSunoPromptPack(input: PersistSunoPromptPac
     writeJson(slidersLatest, pack.sliders),
     writeJson(payloadLatest, pack.payload),
     writeJson(validationLatest, pack.validation),
-    writeText(join(snapshotDir, "lyrics.md"), `${lyricsText}\n`),
+    writeText(join(snapshotDir, "lyrics.md"), `${originalLyricsText}\n`),
     writeText(join(snapshotDir, "lyrics-suno.md"), `${lyricsText}\n`),
     writeText(join(snapshotDir, "yaml-suno.md"), `${pack.yamlLyrics}\n`),
     writeText(join(snapshotDir, "style.md"), `${pack.style}\n`),

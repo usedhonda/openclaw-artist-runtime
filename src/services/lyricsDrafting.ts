@@ -53,12 +53,26 @@ function deriveLyrics(title: string, brief: string): string {
     .map((line) => line.trim())
     .filter((line) => line && !line.startsWith("#") && !line.startsWith("- "));
   const motif = briefLines[0] ?? "A cold light stays on after midnight.";
+  const safeTitle = /[\u3400-\u9FFF\u3005]/.test(title) ? "this song" : title;
   return [
-    `${title} waits under the dead neon.`,
+    `${safeTitle} waits under the dead neon.`,
     motif,
     "Only the station clock keeps counting the dust.",
     "I leave before the echo learns my name."
   ].join("\n");
+}
+
+function sunoSafeMockLine(value: string): string {
+  const trimmed = value.trim();
+  if (
+    /[\u3400-\u9FFF\u3005]/.test(trimmed)
+    || /\d/.test(trimmed)
+    || /^#/.test(trimmed)
+    || /^(?:query|reactionfor|reactionsource|motifs|path|author|url|quote|motivation)\s*:/i.test(trimmed)
+  ) {
+    return "まちのノイズがまだきえない。";
+  }
+  return trimmed;
 }
 
 function parseField(raw: string, field: string): string {
@@ -69,23 +83,23 @@ function parseField(raw: string, field: string): string {
 function mockStructuredDraft(title: string, briefText: string): string {
   const rawSource = briefText.match(/## Observation source[\s\S]*?Extract:\n([\s\S]*)/i)?.[1]?.split(/\r?\n/).find((line) => line.trim())?.trim()
     ?? briefText.split(/\r?\n/).find((line) => line.trim() && !line.startsWith("#"))?.trim()
-    ?? "街のノイズがまだ消えない。";
+    ?? "まちのノイズがまだきえない。";
   const source = rawSource.replace(/^-\s*text:\s*"?(.+?)"?\s*$/i, "$1");
   const safeTitle = JSON.stringify(title.split(/\s+/).slice(0, 4).join(" ") || "Night Ledger");
-  const safeSource = JSON.stringify(source.slice(0, 60));
+  const safeSource = JSON.stringify(sunoSafeMockLine(source).slice(0, 60));
   return [
     "{",
     `  "title": ${safeTitle},`,
     "  \"form\": \"nine-section compact pop\",",
     "  \"sections\": [",
     `    { "tag": "Intro - muted street image", "lines": [${safeSource}] },`,
-    "    { \"tag\": \"Verse 1 - tight civic flow\", \"lines\": [\"誰も見ない窓にだけ信号が残る\", \"既読の街で責任だけが遅れる\", \"低いベースが名前を削っていく\", \"朝の手前でまだ息を数える\"] },",
-    "    { \"tag\": \"Hook - repeated anchor\", \"lines\": [\"逃げた声を追わない\", \"画面の外で鳴る\", \"逃げた声を追わない\"] },",
-    "    { \"tag\": \"Verse 2 - detail turn\", \"lines\": [\"便利な橋ほど足跡を消した\", \"神棚みたいな稟議が白く光る\", \"笑った顔だけログに残って\", \"誰の夜かを誰も言わない\"] },",
-    "    { \"tag\": \"Bridge - thin contrast\", \"lines\": [\"それでも爪の先だけ熱い\", \"黙ったまま角を曲がる\"] },",
-    "    { \"tag\": \"Verse 3 - consequence\", \"lines\": [\"錆びた時計が二拍だけずれる\", \"古い店名が雨でほどける\", \"遠い通知に街灯が瞬く\", \"まだ消えないものを拾う\"] },",
-    "    { \"tag\": \"Hook - final anchor\", \"lines\": [\"逃げた声を追わない\", \"画面の外で鳴る\", \"逃げた声を追わない\"] },",
-    "    { \"tag\": \"Outro - hard stop\", \"lines\": [\"夜明けだけが未送信のまま\"] }",
+    "    { \"tag\": \"Verse 1 - tight civic flow\", \"lines\": [\"だれもみないまどにだけしんごうがのこる\", \"きどくのまちでせきにんだけがおくれる\", \"ひくいベースがなまえをけずっていく\", \"あさのてまえでまだいきをかぞえる\"] },",
+    "    { \"tag\": \"Hook - repeated anchor\", \"lines\": [\"にげたこえをおわない\", \"がめんのそとでなる\", \"にげたこえをおわない\"] },",
+    "    { \"tag\": \"Verse 2 - detail turn\", \"lines\": [\"べんりなはしほどあしあとをけした\", \"かみだなみたいなりんぎがしろくひかる\", \"わらったかおだけログにのこって\", \"だれのよるかをだれもいわない\"] },",
+    "    { \"tag\": \"Bridge - thin contrast\", \"lines\": [\"それでもつめのさきだけあつい\", \"だまったままかどをまがる\"] },",
+    "    { \"tag\": \"Verse 3 - consequence\", \"lines\": [\"さびたとけいがにびょうだけずれる\", \"ふるいてんめいがあめでほどける\", \"とおいつうちにがいとうがまたたく\", \"まだきえないものをひろう\"] },",
+    "    { \"tag\": \"Hook - final anchor\", \"lines\": [\"にげたこえをおわない\", \"がめんのそとでなる\", \"にげたこえをおわない\"] },",
+    "    { \"tag\": \"Outro - hard stop\", \"lines\": [\"よあけだけがみそうしんのまま\"] }",
     "  ],",
     "  \"bilingual_hint\": \"keep Japanese main text\",",
     "  \"moodHint\": \"observed urban unease\"",

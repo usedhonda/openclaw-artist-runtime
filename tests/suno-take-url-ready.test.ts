@@ -56,7 +56,7 @@ async function seedPromptPack(root: string, songId = "song-url"): Promise<void> 
     songId,
     songTitle: "URL Gate",
     artistReason: "capture Suno URL before audio import",
-    lyricsText: "[Verse 1]\nしずかなビルに信号が残る",
+    lyricsText: "[Verse 1]\nしずかなビルにしんごうがのこる",
     moodHint: "dry civic pulse",
     bpm: 142
   });

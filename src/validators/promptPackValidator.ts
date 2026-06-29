@@ -59,6 +59,10 @@ function validateDurationPlanStructure(payloadYaml: string, warnings: string[]):
   }
 }
 
+function classifyLanguageWarning(value: string): "error" | "warning" {
+  return /^(?:residual_kanji|ascii_number):/.test(value) ? "error" : "warning";
+}
+
 export function validateSunoPromptPack(pack: Partial<SunoPromptPack>): SunoPromptPackValidation {
   const errors: string[] = [];
   const warnings: string[] = [];
@@ -106,7 +110,13 @@ export function validateSunoPromptPack(pack: Partial<SunoPromptPack>): SunoPromp
     validateDurationPlanStructure(payloadYaml, warnings);
     const warningsValue = (pack.payload as { languageWarnings?: unknown }).languageWarnings;
     if (Array.isArray(warningsValue) && warningsValue.length > 0) {
-      warnings.push(...warningsValue.map(String));
+      for (const warning of warningsValue.map(String)) {
+        if (classifyLanguageWarning(warning) === "error") {
+          errors.push(`suno lyrics registration text still has non-hiragana Japanese: ${warning}`);
+        } else {
+          warnings.push(warning);
+        }
+      }
     }
   }
   if (!pack.artistSnapshotHash) {
