@@ -351,6 +351,76 @@ describe("telegram bot worker", () => {
     expect(await readAutopilotRunState(root)).toMatchObject({ stage: "suno_generation", suspendedAt: null });
   });
 
+  it("recreates degraded-lyrics recovery buttons on /status and redraft clears the stop", async () => {
+    const root = makeRoot();
+    await ensureArtistWorkspace(root);
+    await mkdir(join(root, "runtime"), { recursive: true });
+    await ensureSongState(root, "song-lyrics", "Lyrics Stuck");
+    await updateSongState(root, "song-lyrics", {
+      status: "brief",
+      degradedLyrics: true,
+      reason: "lyrics_generation_degraded: provider fallback response"
+    });
+    await writeAutopilotRunState(root, {
+      runId: "lyrics-degraded",
+      currentSongId: "song-lyrics",
+      stage: "paused",
+      paused: true,
+      blockedReason: "lyrics_generation_degraded: provider fallback response",
+      retryCount: 1,
+      cycleCount: 1,
+      updatedAt: new Date().toISOString()
+    });
+    const fetchImpl = vi
+      .fn()
+      .mockResolvedValueOnce(jsonResponse({
+        ok: true,
+        result: [{
+          update_id: 10,
+          message: {
+            message_id: 1,
+            text: "/status",
+            chat: { id: 555 },
+            from: { id: 123 }
+          }
+        }]
+      }))
+      .mockResolvedValueOnce(jsonResponse({ ok: true, result: { message_id: 2, text: "status", chat: { id: 555 } } }))
+      .mockResolvedValueOnce(jsonResponse({ ok: true, result: true }));
+    const worker = new TelegramBotWorker({
+      root,
+      config: enabledConfig,
+      token: "token",
+      ownerUserIds: new Set(["123"]),
+      fetchImpl
+    });
+
+    const result = await worker.pollOnce();
+    worker.stop();
+
+    expect(result).toMatchObject({ enabled: true, fetched: true, processed: 1 });
+    const statusBody = JSON.parse(fetchImpl.mock.calls[1][1].body as string) as { text: string };
+    expect(statusBody.text).toContain("歌詞生成停止");
+    const markup = JSON.parse(fetchImpl.mock.calls[2][1].body as string) as {
+      reply_markup: { inline_keyboard: Array<Array<{ text: string; callback_data: string }>> };
+    };
+    expect(markup.reply_markup.inline_keyboard.flat().map((button) => button.text)).toEqual(["歌詞を作り直す", "破棄"]);
+    const redraft = (await readCallbackActionEntries(root)).find((entry) => entry.action === "lyrics_redraft" && entry.songId === "song-lyrics");
+    expect(redraft).toMatchObject({ status: "pending", songId: "song-lyrics" });
+
+    await expect(routeTelegramCallback({
+      root,
+      client: callbackClient(),
+      callbackQueryId: "lyrics-redraft-restored",
+      data: `cb:${redraft?.callbackId}`,
+      fromUserId: 123,
+      chatId: 555,
+      messageId: 2
+    })).resolves.toMatchObject({ result: "updated", reason: "lyrics_redraft_requested" });
+    expect(await readSongState(root, "song-lyrics")).toMatchObject({ status: "brief", degradedLyrics: false });
+    expect(await readAutopilotRunState(root)).toMatchObject({ stage: "planning", paused: false, suspendedAt: null });
+  });
+
   it("attaches latest spawn proposal buttons to /status replies", async () => {
     const root = makeRoot();
     await mkdir(join(root, "runtime"), { recursive: true });

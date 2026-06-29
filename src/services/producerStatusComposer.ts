@@ -111,6 +111,9 @@ export async function composeProducerStatus(root: string, options: ProducerStatu
   const publicLinks = song?.publicLinks?.length ? song.publicLinks : [];
   const awaitingUrlReady = songs.filter((candidate) => candidate.status === "suno_take_url_ready");
   const isPromptPackReadyWait = autopilot.suspendedAt === "prompt_pack_ready" && Boolean(currentSongId);
+  const degradedLyricsSong = song?.degradedLyrics
+    ? song
+    : songs.find((candidate) => candidate.degradedLyrics && !["scheduled", "published", "archived", "discarded", "failed"].includes(candidate.status));
   const firstPending = pending.recent[0];
   const firstPendingIsUrlReadyDecision = firstPending?.songId
     ? awaitingUrlReady.some((candidate) => candidate.songId === firstPending.songId)
@@ -129,6 +132,8 @@ export async function composeProducerStatus(root: string, options: ProducerStatu
       ? "次: この /status 返信のボタンで「採用して音源取得」か「破棄」を押す。採用するとSuno URLを保持し、音源ファイル取得を予約する。"
     : isPromptPackReadyWait
       ? "次: この /status 返信のボタンで「Suno 生成へ」「lyrics-suno.md を編集」「保留」を選ぶ。"
+    : degradedLyricsSong
+      ? "次: この /status 返信のボタンで「歌詞を作り直す」か「破棄」を選ぶ。"
     : draftBox.nextAction;
 
   return [
@@ -163,6 +168,15 @@ export async function composeProducerStatus(root: string, options: ProducerStatu
           "Suno 生成GO待ち:",
           `- ${currentSongId}${song?.title ? ` / ${song.title}` : ""}`,
           "  操作: /status 返信の「Suno 生成へ」で生成開始。「lyrics-suno.md を編集」で歌詞へ戻す。「保留」で止める。"
+        ]
+      : []),
+    ...(degradedLyricsSong
+      ? [
+          "",
+          "歌詞生成停止:",
+          `- ${degradedLyricsSong.songId} / ${degradedLyricsSong.title}`,
+          `  理由: ${degradedLyricsSong.lastReason ?? rawBlockedReason ?? "歌詞生成に失敗"}`,
+          "  操作: /status 返信の「歌詞を作り直す」で再作成。「破棄」でこの曲を閉じる。"
         ]
       : []),
     "",

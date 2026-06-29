@@ -72,7 +72,8 @@ export type TelegramStatusDecisionAction =
   | "song_spawn_edit"
   | "prompt_pack_go"
   | "prompt_pack_edit"
-  | "prompt_pack_skip";
+  | "prompt_pack_skip"
+  | "lyrics_redraft";
 
 export interface TelegramStatusDecisionButtonsRequest {
   songId: string;
@@ -130,7 +131,8 @@ const STATUS_DECISION_ACTIONS: readonly TelegramStatusDecisionAction[] = [
   "song_spawn_edit",
   "prompt_pack_go",
   "prompt_pack_edit",
-  "prompt_pack_skip"
+  "prompt_pack_skip",
+  "lyrics_redraft"
 ];
 
 async function latestUrlReadyDecisionButtons(root: string): Promise<TelegramStatusDecisionButtonsRequest | undefined> {
@@ -210,8 +212,29 @@ async function promptPackReadyDecisionButtons(root: string): Promise<TelegramSta
   };
 }
 
+async function degradedLyricsDecisionButtons(root: string): Promise<TelegramStatusDecisionButtonsRequest | undefined> {
+  const state = await readAutopilotRunState(root);
+  const terminalStatuses = new Set(["scheduled", "published", "archived", "discarded", "failed"]);
+  const preferred = state.currentSongId
+    ? await readSongState(root, state.currentSongId).catch(() => undefined)
+    : undefined;
+  const song = preferred?.degradedLyrics && !terminalStatuses.has(preferred.status)
+    ? preferred
+    : (await listSongStates(root)).find((candidate) => candidate.degradedLyrics && !terminalStatuses.has(candidate.status));
+  if (!song) {
+    return undefined;
+  }
+  return {
+    songId: song.songId,
+    actions: ["lyrics_redraft", "song_discard"]
+  };
+}
+
 async function latestRecoverableDecisionButtons(root: string): Promise<TelegramStatusDecisionButtonsRequest | undefined> {
-  return await latestUrlReadyDecisionButtons(root) ?? await promptPackReadyDecisionButtons(root) ?? await draftSpawnDecisionButtons(root);
+  return await latestUrlReadyDecisionButtons(root)
+    ?? await promptPackReadyDecisionButtons(root)
+    ?? await degradedLyricsDecisionButtons(root)
+    ?? await draftSpawnDecisionButtons(root);
 }
 
 async function latestStatusDecisionButtons(root: string, now = Date.now()): Promise<TelegramStatusDecisionButtonsRequest | undefined> {

@@ -192,6 +192,32 @@ describe("producer status composer", () => {
     expect(text).toContain("lyrics-suno.md を編集");
   });
 
+  it("surfaces degraded lyrics stops as actionable /status buttons", async () => {
+    const workspaceRoot = await root();
+    await ensureSongState(workspaceRoot, "song-lyrics", "Lyrics Stuck");
+    await updateSongState(workspaceRoot, "song-lyrics", {
+      status: "brief",
+      degradedLyrics: true,
+      reason: "lyrics_generation_degraded: provider fallback response"
+    });
+    await writeAutopilotRunState(workspaceRoot, {
+      runId: "lyrics-degraded",
+      currentSongId: "song-lyrics",
+      stage: "paused",
+      paused: true,
+      blockedReason: "lyrics_generation_degraded: provider fallback response",
+      retryCount: 1,
+      cycleCount: 1,
+      updatedAt: new Date(0).toISOString()
+    });
+
+    const text = await composeProducerStatus(workspaceRoot);
+
+    expect(text).toContain("歌詞生成停止");
+    expect(text).toContain("次: この /status 返信のボタンで「歌詞を作り直す」か「破棄」を選ぶ。");
+    expect(text).toContain("provider fallback response");
+  });
+
   it("routes free-text status intent before the conversational router", async () => {
     const workspaceRoot = await root();
     await writeAutopilotRunState(workspaceRoot, {

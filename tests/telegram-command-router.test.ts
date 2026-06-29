@@ -201,6 +201,35 @@ describe("telegram command router", () => {
     });
   });
 
+  it("recreates degraded lyrics recovery button metadata for /status when callbacks are missing", async () => {
+    const root = makeRoot();
+    await ensureSongState(root, "song-lyrics", "Lyrics Stuck");
+    await updateSongState(root, "song-lyrics", {
+      status: "brief",
+      degradedLyrics: true,
+      reason: "lyrics_generation_degraded: provider fallback response"
+    });
+    await writeAutopilotRunState(root, {
+      runId: "lyrics-degraded",
+      currentSongId: "song-lyrics",
+      stage: "paused",
+      paused: true,
+      blockedReason: "lyrics_generation_degraded: provider fallback response",
+      retryCount: 1,
+      cycleCount: 1,
+      updatedAt: new Date().toISOString()
+    });
+
+    const result = await routeTelegramCommand({ ...baseInput, text: "/status", workspaceRoot: root });
+
+    expect(result.kind).toBe("status");
+    expect(result.responseText).toContain("歌詞生成停止");
+    expect(result.statusDecisionButtons).toEqual({
+      songId: "song-lyrics",
+      actions: ["lyrics_redraft", "song_discard"]
+    });
+  });
+
   it("returns latest spawn proposal button metadata for /status", async () => {
     const root = makeRoot();
     await appendSpawnProposal(root, spawnProposal("spawn-ready"));

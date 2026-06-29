@@ -97,6 +97,8 @@ function statusDecisionButtonLabel(action: TelegramStatusDecisionAction, context
       return buttonVoiceLabels.promptPackReady.edit;
     case "prompt_pack_skip":
       return buttonVoiceLabels.promptPackReady.skip;
+    case "lyrics_redraft":
+      return buttonVoiceLabels.lyricsDegraded.redraft;
   }
 }
 
@@ -110,7 +112,8 @@ const STATUS_DECISION_ACTION_SET = new Set<string>([
   "song_spawn_edit",
   "prompt_pack_go",
   "prompt_pack_edit",
-  "prompt_pack_skip"
+  "prompt_pack_skip",
+  "lyrics_redraft"
 ]);
 
 export class TelegramBotWorker {
