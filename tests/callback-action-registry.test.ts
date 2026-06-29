@@ -7,6 +7,7 @@ import {
   defaultCallbackActionExpiresAt,
   isProducerDecisionAction,
   isResurfaceAllowedAction,
+  markPendingCallbacksByActionResolved,
   markCallbackResolved,
   readCallbackActionEntries,
   registerCallbackAction,
@@ -58,6 +59,49 @@ describe("callback action registry", () => {
     const entries = await readCallbackActionEntries(workspace);
     expect(resolved).toMatchObject({ status: "discarded", resolvedAt: 200, resolveReason: "operator_no" });
     expect(entries).toHaveLength(2);
+  });
+
+  it("marks pending callbacks by action while preserving an excluded song", async () => {
+    const workspace = root();
+    const oldInject = await registerCallbackAction(workspace, {
+      action: "song_spawn_inject",
+      songId: "spawn-old",
+      chatId: 1,
+      messageId: 2,
+      userId: 3,
+      now: 100
+    });
+    const currentInject = await registerCallbackAction(workspace, {
+      action: "song_spawn_inject",
+      songId: "spawn-current",
+      chatId: 1,
+      messageId: 3,
+      userId: 3,
+      now: 100
+    });
+    await registerCallbackAction(workspace, {
+      action: "song_discard",
+      songId: "song-other",
+      chatId: 1,
+      messageId: 4,
+      userId: 3,
+      now: 100
+    });
+
+    const resolved = await markPendingCallbacksByActionResolved(workspace, {
+      actions: new Set(["song_spawn_inject"]),
+      excludeSongId: "spawn-current",
+      status: "updated",
+      reason: "superseded_by_new_song_spawn_proposal",
+      now: 200
+    });
+
+    expect(resolved.map((entry) => entry.callbackId)).toEqual([oldInject.callbackId]);
+    await expect(resolveCallbackAction(workspace, oldInject.callbackId)).resolves.toMatchObject({
+      status: "updated",
+      resolveReason: "superseded_by_new_song_spawn_proposal"
+    });
+    await expect(resolveCallbackAction(workspace, currentInject.callbackId)).resolves.toMatchObject({ status: "pending" });
   });
 
   it("generates unique short ids for multiple registrations", async () => {

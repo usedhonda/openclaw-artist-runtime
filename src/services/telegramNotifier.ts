@@ -2,7 +2,7 @@ import type { RuntimeEvent, RuntimeEventBus } from "./runtimeEventBus.js";
 import { TelegramClient, telegramAttemptsFromError, type TelegramFetch } from "./telegramClient.js";
 import { generateArtistResponse, readArtistVoiceContext } from "./artistVoiceResponder.js";
 import type { AiReviewProvider, ProducerDigestMode } from "../types.js";
-import { markPendingCallbacksForSongResolved, registerCallbackAction } from "./callbackActionRegistry.js";
+import { markPendingCallbacksByActionResolved, markPendingCallbacksForSongResolved, registerCallbackAction } from "./callbackActionRegistry.js";
 import { appendConversationTurn } from "./conversationalSession.js";
 import { proposalForDetection } from "./songDistributionPoller.js";
 import { getTelegramArtistReportTimeoutMs, isInlineButtonsEnabled, isSelfHealNotifyEnabled, isXInlineButtonEnabled } from "./runtimeConfig.js";
@@ -72,6 +72,7 @@ const HARD_STOP_REASON_PATTERNS: Array<{ category: string; pattern: RegExp; mess
 ];
 const SUNO_URL_READY_ACTIONS = new Set(["song_archive", "song_discard"]);
 const SONG_COMPLETION_ACTIONS = new Set(["song_archive", "song_discard", "song_songbook_write", "song_skip", "x_publish_prepare"]);
+const SONG_SPAWN_ACTIONS = new Set(["song_spawn_inject", "song_spawn_skip", "song_spawn_edit"]);
 
 function hardStopCategory(reason: string): string | undefined {
   return HARD_STOP_REASON_PATTERNS.find((entry) => entry.pattern.test(reason))?.category;
@@ -437,6 +438,12 @@ export class TelegramNotifier {
     if (!isInlineButtonsEnabled() || !this.options.workspaceRoot || typeof this.options.chatId !== "number") {
       return;
     }
+    await markPendingCallbacksByActionResolved(this.options.workspaceRoot, {
+      actions: SONG_SPAWN_ACTIONS,
+      excludeSongId: event.candidateSongId,
+      status: "updated",
+      reason: "superseded_by_new_song_spawn_proposal"
+    });
     const [inject, skip, edit] = await Promise.all([
       registerCallbackAction(this.options.workspaceRoot, {
         action: "song_spawn_inject",

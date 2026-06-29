@@ -110,4 +110,36 @@ describe("telegram spawn proposed narrative", () => {
     expect(markupBody).toContain("保留する");
     expect(markupBody).toContain("修正する");
   });
+
+  it("supersedes older spawn decision buttons when a newer proposal is sent", async () => {
+    const workspaceRoot = await root();
+    const fetchImpl = vi.fn()
+      .mockResolvedValueOnce(telegramResponse({ message_id: 77, chat: { id: 123 } }))
+      .mockResolvedValueOnce(telegramResponse(true))
+      .mockResolvedValueOnce(telegramResponse({ message_id: 78, chat: { id: 123 } }))
+      .mockResolvedValueOnce(telegramResponse(true));
+    const notifier = new TelegramNotifier({ token: "token", chatId: 123, workspaceRoot, fetchImpl });
+
+    await notifier.notify({
+      type: "song_spawn_proposed",
+      candidateSongId: "spawn_old",
+      brief: { ...brief(), songId: "spawn_old", title: "古い案" },
+      reason: "古い観察から曲に入る。",
+      timestamp: 1
+    });
+    await notifier.notify({
+      type: "song_spawn_proposed",
+      candidateSongId: "spawn_new",
+      brief: { ...brief(), songId: "spawn_new", title: "新しい案" },
+      reason: "新しい観察から曲に入る。",
+      timestamp: 2
+    });
+
+    const latest = new Map((await readCallbackActionEntries(workspaceRoot)).map((entry) => [entry.callbackId, entry]));
+    const oldSpawn = [...latest.values()].filter((entry) => entry.songId === "spawn_old");
+    const newSpawn = [...latest.values()].filter((entry) => entry.songId === "spawn_new");
+    expect(oldSpawn.map((entry) => entry.status)).toEqual(["updated", "updated", "updated"]);
+    expect(oldSpawn.every((entry) => entry.resolveReason === "superseded_by_new_song_spawn_proposal")).toBe(true);
+    expect(newSpawn.map((entry) => entry.status)).toEqual(["pending", "pending", "pending"]);
+  });
 });

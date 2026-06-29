@@ -380,6 +380,29 @@ export async function markPendingCallbacksForSongResolved(
   return resolved;
 }
 
+export async function markPendingCallbacksByActionResolved(
+  root: string,
+  input: MarkCallbackResolvedInput & { actions: ReadonlySet<string>; excludeSongId?: string }
+): Promise<CallbackActionEntry[]> {
+  const now = input.now ?? Date.now();
+  const latest = latestCallbackActionEntries(await readCallbackActionEntries(root));
+  const targets = latest.filter((candidate) =>
+    candidate.status === "pending"
+    && candidate.songId !== input.excludeSongId
+    && input.actions.has(candidate.action)
+  );
+  const resolved: CallbackActionEntry[] = [];
+  for (const target of targets) {
+    const next = await markCallbackResolved(root, target.callbackId, {
+      status: input.status,
+      reason: input.reason,
+      now
+    });
+    if (next) resolved.push(next);
+  }
+  return resolved;
+}
+
 async function appendCallbackAuditMarker(
   root: string,
   entry: CallbackActionEntry,
