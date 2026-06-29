@@ -61,7 +61,17 @@ export interface TelegramRouteResult {
   statusDecisionButtons?: TelegramStatusDecisionButtonsRequest;
 }
 
-export type TelegramStatusDecisionAction = "song_archive" | "song_discard" | "song_songbook_write" | "song_skip";
+export type TelegramStatusDecisionAction =
+  | "song_archive"
+  | "song_discard"
+  | "song_songbook_write"
+  | "song_skip"
+  | "song_spawn_inject"
+  | "song_spawn_skip"
+  | "song_spawn_edit"
+  | "prompt_pack_go"
+  | "prompt_pack_edit"
+  | "prompt_pack_skip";
 
 export interface TelegramStatusDecisionButtonsRequest {
   songId: string;
@@ -110,7 +120,13 @@ const STATUS_DECISION_ACTIONS: readonly TelegramStatusDecisionAction[] = [
   "song_archive",
   "song_discard",
   "song_songbook_write",
-  "song_skip"
+  "song_skip",
+  "song_spawn_inject",
+  "song_spawn_skip",
+  "song_spawn_edit",
+  "prompt_pack_go",
+  "prompt_pack_edit",
+  "prompt_pack_skip"
 ];
 
 async function latestStatusDecisionButtons(root: string, now = Date.now()): Promise<TelegramStatusDecisionButtonsRequest | undefined> {
@@ -133,13 +149,15 @@ async function latestStatusDecisionButtons(root: string, now = Date.now()): Prom
   if (actions.length === 0) {
     return undefined;
   }
-  const song = await readSongState(root, latest.songId).catch(() => undefined);
-  if (!song || (song.status !== "take_selected" && song.status !== "suno_take_url_ready")) {
+  const songReviewActions = new Set<TelegramStatusDecisionAction>(["song_archive", "song_discard", "song_songbook_write", "song_skip"]);
+  const requiresReviewSong = actions.some((action) => songReviewActions.has(action));
+  const song = latest.songId ? await readSongState(root, latest.songId).catch(() => undefined) : undefined;
+  if (requiresReviewSong && (!song || (song.status !== "take_selected" && song.status !== "suno_take_url_ready"))) {
     return undefined;
   }
   return {
     songId: latest.songId,
-    selectedTakeId: song.selectedTakeId,
+    selectedTakeId: song?.selectedTakeId,
     actions
   };
 }

@@ -200,6 +200,55 @@ describe("telegram bot worker", () => {
     expect(allActions.filter((entry) => entry.resolveReason === "superseded_by_status_decision_reissue").map((entry) => entry.action).sort()).toEqual(["song_archive", "song_discard"]);
   });
 
+  it("attaches latest spawn proposal buttons to /status replies", async () => {
+    const root = makeRoot();
+    await mkdir(join(root, "runtime"), { recursive: true });
+    for (const action of ["song_spawn_inject", "song_spawn_skip", "song_spawn_edit"] as const) {
+      await registerCallbackAction(root, {
+        action,
+        songId: "spawn-ready",
+        proposalId: "spawn-ready",
+        chatId: 555,
+        messageId: 70,
+        userId: 123
+      });
+    }
+    const fetchImpl = vi
+      .fn()
+      .mockResolvedValueOnce(jsonResponse({
+        ok: true,
+        result: [{
+          update_id: 10,
+          message: {
+            message_id: 1,
+            text: "/status",
+            chat: { id: 555 },
+            from: { id: 123 }
+          }
+        }]
+      }))
+      .mockResolvedValueOnce(jsonResponse({ ok: true, result: { message_id: 2, text: "status", chat: { id: 555 } } }))
+      .mockResolvedValueOnce(jsonResponse({ ok: true, result: true }));
+    const worker = new TelegramBotWorker({
+      root,
+      config: enabledConfig,
+      token: "token",
+      ownerUserIds: new Set(["123"]),
+      fetchImpl
+    });
+
+    const result = await worker.pollOnce();
+    worker.stop();
+
+    expect(result).toMatchObject({ enabled: true, fetched: true, processed: 1 });
+    const markup = JSON.parse(fetchImpl.mock.calls[2][1].body as string) as {
+      reply_markup: { inline_keyboard: Array<Array<{ text: string; callback_data: string }>> };
+    };
+    expect(markup.reply_markup.inline_keyboard.flat().map((button) => button.text)).toEqual(["作る", "保留する", "修正する"]);
+    const pending = await listPendingCallbackActionSummaries(root, { category: "producer_decision" });
+    expect(pending.recent.map((entry) => entry.action).sort()).toEqual(["song_spawn_edit", "song_spawn_inject", "song_spawn_skip"].sort());
+  });
+
   it("announces persona setup once on the first owner message when persona is incomplete", async () => {
     const root = makeRoot();
     const fetchImpl = vi

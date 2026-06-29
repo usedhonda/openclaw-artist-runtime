@@ -132,6 +132,29 @@ describe("telegram command router", () => {
     });
   });
 
+  it("returns latest spawn proposal button metadata for /status", async () => {
+    const root = makeRoot();
+    for (const action of ["song_spawn_inject", "song_spawn_skip", "song_spawn_edit"] as const) {
+      await registerCallbackAction(root, {
+        action,
+        songId: "spawn-ready",
+        proposalId: "spawn-ready",
+        chatId: 456,
+        messageId: 88,
+        userId: 123
+      });
+    }
+
+    const result = await routeTelegramCommand({ ...baseInput, text: "/status", workspaceRoot: root });
+
+    expect(result.kind).toBe("status");
+    expect(result.statusDecisionButtons).toEqual({
+      songId: "spawn-ready",
+      selectedTakeId: undefined,
+      actions: ["song_spawn_inject", "song_spawn_skip", "song_spawn_edit"]
+    });
+  });
+
   it("lists recent songs", async () => {
     const root = makeRoot();
     await ensureSongState(root, "song-001", "Ash Road");

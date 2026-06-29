@@ -82,6 +82,18 @@ function statusDecisionButtonLabel(action: TelegramStatusDecisionAction): string
       return buttonVoiceLabels.songCompletion.write;
     case "song_skip":
       return buttonVoiceLabels.songCompletion.later;
+    case "song_spawn_inject":
+      return buttonVoiceLabels.songSpawn.inject;
+    case "song_spawn_skip":
+      return buttonVoiceLabels.songSpawn.skip;
+    case "song_spawn_edit":
+      return buttonVoiceLabels.songSpawn.edit;
+    case "prompt_pack_go":
+      return buttonVoiceLabels.promptPackReady.go;
+    case "prompt_pack_edit":
+      return buttonVoiceLabels.promptPackReady.edit;
+    case "prompt_pack_skip":
+      return buttonVoiceLabels.promptPackReady.skip;
   }
 }
 
@@ -89,7 +101,13 @@ const STATUS_DECISION_ACTION_SET = new Set<string>([
   "song_archive",
   "song_discard",
   "song_songbook_write",
-  "song_skip"
+  "song_skip",
+  "song_spawn_inject",
+  "song_spawn_skip",
+  "song_spawn_edit",
+  "prompt_pack_go",
+  "prompt_pack_edit",
+  "prompt_pack_skip"
 ]);
 
 export class TelegramBotWorker {
