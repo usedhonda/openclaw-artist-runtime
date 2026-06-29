@@ -21,6 +21,7 @@ import type { TelegramClient } from "./telegramClient.js";
 import { executeXPublishAction, type XPublishActionInput } from "./xPublishActionRegistry.js";
 import { stampCallback } from "./receiveHealthService.js";
 import { scheduleDownloadAfterAdoptionJob } from "./sunoAdoptionDownloadJob.js";
+import { readLatestSunoRun } from "./sunoRuns.js";
 
 export const STALE_CALLBACK_JA_REPLY = "このボタンはもう古い。 最新の通知から選び直して。";
 const SONG_REVIEW_SIBLING_ACTIONS = new Set(["song_archive", "song_discard"]);
@@ -309,6 +310,28 @@ async function resurfaceExpiredProducerDecision(
     await ctx.client.answerCallbackQuery(ctx.callbackQueryId, { text: "この曲は今、Suno 生成待ちではありません。" });
     await appendCallbackAudit(ctx.root, auditBase(ctx, callbackId, entry, "expired", `resurface_rejected:${resurface.reason}`));
     return { processed: true, result: "expired", reason: `resurface_rejected:${resurface.reason}`, callbackId };
+  }
+  if ((entry.action === "song_archive" || entry.action === "song_discard") && entry.songId) {
+    const song = await readSongState(ctx.root, entry.songId).catch(() => undefined);
+    if (song?.status === "suno_take_url_ready") {
+      const urls = (song.publicLinks ?? []).filter((link) => link.includes("suno.com/song/"));
+      if (urls.length > 0) {
+        const latestRun = await readLatestSunoRun(ctx.root, entry.songId).catch(() => undefined);
+        await appendCallbackAudit(ctx.root, auditBase(ctx, callbackId, entry, "updated", `callback_resurface_requested:${staleReason}`));
+        emitRuntimeEvent({
+          type: "suno_take_url_ready",
+          songId: entry.songId,
+          runId: latestRun?.runId ?? `telegram_resurface_${now.toString(36)}`,
+          urls,
+          selectedTakeId: song.selectedTakeId ?? entry.selectedTakeId,
+          timestamp: now
+        });
+        await ctx.client.answerCallbackQuery(ctx.callbackQueryId, { text: "Suno URL 採用待ちを再表示しました。届いた通知から選んでください。" });
+        await markCallbackResolved(ctx.root, callbackId, { status: "updated", reason: `resurfaced:${staleReason}`, now });
+        await appendCallbackAudit(ctx.root, auditBase(ctx, callbackId, entry, "updated", "callback_resurfaced"));
+        return { processed: true, result: "updated", reason: "callback_resurfaced", callbackId };
+      }
+    }
   }
   // allowed action but no re-emit path (e.g. archive/discard without a brief) -> graceful stale reply.
   await ctx.client.answerCallbackQuery(ctx.callbackQueryId, { text: STALE_CALLBACK_JA_REPLY });

@@ -284,6 +284,56 @@ describe("Suno take URL ready flow", () => {
     expect(String(sendMessage.mock.calls.at(-1)?.[1])).toContain("https://suno.com/song/take-ready");
   });
 
+  it("resurfaces fresh URL-ready buttons when an old adoption button expired", async () => {
+    const root = workspace();
+    await ensureArtistWorkspace(root);
+    await updateSongState(root, "song-url", {
+      title: "URL Gate",
+      status: "suno_take_url_ready",
+      selectedTakeId: "take-ready",
+      appendPublicLinks: ["https://suno.com/song/take-ready"]
+    });
+    await writeAcceptedRun(root);
+    const expired = await registerCallbackAction(root, {
+      action: "song_archive",
+      songId: "song-url",
+      selectedTakeId: "take-ready",
+      chatId: 123,
+      messageId: 77,
+      userId: 123,
+      now: Date.parse("2026-06-16T00:00:00.000Z"),
+      expiresAt: Date.parse("2026-06-16T00:01:00.000Z")
+    });
+    const events: RuntimeEvent[] = [];
+    const unsubscribe = getRuntimeEventBus().subscribe((event) => events.push(event));
+    const client = callbackClient();
+
+    const result = await routeTelegramCallback({
+      root,
+      client,
+      callbackQueryId: "archive-url-expired",
+      data: `cb:${expired.callbackId}`,
+      fromUserId: 123,
+      chatId: 123,
+      messageId: 77,
+      now: Date.parse("2026-06-16T00:02:00.000Z")
+    });
+
+    unsubscribe();
+    expect(result).toMatchObject({ result: "updated", reason: "callback_resurfaced" });
+    expect(client.answerCallbackQuery).toHaveBeenCalledWith("archive-url-expired", {
+      text: "Suno URL 採用待ちを再表示しました。届いた通知から選んでください。"
+    });
+    expect(events).toContainEqual(expect.objectContaining({
+      type: "suno_take_url_ready",
+      songId: "song-url",
+      runId: "run-ready",
+      urls: ["https://suno.com/song/take-ready"],
+      selectedTakeId: "take-ready"
+    }));
+    expect((await readCallbackActionEntries(root)).find((entry) => entry.callbackId === expired.callbackId && entry.status === "updated")).toBeTruthy();
+  });
+
   it("preserves archived status after a successful adoption download import and does not re-pick the song", async () => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date("2026-06-16T00:00:00.000Z"));

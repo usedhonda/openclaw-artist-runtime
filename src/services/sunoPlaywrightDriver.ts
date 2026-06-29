@@ -32,6 +32,7 @@ export const PLAYWRIGHT_POLL_TIMEOUT_MS = 10 * 60 * 1_000;
 export const PLAYWRIGHT_CREATE_CARD_TIMEOUT_MS = 3 * 60 * 1_000;
 export const PLAYWRIGHT_EXPECTED_CREATE_CARD_COUNT = 2;
 export const PLAYWRIGHT_CREATE_CARD_REASON = "submitted_via_create_card";
+export const PLAYWRIGHT_CREATE_SNAPSHOT_RECOVERY_REASON = "submitted_via_timeout_snapshot_recovery";
 export const PLAYWRIGHT_CREATE_TIMEOUT_REASON = "playwright_create_timeout";
 export const PLAYWRIGHT_CREATE_NETWORK_REASON = "playwright_create_network_error";
 export const PLAYWRIGHT_CREATE_DOM_MISSING_REASON = "playwright_create_dom_missing";
@@ -179,6 +180,18 @@ export class PlaywrightSunoDriver implements SunoBrowserDriver {
           runId,
           reason: generated.reason ?? PLAYWRIGHT_CREATE_CARD_REASON,
           urls: generated.urls,
+          lyricsTelemetry,
+          dryRun: request.dryRun
+        };
+      }
+
+      const recoveredUrls = await this.recoverGeneratedSongUrlsFromCurrentPage(page, baselineCreateUrls, title);
+      if (recoveredUrls.length > 0) {
+        return {
+          accepted: true,
+          runId,
+          reason: PLAYWRIGHT_CREATE_SNAPSHOT_RECOVERY_REASON,
+          urls: recoveredUrls,
           lyricsTelemetry,
           dryRun: request.dryRun
         };
@@ -734,7 +747,7 @@ export class PlaywrightSunoDriver implements SunoBrowserDriver {
       for (const control of controls) {
         let current: Element | null = control;
         let img: Element | null = null;
-        for (let depth = 0; current && depth < 6; depth += 1) {
+        for (let depth = 0; current && depth < 10; depth += 1) {
           img = current.querySelector("img[src*='suno.ai/image'], img[data-src*='suno.ai/image']");
           if (img) {
             break;
@@ -751,6 +764,39 @@ export class PlaywrightSunoDriver implements SunoBrowserDriver {
       }
       return Array.from(urls);
     });
+  }
+
+  private async recoverGeneratedSongUrlsFromCurrentPage(
+    page: Page,
+    baselineUrls: Set<string>,
+    expectedTitle?: string
+  ): Promise<string[]> {
+    if (!expectedTitle) {
+      return [];
+    }
+    const html = await page.content().catch(() => "");
+    if (!html.includes(expectedTitle)) {
+      return [];
+    }
+    return this.extractTitleScopedSongUrlsFromHtml(html, expectedTitle).filter((url) => !baselineUrls.has(url));
+  }
+
+  private extractTitleScopedSongUrlsFromHtml(html: string, expectedTitle: string): string[] {
+    const titleIndex = html.indexOf(expectedTitle);
+    if (titleIndex < 0) {
+      return [];
+    }
+    const nearby = html.slice(Math.max(0, titleIndex - 20_000), Math.min(html.length, titleIndex + 20_000));
+    const urls = new Set<string>();
+    const songUrlPattern = /https?:\\?\/\\?\/(?:www\.)?suno\.com\\?\/song\\?\/([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})/gi;
+    for (const match of nearby.matchAll(songUrlPattern)) {
+      urls.add(`https://suno.com/song/${match[1]}`);
+    }
+    const imagePattern = /image(?:_large)?_([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})/gi;
+    for (const match of nearby.matchAll(imagePattern)) {
+      urls.add(`https://suno.com/song/${match[1]}`);
+    }
+    return Array.from(urls);
   }
 
   private escapeAttributeValue(value: string): string {

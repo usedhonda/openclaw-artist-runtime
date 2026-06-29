@@ -60,8 +60,17 @@ export async function composeProducerStatus(root: string, options: ProducerStatu
   ];
   const publicLinks = song?.publicLinks?.length ? song.publicLinks : [];
   const awaitingUrlReady = songs.filter((candidate) => candidate.status === "suno_take_url_ready");
-  const nextLine = pending.recent[0]
+  const firstPending = pending.recent[0];
+  const firstPendingIsUrlReadyDecision = firstPending?.songId
+    ? awaitingUrlReady.some((candidate) => candidate.songId === firstPending.songId)
+      && (firstPending.action === "song_archive" || firstPending.action === "song_discard")
+    : false;
+  const nextLine = firstPendingIsUrlReadyDecision
+    ? "次: 最新のTelegram通知で「採用して音源取得」か「破棄」を押す。採用するとSuno URLを保持し、音源ファイル取得を予約する。"
+    : firstPending
     ? `次: ${pending.recent[0].label} を押すと、${pending.recent[0].effect}`
+    : awaitingUrlReady.length > 0
+      ? "次: 最新のTelegram通知で「採用して音源取得」か「破棄」を押す。採用するとSuno URLを保持し、音源ファイル取得を予約する。"
     : draftBox.nextAction;
 
   return [
@@ -84,7 +93,10 @@ export async function composeProducerStatus(root: string, options: ProducerStatu
       ? [
           "",
           "Suno URL 採用待ち:",
-          ...awaitingUrlReady.slice(0, options.limit ?? 6).map((candidate) => `- ${candidate.songId} / ${candidate.title}: ${candidate.publicLinks[0] ?? "URLなし"}`)
+          ...awaitingUrlReady.slice(0, options.limit ?? 6).map((candidate) => [
+            `- ${candidate.songId} / ${candidate.title}: ${candidate.publicLinks[0] ?? "URLなし"}`,
+            "  操作: 最新通知の「採用して音源取得」で採用 + 音源取得予約。「破棄」でこの曲を閉じる。"
+          ].join("\n"))
         ]
       : []),
     "",

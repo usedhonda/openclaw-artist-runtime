@@ -8,6 +8,7 @@ import {
   PLAYWRIGHT_CREATE_LOGIN_EXPIRED_REASON,
   PLAYWRIGHT_CREATE_NETWORK_REASON,
   PLAYWRIGHT_CREATE_RATE_LIMITED_REASON,
+  PLAYWRIGHT_CREATE_SNAPSHOT_RECOVERY_REASON,
   PLAYWRIGHT_CREATE_SKIPPED_REASON,
   PLAYWRIGHT_CREATE_TIMEOUT_REASON,
   PLAYWRIGHT_LIVE_TIMEOUT_REASON,
@@ -486,6 +487,48 @@ describe("PlaywrightSunoDriver create", () => {
     expect(result.reason).toBe(PLAYWRIGHT_LIVE_TIMEOUT_REASON);
     expect(result.urls).toEqual([]);
     expect(page.waitForTimeout).not.toHaveBeenCalled();
+    expect(page.goto.mock.calls.filter(([url]) => url === SUNO_LIBRARY_URL)).toHaveLength(0);
+  });
+
+  it("recovers title-scoped Suno URLs from the current page before reporting timeout", async () => {
+    const { page, context } = createContext();
+    page.createCardSnapshots.push([], [], []);
+    page.content.mockResolvedValue(`
+      <html>
+        <body>
+          <section>
+            <button aria-label="Play Run Snapshot from start">Run Snapshot</button>
+            <img src="https://cdn2.suno.ai/image_large_44444444-4444-4444-8444-444444444444.jpeg">
+          </section>
+        </body>
+      </html>
+    `);
+    launchPersistentContextMock.mockResolvedValue(context);
+    const driver = new PlaywrightSunoDriver(
+      ".openclaw-browser-profiles/suno",
+      "live",
+      ".",
+      { intervalMs: 1, timeoutMs: 4, createCardTimeoutMs: 2 }
+    );
+
+    const result = await driver.create({
+      dryRun: false,
+      authority: "auto_create_and_select_take",
+      runId: "run-snapshot",
+      payload: {
+        songName: "Run Snapshot",
+        lyrics: "line one"
+      }
+    });
+
+    expect(result).toMatchObject({
+      accepted: true,
+      runId: "run-snapshot",
+      reason: PLAYWRIGHT_CREATE_SNAPSHOT_RECOVERY_REASON,
+      urls: ["https://suno.com/song/44444444-4444-4444-8444-444444444444"],
+      dryRun: false
+    });
+    expect(page.screenshot).not.toHaveBeenCalled();
     expect(page.goto.mock.calls.filter(([url]) => url === SUNO_LIBRARY_URL)).toHaveLength(0);
   });
 
