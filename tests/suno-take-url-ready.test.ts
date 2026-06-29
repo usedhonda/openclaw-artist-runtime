@@ -219,9 +219,10 @@ describe("Suno take URL ready flow", () => {
     const sendPayload = JSON.parse(String((fetchImpl.mock.calls[0][1] as RequestInit).body)) as { text: string };
     expect(sendPayload.text).toContain("生成中、じき完成");
     expect(sendPayload.text).toContain("https://suno.com/song/take-ready");
-    expect(sendPayload.text).toContain("音源ファイルは採用後に一度だけ取りに行く");
+    expect(sendPayload.text).toContain("採用して音源取得");
+    expect(sendPayload.text).toContain("音源ファイル取得を予約する");
     const markupPayload = JSON.parse(String((fetchImpl.mock.calls[1][1] as RequestInit).body)) as { reply_markup: { inline_keyboard: Array<Array<{ text: string }>> } };
-    expect(markupPayload.reply_markup.inline_keyboard.flat().map((button) => button.text)).toEqual(["採用", "破棄"]);
+    expect(markupPayload.reply_markup.inline_keyboard.flat().map((button) => button.text)).toEqual(["採用して音源取得", "破棄"]);
   });
 
   it("queues one adoption download job and sends URL-valid notice when the delayed import fails", async () => {
@@ -265,6 +266,8 @@ describe("Suno take URL ready flow", () => {
     });
 
     expect(result).toMatchObject({ result: "applied" });
+    const immediateReply = (client.sendMessage as unknown as ReturnType<typeof vi.fn>).mock.calls[0]?.[1];
+    expect(String(immediateReply)).toContain("音源ファイル取得を予約しました");
     expect(connectorImportMock).not.toHaveBeenCalled();
     expect(await readAdoptionDownloadJobEntries(root)).toEqual([
       expect.objectContaining({ status: "queued", songId: "song-url" })

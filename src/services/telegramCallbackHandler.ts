@@ -431,19 +431,25 @@ export async function routeTelegramCallback(ctx: TelegramCallbackContext): Promi
           actions: SONG_REVIEW_SIBLING_ACTIONS
         });
       }
+      let replyMessage = actionResult.message;
       if (entry.action === "song_archive" && actionResult.status === "applied" && previousSong?.status === "suno_take_url_ready" && entry.songId) {
-        await scheduleDownloadAfterAdoptionJob({
+        const job = await scheduleDownloadAfterAdoptionJob({
           root: ctx.root,
           songId: entry.songId,
           chatId: entry.chatId,
           client: ctx.client,
           now
         });
+        replyMessage = [
+          actionResult.message,
+          `音源ファイル取得を予約しました${job.scheduledFor ? ` (${job.scheduledFor})` : ""}。`,
+          "取れなくても Suno URL は有効です。"
+        ].join("\n");
       }
       if (entry.action === "song_discard") {
         await releaseDiscardedCurrentSongLane(ctx.root, entry.songId, now);
       }
-      await clearButtonsAndReply(ctx, entry, actionResult.message);
+      await clearButtonsAndReply(ctx, entry, replyMessage);
       kickAutopilotCycleAfterProducerDecision(entry.action);
       return { processed: true, result: callbackResult, reason: auditReason, callbackId };
     } catch (error) {

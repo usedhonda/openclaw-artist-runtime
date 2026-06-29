@@ -296,8 +296,8 @@ export class TelegramNotifier {
     ]);
     await this.client.editMessageReplyMarkup(this.options.chatId, messageId, {
       inline_keyboard: [[
-        { text: buttonVoiceLabels.songCompletion.archive, callback_data: `cb:${archive.callbackId}` },
-        { text: buttonVoiceLabels.songCompletion.discard, callback_data: `cb:${discard.callbackId}` }
+        { text: buttonVoiceLabels.sunoUrlReady.archive, callback_data: `cb:${archive.callbackId}` },
+        { text: buttonVoiceLabels.sunoUrlReady.discard, callback_data: `cb:${discard.callbackId}` }
       ]]
     });
   }
@@ -1261,7 +1261,7 @@ async function formatRuntimeEventRaw(
         `run: ${event.runId}`,
         "🔗 試聴:",
         formatTelegramUrlList(event.urls),
-        "音源ファイルは採用後に一度だけ取りに行く。取れなくてもこのURLは有効。",
+        "「採用して音源取得」でアーカイブし、音源ファイル取得を予約する。取れなくてもこのURLは有効。",
         "",
         "非公開、御大のみ"
       ].filter(Boolean).join("\n");
