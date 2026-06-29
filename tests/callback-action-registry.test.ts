@@ -124,7 +124,7 @@ describe("callback action registry", () => {
     const workspace = root();
     const now = 1_000_000;
 
-    for (const action of ["song_archive", "song_discard", "song_spawn_inject", "song_spawn_skip", "prompt_pack_go", "prompt_pack_edit", "prompt_pack_skip", "lyrics_redraft"] as const) {
+    for (const action of ["song_archive", "song_discard", "song_spawn_inject", "song_spawn_skip", "prompt_pack_go", "prompt_pack_edit", "prompt_pack_skip", "lyrics_redraft", "take_select_accept", "take_select_regenerate", "take_select_skip"] as const) {
       const entry = await registerCallbackAction(workspace, {
         action,
         chatId: 1,
@@ -144,7 +144,7 @@ describe("callback action registry", () => {
     const workspace = root();
     const now = 1_000_000;
 
-    for (const action of ["proposal_yes", "take_select_accept", "x_publish_confirm", "daily_voice_publish"] as const) {
+    for (const action of ["proposal_yes", "x_publish_confirm", "daily_voice_publish"] as const) {
       const entry = await registerCallbackAction(workspace, {
         action,
         chatId: 1,

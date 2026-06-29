@@ -176,6 +176,51 @@ describe("telegram command router", () => {
     });
   });
 
+  it("recreates selected-take adoption button metadata for /status when callbacks are missing", async () => {
+    const root = makeRoot();
+    await ensureSongState(root, "song-selected", "Selected Song");
+    await updateSongState(root, "song-selected", {
+      status: "take_selected",
+      selectedTakeId: "take-selected",
+      appendPublicLinks: ["https://suno.com/song/take-selected"]
+    });
+
+    const result = await routeTelegramCommand({ ...baseInput, text: "/status", workspaceRoot: root });
+
+    expect(result.kind).toBe("status");
+    expect(result.responseText).toContain("完成曲採用待ち");
+    expect(result.statusDecisionButtons).toEqual({
+      songId: "song-selected",
+      selectedTakeId: "take-selected",
+      actions: ["song_archive", "song_discard"]
+    });
+  });
+
+  it("returns take-select button metadata for /status when low-score take callbacks are pending", async () => {
+    const root = makeRoot();
+    await ensureSongState(root, "song-low", "Low Score Song");
+    await updateSongState(root, "song-low", { status: "takes_imported" });
+    for (const action of ["take_select_accept", "take_select_regenerate", "take_select_skip"] as const) {
+      await registerCallbackAction(root, {
+        action,
+        songId: "song-low",
+        selectedTakeId: action === "take_select_accept" ? "take-low" : undefined,
+        chatId: 456,
+        messageId: 78,
+        userId: 123
+      });
+    }
+
+    const result = await routeTelegramCommand({ ...baseInput, text: "/status", workspaceRoot: root });
+
+    expect(result.kind).toBe("status");
+    expect(result.statusDecisionButtons).toEqual({
+      songId: "song-low",
+      selectedTakeId: "take-low",
+      actions: ["take_select_accept", "take_select_regenerate", "take_select_skip"]
+    });
+  });
+
   it("recreates prompt-pack GO button metadata for /status when callbacks are missing", async () => {
     const root = makeRoot();
     await ensureSongState(root, "song-prompt", "Prompt Ready Song");

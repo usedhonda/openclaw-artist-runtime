@@ -110,6 +110,12 @@ export async function composeProducerStatus(root: string, options: ProducerStatu
   ];
   const publicLinks = song?.publicLinks?.length ? song.publicLinks : [];
   const awaitingUrlReady = songs.filter((candidate) => candidate.status === "suno_take_url_ready");
+  const awaitingTakeReview = songs.find((candidate) =>
+    candidate.status === "take_selected"
+    && (Boolean(candidate.selectedTakeId) || candidate.publicLinks.length > 0)
+  );
+  const displaySong = song ?? awaitingTakeReview;
+  const displayPublicLinks = publicLinks.length > 0 ? publicLinks : awaitingTakeReview?.publicLinks ?? [];
   const isPromptPackReadyWait = autopilot.suspendedAt === "prompt_pack_ready" && Boolean(currentSongId);
   const isPlanningSkeletonWait = autopilot.suspendedAt === "planning_skeleton_pending" && Boolean(currentSongId);
   const degradedLyricsSong = song?.degradedLyrics
@@ -137,6 +143,8 @@ export async function composeProducerStatus(root: string, options: ProducerStatu
       ? "次: この /status 返信のボタンで「歌詞を作り直す」か「破棄」を選ぶ。"
     : isPlanningSkeletonWait
       ? "次: この /status 返信のボタンで「進める」「中止」「書き直す」を選ぶ。"
+    : awaitingTakeReview
+      ? "次: この /status 返信のボタンで「採用」か「破棄」を選ぶ。採用すると曲をアーカイブし、破棄するとこの曲を閉じる。"
     : draftBox.nextAction;
 
   return [
@@ -191,11 +199,20 @@ export async function composeProducerStatus(root: string, options: ProducerStatu
           "  操作: /status 返信の「進める」で補完案を反映。「中止」で見送り。「書き直す」で編集待ちにする。"
         ]
       : []),
+    ...(!firstPending && awaitingTakeReview
+      ? [
+          "",
+          "完成曲採用待ち:",
+          `- ${awaitingTakeReview.songId} / ${awaitingTakeReview.title}`,
+          awaitingTakeReview.selectedTakeId ? `  take: ${awaitingTakeReview.selectedTakeId}` : undefined,
+          "  操作: /status 返信の「採用」で残す。「破棄」でこの曲を閉じる。"
+        ].filter((line): line is string => Boolean(line))
+      : []),
     "",
     "公開 URL:",
-    ...(publicLinks.length > 0 ? publicLinks.map((link) => `- ${link}`) : ["- なし"]),
+    ...(displayPublicLinks.length > 0 ? displayPublicLinks.map((link) => `- ${link}`) : ["- なし"]),
     "",
     nextLine,
-    dashboardLine(options.dashboardBaseUrl, song?.songId ?? currentSongId)
+    dashboardLine(options.dashboardBaseUrl, displaySong?.songId ?? currentSongId)
   ].filter((line): line is string => Boolean(line)).join("\n");
 }

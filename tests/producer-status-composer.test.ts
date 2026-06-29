@@ -84,6 +84,37 @@ describe("producer status composer", () => {
     expect(text).toContain("http://127.0.0.1:8787/plugins/artist-runtime#song=song-026");
   });
 
+  it("surfaces selected-take adoption wait even when the original Telegram buttons are gone", async () => {
+    const workspaceRoot = await root();
+    await ensureSongState(workspaceRoot, "song-selected", "選ばれた曲");
+    await updateSongState(workspaceRoot, "song-selected", {
+      status: "take_selected",
+      selectedTakeId: "take-selected",
+      replacePublicLinks: ["https://suno.com/song/take-selected"],
+      reason: "test"
+    });
+    await writeAutopilotRunState(workspaceRoot, {
+      runId: "run-status",
+      stage: "completed",
+      paused: false,
+      retryCount: 0,
+      cycleCount: 1,
+      updatedAt: new Date(0).toISOString()
+    });
+
+    const text = await composeProducerStatus(workspaceRoot, {
+      now: Date.parse("2026-05-26T00:00:00.000Z"),
+      dashboardBaseUrl: "http://127.0.0.1:8787"
+    });
+
+    expect(text).toContain("完成曲採用待ち:");
+    expect(text).toContain("song-selected / 選ばれた曲");
+    expect(text).toContain("take: take-selected");
+    expect(text).toContain("https://suno.com/song/take-selected");
+    expect(text).toContain("次: この /status 返信のボタンで「採用」か「破棄」を選ぶ。");
+    expect(text).toContain("http://127.0.0.1:8787/plugins/artist-runtime#song=song-selected");
+  });
+
   it("shows only the latest Telegram decision notice and folds older pending decisions", async () => {
     const workspaceRoot = await root();
     const now = Date.parse("2026-05-26T00:00:00.000Z");

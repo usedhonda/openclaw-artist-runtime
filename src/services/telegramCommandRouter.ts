@@ -78,7 +78,10 @@ export type TelegramStatusDecisionAction =
   | "lyrics_redraft"
   | "planning_skeleton_apply"
   | "planning_skeleton_skip"
-  | "planning_skeleton_edit";
+  | "planning_skeleton_edit"
+  | "take_select_accept"
+  | "take_select_regenerate"
+  | "take_select_skip";
 
 export interface TelegramStatusDecisionButtonsRequest {
   songId: string;
@@ -140,7 +143,10 @@ const STATUS_DECISION_ACTIONS: readonly TelegramStatusDecisionAction[] = [
   "lyrics_redraft",
   "planning_skeleton_apply",
   "planning_skeleton_skip",
-  "planning_skeleton_edit"
+  "planning_skeleton_edit",
+  "take_select_accept",
+  "take_select_regenerate",
+  "take_select_skip"
 ];
 
 interface StatusDecisionContext {
@@ -154,6 +160,21 @@ async function latestUrlReadyDecisionButtons(root: string): Promise<TelegramStat
     candidate.status === "suno_take_url_ready"
     && candidate.selectedTakeId
     && candidate.publicLinks.length > 0
+  );
+  if (!song) {
+    return undefined;
+  }
+  return {
+    songId: song.songId,
+    selectedTakeId: song.selectedTakeId,
+    actions: ["song_archive", "song_discard"]
+  };
+}
+
+async function latestTakeSelectedDecisionButtons(root: string): Promise<TelegramStatusDecisionButtonsRequest | undefined> {
+  const song = (await listSongStates(root)).find((candidate) =>
+    candidate.status === "take_selected"
+    && (Boolean(candidate.selectedTakeId) || candidate.publicLinks.length > 0)
   );
   if (!song) {
     return undefined;
@@ -282,6 +303,7 @@ async function latestRecoverableDecisionButtons(root: string, context?: StatusDe
     ?? await promptPackReadyDecisionButtons(root)
     ?? await degradedLyricsDecisionButtons(root)
     ?? await planningSkeletonDecisionButtons(root, context)
+    ?? await latestTakeSelectedDecisionButtons(root)
     ?? await draftSpawnDecisionButtons(root);
 }
 
@@ -337,6 +359,23 @@ async function latestStatusDecisionButtons(root: string, context?: StatusDecisio
     return {
       songId: latest.songId,
       proposalId: latest.proposalId,
+      actions
+    };
+  }
+  if (actions.some((action) => action === "take_select_accept" || action === "take_select_regenerate" || action === "take_select_skip")) {
+    const song = latest.songId ? await readSongState(root, latest.songId).catch(() => undefined) : undefined;
+    if (!song || song.status !== "takes_imported") {
+      return latestRecoverableDecisionButtons(root, context);
+    }
+    const acceptSummary = pending.recent.find((entry) =>
+      entry.songId === latest.songId
+      && entry.messageId === latest.messageId
+      && entry.action === "take_select_accept"
+    );
+    const full = acceptSummary ? await resolveCallbackAction(root, acceptSummary.callbackId) : undefined;
+    return {
+      songId: latest.songId,
+      selectedTakeId: full?.selectedTakeId,
       actions
     };
   }

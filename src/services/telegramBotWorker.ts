@@ -105,6 +105,12 @@ function statusDecisionButtonLabel(action: TelegramStatusDecisionAction, context
       return buttonVoiceLabels.planningSkeleton.skip;
     case "planning_skeleton_edit":
       return buttonVoiceLabels.planningSkeleton.edit;
+    case "take_select_accept":
+      return buttonVoiceLabels.takeSelect.accept;
+    case "take_select_regenerate":
+      return buttonVoiceLabels.takeSelect.regenerate;
+    case "take_select_skip":
+      return buttonVoiceLabels.takeSelect.skip;
   }
 }
 
@@ -122,7 +128,10 @@ const STATUS_DECISION_ACTION_SET = new Set<string>([
   "lyrics_redraft",
   "planning_skeleton_apply",
   "planning_skeleton_skip",
-  "planning_skeleton_edit"
+  "planning_skeleton_edit",
+  "take_select_accept",
+  "take_select_regenerate",
+  "take_select_skip"
 ]);
 
 export class TelegramBotWorker {
