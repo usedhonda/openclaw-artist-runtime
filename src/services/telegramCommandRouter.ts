@@ -164,11 +164,32 @@ async function latestUrlReadyDecisionButtons(root: string): Promise<TelegramStat
   if (!song) {
     return undefined;
   }
-  return {
-    songId: song.songId,
-    selectedTakeId: song.selectedTakeId,
-    actions: ["song_archive", "song_discard"]
-  };
+  return songReviewDecisionButtons(song);
+}
+
+function songReviewDecisionButtons(song: Awaited<ReturnType<typeof readSongState>>): TelegramStatusDecisionButtonsRequest | undefined {
+  if (
+    song.status === "suno_take_url_ready"
+    && song.selectedTakeId
+    && song.publicLinks.length > 0
+  ) {
+    return {
+      songId: song.songId,
+      selectedTakeId: song.selectedTakeId,
+      actions: ["song_archive", "song_discard"]
+    };
+  }
+  if (
+    song.status === "take_selected"
+    && (Boolean(song.selectedTakeId) || song.publicLinks.length > 0)
+  ) {
+    return {
+      songId: song.songId,
+      selectedTakeId: song.selectedTakeId,
+      actions: ["song_archive", "song_discard"]
+    };
+  }
+  return undefined;
 }
 
 async function latestTakeSelectedDecisionButtons(root: string): Promise<TelegramStatusDecisionButtonsRequest | undefined> {
@@ -179,11 +200,7 @@ async function latestTakeSelectedDecisionButtons(root: string): Promise<Telegram
   if (!song) {
     return undefined;
   }
-  return {
-    songId: song.songId,
-    selectedTakeId: song.selectedTakeId,
-    actions: ["song_archive", "song_discard"]
-  };
+  return songReviewDecisionButtons(song);
 }
 
 function commissionSourcesFromSpawnProposal(proposal: SpawnProposal): CommissionBriefSource[] | undefined {
@@ -732,12 +749,22 @@ export async function routeTelegramCommand(input: TelegramRouteInput): Promise<T
     if (!input.workspaceRoot || !songId) {
       return { kind: "song", responseText: await voiceCommand("error", "Usage: /song <songId> | /song update <songId> | /song add", input, "song usage"), shouldStoreFreeText: false };
     }
-    const song = await getSongDetail(input.workspaceRoot, songId);
+    const [song, songState] = await Promise.all([
+      getSongDetail(input.workspaceRoot, songId),
+      readSongState(input.workspaceRoot, songId)
+    ]);
+    const statusDecisionButtons = songReviewDecisionButtons(songState);
+    const operationLine = statusDecisionButtons
+      ? songState.status === "suno_take_url_ready"
+        ? "操作: この返信の「採用して音源取得」で採用 + 音源取得予約。「破棄」でこの曲を閉じる。"
+        : "操作: この返信の「採用」で残す。「破棄」でこの曲を閉じる。"
+      : undefined;
     const info = [
       `${song.songId} | ${song.status} | ${song.title}`,
       song.selectedTakeId ? `Selected take: ${song.selectedTakeId}` : undefined,
       `Imported assets: ${song.importedPaths.length}`,
       song.brief ? `Brief: ${song.brief.slice(0, 240)}` : undefined,
+      operationLine,
       `brief path: songs/${song.songId}/brief.md`,
       `lyrics path: songs/${song.songId}/LYRICS.md`,
       dashboardSongLink(input, song.songId)
@@ -745,7 +772,8 @@ export async function routeTelegramCommand(input: TelegramRouteInput): Promise<T
     return {
       kind: "song",
       responseText: await voiceCommand("song", info, input, "song detail"),
-      shouldStoreFreeText: false
+      shouldStoreFreeText: false,
+      statusDecisionButtons
     };
   }
 

@@ -456,9 +456,15 @@ describe("telegram command router", () => {
     expect(result.responseText).toContain("take-a");
     expect(result.responseText).toContain("Imported assets: 1");
     expect(result.responseText).toContain("A cold wire hymn");
+    expect(result.responseText).toContain("操作: この返信の「採用」で残す。「破棄」でこの曲を閉じる。");
     expect(result.responseText).toContain("brief path: songs/song-001/brief.md");
     expect(result.responseText).toContain("lyrics path: songs/song-001/LYRICS.md");
     expect(result.responseText).toContain("http://127.0.0.1:8787/plugins/artist-runtime#song=song-001");
+    expect(result.statusDecisionButtons).toEqual({
+      songId: "song-001",
+      selectedTakeId: "take-a",
+      actions: ["song_archive", "song_discard"]
+    });
   });
 
   it("queues /regen as a dry-run inbox request", async () => {

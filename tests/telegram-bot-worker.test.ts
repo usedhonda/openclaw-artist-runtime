@@ -333,6 +333,53 @@ describe("telegram bot worker", () => {
     expect(pending.recent.map((entry) => entry.action).sort()).toEqual(["song_archive", "song_discard"]);
   });
 
+  it("attaches adoption buttons to /song detail replies for selected takes", async () => {
+    const root = makeRoot();
+    await mkdir(join(root, "runtime"), { recursive: true });
+    await ensureSongState(root, "song-selected", "Selected Song");
+    await updateSongState(root, "song-selected", {
+      status: "take_selected",
+      selectedTakeId: "take-selected",
+      replacePublicLinks: ["https://suno.com/song/take-selected"]
+    });
+    const fetchImpl = vi
+      .fn()
+      .mockResolvedValueOnce(jsonResponse({
+        ok: true,
+        result: [{
+          update_id: 10,
+          message: {
+            message_id: 1,
+            text: "/song song-selected",
+            chat: { id: 555 },
+            from: { id: 123 }
+          }
+        }]
+      }))
+      .mockResolvedValueOnce(jsonResponse({ ok: true, result: { message_id: 2, text: "song", chat: { id: 555 } } }))
+      .mockResolvedValueOnce(jsonResponse({ ok: true, result: true }));
+    const worker = new TelegramBotWorker({
+      root,
+      config: enabledConfig,
+      token: "token",
+      ownerUserIds: new Set(["123"]),
+      fetchImpl
+    });
+
+    const result = await worker.pollOnce();
+    worker.stop();
+
+    expect(result).toMatchObject({ enabled: true, fetched: true, processed: 1 });
+    const songBody = JSON.parse(fetchImpl.mock.calls[1][1].body as string) as { text: string };
+    expect(songBody.text).toContain("操作: この返信の「採用」で残す。「破棄」でこの曲を閉じる。");
+    const markup = JSON.parse(fetchImpl.mock.calls[2][1].body as string) as {
+      reply_markup: { inline_keyboard: Array<Array<{ text: string; callback_data: string }>> };
+    };
+    expect(markup.reply_markup.inline_keyboard.flat().map((button) => button.text)).toEqual(["採用", "破棄"]);
+    const pending = await listPendingCallbackActionSummaries(root, { category: "producer_decision" });
+    expect(pending.recent.map((entry) => entry.action).sort()).toEqual(["song_archive", "song_discard"]);
+  });
+
   it("recreates prompt-pack GO buttons on /status and the GO callback advances to Suno", async () => {
     const root = makeRoot();
     await ensureArtistWorkspace(root);
