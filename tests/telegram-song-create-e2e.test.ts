@@ -4,7 +4,8 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { ensureArtistWorkspace } from "../src/services/artistWorkspace";
-import { ArtistAutopilotService } from "../src/services/autopilotService";
+import { ensureSongState, updateSongState } from "../src/services/artistState";
+import { ArtistAutopilotService, writeAutopilotRunState } from "../src/services/autopilotService";
 import { getRuntimeEventBus, type RuntimeEvent } from "../src/services/runtimeEventBus";
 import { routeTelegramCommand } from "../src/services/telegramCommandRouter";
 
@@ -56,6 +57,36 @@ describe("telegram song create trigger", () => {
     expect(response.responseText).toContain("X でこれこれな話題");
     expect(response.responseText).toContain("/status");
     expect(await waitForSong(root)).toContain("song-001");
+  });
+
+  it("does not start a new manual song while another song is building", async () => {
+    const root = workspace();
+    await ensureArtistWorkspace(root);
+    await ensureSongState(root, "spawn-active", "Active Song");
+    await updateSongState(root, "spawn-active", { status: "lyrics" });
+    await writeAutopilotRunState(root, {
+      runId: "auto-active",
+      currentSongId: "spawn-active",
+      stage: "prompt_pack",
+      paused: false,
+      retryCount: 0,
+      cycleCount: 2,
+      updatedAt: new Date(1000).toISOString(),
+      lastRunAt: new Date(1000).toISOString()
+    });
+    const runCycle = vi.spyOn(ArtistAutopilotService.prototype, "runCycle");
+
+    const response = await routeTelegramCommand({
+      text: "/song create 別の新曲",
+      fromUserId: 1,
+      chatId: 2,
+      workspaceRoot: root
+    });
+
+    expect(response.responseText).toContain("spawn-active");
+    expect(response.responseText).toContain("/status");
+    expect(response.shouldStoreFreeText).toBe(false);
+    expect(runCycle).not.toHaveBeenCalled();
   });
 
   it("emits a Telegram-visible failure when manual song create cannot start", async () => {

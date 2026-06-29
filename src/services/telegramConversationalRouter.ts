@@ -1,7 +1,8 @@
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 import type { AiReviewProvider, AutopilotStatus } from "../types.js";
-import { ArtistAutopilotService } from "./autopilotService.js";
+import { ArtistAutopilotService, readAutopilotRunState } from "./autopilotService.js";
+import { listSongStates, readSongState } from "./artistState.js";
 import { readArtistVoiceContext, generateArtistResponse } from "./artistVoiceResponder.js";
 import {
   appendConversationTurn,
@@ -95,6 +96,23 @@ function formatSongCreateAccepted(hint?: string): string {
   ].join("\n");
 }
 
+function isTerminalOrReviewStatus(status: string): boolean {
+  return ["scheduled", "published", "archived", "discarded", "failed", "take_selected", "suno_take_url_ready"].includes(status);
+}
+
+async function activeSongForManualCreate(root: string): Promise<{ songId: string; title?: string; status?: string } | undefined> {
+  const state = await readAutopilotRunState(root).catch(() => undefined);
+  if (state?.currentSongId) {
+    const current = await readSongState(root, state.currentSongId).catch(() => undefined);
+    if (current && !isTerminalOrReviewStatus(current.status)) {
+      return { songId: current.songId, title: current.title, status: current.status };
+    }
+  }
+  const active = (await listSongStates(root).catch(() => []))
+    .find((song) => !isTerminalOrReviewStatus(song.status));
+  return active ? { songId: active.songId, title: active.title, status: active.status } : undefined;
+}
+
 async function proposeFromConversation(root: string, text: string, session: ConversationalSession, provider?: AiReviewProvider): Promise<ChangeSetProposal | undefined> {
   if (!/(変え|変更|直し|update|edit|persona|歌詞|lyrics|曲|song)/i.test(text)) {
     return undefined;
@@ -180,6 +198,17 @@ export async function routeTelegramConversation(input: TelegramConversationalRou
   session = { ...session, topic };
 
   if (isSongCreate(text)) {
+    const activeSong = await activeSongForManualCreate(input.workspaceRoot);
+    if (activeSong) {
+      return {
+        responseText: [
+          `いま ${activeSong.songId}${activeSong.title ? ` / ${activeSong.title}` : ""} を作っている。`,
+          activeSong.status ? `status: ${activeSong.status}` : undefined,
+          "新しい曲は今の制作が閉じてからにする。進捗は /status。"
+        ].filter((line): line is string => Boolean(line)).join("\n"),
+        shouldStoreFreeText: false
+      };
+    }
     const hint = songCreateHint(text);
     void new ArtistAutopilotService().runCycle({
       workspaceRoot: input.workspaceRoot,
