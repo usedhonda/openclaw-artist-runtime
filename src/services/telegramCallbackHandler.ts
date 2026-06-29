@@ -24,7 +24,7 @@ import { scheduleDownloadAfterAdoptionJob } from "./sunoAdoptionDownloadJob.js";
 import { readLatestSunoRun } from "./sunoRuns.js";
 
 export const STALE_CALLBACK_JA_REPLY = "このボタンはもう古い。 最新の通知から選び直して。";
-const SONG_REVIEW_SIBLING_ACTIONS = new Set(["song_archive", "song_discard"]);
+const SONG_REVIEW_SIBLING_ACTIONS = new Set(["song_archive", "song_discard", "song_songbook_write", "song_skip", "x_publish_prepare"]);
 const SONG_SPAWN_SIBLING_ACTIONS = new Set(["song_spawn_inject", "song_spawn_skip", "song_spawn_edit"]);
 
 function errorMessage(error: unknown): string {

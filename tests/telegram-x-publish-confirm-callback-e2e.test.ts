@@ -126,6 +126,46 @@ describe("telegram X publish callbacks", () => {
     expect(duplicate).toMatchObject({ result: "duplicate", reason: "already_applied" });
   });
 
+  it("clears hidden completion callbacks when a song is archived", async () => {
+    const root = await prepareRoot();
+    const fetchImpl = vi.fn()
+      .mockResolvedValueOnce(telegramResponse({ message_id: 77, chat: { id: 123 } }))
+      .mockResolvedValueOnce(telegramResponse(true));
+    await new TelegramNotifier({ token: "token", chatId: 123, workspaceRoot: root, aiReviewProvider: "mock", fetchImpl }).notify({
+      type: "song_take_completed",
+      songId: "where-it-played",
+      selectedTakeId: "take-1",
+      urls: ["https://suno.example/take-1"],
+      timestamp: Date.parse("2026-04-29T00:00:00.000Z")
+    });
+    const entries = await readCallbackActionEntries(root);
+    const archive = entries.find((entry) => entry.action === "song_archive");
+
+    const result = await routeTelegramCallback({
+      root,
+      client: callbackClient(),
+      callbackQueryId: "archive",
+      data: `cb:${archive?.callbackId}`,
+      fromUserId: 123,
+      chatId: 123,
+      messageId: 77
+    });
+
+    expect(result).toMatchObject({ result: "applied", reason: "applied" });
+    const latest = new Map((await readCallbackActionEntries(root)).map((entry) => [entry.callbackId, entry]));
+    const completionCallbacks = [...latest.values()].filter((entry) => entry.songId === "where-it-played" && entry.messageId === 77);
+    expect(completionCallbacks.filter((entry) => entry.action !== "song_archive").map((entry) => entry.status)).toEqual([
+      "discarded",
+      "discarded",
+      "discarded",
+      "discarded"
+    ]);
+    expect(completionCallbacks.find((entry) => entry.action === "x_publish_prepare")).toMatchObject({
+      status: "discarded",
+      resolveReason: "sibling_resolved_by:song_archive"
+    });
+  });
+
   it("detects hash mismatch, auth failures, cancel, and old callbacks when disabled", async () => {
     const root = await prepareRoot();
     const client = callbackClient();
