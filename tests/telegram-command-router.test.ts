@@ -310,6 +310,47 @@ describe("telegram command router", () => {
     expect(state.retryCount).toBe(0);
   });
 
+  it("emits a Telegram-visible failure when /resume immediate cycle fails", async () => {
+    const root = makeRoot();
+    await ensureSongState(root, "spawn-test", "Resume Continue");
+    await updateSongState(root, "spawn-test", { status: "suno_prompt_pack" });
+    await writeAutopilotRunState(root, {
+      runId: "auto-resume",
+      currentSongId: "spawn-test",
+      stage: "paused",
+      paused: true,
+      blockedReason: "suno_generate_failed:suno_worker_not_connected",
+      retryCount: 3,
+      cycleCount: 4,
+      updatedAt: new Date(1000).toISOString(),
+      lastRunAt: new Date(1000).toISOString()
+    });
+    const runNow = vi.fn().mockRejectedValue(new Error("ticker_run_failed"));
+    vi.spyOn(autopilotTicker, "getAutopilotTicker").mockReturnValue(
+      { runNow } as unknown as ReturnType<typeof autopilotTicker.getAutopilotTicker>
+    );
+    const events: RuntimeEvent[] = [];
+    const bus = getRuntimeEventBus();
+    bus.clearForTest();
+    const unsubscribe = bus.subscribe((event) => events.push(event));
+
+    const result = await routeTelegramCommand({ ...baseInput, text: "/resume", workspaceRoot: root });
+
+    expect(result.kind).toBe("resume");
+    expect(result.responseText).toContain("続きを今すぐ進める");
+    await vi.waitFor(() => {
+      expect(events).toEqual(expect.arrayContaining([
+        expect.objectContaining({
+          type: "error",
+          source: "telegram_resume_run_now",
+          reason: "ticker_run_failed",
+          songId: "spawn-test"
+        })
+      ]));
+    });
+    unsubscribe();
+  });
+
   it("does not kick a cycle from /resume when a producer GO gate is pending (Plan v10.66)", async () => {
     const root = makeRoot();
     await ensureSongState(root, "spawn-gated", "Awaiting GO");

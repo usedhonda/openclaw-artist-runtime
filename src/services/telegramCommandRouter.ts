@@ -606,7 +606,17 @@ export async function routeTelegramCommand(input: TelegramRouteInput): Promise<T
       : undefined;
     const terminalStatuses = new Set(["published", "archived", "discarded", "failed"]);
     if (afterResume.currentSongId && !afterResume.suspendedAt && resumedSong && !terminalStatuses.has(resumedSong.status)) {
-      void getAutopilotTicker().runNow().catch((error) => logCommandSideEffectFailure("resume immediate runNow", error));
+      void getAutopilotTicker().runNow().catch((error) => {
+        const reason = error instanceof Error ? error.message : String(error);
+        logCommandSideEffectFailure("resume immediate runNow", error);
+        emitRuntimeEvent({
+          type: "error",
+          source: "telegram_resume_run_now",
+          reason,
+          songId: afterResume.currentSongId,
+          timestamp: Date.now()
+        });
+      });
       const info = `Autopilot resumed。${afterResume.currentSongId} の続きを今すぐ進める。できあがったら知らせる。`;
       return { kind: "resume", responseText: await voiceCommand("ack", info, input, "autopilot resumed and cycle kicked"), shouldStoreFreeText: false };
     }

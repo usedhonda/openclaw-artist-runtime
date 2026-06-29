@@ -97,12 +97,17 @@ function isActionableSunoHardStop(event: RuntimeEvent): event is Extract<Runtime
   return false;
 }
 
-function isManualSongCreateFailure(event: RuntimeEvent): event is Extract<RuntimeEvent, { type: "error" }> {
-  return event.type === "error" && event.source === "telegram_manual_song_create";
+const TELEGRAM_COMMAND_FAILURE_SOURCES: ReadonlySet<string> = new Set([
+  "telegram_manual_song_create",
+  "telegram_resume_run_now"
+]);
+
+function isTelegramCommandFailure(event: RuntimeEvent): event is Extract<RuntimeEvent, { type: "error" }> {
+  return event.type === "error" && TELEGRAM_COMMAND_FAILURE_SOURCES.has(event.source);
 }
 
 export function isTelegramSignalEvent(event: RuntimeEvent): boolean {
-  return TELEGRAM_SIGNAL_EVENT_TYPES.has(event.type) || isActionableSunoHardStop(event) || isManualSongCreateFailure(event);
+  return TELEGRAM_SIGNAL_EVENT_TYPES.has(event.type) || isActionableSunoHardStop(event) || isTelegramCommandFailure(event);
 }
 
 export function isTelegramSilentEvent(event: RuntimeEvent): boolean {
@@ -1510,6 +1515,16 @@ async function formatRuntimeEventRaw(
           `reason: ${event.reason}`,
           "次: /status で現在地を確認。"
         ].join("\n");
+      }
+      if (event.source === "telegram_resume_run_now") {
+        return [
+          "再開直後の続行に失敗した。止めて原因を残した。",
+          "",
+          TELEGRAM_SECTION_DIVIDER,
+          event.songId ? `song: ${event.songId}` : undefined,
+          `reason: ${event.reason}`,
+          "次: /status で現在地を確認。"
+        ].filter(Boolean).join("\n");
       }
       return `Runtime error: ${event.source} ${event.reason}${event.songId ? ` (${event.songId})` : ""}`;
   }
