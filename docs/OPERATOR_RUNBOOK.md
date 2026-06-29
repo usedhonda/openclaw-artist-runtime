@@ -489,6 +489,13 @@ Use this sequence after changing the autopilot or Telegram control surface. Keep
 real Suno create and social publish disabled unless a separate operator GO says
 otherwise.
 
+Default production flow: Telegram is a post-generation review surface. Autopilot
+does not stop at `spawn_proposal_ready`, `planning_skeleton_pending`, or
+`prompt_pack_ready` unless `OPENCLAW_PRE_GENERATION_APPROVAL=on` is set. With
+the default, X/news observations can flow straight into song creation; the
+producer decides after a take is ready whether to keep it, discard it, or ask for
+another pass.
+
 1. Start with `autopilot.enabled=false` and `telegram.enabled=true`, then send
    `/status`. This proves the bot worker and owner allowlist without running a
    cycle.
@@ -704,11 +711,12 @@ AI (Telegram):
 
 ### Phase C: Song Spawn Proposer (`3e5cf63`)
 
-autopilot が observations / heartbeat / 直近完成曲 / SOUL から「次に何作る?」AI 判定 → 御大の Telegram 確認 → autopilot inject。
+autopilot が observations / heartbeat / 直近完成曲 / SOUL から「次に何作る?」AI 判定 → デフォルトではそのまま autopilot inject。生成前に Telegram 確認したい検証運用だけ `OPENCLAW_PRE_GENERATION_APPROVAL=on` を使う。
 
 退路 flag:
 - `OPENCLAW_SONG_SPAWN_ENABLED` (default `off`、`on` で発火開始)
 - `OPENCLAW_SONG_SPAWN_HOURS` (default `24`、最短 12h)
+- `OPENCLAW_PRE_GENERATION_APPROVAL` (default `off`、`on` で spawn / planning / prompt pack の生成前承認を復活)
 
 操作 walkthrough:
 ```

@@ -83,7 +83,7 @@ CI (`.github/workflows/ci.yml`) は Node 20/22 で typecheck / test+coverage(70%
 | B4 | Suno 歌詞 payload の優先順位 `payloadYaml > lyrics > lyricsText` | `tests/suno-driver-payload-contract.test.ts` |
 | B5 | artist voice と情報ブロックを `─────` 区切りで分離する書式 | `tests/command-voice-wrapper-contract.test.ts` |
 | B6 | voice contract（禁止句、語尾反復 5 回で deny、呼称ドリフト検出） | `tests/voice-contract-validator.test.ts` ほか voice 系 4 件 |
-| B7 | spawn 提案は `spawn_proposal_ready` で停止、手動 GO なしに前進しない | `tests/spawn-proposal-gate.test.ts` |
+| B7 | default は spawn 提案を自動 inject して生成へ進む。`OPENCLAW_PRE_GENERATION_APPROVAL=on` の検証運用だけ `spawn_proposal_ready` で停止する | `tests/spawn-proposal-gate.test.ts` |
 | B8 | tarball: `dist/index.js` + `dist/suno-production/knowledge-bundle.js` + `ui/dist/index.html` を含み、`src/suno-production/knowledge/*.md` を**含まない** | `tests/distribution-smoke.test.ts` + `scripts/verify-package.mjs:43-52` |
 | B9 | ledger は append-only（prompt ledger / suno runs / social publish / audit / callback-actions） | 各 ledger テスト + AGENTS.md Coding rules |
 | B10 | Telegram inline button label は plain JA 動詞（artist voice を入れない） | button label 系 contract テスト |

@@ -1,7 +1,7 @@
 import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { ensureArtistWorkspace } from "../src/services/artistWorkspace";
 import { ensureSongState, writeSongBrief } from "../src/services/artistState";
 import { ArtistAutopilotService, readAutopilotRunState, writeAutopilotRunState } from "../src/services/autopilotService";
@@ -36,7 +36,29 @@ async function seedPromptPackSong(): Promise<string> {
 }
 
 describe("prompt_pack_ready event", () => {
-  it("emits prompt pack approval event and suspends before Suno when Telegram is enabled", async () => {
+  afterEach(() => {
+    vi.unstubAllEnvs();
+  });
+
+  it("advances from prompt pack to Suno generation by default when Telegram is enabled", async () => {
+    const root = await seedPromptPackSong();
+    const events: RuntimeEvent[] = [];
+    const unsubscribe = getRuntimeEventBus().subscribe((event) => events.push(event));
+
+    const state = await new ArtistAutopilotService().runCycle({
+      workspaceRoot: root,
+      config: { artist: { workspaceRoot: root }, autopilot: { enabled: true, dryRun: true }, telegram: { enabled: true } }
+    });
+    const stored = await readAutopilotRunState(root);
+    unsubscribe();
+
+    expect(state).toMatchObject({ stage: "suno_generation", suspendedAt: undefined });
+    expect(stored.suspendedAt).toBeUndefined();
+    expect(events.some((event) => event.type === "prompt_pack_ready")).toBe(false);
+  }, 60000);
+
+  it("emits prompt pack approval event and suspends before Suno when pre-generation approval is enabled", async () => {
+    vi.stubEnv("OPENCLAW_PRE_GENERATION_APPROVAL", "on");
     const root = await seedPromptPackSong();
     const events: RuntimeEvent[] = [];
     const unsubscribe = getRuntimeEventBus().subscribe((event) => events.push(event));
@@ -56,7 +78,8 @@ describe("prompt_pack_ready event", () => {
     expect(ready?.lyricsExcerpt.split("\n").length).toBeGreaterThan(0);
   }, 60000);
 
-  it("keeps a suspended prompt pack from advancing on the next cycle", async () => {
+  it("keeps a suspended prompt pack from advancing on the next cycle when pre-generation approval is enabled", async () => {
+    vi.stubEnv("OPENCLAW_PRE_GENERATION_APPROVAL", "on");
     const root = await seedPromptPackSong();
     const service = new ArtistAutopilotService();
 

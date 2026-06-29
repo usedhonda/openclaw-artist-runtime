@@ -36,20 +36,21 @@ describe("autopilot planning stage progression", () => {
   afterEach(() => {
     getRuntimeEventBus().clearForTest();
     vi.restoreAllMocks();
+    vi.unstubAllEnvs();
   });
 
-  it("auto-completes planning skeletons and advances to prompt_pack when Telegram is off", async () => {
+  it("auto-completes planning skeletons and advances to Suno generation when Telegram is off", async () => {
     const root = await planningWorkspace();
     const state = await new ArtistAutopilotService().runCycle({
       workspaceRoot: root,
       config: { autopilot: { enabled: true, dryRun: true }, telegram: { enabled: false } }
     });
 
-    expect(state.stage).toBe("prompt_pack");
+    expect(state.stage).toBe("suno_generation");
     expect(await readSongState(root, "planning-song")).toMatchObject({ status: "suno_prompt_pack" });
   });
 
-  it("keeps incomplete planning skeletons out of Telegram while preserving blocked state", async () => {
+  it("auto-completes incomplete planning while keeping Telegram proposal buttons out", async () => {
     const root = await planningWorkspace();
     const fetchImpl = vi.fn().mockResolvedValue(telegramResponse({ message_id: 88, chat: { id: 123 } }));
     const notifier = new TelegramNotifier({ token: "token", chatId: 123, workspaceRoot: root, aiReviewProvider: "mock", fetchImpl });
@@ -63,14 +64,15 @@ describe("autopilot planning stage progression", () => {
     await new Promise((resolve) => setTimeout(resolve, 0));
     unsubscribe();
 
-    expect(state.stage).toBe("planning");
-    expect(state.blockedReason).toContain("planning_skeleton_incomplete");
+    expect(state.stage).toBe("suno_generation");
+    expect(state.blockedReason).toBeUndefined();
     expect(fetchImpl).not.toHaveBeenCalled();
     expect((await readCallbackActionEntries(root)).some((entry) => entry.action === "planning_skeleton_apply")).toBe(false);
-    expect((await readAutopilotRunState(root)).stage).toBe("planning");
+    expect((await readAutopilotRunState(root)).stage).toBe("suno_generation");
   });
 
-  it("keeps planning proposal skips out of Telegram and pauses stale planning states", async () => {
+  it("keeps planning proposal skips out of Telegram and pauses stale planning states when pre-generation approval is enabled", async () => {
+    vi.stubEnv("OPENCLAW_PRE_GENERATION_APPROVAL", "on");
     const root = await planningWorkspace();
     const fetchImpl = vi.fn().mockResolvedValue(telegramResponse({ message_id: 90, chat: { id: 123 } }));
     const unsubscribe = new TelegramNotifier({ token: "token", chatId: 123, workspaceRoot: root, aiReviewProvider: "mock", fetchImpl }).subscribe(getRuntimeEventBus());

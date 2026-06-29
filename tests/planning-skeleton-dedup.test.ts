@@ -37,9 +37,11 @@ describe("planning_skeleton_incomplete dedup", () => {
   afterEach(() => {
     getRuntimeEventBus().clearForTest();
     vi.restoreAllMocks();
+    vi.unstubAllEnvs();
   });
 
   it("emits only one planning_skeleton_incomplete event for the same song across consecutive cycles", async () => {
+    vi.stubEnv("OPENCLAW_PRE_GENERATION_APPROVAL", "on");
     const root = await planningWorkspace();
     const events: RuntimeEvent[] = [];
     const collect = getRuntimeEventBus().subscribe((event) => events.push(event));

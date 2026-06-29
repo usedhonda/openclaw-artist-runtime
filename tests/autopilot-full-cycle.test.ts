@@ -120,11 +120,11 @@ describe("ArtistAutopilotService full dry-run cycle", () => {
 
     expect(cycleStages).toEqual([
       "planning",
-      "prompt_pack",
+      "suno_generation",
       "suno_generation",
       "completed",
       "planning",
-      "prompt_pack",
+      "suno_generation",
       "suno_generation",
       "completed"
     ]);

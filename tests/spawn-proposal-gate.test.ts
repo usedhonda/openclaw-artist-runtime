@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { ensureArtistWorkspace } from "../src/services/artistWorkspace";
-import { ensureSongState, writeSongBrief } from "../src/services/artistState";
+import { ensureSongState, readSongState, writeSongBrief } from "../src/services/artistState";
 import { ArtistAutopilotService, readAutopilotRunState, writeAutopilotRunState } from "../src/services/autopilotService";
 import { registerCallbackAction } from "../src/services/callbackActionRegistry";
 import { getRuntimeEventBus, type RuntimeEvent } from "../src/services/runtimeEventBus";
@@ -13,6 +13,7 @@ import type { TelegramClient } from "../src/services/telegramClient";
 import type { CommissionBrief } from "../src/types";
 
 const originalSpawn = process.env.OPENCLAW_SONG_SPAWN_ENABLED;
+const originalPreGenerationApproval = process.env.OPENCLAW_PRE_GENERATION_APPROVAL;
 
 function client(): TelegramClient {
   return {
@@ -72,6 +73,11 @@ describe("spawn proposal approval gate", () => {
     } else {
       process.env.OPENCLAW_SONG_SPAWN_ENABLED = originalSpawn;
     }
+    if (originalPreGenerationApproval === undefined) {
+      delete process.env.OPENCLAW_PRE_GENERATION_APPROVAL;
+    } else {
+      process.env.OPENCLAW_PRE_GENERATION_APPROVAL = originalPreGenerationApproval;
+    }
     vi.useRealTimers();
     vi.restoreAllMocks();
     getRuntimeEventBus().clearForTest();
@@ -79,6 +85,7 @@ describe("spawn proposal approval gate", () => {
 
   it("suspends at spawn_proposal_ready and does not advance on the next cycle", async () => {
     process.env.OPENCLAW_SONG_SPAWN_ENABLED = "on";
+    process.env.OPENCLAW_PRE_GENERATION_APPROVAL = "on";
     vi.useFakeTimers();
     vi.setSystemTime(new Date("2026-05-24T15:00:00.000Z"));
     const root = await seedWorkspace();
@@ -101,6 +108,26 @@ describe("spawn proposal approval gate", () => {
     expect(next).toMatchObject({ stage: "planning", suspendedAt: "spawn_proposal_ready", blockedReason: "spawn_proposal_ready" });
     expect(events.filter((event) => event.type === "song_spawn_proposed")).toHaveLength(eventCount);
     expect(eventCount).toBe(1);
+  });
+
+  it("auto-injects spawn proposals and advances toward Suno by default", async () => {
+    process.env.OPENCLAW_SONG_SPAWN_ENABLED = "on";
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-05-24T15:00:00.000Z"));
+    const root = await seedWorkspace();
+    const events: RuntimeEvent[] = [];
+    const unsubscribe = getRuntimeEventBus().subscribe((event) => events.push(event));
+
+    const state = await new ArtistAutopilotService().runCycle({
+      workspaceRoot: root,
+      config: { artist: { workspaceRoot: root }, autopilot: { enabled: true, dryRun: true }, songSpawn: { enabled: true } }
+    });
+    unsubscribe();
+
+    expect(state).toMatchObject({ stage: "suno_generation", suspendedAt: undefined, blockedReason: undefined });
+    expect(events.some((event) => event.type === "song_spawn_proposed")).toBe(false);
+    const song = await readSongState(root, state.currentSongId ?? "");
+    expect(song.status).toBe("suno_prompt_pack");
   });
 
   it("does not create a spawn proposal while the artist template still needs setup", async () => {
@@ -134,6 +161,7 @@ describe("spawn proposal approval gate", () => {
 
   it("clears spawn_proposal_ready only when the producer presses the GO callback", async () => {
     process.env.OPENCLAW_SONG_SPAWN_ENABLED = "on";
+    process.env.OPENCLAW_PRE_GENERATION_APPROVAL = "on";
     const root = await seedWorkspace();
     await writeAutopilotRunState(root, {
       runId: "spawn-gate",
@@ -172,6 +200,7 @@ describe("spawn proposal approval gate", () => {
 
   it("rolls an unapproved pre-prompt song back to spawn proposal gate", async () => {
     process.env.OPENCLAW_SONG_SPAWN_ENABLED = "on";
+    process.env.OPENCLAW_PRE_GENERATION_APPROVAL = "on";
     const root = await seedWorkspace();
     await ensureSongState(root, "song-026", "Matrix");
     await writeSongBrief(root, "song-026", [

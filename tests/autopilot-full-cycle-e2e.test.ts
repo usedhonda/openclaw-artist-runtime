@@ -36,7 +36,7 @@ describe("autopilot planning to completed e2e", () => {
 
     const song = await readSongState(root, songId);
     const autopilotState = await readAutopilotRunState(root);
-    expect(stages).toEqual(["planning", "prompt_pack", "suno_generation", "completed"]);
+    expect(stages).toEqual(["planning", "suno_generation", "suno_generation", "completed"]);
     expect(events.some((event) => event.type === "song_take_completed" && event.songId === songId)).toBe(true);
     expect(song).toMatchObject({ status: "take_selected", selectedTakeId: "good-bass-cold-hook" });
     expect(autopilotState).toMatchObject({ stage: "completed", lastSuccessfulStage: "completed" });

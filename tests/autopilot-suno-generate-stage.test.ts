@@ -55,7 +55,7 @@ describe("autopilot Suno generate stage", () => {
     const take = await service.runCycle({ workspaceRoot: root, config });
 
     unsubscribe();
-    expect(promptPack.stage).toBe("prompt_pack");
+    expect(promptPack.stage).toBe("suno_generation");
     expect(suno.stage).toBe("suno_generation");
     expect(run?.status).toBe("blocked_dry_run");
     expect(take).toMatchObject({

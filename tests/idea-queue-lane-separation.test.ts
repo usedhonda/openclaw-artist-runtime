@@ -119,13 +119,14 @@ describe("idea queue lane separation during producer review", () => {
       blockedReason: undefined
     });
     expect(next).toMatchObject({
-      stage: "planning",
-      suspendedAt: "spawn_proposal_ready",
-      blockedReason: "spawn_proposal_ready"
+      stage: "suno_generation",
+      suspendedAt: undefined,
+      blockedReason: undefined
     });
-    expect(next.currentSongId).toBeUndefined();
-    expect(queue.filter((entry) => entry.status === "draft")).toHaveLength(1);
-    expect(events.some((event) => event.type === "song_spawn_proposed")).toBe(true);
+    expect(next.currentSongId).toBeTruthy();
+    expect(queue.filter((entry) => entry.status === "draft")).toHaveLength(0);
+    expect(queue.filter((entry) => entry.status === "done")).toHaveLength(1);
+    expect(events.some((event) => event.type === "song_spawn_proposed")).toBe(false);
     expect(events.some((event) => event.type === "prompt_pack_ready")).toBe(false);
     expect(events.some((event) => event.type === "suno_generate_retry")).toBe(false);
     expect(events.some((event) => event.type === "song_take_completed")).toBe(false);

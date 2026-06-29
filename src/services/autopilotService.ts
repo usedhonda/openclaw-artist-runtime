@@ -33,7 +33,7 @@ import { cleanupExpiredCallbacks } from "./callbackLedgerMaintenance.js";
 import { readCallbackActionEntries } from "./callbackActionRegistry.js";
 import { applyRuntimeEnvOverrides, getArtistPulseIntervalHours, getSongSpawnIntervalHours, getStaleQueueCleanupHours, isArtistPulseConfigured, isSongbookAutoSyncEnabled, isSongSpawnConfigured } from "./runtimeConfig.js";
 import { proposeSpawn, type ActiveQueueContextEntry } from "./songSpawnProposer.js";
-import { appendSpawnProposal, listBuildingSpawnProposals, listPendingSpawnProposals, markSpawnProposalDone } from "./spawnProposalQueue.js";
+import { appendSpawnProposal, listBuildingSpawnProposals, listPendingSpawnProposals, markSpawnProposalBuilding, markSpawnProposalDone } from "./spawnProposalQueue.js";
 import { buildCascadeTrace } from "./cascadeTrace.js";
 import { markSpawned, shouldSpawn } from "./songSpawnRateLimiter.js";
 import { validatePlanningFiles } from "./planningSkeletonValidator.js";
@@ -48,6 +48,7 @@ import {
 } from "./takeAttributionGuard.js";
 import { emitDraftBoxProactiveNoticeIfNeeded } from "./draftBoxProactiveNotice.js";
 import { readPersonaSetupStatus } from "./personaSetupDetector.js";
+import { injectCommissionSong } from "./songStateInjector.js";
 
 export function isPublishBlockedByDryRun(
   result: Pick<SocialPublishResult, "accepted" | "dryRun">,
@@ -103,6 +104,11 @@ async function writeStageState(root: string, previous: AutopilotRunState, next: 
 
 function isMockSunoGenerationBypass(config: ArtistRuntimeConfig): boolean {
   return config.music.suno.driver === "mock";
+}
+
+function isPreGenerationApprovalEnabled(env: NodeJS.ProcessEnv = process.env): boolean {
+  const value = env.OPENCLAW_PRE_GENERATION_APPROVAL?.trim().toLowerCase();
+  return value === "on" || value === "1" || value === "true";
 }
 
 const PRODUCER_APPROVAL_REQUIRED_STATUSES = new Set<SongState["status"]>(["idea", "brief", "lyrics"]);
@@ -373,8 +379,15 @@ async function runIdeaQueueLane(
       return;
     }
     const voiceTop = await composeVoiceTopOnly("propose", root, undefined, [], { runId: proposal.candidateSongId }).catch(() => undefined);
-    await appendSpawnProposal(root, spawnProposalRecordFromGenerated(proposal, voiceTop));
+    const record = await appendSpawnProposal(root, spawnProposalRecordFromGenerated(proposal, voiceTop));
     await markSpawned(root);
+    emitted = true;
+    if (!isPreGenerationApprovalEnabled()) {
+      await markSpawnProposalBuilding(root, record.proposalId);
+      await injectCommissionSong(root, proposal.brief);
+      await markSpawnProposalDone(root, record.proposalId);
+      return;
+    }
     emitRuntimeEvent({
       type: "song_spawn_proposed",
       brief: proposal.brief,
@@ -384,13 +397,19 @@ async function runIdeaQueueLane(
       observationSummary: proposal.observationSummary,
       timestamp: Date.now()
     });
-    emitted = true;
   }).catch((error) => {
     const reason = error instanceof Error ? error.message : String(error);
     console.warn(`[artist-runtime] song spawn proposal failed: ${reason}`);
   });
   if (!emitted) {
     return { emitted, skippedForFullQueue };
+  }
+  if (!isPreGenerationApprovalEnabled()) {
+    return {
+      state: await readAutopilotRunState(root),
+      emitted,
+      skippedForFullQueue
+    };
   }
   if (options.preserveCurrentSongLane) {
     return {
@@ -891,7 +910,7 @@ async function handlePlanningStage(
   if (!validation.proposal) {
     return undefined;
   }
-  if (config.telegram.enabled) {
+  if (config.telegram.enabled && isPreGenerationApprovalEnabled()) {
     if (existing.suspendedAt !== "planning_skeleton_pending") {
       emitRuntimeEvent({
         type: "planning_skeleton_incomplete",
@@ -1129,6 +1148,7 @@ export class ArtistAutopilotService {
         pendingSong
         && isPrePromptSongWithoutApprovalGate(pendingSong)
         && !await hasProducerSpawnApproval(input.workspaceRoot, pendingSong.songId)
+        && isPreGenerationApprovalEnabled()
       ) {
         const pendingRunId = existing.runId ?? `auto_${Date.now().toString(36)}`;
         return suspendForProducerSpawnApproval(input.workspaceRoot, existing, pendingSong, {
@@ -1261,6 +1281,8 @@ export class ArtistAutopilotService {
       runId,
       currentSongId: song?.songId,
       stage,
+      suspendedAt: stateBeforeStage.suspendedAt === "prompt_pack_ready" && !isPreGenerationApprovalEnabled() ? undefined : stateBeforeStage.suspendedAt,
+      blockedReason: stateBeforeStage.suspendedAt === "prompt_pack_ready" && !isPreGenerationApprovalEnabled() ? undefined : stateBeforeStage.blockedReason,
       lastRunAt: nowIso()
     };
 
@@ -1277,6 +1299,7 @@ export class ArtistAutopilotService {
       && isSongSpawnConfigured(config)
       && isPrePromptSongWithoutApprovalGate(song)
       && !await hasProducerSpawnApproval(input.workspaceRoot, song.songId)
+      && isPreGenerationApprovalEnabled()
     ) {
       return suspendForProducerSpawnApproval(input.workspaceRoot, existing, song, baseState);
     }
@@ -1284,6 +1307,7 @@ export class ArtistAutopilotService {
     if (
       song
       && (existing.suspendedAt === "prompt_pack_ready" || existing.suspendedAt === "user_paused")
+      && !(existing.suspendedAt === "prompt_pack_ready" && !isPreGenerationApprovalEnabled())
       && !(existing.suspendedAt === "prompt_pack_ready" && await isBuildingDraftSong(input.workspaceRoot, song.songId))
     ) {
       return writeStageState(input.workspaceRoot, existing, {
@@ -1408,7 +1432,7 @@ export class ArtistAutopilotService {
             throw error;
           }
           const draftBoxOneShot = await isBuildingDraftSong(input.workspaceRoot, packedSong.songId);
-          const promptReadySuspension = config.telegram.enabled && !draftBoxOneShot;
+          const promptReadySuspension = config.telegram.enabled && isPreGenerationApprovalEnabled() && !draftBoxOneShot;
           if (promptReadySuspension) {
             const [summary, voiceTop] = await Promise.all([
               promptPackReadySummary(input.workspaceRoot, packedSong),
@@ -1429,7 +1453,7 @@ export class ArtistAutopilotService {
           return writeStageState(input.workspaceRoot, existing, {
             ...baseState,
             currentSongId: packedSong.songId,
-            stage: draftBoxOneShot ? "suno_generation" : "prompt_pack",
+            stage: promptReadySuspension ? "prompt_pack" : "suno_generation",
             blockedReason: undefined,
             lastError: undefined,
             lastSuccessfulStage: "prompt_pack",
