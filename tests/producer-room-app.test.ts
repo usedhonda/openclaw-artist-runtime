@@ -219,16 +219,25 @@ describe("ProducerRoomApp Songs and Settings views", () => {
     const config = {
       ui: { locale: "auto" as const },
       artist: { artistId: "artist", workspaceRoot: "/tmp/artist" },
-      music: { suno: { dailyCreditLimit: 4, monthlyCreditLimit: 40, driver: "mock" as const, submitMode: "skip" as const } },
-      autopilot: { enabled: true, dryRun: true, songsPerWeek: 3, cycleIntervalMinutes: 60 },
+      music: { suno: { dailyCreditLimit: 4, monthlyCreditLimit: 40, monthlyGenerationBudget: 50, maxGenerationsPerDay: 4, minMinutesBetweenCreates: 20, driver: "mock" as const, submitMode: "skip" as const } },
+      autopilot: { enabled: true, dryRun: true, songsPerWeek: 3, cycleIntervalMinutes: 60, planningTimeoutDays: 7, producerDigest: "daily" as const },
       distribution: {
+        enabled: true,
         liveGoArmed: false,
+        dailySharing: "auto" as const,
+        officialRelease: "manual_approval" as const,
         platforms: {
-          x: { enabled: true, liveGoArmed: false, authority: "draft_only" as const },
+          x: { enabled: true, liveGoArmed: false, authority: "draft_only" as const, maxPostsPerDay: 3, maxRepliesPerDay: 0 },
           instagram: { enabled: false, liveGoArmed: false, authority: "draft_only" as const },
           tiktok: { enabled: false, liveGoArmed: false, authority: "draft_only" as const }
         }
-      }
+      },
+      telegram: { enabled: false, pollIntervalMs: 2000, notifyStages: true, acceptFreeText: true },
+      artistPulse: { enabled: false, minIntervalHours: 12 },
+      commission: { enabled: false },
+      songSpawn: { enabled: true, minIntervalHours: 24 },
+      aiReview: { provider: "mock" as const },
+      safety: { auditLog: true }
     };
     const draft = { ...buildConfigDraft(config), songsPerWeek: "5", uiLocale: "ja" as const };
     const patch = buildConfigUpdatePatch(draft);
@@ -255,6 +264,8 @@ describe("ProducerRoomApp Songs and Settings views", () => {
     expect(html).toContain("English");
     expect(html).toContain("Suno Budget");
     expect(html).toContain("Platforms");
+    expect(html).toContain("Telegram");
+    expect(html).toContain("AI / Audit");
     expect(html).toContain("Creation driver");
     expect(html).toContain("Browser worker");
     expect(html).toContain("Create button");
@@ -285,16 +296,25 @@ describe("ProducerRoomApp Songs and Settings views", () => {
     const config = {
       ui: { locale: "auto" as const },
       artist: { artistId: "artist", workspaceRoot: "/tmp/artist" },
-      music: { suno: { dailyCreditLimit: 4, monthlyCreditLimit: 40, driver: "mock" as const, submitMode: "skip" as const } },
-      autopilot: { enabled: true, dryRun: true, songsPerWeek: 3, cycleIntervalMinutes: 60 },
+      music: { suno: { dailyCreditLimit: 4, monthlyCreditLimit: 40, monthlyGenerationBudget: 50, maxGenerationsPerDay: 4, minMinutesBetweenCreates: 20, driver: "mock" as const, submitMode: "skip" as const } },
+      autopilot: { enabled: true, dryRun: true, songsPerWeek: 3, cycleIntervalMinutes: 60, planningTimeoutDays: 7, producerDigest: "daily" as const },
       distribution: {
+        enabled: true,
         liveGoArmed: false,
+        dailySharing: "auto" as const,
+        officialRelease: "manual_approval" as const,
         platforms: {
-          x: { enabled: true, liveGoArmed: false, authority: "draft_only" as const },
+          x: { enabled: true, liveGoArmed: false, authority: "draft_only" as const, maxPostsPerDay: 3, maxRepliesPerDay: 0 },
           instagram: { enabled: false, liveGoArmed: false, authority: "draft_only" as const },
           tiktok: { enabled: false, liveGoArmed: false, authority: "draft_only" as const }
         }
-      }
+      },
+      telegram: { enabled: false, pollIntervalMs: 2000, notifyStages: true, acceptFreeText: true },
+      artistPulse: { enabled: false, minIntervalHours: 12 },
+      commission: { enabled: false },
+      songSpawn: { enabled: true, minIntervalHours: 24 },
+      aiReview: { provider: "mock" as const },
+      safety: { auditLog: true }
     };
     const html = renderToStaticMarkup(
       React.createElement(SettingsView, {

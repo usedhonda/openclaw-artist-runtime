@@ -23,6 +23,9 @@ import {
 } from "./personaEditor";
 import { dismissErrorToast, expireErrorToasts, pushErrorToast, type ErrorToast, type ErrorToastSource } from "../../src/services/errorToastQueue";
 import {
+  aiReviewProviders,
+  dailySharingModes,
+  officialReleaseModes,
   producerDigestModes,
   xAuthorityModes,
   type DraftBoxNextActionSummary,
@@ -481,7 +484,7 @@ export function SettingsView(props: {
 }) {
   const locale = props.locale ?? "en";
   const draft = props.draft;
-  const globalArmHeld = Boolean(draft && !draft.distributionLiveGoArmed);
+  const globalArmHeld = Boolean(draft && (!draft.distributionEnabled || !draft.distributionLiveGoArmed));
   const authorityLabel = (value: string) => {
     switch (value) {
       case "auto_publish":
@@ -498,6 +501,18 @@ export function SettingsView(props: {
         return "Manual approval";
       default:
         return value.replace(/_/g, " ");
+    }
+  };
+  const aiProviderLabel = (value: string) => {
+    switch (value) {
+      case "mock":
+        return "Local mock";
+      case "openclaw":
+        return "OpenClaw";
+      case "openai-codex":
+        return "OpenAI Codex";
+      default:
+        return value;
     }
   };
 
@@ -526,8 +541,6 @@ export function SettingsView(props: {
               <div className="section-title">{t(locale, "settingsAutopilot")}</div>
               <label className="toggle"><input type="checkbox" checked={draft.autopilotEnabled} onChange={(event) => props.onUpdateDraft({ autopilotEnabled: event.target.checked })} />{t(locale, "settingsRunAutonomous")}</label>
               <label className="toggle"><input type="checkbox" checked={draft.dryRun} onChange={(event) => props.onUpdateDraft({ dryRun: event.target.checked })} />{t(locale, "settingsBlockExternal")}</label>
-              <label className="toggle"><input type="checkbox" checked={draft.distributionLiveGoArmed} onChange={(event) => props.onUpdateDraft({ distributionLiveGoArmed: event.target.checked })} />{t(locale, "settingsAllowPublic")}</label>
-              {globalArmHeld ? <div className="warning-banner">{t(locale, "settingsPublicHeld")}</div> : null}
               <div className="field-grid">
                 <NumberField label={t(locale, "settingsSongsPerWeek")} value={draft.songsPerWeek} min={0} max={100} onChange={(value) => props.onUpdateDraft({ songsPerWeek: value })} note={t(locale, "settingsSongsPerWeekHelp")} />
                 <NumberField label={t(locale, "settingsCycleInterval")} value={draft.cycleIntervalMinutes} min={15} max={1440} onChange={(value) => props.onUpdateDraft({ cycleIntervalMinutes: value })} note={t(locale, "settingsCycleIntervalHelp")} />
@@ -544,8 +557,11 @@ export function SettingsView(props: {
             <section className="settings-section">
               <div className="section-title">{t(locale, "settingsSongIdeas")}</div>
               <label className="toggle"><input type="checkbox" checked={draft.songSpawnEnabled} onChange={(event) => props.onUpdateDraft({ songSpawnEnabled: event.target.checked })} />{t(locale, "settingsSongSpawnEnabled")}</label>
+              <label className="toggle"><input type="checkbox" checked={draft.artistPulseEnabled} onChange={(event) => props.onUpdateDraft({ artistPulseEnabled: event.target.checked })} />{t(locale, "settingsArtistPulseEnabled")}</label>
+              <label className="toggle"><input type="checkbox" checked={draft.commissionEnabled} onChange={(event) => props.onUpdateDraft({ commissionEnabled: event.target.checked })} />{t(locale, "settingsCommissionEnabled")}</label>
               <div className="field-grid">
-                <NumberField label={t(locale, "settingsSongSpawnInterval")} value={draft.songSpawnMinIntervalHours} min={0} max={168} onChange={(value) => props.onUpdateDraft({ songSpawnMinIntervalHours: value })} note={t(locale, "settingsSongSpawnIntervalHelp")} />
+                <NumberField label={t(locale, "settingsSongSpawnInterval")} value={draft.songSpawnMinIntervalHours} min={12} max={168} onChange={(value) => props.onUpdateDraft({ songSpawnMinIntervalHours: value })} note={t(locale, "settingsSongSpawnIntervalHelp")} />
+                <NumberField label={t(locale, "settingsArtistPulseInterval")} value={draft.artistPulseMinIntervalHours} min={6} max={168} onChange={(value) => props.onUpdateDraft({ artistPulseMinIntervalHours: value })} note={t(locale, "settingsArtistPulseIntervalHelp")} />
               </div>
             </section>
             <section className="settings-section">
@@ -570,6 +586,25 @@ export function SettingsView(props: {
             </section>
             <section className="settings-section">
               <div className="section-title">{t(locale, "settingsPlatforms")}</div>
+              <label className="toggle"><input type="checkbox" checked={draft.distributionEnabled} onChange={(event) => props.onUpdateDraft({ distributionEnabled: event.target.checked })} />{t(locale, "settingsEnableDistribution")}</label>
+              <label className="toggle"><input type="checkbox" checked={draft.distributionLiveGoArmed} onChange={(event) => props.onUpdateDraft({ distributionLiveGoArmed: event.target.checked })} />{t(locale, "settingsAllowPublic")}</label>
+              <div className="field-grid">
+                <label>
+                  <div className="eyebrow">{t(locale, "settingsDailySharing")}</div>
+                  <select value={draft.dailySharing} onChange={(event) => props.onUpdateDraft({ dailySharing: event.target.value as ConfigDraft["dailySharing"] })}>
+                    {dailySharingModes.map((mode) => <option key={mode} value={mode}>{mode.replace(/_/g, " ")}</option>)}
+                  </select>
+                  <div className="muted">{t(locale, "settingsDailySharingHelp")}</div>
+                </label>
+                <label>
+                  <div className="eyebrow">{t(locale, "settingsOfficialRelease")}</div>
+                  <select value={draft.officialRelease} onChange={(event) => props.onUpdateDraft({ officialRelease: event.target.value as ConfigDraft["officialRelease"] })}>
+                    {officialReleaseModes.map((mode) => <option key={mode} value={mode}>{mode.replace(/_/g, " ")}</option>)}
+                  </select>
+                  <div className="muted">{t(locale, "settingsOfficialReleaseHelp")}</div>
+                </label>
+              </div>
+              {globalArmHeld ? <div className="warning-banner">{t(locale, "settingsPublicHeld")}</div> : null}
               <div className="field-grid">
                 <label className={`platform-config${globalArmHeld ? " is-held" : ""}`}>
                   <div className="toggle"><input type="checkbox" checked={draft.xEnabled} onChange={(event) => props.onUpdateDraft({ xEnabled: event.target.checked })} />{t(locale, "settingsUseX")}</div>
@@ -595,6 +630,28 @@ export function SettingsView(props: {
                   <span className="badge badge-frozen">Not available</span>
                   <div className="muted">{t(locale, "settingsTikTokFrozen")}</div>
                 </div>
+              </div>
+            </section>
+            <section className="settings-section">
+              <div className="section-title">{t(locale, "settingsTelegram")}</div>
+              <label className="toggle"><input type="checkbox" checked={draft.telegramEnabled} onChange={(event) => props.onUpdateDraft({ telegramEnabled: event.target.checked })} />{t(locale, "settingsTelegramEnabled")}</label>
+              <label className="toggle"><input type="checkbox" checked={draft.telegramNotifyStages} onChange={(event) => props.onUpdateDraft({ telegramNotifyStages: event.target.checked })} />{t(locale, "settingsTelegramNotifyStages")}</label>
+              <label className="toggle"><input type="checkbox" checked={draft.telegramAcceptFreeText} onChange={(event) => props.onUpdateDraft({ telegramAcceptFreeText: event.target.checked })} />{t(locale, "settingsTelegramAcceptFreeText")}</label>
+              <div className="field-grid">
+                <NumberField label={t(locale, "settingsTelegramPollInterval")} value={draft.telegramPollIntervalMs} min={500} max={60000} onChange={(value) => props.onUpdateDraft({ telegramPollIntervalMs: value })} note={t(locale, "settingsTelegramPollIntervalHelp")} />
+              </div>
+            </section>
+            <section className="settings-section">
+              <div className="section-title">{t(locale, "settingsAiAudit")}</div>
+              <div className="field-grid">
+                <label>
+                  <div className="eyebrow">{t(locale, "settingsAiProvider")}</div>
+                  <select value={draft.aiReviewProvider} onChange={(event) => props.onUpdateDraft({ aiReviewProvider: event.target.value as ConfigDraft["aiReviewProvider"] })}>
+                    {aiReviewProviders.map((provider) => <option key={provider} value={provider}>{aiProviderLabel(provider)}</option>)}
+                  </select>
+                  <div className="muted">{t(locale, "settingsAiProviderHelp")}</div>
+                </label>
+                <label className="toggle"><input type="checkbox" checked={draft.auditLog} onChange={(event) => props.onUpdateDraft({ auditLog: event.target.checked })} />{t(locale, "settingsAuditLog")}</label>
               </div>
             </section>
             {props.validationError ? <div className="field-error">{props.validationError}</div> : null}

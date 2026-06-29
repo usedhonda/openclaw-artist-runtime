@@ -26,7 +26,18 @@ async function rootWithCachedSecretObservation(): Promise<string> {
   const date = new Date(Date.now() + 9 * 60 * 60 * 1000).toISOString().slice(0, 10);
   const observationsDir = join(root, "observations");
   await mkdir(observationsDir, { recursive: true });
-  await writeFile(join(observationsDir, `${date}.md`), "TELEGRAM_BOT_TOKEN=abcd1234efgh5678\n", "utf8");
+  await writeFile(join(observationsDir, `news-${date}.md`), `# News Observations ${date}\n\n`, "utf8");
+  await writeFile(join(observationsDir, `${date}.md`), [
+    `# X Observations ${date}`,
+    "",
+    "Query: music OR society OR culture",
+    "",
+    "- text: \"TELEGRAM_BOT_TOKEN=abcd1234efgh5678\"",
+    "  author: \"fixture\"",
+    "  url: \"https://x.com/fixture/status/1234567890\"",
+    "  postedAt: \"2026-06-11T00:00:00.000Z\"",
+    ""
+  ].join("\n"), "utf8");
   return root;
 }
 

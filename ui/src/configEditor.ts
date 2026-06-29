@@ -1,11 +1,17 @@
 import {
+  aiReviewProviders,
+  dailySharingModes,
+  officialReleaseModes,
   producerDigestModes,
   instagramAuthorityModes,
   sunoDriverModes,
   sunoSubmitModes,
   tiktokAuthorityModes,
   xAuthorityModes,
+  type AiReviewProvider,
+  type DailySharingMode,
   type InstagramAuthority,
+  type OfficialReleaseMode,
   type ProducerDigestMode,
   type SunoDriverMode,
   type SunoSubmitMode,
@@ -38,16 +44,38 @@ export type ConfigEditorSource = {
     producerDigest: ProducerDigestMode;
   };
   distribution: {
+    enabled: boolean;
     liveGoArmed: boolean;
+    dailySharing: DailySharingMode;
+    officialRelease: OfficialReleaseMode;
     platforms: {
       x: { enabled: boolean; liveGoArmed: boolean; authority: XAuthority; maxPostsPerDay: number; maxRepliesPerDay: number };
       instagram: { enabled: boolean; liveGoArmed: boolean; authority: InstagramAuthority };
       tiktok: { enabled: boolean; liveGoArmed: boolean; authority: TikTokAuthority };
     };
   };
+  telegram?: {
+    enabled: boolean;
+    pollIntervalMs: number;
+    notifyStages: boolean;
+    acceptFreeText: boolean;
+  };
+  artistPulse?: {
+    enabled: boolean;
+    minIntervalHours: number;
+  };
+  commission?: {
+    enabled: boolean;
+  };
   songSpawn?: {
     enabled: boolean;
     minIntervalHours: number;
+  };
+  aiReview?: {
+    provider: AiReviewProvider;
+  };
+  safety?: {
+    auditLog: boolean;
   };
 };
 
@@ -65,7 +93,10 @@ export type ConfigDraft = {
   cycleIntervalMinutes: string;
   planningTimeoutDays: string;
   producerDigest: ProducerDigestMode;
+  distributionEnabled: boolean;
   distributionLiveGoArmed: boolean;
+  dailySharing: DailySharingMode;
+  officialRelease: OfficialReleaseMode;
   xEnabled: boolean;
   xLiveGoArmed: boolean;
   xAuthority: XAuthority;
@@ -77,8 +108,17 @@ export type ConfigDraft = {
   tiktokEnabled: boolean;
   tiktokLiveGoArmed: boolean;
   tiktokAuthority: TikTokAuthority;
+  telegramEnabled: boolean;
+  telegramPollIntervalMs: string;
+  telegramNotifyStages: boolean;
+  telegramAcceptFreeText: boolean;
+  artistPulseEnabled: boolean;
+  artistPulseMinIntervalHours: string;
+  commissionEnabled: boolean;
   songSpawnEnabled: boolean;
   songSpawnMinIntervalHours: string;
+  aiReviewProvider: AiReviewProvider;
+  auditLog: boolean;
   uiLocale: UiLocaleMode;
 };
 
@@ -106,16 +146,38 @@ export type ConfigUpdatePatch = {
     producerDigest: ProducerDigestMode;
   };
   distribution: {
+    enabled: boolean;
     liveGoArmed: boolean;
+    dailySharing: DailySharingMode;
+    officialRelease: OfficialReleaseMode;
     platforms: {
       x: { enabled: boolean; liveGoArmed: boolean; authority: XAuthority; maxPostsPerDay: number; maxRepliesPerDay: number };
       instagram: { enabled: boolean; liveGoArmed: boolean; authority: InstagramAuthority };
       tiktok: { enabled: boolean; liveGoArmed: boolean; authority: TikTokAuthority };
     };
   };
+  telegram: {
+    enabled: boolean;
+    pollIntervalMs: number;
+    notifyStages: boolean;
+    acceptFreeText: boolean;
+  };
+  artistPulse: {
+    enabled: boolean;
+    minIntervalHours: number;
+  };
+  commission: {
+    enabled: boolean;
+  };
   songSpawn: {
     enabled: boolean;
     minIntervalHours: number;
+  };
+  aiReview: {
+    provider: AiReviewProvider;
+  };
+  safety: {
+    auditLog: boolean;
   };
 };
 
@@ -143,7 +205,10 @@ export function buildConfigDraft(source: ConfigEditorSource): ConfigDraft {
     cycleIntervalMinutes: String(source.autopilot.cycleIntervalMinutes),
     planningTimeoutDays: String(source.autopilot.planningTimeoutDays ?? 7),
     producerDigest: source.autopilot.producerDigest ?? "daily",
+    distributionEnabled: source.distribution.enabled,
     distributionLiveGoArmed: source.distribution.liveGoArmed,
+    dailySharing: source.distribution.dailySharing ?? "auto",
+    officialRelease: source.distribution.officialRelease ?? "manual_approval",
     xEnabled: source.distribution.platforms.x.enabled,
     xLiveGoArmed: source.distribution.platforms.x.liveGoArmed,
     xAuthority: source.distribution.platforms.x.authority,
@@ -155,8 +220,17 @@ export function buildConfigDraft(source: ConfigEditorSource): ConfigDraft {
     tiktokEnabled: source.distribution.platforms.tiktok.enabled,
     tiktokLiveGoArmed: source.distribution.platforms.tiktok.liveGoArmed,
     tiktokAuthority: source.distribution.platforms.tiktok.authority,
+    telegramEnabled: source.telegram?.enabled ?? false,
+    telegramPollIntervalMs: String(source.telegram?.pollIntervalMs ?? 2000),
+    telegramNotifyStages: source.telegram?.notifyStages ?? true,
+    telegramAcceptFreeText: source.telegram?.acceptFreeText ?? true,
+    artistPulseEnabled: source.artistPulse?.enabled ?? false,
+    artistPulseMinIntervalHours: String(source.artistPulse?.minIntervalHours ?? 12),
+    commissionEnabled: source.commission?.enabled ?? false,
     songSpawnEnabled: source.songSpawn?.enabled ?? false,
-    songSpawnMinIntervalHours: String(source.songSpawn?.minIntervalHours ?? 24)
+    songSpawnMinIntervalHours: String(source.songSpawn?.minIntervalHours ?? 24),
+    aiReviewProvider: source.aiReview?.provider ?? "mock",
+    auditLog: source.safety?.auditLog ?? true
   };
 }
 
@@ -171,6 +245,8 @@ export function buildConfigUpdatePatch(draft: ConfigDraft): ConfigUpdatePatch {
   const planningTimeoutDays = parseWholeNumber(draft.planningTimeoutDays, "planningTimeoutDays");
   const xMaxPostsPerDay = parseWholeNumber(draft.xMaxPostsPerDay, "xMaxPostsPerDay");
   const xMaxRepliesPerDay = parseWholeNumber(draft.xMaxRepliesPerDay, "xMaxRepliesPerDay");
+  const telegramPollIntervalMs = parseWholeNumber(draft.telegramPollIntervalMs, "telegramPollIntervalMs");
+  const artistPulseMinIntervalHours = parseWholeNumber(draft.artistPulseMinIntervalHours, "artistPulseMinIntervalHours");
   const songSpawnMinIntervalHours = parseWholeNumber(draft.songSpawnMinIntervalHours, "songSpawnMinIntervalHours");
 
   if (dailyCreditLimit < 1 || dailyCreditLimit > 1000) {
@@ -209,6 +285,14 @@ export function buildConfigUpdatePatch(draft: ConfigDraft): ConfigUpdatePatch {
     throw new Error("producerDigest must be one of the supported producer digest modes");
   }
 
+  if (!dailySharingModes.includes(draft.dailySharing)) {
+    throw new Error("dailySharing must be one of the supported daily sharing modes");
+  }
+
+  if (!officialReleaseModes.includes(draft.officialRelease)) {
+    throw new Error("officialRelease must be one of the supported official release modes");
+  }
+
   if (xMaxPostsPerDay < 0 || xMaxPostsPerDay > 50) {
     throw new Error("xMaxPostsPerDay must be between 0 and 50");
   }
@@ -217,8 +301,16 @@ export function buildConfigUpdatePatch(draft: ConfigDraft): ConfigUpdatePatch {
     throw new Error("xMaxRepliesPerDay must be between 0 and 200");
   }
 
-  if (songSpawnMinIntervalHours < 0 || songSpawnMinIntervalHours > 168) {
-    throw new Error("songSpawnMinIntervalHours must be between 0 and 168");
+  if (telegramPollIntervalMs < 500 || telegramPollIntervalMs > 60000) {
+    throw new Error("telegramPollIntervalMs must be between 500 and 60000");
+  }
+
+  if (artistPulseMinIntervalHours < 6 || artistPulseMinIntervalHours > 168) {
+    throw new Error("artistPulseMinIntervalHours must be between 6 and 168");
+  }
+
+  if (songSpawnMinIntervalHours < 12 || songSpawnMinIntervalHours > 168) {
+    throw new Error("songSpawnMinIntervalHours must be between 12 and 168");
   }
 
   if (!xAuthorityModes.includes(draft.xAuthority)) {
@@ -239,6 +331,10 @@ export function buildConfigUpdatePatch(draft: ConfigDraft): ConfigUpdatePatch {
 
   if (!sunoSubmitModes.includes(draft.sunoSubmitMode)) {
     throw new Error("sunoSubmitMode must be one of the supported Suno submit modes");
+  }
+
+  if (!aiReviewProviders.includes(draft.aiReviewProvider)) {
+    throw new Error("aiReviewProvider must be one of the supported AI helper providers");
   }
 
   if (!["auto", "ja", "en"].includes(draft.uiLocale)) {
@@ -269,7 +365,10 @@ export function buildConfigUpdatePatch(draft: ConfigDraft): ConfigUpdatePatch {
       producerDigest: draft.producerDigest
     },
     distribution: {
+      enabled: draft.distributionEnabled,
       liveGoArmed: draft.distributionLiveGoArmed,
+      dailySharing: draft.dailySharing,
+      officialRelease: draft.officialRelease,
       platforms: {
         x: { enabled: draft.xEnabled, liveGoArmed: draft.xLiveGoArmed, authority: draft.xAuthority, maxPostsPerDay: xMaxPostsPerDay, maxRepliesPerDay: xMaxRepliesPerDay },
         // Instagram is frozen by #4 boundary; arm flags are clamped to false even if the draft has them on.
@@ -278,9 +377,28 @@ export function buildConfigUpdatePatch(draft: ConfigDraft): ConfigUpdatePatch {
         tiktok: { enabled: draft.tiktokEnabled, liveGoArmed: false, authority: draft.tiktokAuthority }
       }
     },
+    telegram: {
+      enabled: draft.telegramEnabled,
+      pollIntervalMs: telegramPollIntervalMs,
+      notifyStages: draft.telegramNotifyStages,
+      acceptFreeText: draft.telegramAcceptFreeText
+    },
+    artistPulse: {
+      enabled: draft.artistPulseEnabled,
+      minIntervalHours: artistPulseMinIntervalHours
+    },
+    commission: {
+      enabled: draft.commissionEnabled
+    },
     songSpawn: {
       enabled: draft.songSpawnEnabled,
       minIntervalHours: songSpawnMinIntervalHours
+    },
+    aiReview: {
+      provider: draft.aiReviewProvider
+    },
+    safety: {
+      auditLog: draft.auditLog
     }
   };
 }

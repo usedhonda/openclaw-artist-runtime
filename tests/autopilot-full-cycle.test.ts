@@ -159,7 +159,10 @@ describe("ArtistAutopilotService full dry-run cycle", () => {
 
     expect(spawnMock).not.toHaveBeenCalled();
     expect(fetchMock).toHaveBeenCalled();
-    expect(fetchMock.mock.calls.every((call) => String(call[0]).startsWith("https://news.google.com/rss/search?"))).toBe(
+    expect(fetchMock.mock.calls.every((call) => {
+      const url = String(call[0]);
+      return url === "https://news.google.com/rss?hl=ja&gl=JP&ceid=JP:ja" || url.startsWith("https://news.google.com/rss/search?");
+    })).toBe(
       true
     );
 

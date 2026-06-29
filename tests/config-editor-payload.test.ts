@@ -16,7 +16,10 @@ const baseDraft = (overrides: Partial<ConfigDraft> = {}): ConfigDraft => ({
   cycleIntervalMinutes: "180",
   planningTimeoutDays: "7",
   producerDigest: "daily",
+  distributionEnabled: true,
   distributionLiveGoArmed: false,
+  dailySharing: "auto",
+  officialRelease: "manual_approval",
   xEnabled: true,
   xLiveGoArmed: false,
   xAuthority: "draft_only",
@@ -28,8 +31,17 @@ const baseDraft = (overrides: Partial<ConfigDraft> = {}): ConfigDraft => ({
   tiktokEnabled: false,
   tiktokLiveGoArmed: false,
   tiktokAuthority: "draft_only",
+  telegramEnabled: true,
+  telegramPollIntervalMs: "2000",
+  telegramNotifyStages: true,
+  telegramAcceptFreeText: true,
+  artistPulseEnabled: false,
+  artistPulseMinIntervalHours: "12",
+  commissionEnabled: false,
   songSpawnEnabled: true,
   songSpawnMinIntervalHours: "13",
+  aiReviewProvider: "mock",
+  auditLog: true,
   ...overrides
 });
 
@@ -57,16 +69,38 @@ describe("config editor payload builder", () => {
         producerDigest: "daily"
       },
       distribution: {
+        enabled: true,
         liveGoArmed: false,
+        dailySharing: "auto",
+        officialRelease: "manual_approval",
         platforms: {
           x: { enabled: true, liveGoArmed: true, authority: "auto_publish", maxPostsPerDay: 3, maxRepliesPerDay: 1 },
           instagram: { enabled: false, liveGoArmed: false, authority: "draft_only" },
           tiktok: { enabled: false, liveGoArmed: false, authority: "draft_only" }
         }
       },
+      telegram: {
+        enabled: true,
+        pollIntervalMs: 2000,
+        notifyStages: true,
+        acceptFreeText: true
+      },
+      artistPulse: {
+        enabled: true,
+        minIntervalHours: 18
+      },
+      commission: {
+        enabled: true
+      },
       songSpawn: {
         enabled: true,
         minIntervalHours: 13
+      },
+      aiReview: {
+        provider: "openclaw"
+      },
+      safety: {
+        auditLog: true
       }
     })).toEqual({
       uiLocale: "ja",
@@ -83,7 +117,10 @@ describe("config editor payload builder", () => {
       cycleIntervalMinutes: "180",
       planningTimeoutDays: "7",
       producerDigest: "daily",
+      distributionEnabled: true,
       distributionLiveGoArmed: false,
+      dailySharing: "auto",
+      officialRelease: "manual_approval",
       xEnabled: true,
       xLiveGoArmed: true,
       xAuthority: "auto_publish",
@@ -95,8 +132,17 @@ describe("config editor payload builder", () => {
       tiktokEnabled: false,
       tiktokLiveGoArmed: false,
       tiktokAuthority: "draft_only",
+      telegramEnabled: true,
+      telegramPollIntervalMs: "2000",
+      telegramNotifyStages: true,
+      telegramAcceptFreeText: true,
+      artistPulseEnabled: true,
+      artistPulseMinIntervalHours: "18",
+      commissionEnabled: true,
       songSpawnEnabled: true,
-      songSpawnMinIntervalHours: "13"
+      songSpawnMinIntervalHours: "13",
+      aiReviewProvider: "openclaw",
+      auditLog: true
     });
   });
 
@@ -116,7 +162,10 @@ describe("config editor payload builder", () => {
       cycleIntervalMinutes: "60",
       planningTimeoutDays: "12",
       producerDigest: "important_events",
+      distributionEnabled: true,
       distributionLiveGoArmed: true,
+      dailySharing: "draft_only",
+      officialRelease: "auto_with_release_policy",
       xEnabled: true,
       xLiveGoArmed: true,
       xAuthority: "auto_publish_and_low_risk_replies",
@@ -128,8 +177,17 @@ describe("config editor payload builder", () => {
       tiktokEnabled: false,
       tiktokLiveGoArmed: true,
       tiktokAuthority: "draft_only",
+      telegramEnabled: true,
+      telegramPollIntervalMs: "5000",
+      telegramNotifyStages: false,
+      telegramAcceptFreeText: false,
+      artistPulseEnabled: true,
+      artistPulseMinIntervalHours: "18",
+      commissionEnabled: true,
       songSpawnEnabled: false,
-      songSpawnMinIntervalHours: "24"
+      songSpawnMinIntervalHours: "24",
+      aiReviewProvider: "openclaw",
+      auditLog: false
     }))).toEqual({
       ui: {
         locale: "en"
@@ -154,16 +212,38 @@ describe("config editor payload builder", () => {
         producerDigest: "important_events"
       },
       distribution: {
+        enabled: true,
         liveGoArmed: true,
+        dailySharing: "draft_only",
+        officialRelease: "auto_with_release_policy",
         platforms: {
           x: { enabled: true, liveGoArmed: true, authority: "auto_publish_and_low_risk_replies", maxPostsPerDay: 9, maxRepliesPerDay: 2 },
           instagram: { enabled: true, liveGoArmed: false, authority: "auto_publish_visuals" },
           tiktok: { enabled: false, liveGoArmed: false, authority: "draft_only" }
         }
       },
+      telegram: {
+        enabled: true,
+        pollIntervalMs: 5000,
+        notifyStages: false,
+        acceptFreeText: false
+      },
+      artistPulse: {
+        enabled: true,
+        minIntervalHours: 18
+      },
+      commission: {
+        enabled: true
+      },
       songSpawn: {
         enabled: false,
         minIntervalHours: 24
+      },
+      aiReview: {
+        provider: "openclaw"
+      },
+      safety: {
+        auditLog: false
       }
     });
   });
