@@ -719,12 +719,15 @@ export class PlaywrightSunoDriver implements SunoBrowserDriver {
     // data-clip-status, nor /song/ anchors (confirmed against a captured create-page
     // DOM where finished takes were present but undetectable by the old selector — the
     // root cause of false playwright_live_timeout). A finished song now surfaces as a
-    // play button (aria-label="Play <title>") whose thumbnail image URL carries the song
+    // play button (aria-label="Play <title>" or "Play <title> from start") whose thumbnail image URL carries the song
     // id (cdn2.suno.ai/image[_large]_<uuid>.jpeg). Title-scope via the play button and
     // derive the song URL from that id. Create-page-only; no library navigation, so the
     // Plan v10.42 take-attribution fail-closed contract is preserved.
     const selector = expectedTitle
-      ? `button[aria-label="Play ${this.escapeAttributeValue(expectedTitle)}"]`
+      ? [
+          `button[aria-label="Play ${this.escapeAttributeValue(expectedTitle)}"]`,
+          `button[aria-label^="Play ${this.escapeAttributeValue(expectedTitle)} "]`
+        ].join(", ")
       : `button[aria-label^="Play "]`;
     return page.locator(selector).evaluateAll((buttons) => {
       const urls = new Set<string>();

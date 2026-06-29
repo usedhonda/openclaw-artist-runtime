@@ -550,6 +550,31 @@ async function recoverAcceptedRunUrlReady(
   if (!firstTakeUrl) {
     return undefined;
   }
+  const collisions = await findTakeAttributionCollisions(root, song.songId, latestRun.urls);
+  if (collisions.length > 0) {
+    await appendTakeAttributionAudit(root, "take_attribution_collision_blocked", {
+      songId: song.songId,
+      runId: latestRun.runId,
+      collisions
+    });
+    emitRuntimeEvent({
+      type: "error",
+      source: "take_attribution",
+      reason: "take_attribution_collision_blocked",
+      songId: song.songId,
+      timestamp: Date.now()
+    });
+    return writeStageState(root, existing, {
+      ...baseState,
+      currentSongId: song.songId,
+      paused: true,
+      stage: "paused",
+      blockedReason: "take_attribution_collision_blocked",
+      lastError: "take_attribution_collision_blocked",
+      lastSuccessfulStage: existing.lastSuccessfulStage,
+      cycleCount: existing.cycleCount + 1
+    });
+  }
   const selectedTakeId = takeIdFromSunoUrl(firstTakeUrl);
   await updateSongState(root, song.songId, {
     status: "suno_take_url_ready",

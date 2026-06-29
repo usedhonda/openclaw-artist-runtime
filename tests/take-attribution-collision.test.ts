@@ -91,7 +91,7 @@ describe("take attribution collision guard", () => {
       workspaceRoot: root,
       config: { artist: { workspaceRoot: root }, autopilot: { enabled: true, dryRun: false }, music: { suno: { driver: "playwright" as const } } }
     });
-    expect(connectorImportResults).toHaveBeenCalledTimes(1);
+    expect(connectorImportResults).not.toHaveBeenCalled();
     expect(connectorCreate).not.toHaveBeenCalled();
     expect(state).toMatchObject({
       paused: true,

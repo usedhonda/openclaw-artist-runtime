@@ -451,8 +451,9 @@ describe("PlaywrightSunoDriver create", () => {
 
     const createCardSelector = page.selectors.find((selector) => selector.includes("Run 003bd"));
     // Title-scoped to the finished-song play button on the create page (Suno's current
-    // DOM). Must stay create-page-only — no library navigation (Plan v10.42 fail-closed).
-    expect(createCardSelector).toBe("button[aria-label=\"Play Run 003bd\"]");
+    // DOM), including Suno's "from start" aria-label suffix. Must stay create-page-only
+    // — no library navigation (Plan v10.42 fail-closed).
+    expect(createCardSelector).toBe("button[aria-label=\"Play Run 003bd\"], button[aria-label^=\"Play Run 003bd \"]");
     expect(createCardSelector).not.toContain("generation-card");
     expect(createCardSelector).not.toContain("generating");
     expect(result.reason).toBe(PLAYWRIGHT_LIVE_TIMEOUT_REASON);
