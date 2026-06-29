@@ -2,8 +2,10 @@ import { mkdtempSync } from "node:fs";
 import { readdir } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { ensureArtistWorkspace } from "../src/services/artistWorkspace";
+import { ArtistAutopilotService } from "../src/services/autopilotService";
+import { getRuntimeEventBus, type RuntimeEvent } from "../src/services/runtimeEventBus";
 import { routeTelegramCommand } from "../src/services/telegramCommandRouter";
 
 function workspace(): string {
@@ -19,6 +21,10 @@ async function waitForSong(root: string): Promise<string[]> {
 }
 
 describe("telegram song create trigger", () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
   it("starts runCycle from /song create even when status says disabled", async () => {
     const root = workspace();
     await ensureArtistWorkspace(root);
@@ -32,6 +38,7 @@ describe("telegram song create trigger", () => {
     });
 
     expect(response.responseText).toContain("最新ニュース");
+    expect(response.responseText).toContain("/status");
     expect(await waitForSong(root)).toContain("song-001");
   }, 30000);
 
@@ -47,6 +54,34 @@ describe("telegram song create trigger", () => {
     });
 
     expect(response.responseText).toContain("X でこれこれな話題");
+    expect(response.responseText).toContain("/status");
     expect(await waitForSong(root)).toContain("song-001");
+  });
+
+  it("emits a Telegram-visible failure when manual song create cannot start", async () => {
+    const root = workspace();
+    await ensureArtistWorkspace(root);
+    vi.spyOn(ArtistAutopilotService.prototype, "runCycle").mockRejectedValueOnce(new Error("ai_provider_not_configured"));
+    const events: RuntimeEvent[] = [];
+    const unsubscribe = getRuntimeEventBus().subscribe((event) => events.push(event));
+
+    const response = await routeTelegramCommand({
+      text: "/song create 壊れた街の速い曲",
+      fromUserId: 1,
+      chatId: 2,
+      workspaceRoot: root
+    });
+
+    expect(response.responseText).toContain("/status");
+    await vi.waitFor(() => {
+      expect(events).toEqual(expect.arrayContaining([
+        expect.objectContaining({
+          type: "error",
+          source: "telegram_manual_song_create",
+          reason: "ai_provider_not_configured"
+        })
+      ]));
+    });
+    unsubscribe();
   });
 });

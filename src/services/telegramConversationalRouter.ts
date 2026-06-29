@@ -14,6 +14,7 @@ import { proposeFreeformChangeSet, type ChangeSetProposal } from "./freeformChan
 import { secretLikePattern } from "./personaMigrator.js";
 import { handleCommission } from "./songCommissionHandler.js";
 import { isCommissionConfigured, readResolvedConfig } from "./runtimeConfig.js";
+import { emitRuntimeEvent } from "./runtimeEventBus.js";
 
 export interface TelegramConversationalRouteInput {
   text: string;
@@ -84,6 +85,13 @@ function formatCommissionProposal(proposal: ChangeSetProposal): string {
     "",
     "これで曲作りに進める?",
     "[Yes] [No] [Edit]"
+  ].join("\n");
+}
+
+function formatSongCreateAccepted(hint?: string): string {
+  return [
+    hint ? `作り始めた。芯: ${hint}` : "作り始めた。観察から曲に起こす。",
+    "進捗は /status。完成、確認待ち、Suno 停止はここに出す。"
   ].join("\n");
 }
 
@@ -176,8 +184,17 @@ export async function routeTelegramConversation(input: TelegramConversationalRou
     void new ArtistAutopilotService().runCycle({
       workspaceRoot: input.workspaceRoot,
       manualSeed: { hint: hint ?? "" }
-    }).catch((error) => logConversationalSideEffectFailure("manual song create runCycle", error));
-    const response = hint ? `その話題、見に行く。${hint} を芯にして曲にする。結果を待っててくれ。` : "観察してくる。こっちで曲に起こす、結果を待っててくれ。";
+    }).catch((error) => {
+      const reason = error instanceof Error ? error.message : String(error);
+      logConversationalSideEffectFailure("manual song create runCycle", error);
+      emitRuntimeEvent({
+        type: "error",
+        source: "telegram_manual_song_create",
+        reason,
+        timestamp: Date.now()
+      });
+    });
+    const response = formatSongCreateAccepted(hint);
     await appendConversationTurn(input.workspaceRoot, { chatId: input.chatId, userId: input.fromUserId, topic, turn: { role: "artist", text: response } });
     return { responseText: response, shouldStoreFreeText: true };
   }

@@ -97,8 +97,12 @@ function isActionableSunoHardStop(event: RuntimeEvent): event is Extract<Runtime
   return false;
 }
 
+function isManualSongCreateFailure(event: RuntimeEvent): event is Extract<RuntimeEvent, { type: "error" }> {
+  return event.type === "error" && event.source === "telegram_manual_song_create";
+}
+
 export function isTelegramSignalEvent(event: RuntimeEvent): boolean {
-  return TELEGRAM_SIGNAL_EVENT_TYPES.has(event.type) || isActionableSunoHardStop(event);
+  return TELEGRAM_SIGNAL_EVENT_TYPES.has(event.type) || isActionableSunoHardStop(event) || isManualSongCreateFailure(event);
 }
 
 export function isTelegramSilentEvent(event: RuntimeEvent): boolean {
@@ -1498,6 +1502,15 @@ async function formatRuntimeEventRaw(
     case "artist_presence":
       return joinTelegramDetailSection(event.text, `trigger: ${event.trigger}${event.songId ? `\nsongId: ${event.songId}` : ""}`);
     case "error":
+      if (event.source === "telegram_manual_song_create") {
+        return [
+          "曲作りの開始に失敗した。止めて原因を残した。",
+          "",
+          TELEGRAM_SECTION_DIVIDER,
+          `reason: ${event.reason}`,
+          "次: /status で現在地を確認。"
+        ].join("\n");
+      }
       return `Runtime error: ${event.source} ${event.reason}${event.songId ? ` (${event.songId})` : ""}`;
   }
 }

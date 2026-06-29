@@ -51,6 +51,7 @@ describe("Telegram silent-event filter (Plan v10.12)", () => {
       { type: "prompt_pack_ready", songId: "song-001", title: "t", lyricsExcerpt: "l", mood: "m", tempo: "120 BPM", styleNotes: "s", timestamp: 1 },
       { type: "suno_take_url_ready", songId: "song-001", runId: "run-1", urls: ["https://suno.com/song/a"], timestamp: 1 },
       { type: "suno_hard_stop", songId: "song-001", reason: "login_required", timestamp: 1 },
+      { type: "error", source: "telegram_manual_song_create", reason: "ai_provider_not_configured", timestamp: 1 },
       { type: "song_spawn_proposed", brief: { songId: "spawn_x", title: "t", brief: "b", lyricsTheme: "l", mood: "m", tempo: "t", duration: "d", styleNotes: "s", sourceText: "x", createdAt: "2026-05-06T00:00:00Z" }, reason: "ok", candidateSongId: "spawn_x", timestamp: 1 }
     ];
     for (const event of noisy) {
@@ -82,5 +83,22 @@ describe("Telegram silent-event filter (Plan v10.12)", () => {
 
     expect(fetchImpl).toHaveBeenCalledTimes(1);
     expect(fetchImpl.mock.calls[0][0]).toContain("/sendMessage");
+  });
+
+  it("notify() sends manual song create failures with recovery text", async () => {
+    const fetchImpl = vi.fn(sendOk);
+    const notifier = new TelegramNotifier({ token: "token", chatId: 123, fetchImpl });
+
+    await notifier.notify({
+      type: "error",
+      source: "telegram_manual_song_create",
+      reason: "ai_provider_not_configured",
+      timestamp: 1
+    });
+
+    expect(fetchImpl).toHaveBeenCalledTimes(1);
+    const payload = JSON.parse(String((fetchImpl.mock.calls[0][1] as RequestInit).body)) as { text: string };
+    expect(payload.text).toContain("曲作りの開始に失敗した");
+    expect(payload.text).toContain("/status");
   });
 });
