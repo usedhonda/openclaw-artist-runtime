@@ -2,7 +2,7 @@ import type { RuntimeEvent, RuntimeEventBus } from "./runtimeEventBus.js";
 import { TelegramClient, telegramAttemptsFromError, type TelegramFetch } from "./telegramClient.js";
 import { generateArtistResponse, readArtistVoiceContext } from "./artistVoiceResponder.js";
 import type { AiReviewProvider, ProducerDigestMode } from "../types.js";
-import { registerCallbackAction } from "./callbackActionRegistry.js";
+import { markPendingCallbacksForSongResolved, registerCallbackAction } from "./callbackActionRegistry.js";
 import { appendConversationTurn } from "./conversationalSession.js";
 import { proposalForDetection } from "./songDistributionPoller.js";
 import { getTelegramArtistReportTimeoutMs, isInlineButtonsEnabled, isSelfHealNotifyEnabled, isXInlineButtonEnabled } from "./runtimeConfig.js";
@@ -70,6 +70,8 @@ const HARD_STOP_REASON_PATTERNS: Array<{ category: string; pattern: RegExp; mess
     message: "Suno の画面が変わった。状態を確認して /resume すると曲が再開する。"
   }
 ];
+const SUNO_URL_READY_ACTIONS = new Set(["song_archive", "song_discard"]);
+const SONG_COMPLETION_ACTIONS = new Set(["song_archive", "song_discard", "song_songbook_write", "song_skip", "x_publish_prepare"]);
 
 function hardStopCategory(reason: string): string | undefined {
   return HARD_STOP_REASON_PATTERNS.find((entry) => entry.pattern.test(reason))?.category;
@@ -223,6 +225,12 @@ export class TelegramNotifier {
     if (!isInlineButtonsEnabled() || !this.options.workspaceRoot || typeof this.options.chatId !== "number") {
       return;
     }
+    await markPendingCallbacksForSongResolved(this.options.workspaceRoot, {
+      songId: event.songId,
+      actions: SONG_COMPLETION_ACTIONS,
+      status: "updated",
+      reason: "superseded_by_song_take_completed"
+    });
     const actions = [
       registerCallbackAction(this.options.workspaceRoot, {
         action: "song_archive",
@@ -276,6 +284,12 @@ export class TelegramNotifier {
     if (!isInlineButtonsEnabled() || !this.options.workspaceRoot || typeof this.options.chatId !== "number") {
       return;
     }
+    await markPendingCallbacksForSongResolved(this.options.workspaceRoot, {
+      songId: event.songId,
+      actions: SUNO_URL_READY_ACTIONS,
+      status: "updated",
+      reason: "superseded_by_suno_take_url_ready"
+    });
     const [archive, discard] = await Promise.all([
       registerCallbackAction(this.options.workspaceRoot, {
         action: "song_archive",

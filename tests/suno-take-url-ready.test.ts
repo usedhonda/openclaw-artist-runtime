@@ -334,6 +334,39 @@ describe("Suno take URL ready flow", () => {
     expect((await readCallbackActionEntries(root)).find((entry) => entry.callbackId === expired.callbackId && entry.status === "updated")).toBeTruthy();
   });
 
+  it("supersedes older URL-ready buttons when the completed-take notification arrives", async () => {
+    const root = workspace();
+    await ensureArtistWorkspace(root);
+    const fetchImpl = vi.fn()
+      .mockResolvedValueOnce(telegramResponse({ message_id: 77, chat: { id: 123 } }))
+      .mockResolvedValueOnce(telegramResponse(true))
+      .mockResolvedValueOnce(telegramResponse({ message_id: 78, chat: { id: 123 } }))
+      .mockResolvedValueOnce(telegramResponse(true));
+    const notifier = new TelegramNotifier({ token: "token", chatId: 123, workspaceRoot: root, fetchImpl });
+
+    await notifier.notify({
+      type: "suno_take_url_ready",
+      songId: "song-url",
+      runId: "run-ready",
+      selectedTakeId: "take-ready",
+      urls: ["https://suno.com/song/take-ready"],
+      timestamp: 1
+    });
+    await notifier.notify({
+      type: "song_take_completed",
+      songId: "song-url",
+      selectedTakeId: "take-ready",
+      urls: ["https://suno.com/song/take-ready"],
+      timestamp: 2
+    });
+
+    const entries = await readCallbackActionEntries(root);
+    expect(entries.find((entry) => entry.messageId === 77 && entry.action === "song_archive" && entry.status === "updated")).toBeTruthy();
+    expect(entries.find((entry) => entry.messageId === 77 && entry.action === "song_discard" && entry.status === "updated")).toBeTruthy();
+    expect(entries.find((entry) => entry.messageId === 78 && entry.action === "song_archive" && entry.status === "pending")).toBeTruthy();
+    expect(entries.find((entry) => entry.messageId === 78 && entry.action === "song_discard" && entry.status === "pending")).toBeTruthy();
+  });
+
   it("preserves archived status after a successful adoption download import and does not re-pick the song", async () => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date("2026-06-16T00:00:00.000Z"));
