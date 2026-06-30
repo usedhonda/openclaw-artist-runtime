@@ -71,20 +71,22 @@ describe("autopilot planning stage progression", () => {
     expect((await readAutopilotRunState(root)).stage).toBe("suno_generation");
   });
 
-  it("keeps planning proposal skips out of Telegram and pauses stale planning states when pre-generation approval is enabled", async () => {
+  it("sends planning proposal buttons and pauses stale planning states when pre-generation approval is enabled", async () => {
     vi.stubEnv("OPENCLAW_PRE_GENERATION_APPROVAL", "on");
     const root = await planningWorkspace();
-    const fetchImpl = vi.fn().mockResolvedValue(telegramResponse({ message_id: 90, chat: { id: 123 } }));
+    const fetchImpl = vi.fn().mockImplementation(() => Promise.resolve(telegramResponse({ message_id: 90, chat: { id: 123 } })));
     const unsubscribe = new TelegramNotifier({ token: "token", chatId: 123, workspaceRoot: root, aiReviewProvider: "mock", fetchImpl }).subscribe(getRuntimeEventBus());
     const skipped = await new ArtistAutopilotService().runCycle({
       workspaceRoot: root,
       config: { autopilot: { enabled: true, dryRun: true, planningTimeoutDays: 7 }, telegram: { enabled: true } },
       observationRunner: async () => ({ stdout: "planning observation" })
     });
-    await new Promise((resolve) => setTimeout(resolve, 0));
+    await vi.waitFor(async () => {
+      expect(fetchImpl.mock.calls.filter((call) => String(call[0]).includes("/sendMessage"))).toHaveLength(1);
+      expect(fetchImpl.mock.calls.filter((call) => String(call[0]).includes("/editMessageReplyMarkup"))).toHaveLength(1);
+      expect((await readCallbackActionEntries(root)).some((entry) => entry.action === "planning_skeleton_skip")).toBe(true);
+    });
     unsubscribe();
-    expect(fetchImpl).not.toHaveBeenCalled();
-    expect((await readCallbackActionEntries(root)).some((entry) => entry.action === "planning_skeleton_skip")).toBe(false);
     expect(skipped.stage).toBe("planning");
 
     await writeAutopilotRunState(root, {

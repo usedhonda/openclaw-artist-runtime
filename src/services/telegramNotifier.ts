@@ -46,7 +46,10 @@ const TELEGRAM_SIGNAL_EVENT_TYPES: ReadonlySet<RuntimeEvent["type"]> = new Set([
   "song_take_completed",
   "suno_take_url_ready",
   "suno_adoption_download_imported",
-  "suno_adoption_download_failed"
+  "suno_adoption_download_failed",
+  "lyrics_generation_degraded",
+  "planning_skeleton_incomplete",
+  "artist_proactive_notice"
 ]);
 
 const HARD_STOP_REASON_PATTERNS: Array<{ category: string; pattern: RegExp; message: string }> = [
@@ -237,6 +240,12 @@ export class TelegramNotifier {
     }
     if (event.type === "prompt_pack_ready") {
       await this.attachPromptPackReadyButtons(event, sent.message_id);
+    }
+    if (event.type === "lyrics_generation_degraded") {
+      await this.attachLyricsDegradedButtons(event, sent.message_id);
+    }
+    if (event.type === "planning_skeleton_incomplete") {
+      await this.attachPlanningSkeletonButtons(event, sent.message_id, text);
     }
   }
 

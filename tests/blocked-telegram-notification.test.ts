@@ -4,35 +4,48 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { isTelegramSilentEvent, formatRuntimeEvent, TelegramNotifier } from "../src/services/telegramNotifier";
 import type { RuntimeEvent } from "../src/services/runtimeEventBus";
+import { readCallbackActionEntries } from "../src/services/callbackActionRegistry";
 
 function telegramResponse(result: unknown): Response {
   return new Response(JSON.stringify({ ok: true, result }), { status: 200 });
 }
 
 describe("blocked runtime events Telegram delivery", () => {
-  const operationalEvents: RuntimeEvent[] = [
-    {
-      type: "planning_skeleton_incomplete",
-      songId: "song-026",
-      missing: ["tempo"],
-      proposal: {
-        id: "p1",
-        domain: "song",
-        summary: "tempo",
-        fields: [],
-        warnings: [],
-        createdAt: "2026-05-25T00:00:00.000Z",
-        source: "conversation",
-        songId: "song-026"
-      },
-      timestamp: 1
+  const planningSkeletonEvent: RuntimeEvent = {
+    type: "planning_skeleton_incomplete",
+    songId: "song-026",
+    missing: ["tempo"],
+    proposal: {
+      id: "p1",
+      domain: "song",
+      summary: "tempo",
+      fields: [],
+      warnings: [],
+      createdAt: "2026-05-25T00:00:00.000Z",
+      source: "conversation",
+      songId: "song-026"
     },
+    timestamp: 1
+  };
+  const artistProactiveEvent: RuntimeEvent = {
+    type: "artist_proactive_notice",
+    trigger: "suno_trouble",
+    message: "Suno に今つながってない、または timeout で詰まってる。整えて。",
+    nextAction: "次: Suno 接続を整える。戻ったら自動で続きから確認する。",
+    draftCount: 2,
+    buildingCount: 1,
+    songId: "song-026",
+    title: "Matrix Jury",
+    reason: "playwright_live_timeout",
+    stateKey: "suno_trouble:song-026:playwright_live_timeout",
+    timestamp: 1
+  };
+  const operationalEvents: RuntimeEvent[] = [
     { type: "suno_create_failed", songId: "song-026", reason: "playwright_live_timeout", retryCount: 1, timestamp: 1 },
     { type: "suno_generate_retry", songId: "song-026", reason: "suno_worker_not_ready", retryCount: 1, timestamp: 1 },
     { type: "suno_generate_failed", songId: "song-026", reason: "playwright_live_timeout", retryCount: 3, timestamp: 1 },
     { type: "take_selection_stalled", songId: "song-026", reason: "no imported takes", timestamp: 1 },
-    { type: "asset_generation_stalled", songId: "song-026", reason: "asset render failed", timestamp: 1 },
-    { type: "artist_proactive_notice", trigger: "suno_trouble", message: "Suno に今つながってない、または timeout で詰まってる。整えて。", nextAction: "次: Suno 接続を整える。戻ったら自動で続きから確認する。", draftCount: 2, buildingCount: 1, songId: "song-026", title: "Matrix Jury", reason: "playwright_live_timeout", stateKey: "suno_trouble:song-026:playwright_live_timeout", timestamp: 1 }
+    { type: "asset_generation_stalled", songId: "song-026", reason: "asset render failed", timestamp: 1 }
   ];
 
   it("keeps operational blocked events silent in Telegram", async () => {
@@ -52,8 +65,8 @@ describe("blocked runtime events Telegram delivery", () => {
     expect(texts.join("\n")).toContain("─────");
   });
 
-  it("keeps degraded lyrics formatter available but does not push it to Telegram", async () => {
-    const event: RuntimeEvent = {
+  it("sends P4a producer-actionable events and mints buttons where supported", async () => {
+    const lyricsEvent: RuntimeEvent = {
       type: "lyrics_generation_degraded",
       songId: "song-lyrics",
       reason: "lyrics_generation_degraded: provider fallback response",
@@ -61,7 +74,7 @@ describe("blocked runtime events Telegram delivery", () => {
       repairNotes: ["provider fallback response"],
       timestamp: 1
     };
-    const text = await formatRuntimeEvent(event);
+    const text = await formatRuntimeEvent(lyricsEvent);
     expect(text).toContain("歌詞生成で止まった");
     expect(text).toContain("provider fallback response");
     expect(text).not.toContain("Lyrics generation degraded:");
@@ -69,9 +82,27 @@ describe("blocked runtime events Telegram delivery", () => {
     expect(text).toContain("破棄");
 
     const root = mkdtempSync(join(tmpdir(), "artist-runtime-degraded-notify-"));
-    const fetchImpl = vi.fn().mockResolvedValue(telegramResponse({ message_id: 77, chat: { id: 123 } }));
-    await new TelegramNotifier({ token: "token", chatId: 123, workspaceRoot: root, fetchImpl }).notify(event);
-    expect(fetchImpl).not.toHaveBeenCalled();
+    const fetchImpl = vi.fn().mockImplementation(() => Promise.resolve(telegramResponse({ message_id: 77, chat: { id: 123 } })));
+    const notifier = new TelegramNotifier({ token: "token", chatId: 123, workspaceRoot: root, fetchImpl });
+    await notifier.notify(lyricsEvent);
+    await notifier.notify(planningSkeletonEvent);
+    await notifier.notify(artistProactiveEvent);
+
+    const sendCalls = fetchImpl.mock.calls.filter((call) => String(call[0]).includes("/sendMessage"));
+    const markupCalls = fetchImpl.mock.calls.filter((call) => String(call[0]).includes("/editMessageReplyMarkup"));
+    expect(sendCalls).toHaveLength(3);
+    expect(markupCalls).toHaveLength(2);
+    const actions = (await readCallbackActionEntries(root)).map((entry) => entry.action);
+    expect(actions).toEqual(expect.arrayContaining([
+      "lyrics_redraft",
+      "song_discard",
+      "planning_skeleton_apply",
+      "planning_skeleton_skip",
+      "planning_skeleton_edit"
+    ]));
+    const sentTexts = sendCalls.map((call) => JSON.parse(String((call[1] as RequestInit).body)).text as string);
+    expect(sentTexts.at(-1)).toContain("Suno に今つながってない");
+    expect(sentTexts.at(-1)).not.toContain("ボタンで選ぶ");
   });
 
   it("sends actionable Suno hard-stops and keeps transient timeout/network silent", async () => {

@@ -45,7 +45,7 @@ describe("planning_skeleton_incomplete dedup", () => {
     const root = await planningWorkspace();
     const events: RuntimeEvent[] = [];
     const collect = getRuntimeEventBus().subscribe((event) => events.push(event));
-    const fetchImpl = vi.fn().mockResolvedValue(telegramResponse({ message_id: 88, chat: { id: 123 } }));
+    const fetchImpl = vi.fn().mockImplementation(() => Promise.resolve(telegramResponse({ message_id: 88, chat: { id: 123 } })));
     const notifier = new TelegramNotifier({ token: "token", chatId: 123, workspaceRoot: root, aiReviewProvider: "mock", fetchImpl });
     const unsubscribe = notifier.subscribe(getRuntimeEventBus());
 
@@ -58,9 +58,11 @@ describe("planning_skeleton_incomplete dedup", () => {
     await new Promise((resolve) => setTimeout(resolve, 0));
 
     expect(firstState.suspendedAt).toBe("planning_skeleton_pending");
-    const entriesAfterFirst = await readCallbackActionEntries(root);
-    const planningProposalsAfterFirst = entriesAfterFirst.filter((entry) => entry.action === "planning_skeleton_apply").length;
-    expect(planningProposalsAfterFirst).toBe(0);
+    await vi.waitFor(async () => {
+      const entriesAfterFirst = await readCallbackActionEntries(root);
+      const planningProposalsAfterFirst = entriesAfterFirst.filter((entry) => entry.action === "planning_skeleton_apply").length;
+      expect(planningProposalsAfterFirst).toBe(1);
+    });
     expect(events.filter((event) => event.type === "planning_skeleton_incomplete")).toHaveLength(1);
 
     const secondState = await service.runCycle({
@@ -70,9 +72,11 @@ describe("planning_skeleton_incomplete dedup", () => {
     });
     expect(secondState.suspendedAt).toBe("planning_skeleton_pending");
 
-    const entriesAfterSecond = await readCallbackActionEntries(root);
-    const planningProposalsAfterSecond = entriesAfterSecond.filter((entry) => entry.action === "planning_skeleton_apply").length;
-    expect(planningProposalsAfterSecond).toBe(0);
+    await vi.waitFor(async () => {
+      const entriesAfterSecond = await readCallbackActionEntries(root);
+      const planningProposalsAfterSecond = entriesAfterSecond.filter((entry) => entry.action === "planning_skeleton_apply").length;
+      expect(planningProposalsAfterSecond).toBe(1);
+    });
     expect(events.filter((event) => event.type === "planning_skeleton_incomplete")).toHaveLength(1);
 
     collect();
