@@ -86,32 +86,31 @@ describe("prompt pack character audit", () => {
     }
   });
 
-  it("stops the prompt-pack pipeline when Suno registration lyrics still contain kanji", async () => {
+  it("self-repairs known residual kanji in Suno registration lyrics without changing source lyrics", async () => {
     const root = mkdtempSync(join(tmpdir(), "artist-runtime-v55-kanji-"));
     const events: RuntimeEvent[] = [];
     const unsubscribe = getRuntimeEventBus().subscribe((event) => events.push(event));
 
     try {
-      await expect(createAndPersistSunoPromptPack({
+      const result = await createAndPersistSunoPromptPack({
         workspaceRoot: root,
-        songId: "song-kanji-stop",
-        songTitle: "Kanji Stop",
+        songId: "song-kanji-repair",
+        songTitle: "Kanji Repair",
         artistReason: "Suno registration lyrics must be hiragana",
         lyricsText: "[Verse 1]\n街の灯りが遅れる",
         moodHint: "dry civic pulse",
         bpm: 142
-      })).rejects.toThrow("suno_prompt_pack_invalid");
-
-      const state = await readSongState(root, "song-kanji-stop");
-      const degraded = events.find((event) => event.type === "lyrics_generation_degraded" && event.songId === "song-kanji-stop");
-      expect(state.status).toBe("brief");
-      expect(state.degradedLyrics).toBe(true);
-      expect(state.lastReason).toContain("suno_prompt_pack_invalid");
-      expect(degraded).toMatchObject({
-        type: "lyrics_generation_degraded",
-        songId: "song-kanji-stop",
-        reason: expect.stringContaining("suno_prompt_pack_invalid")
       });
+
+      const state = await readSongState(root, "song-kanji-repair");
+      const sourceLyrics = readFileSync(join(root, "songs", "song-kanji-repair", "lyrics", "lyrics.v1.md"), "utf8");
+      const sunoLyrics = readFileSync(result.artifactPaths.lyricsSunoLatest, "utf8");
+      const degraded = events.find((event) => event.type === "lyrics_generation_degraded" && event.songId === "song-kanji-repair");
+      expect(state.status).toBe("suno_prompt_pack");
+      expect(state.degradedLyrics).not.toBe(true);
+      expect(sourceLyrics).toContain("街の灯りが遅れる");
+      expect(sunoLyrics).toContain("まちのあかりがおくれる");
+      expect(degraded).toBeUndefined();
     } finally {
       unsubscribe();
     }

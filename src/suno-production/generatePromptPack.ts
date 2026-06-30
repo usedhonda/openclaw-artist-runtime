@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 import { extractLyricsBody } from "../services/lyricsExtraction.js";
-import { lintJapaneseLyricsEnglishFragments, lintResidualKanji, normalizeAsciiNumbersToHiragana } from "../services/lyricsLanguageLint.js";
+import { lintJapaneseLyricsEnglishFragments, lintResidualKanji, normalizeSunoRegistrationJapanese } from "../services/lyricsLanguageLint.js";
 import { repairCommandLeak } from "../services/lyricsRepair.js";
 import type { AiReviewProvider, CreateSunoPromptPackInput, SunoPromptPack, SunoSliders } from "../types.js";
 import { getSunoLyricsLimit } from "../services/runtimeConfig.js";
@@ -78,7 +78,7 @@ function promptCharCounts(title: string, style: string, lyrics: string, payloadY
 
 export function createSunoPromptPack(input: CreateSunoPromptPackInput): SunoPromptPack {
   const originalLyricsText = repairCommandLeak(input.lyricsText).trim();
-  const lyricsText = normalizeAsciiNumbersToHiragana(originalLyricsText);
+  const lyricsText = normalizeSunoRegistrationJapanese(originalLyricsText);
   const genre = `${input.artistReason} ${input.moodHint ?? ""}`;
   const durationPlan = getDurationPlan();
   const bpm = input.bpm ?? durationPlan.bpm.target;
@@ -175,7 +175,7 @@ export async function createSunoPromptPackWithAi(
   input: CreateSunoPromptPackInput & { aiReviewProvider?: AiReviewProvider }
 ): Promise<SunoPromptPack> {
   const originalLyricsText = repairCommandLeak(input.lyricsText).trim();
-  const lyricsText = normalizeAsciiNumbersToHiragana(originalLyricsText);
+  const lyricsText = normalizeSunoRegistrationJapanese(originalLyricsText);
   const genre = `${input.artistReason} ${input.moodHint ?? ""}`;
   const durationPlan = getDurationPlan();
   const bpm = input.bpm ?? durationPlan.bpm.target;

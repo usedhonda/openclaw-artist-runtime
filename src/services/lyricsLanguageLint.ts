@@ -41,6 +41,31 @@ export function normalizeAsciiNumbersToHiragana(lyrics: string): string {
     .join("\n");
 }
 
+const SUNO_KANJI_REPAIRS: Array<[string, string]> = [
+  ["安全圏", "あんぜんけん"],
+  ["拍手", "はくしゅ"],
+  ["信号", "しんごう"],
+  ["灯り", "あかり"],
+  ["遅れる", "おくれる"],
+  ["消える", "きえる"],
+  ["消え", "きえ"],
+  ["街", "まち"],
+  ["芝", "しば"],
+  ["窓", "まど"],
+  ["名", "めい"],
+  ["消", "き"]
+];
+
+export function normalizeSunoRegistrationJapanese(lyrics: string): string {
+  return normalizeAsciiNumbersToHiragana(lyrics)
+    .split(/\r?\n/)
+    .map((line) => {
+      if (/^\s*\[[^\]]+\]\s*$/.test(line)) return line;
+      return SUNO_KANJI_REPAIRS.reduce((current, [source, replacement]) => current.split(source).join(replacement), line);
+    })
+    .join("\n");
+}
+
 export function lintResidualKanji(lyrics: string): LyricsLanguageWarning[] {
   const warnings: LyricsLanguageWarning[] = [];
   const lines = lyrics.split(/\r?\n/);
