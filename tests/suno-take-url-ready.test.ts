@@ -190,7 +190,7 @@ describe("Suno take URL ready flow", () => {
     }));
   });
 
-  it("formats URL-ready text but keeps Telegram quiet until completion", async () => {
+  it("sends URL-ready text and adoption buttons to Telegram", async () => {
     const root = workspace();
     await ensureArtistWorkspace(root);
     await expect(formatRuntimeEvent({
@@ -198,11 +198,13 @@ describe("Suno take URL ready flow", () => {
       songId: "song-url",
       runId: "run-ready",
       selectedTakeId: "take-ready",
-      urls: ["https://suno.com/song/take-ready"],
+      urls: ["https://suno.com/song/take-ready-a", "https://suno.com/song/take-ready-b"],
       timestamp: 1
     })).resolves.toContain("生成中、じき完成");
 
-    const fetchImpl = vi.fn().mockResolvedValue(telegramResponse({ message_id: 77, chat: { id: 123 } }));
+    const fetchImpl = vi.fn(async (url: string) => url.includes("/editMessageReplyMarkup")
+      ? telegramResponse(true)
+      : telegramResponse({ message_id: 77, chat: { id: 123 } }));
     const notifier = new TelegramNotifier({ token: "token", chatId: 123, workspaceRoot: root, fetchImpl });
 
     await notifier.notify({
@@ -210,11 +212,20 @@ describe("Suno take URL ready flow", () => {
       songId: "song-url",
       runId: "run-ready",
       selectedTakeId: "take-ready",
-      urls: ["https://suno.com/song/take-ready"],
+      urls: ["https://suno.com/song/take-ready-a", "https://suno.com/song/take-ready-b"],
       timestamp: 1
     });
 
-    expect(fetchImpl).not.toHaveBeenCalled();
+    expect(fetchImpl).toHaveBeenCalledTimes(2);
+    expect(fetchImpl).toHaveBeenNthCalledWith(1, expect.stringContaining("/sendMessage"), expect.objectContaining({
+      body: expect.stringContaining("https://suno.com/song/take-ready-a")
+    }));
+    expect(fetchImpl).toHaveBeenNthCalledWith(1, expect.stringContaining("/sendMessage"), expect.objectContaining({
+      body: expect.stringContaining("https://suno.com/song/take-ready-b")
+    }));
+    expect(fetchImpl).toHaveBeenNthCalledWith(2, expect.stringContaining("/editMessageReplyMarkup"), expect.objectContaining({
+      body: expect.stringContaining("inline_keyboard")
+    }));
   });
 
   it("queues one adoption download job and sends URL-valid notice when the delayed import fails", async () => {
@@ -365,10 +376,12 @@ describe("Suno take URL ready flow", () => {
     expect((await readCallbackActionEntries(root)).find((entry) => entry.callbackId === expired.callbackId && entry.status === "updated")).toBeTruthy();
   });
 
-  it("creates only completed-take buttons and no earlier URL-ready buttons", async () => {
+  it("supersedes URL-ready buttons when completed-take buttons arrive", async () => {
     const root = workspace();
     await ensureArtistWorkspace(root);
     const fetchImpl = vi.fn()
+      .mockResolvedValueOnce(telegramResponse({ message_id: 77, chat: { id: 123 } }))
+      .mockResolvedValueOnce(telegramResponse(true))
       .mockResolvedValueOnce(telegramResponse({ message_id: 78, chat: { id: 123 } }))
       .mockResolvedValueOnce(telegramResponse(true));
     const notifier = new TelegramNotifier({ token: "token", chatId: 123, workspaceRoot: root, fetchImpl });
@@ -390,7 +403,8 @@ describe("Suno take URL ready flow", () => {
     });
 
     const entries = await readCallbackActionEntries(root);
-    expect(entries.find((entry) => entry.messageId === 77)).toBeUndefined();
+    expect(entries.find((entry) => entry.messageId === 77 && entry.action === "song_archive" && entry.status === "updated")).toBeTruthy();
+    expect(entries.find((entry) => entry.messageId === 77 && entry.action === "song_discard" && entry.status === "updated")).toBeTruthy();
     expect(entries.find((entry) => entry.messageId === 78 && entry.action === "song_archive" && entry.status === "pending")).toBeTruthy();
     expect(entries.find((entry) => entry.messageId === 78 && entry.action === "song_discard" && entry.status === "pending")).toBeTruthy();
   });
