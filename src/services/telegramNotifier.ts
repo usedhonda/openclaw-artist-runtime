@@ -1700,6 +1700,8 @@ async function formatRuntimeEventRaw(
       return joinTelegramDetailSection(event.text, `trigger: ${event.trigger}${event.songId ? `\nsongId: ${event.songId}` : ""}`);
     case "failed_notify_ledger_append_failed":
       return `Failed-notify ledger append failed: ${event.eventType}${event.songId ? ` (${event.songId})` : ""} ${event.reason}`;
+    case "failed_notify_aged_out":
+      return `Failed notification aged out: ${event.eventType}${event.songId ? ` (${event.songId})` : ""} ${event.maxAgeMs}ms`;
     case "error":
       if (event.source === "telegram_manual_song_create") {
         return [

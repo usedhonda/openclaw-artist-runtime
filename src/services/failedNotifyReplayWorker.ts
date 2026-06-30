@@ -7,7 +7,7 @@ import {
   readFailedNotifyEntries
 } from "./failedNotifyLedger.js";
 import { TelegramNotifier, type TelegramNotifierOptions } from "./telegramNotifier.js";
-import type { RuntimeEvent } from "./runtimeEventBus.js";
+import { emitRuntimeEvent, type RuntimeEvent } from "./runtimeEventBus.js";
 
 export interface FailedNotifyReplayWorkerOptions {
   root: string;
@@ -99,6 +99,15 @@ export async function replayFailedNotificationsOnce(options: FailedNotifyReplayW
     const deliveryId = deliveryIdFor(entry);
     result.deliveryIds.push(deliveryId);
     if (isAgedOut(entry, now, maxAgeMs)) {
+      emitRuntimeEvent({
+        type: "failed_notify_aged_out",
+        notifyId: entry.notifyId,
+        ...(entry.deliveryId ? { deliveryId: entry.deliveryId } : {}),
+        eventType: entry.eventType,
+        ...(entry.songId ? { songId: entry.songId } : {}),
+        maxAgeMs,
+        timestamp: now.getTime()
+      });
       await appendFailedNotifyAgedOutRecord(options.root, entry, { maxAgeMs, now });
       result.agedOut += 1;
       continue;

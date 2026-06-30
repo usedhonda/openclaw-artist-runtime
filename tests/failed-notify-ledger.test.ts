@@ -10,7 +10,7 @@ import {
 } from "../src/services/failedNotifyLedger";
 import { replayFailedNotificationsOnce } from "../src/services/failedNotifyReplayWorker";
 import { buildFailedNotifyListResponse, buildFailedNotifyReplayResponse } from "../src/routes";
-import { RuntimeEventBus, type RuntimeEvent } from "../src/services/runtimeEventBus";
+import { getRuntimeEventBus, RuntimeEventBus, type RuntimeEvent } from "../src/services/runtimeEventBus";
 import { TelegramNotifier } from "../src/services/telegramNotifier";
 
 function promptPackEvent(songId = "spawn_c6ad5e"): Extract<RuntimeEvent, { type: "prompt_pack_ready" }> {
@@ -53,6 +53,7 @@ afterEach(() => {
   delete process.env.OPENCLAW_TELEGRAM_RETRY_MAX;
   delete process.env.OPENCLAW_TELEGRAM_RETRY_BASE_MS;
   delete process.env.TELEGRAM_BOT_TOKEN;
+  getRuntimeEventBus().clearForTest();
   vi.unstubAllGlobals();
 });
 
@@ -225,6 +226,10 @@ describe("failed-notify ledger", () => {
 
   it("replay worker ages out stale critical notifications instead of replaying old producer actions", async () => {
     const root = await mkdtemp(join(tmpdir(), "artist-runtime-replay-aged-out-"));
+    const bus = getRuntimeEventBus();
+    bus.clearForTest();
+    const events: RuntimeEvent[] = [];
+    bus.subscribe((event) => events.push(event));
     const failed = await appendFailedNotification(root, {
       event: promptPackEvent(),
       chatId: 123,
@@ -248,8 +253,17 @@ describe("failed-notify ledger", () => {
       deliveryIds: [failed.deliveryId]
     });
     expect(fetchImpl).not.toHaveBeenCalled();
+    expect(events).toContainEqual(expect.objectContaining({
+      type: "failed_notify_aged_out",
+      notifyId: failed.notifyId,
+      deliveryId: failed.deliveryId,
+      eventType: "prompt_pack_ready",
+      songId: "spawn_c6ad5e",
+      maxAgeMs: 6 * 60 * 60 * 1000
+    }));
     expect(await latestFailedNotifyEntry(root, failed.notifyId)).toMatchObject({ status: "aged_out" });
     await expect(listUnreplayedFailedNotifications(root)).resolves.toHaveLength(0);
+    bus.clearForTest();
   });
 
   it("replay worker suppresses duplicate sends for the same deliveryId", async () => {
