@@ -579,7 +579,7 @@ describe("Suno take URL ready flow", () => {
     });
   });
 
-  it("formats successful adoption download imports in producer-facing Japanese", async () => {
+  it("sends successful adoption download imports to Telegram", async () => {
     await expect(formatRuntimeEvent({
       type: "suno_adoption_download_imported",
       songId: "song-url",
@@ -589,6 +589,22 @@ describe("Suno take URL ready flow", () => {
       paths: ["songs/song-url/suno/take-ready.mp3"],
       timestamp: 1
     })).resolves.toContain("音源ファイルも取れた");
+
+    const fetchImpl = vi.fn(async () => telegramResponse({ message_id: 79, chat: { id: 123 } }));
+    const notifier = new TelegramNotifier({ token: "token", chatId: 123, workspaceRoot: workspace(), fetchImpl });
+    await notifier.notify({
+      type: "suno_adoption_download_imported",
+      songId: "song-url",
+      runId: "run-ready",
+      selectedTakeId: "take-ready",
+      urls: ["https://suno.com/song/take-ready"],
+      paths: ["songs/song-url/suno/take-ready.mp3"],
+      timestamp: 1
+    });
+
+    expect(fetchImpl).toHaveBeenCalledWith(expect.stringContaining("/sendMessage"), expect.objectContaining({
+      body: expect.stringContaining("音源ファイルも取れた")
+    }));
   });
 
   it("formats failed adoption downloads for replayable Telegram notifications", async () => {

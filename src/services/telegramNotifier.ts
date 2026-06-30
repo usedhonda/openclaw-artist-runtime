@@ -45,6 +45,7 @@ const TELEGRAM_SIGNAL_EVENT_TYPES: ReadonlySet<RuntimeEvent["type"]> = new Set([
   "prompt_pack_ready",
   "song_take_completed",
   "suno_take_url_ready",
+  "suno_adoption_download_imported",
   "suno_adoption_download_failed"
 ]);
 
