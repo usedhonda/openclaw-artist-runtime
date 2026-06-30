@@ -43,7 +43,9 @@ describe("blocked runtime events Telegram delivery", () => {
   const operationalEvents: RuntimeEvent[] = [
     { type: "suno_create_failed", songId: "song-026", reason: "playwright_live_timeout", retryCount: 1, timestamp: 1 },
     { type: "suno_generate_retry", songId: "song-026", reason: "suno_worker_not_ready", retryCount: 1, timestamp: 1 },
-    { type: "suno_generate_failed", songId: "song-026", reason: "playwright_live_timeout", retryCount: 3, timestamp: 1 },
+    { type: "suno_generate_failed", songId: "song-026", reason: "playwright_live_timeout", retryCount: 3, timestamp: 1 }
+  ];
+  const stalledEvents: RuntimeEvent[] = [
     { type: "take_selection_stalled", songId: "song-026", reason: "no imported takes", timestamp: 1 },
     { type: "asset_generation_stalled", songId: "song-026", reason: "asset render failed", timestamp: 1 }
   ];
@@ -58,8 +60,26 @@ describe("blocked runtime events Telegram delivery", () => {
     expect(fetchImpl).not.toHaveBeenCalled();
   });
 
+  it("sends stalled operational information events without buttons", async () => {
+    const fetchImpl = vi.fn().mockImplementation(() => Promise.resolve(telegramResponse({ message_id: 77, chat: { id: 123 } })));
+    const notifier = new TelegramNotifier({ token: "token", chatId: 123, fetchImpl });
+    for (const event of stalledEvents) {
+      expect(isTelegramSilentEvent(event), event.type).toBe(false);
+      await notifier.notify(event);
+    }
+    const sendCalls = fetchImpl.mock.calls.filter((call) => String(call[0]).includes("/sendMessage"));
+    const markupCalls = fetchImpl.mock.calls.filter((call) => String(call[0]).includes("/editMessageReplyMarkup"));
+    expect(sendCalls).toHaveLength(2);
+    expect(markupCalls).toHaveLength(0);
+    const texts = sendCalls.map((call) => JSON.parse(String((call[1] as RequestInit).body)).text as string);
+    expect(texts[0]).toContain("take 選別で止まっている");
+    expect(texts[0]).not.toContain("ボタンで選ぶ");
+    expect(texts[1]).toContain("素材作りで止まった");
+    expect(texts[1]).not.toContain("ボタンで選ぶ");
+  });
+
   it("keeps operational event formatters available for status and console surfaces", async () => {
-    const texts = await Promise.all(operationalEvents.map((event) => formatRuntimeEvent(event)));
+    const texts = await Promise.all([...operationalEvents, ...stalledEvents].map((event) => formatRuntimeEvent(event)));
     expect(texts.join("\n")).not.toMatch(/Runtime error|Suno generate retry|Suno generate failed/);
     expect(texts.join("\n")).toContain("song-026");
     expect(texts.join("\n")).toContain("─────");
