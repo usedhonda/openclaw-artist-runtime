@@ -3,7 +3,7 @@ import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
-import { buildPlatformStats, readDistributionEvents } from "../src/services/distributionLedgerReader";
+import { buildPlatformStats, readDistributionEvents, readDistributionEventsWithDiagnostics } from "../src/services/distributionLedgerReader";
 import { ensureArtistWorkspace } from "../src/services/artistWorkspace";
 import { getSocialLedgerArchivePath, getSocialLedgerPath } from "../src/services/socialPublishLedger";
 import { createSongIdea } from "../src/services/songIdeation";
@@ -63,5 +63,23 @@ describe("distribution ledger reader archive support", () => {
     expect(withArchive.instagram.failedReasons).toEqual({
       instagram_graph_accounts_failed_401: 1
     });
+  });
+
+  it("skips corrupt ledger rows and reports an error count", async () => {
+    const root = await prepareRoot();
+    const first = entry("2026-04-24T00:00:00.000Z", "ok");
+    const second = entry("2026-04-24T01:00:00.000Z", "active");
+    await writeFile(getSocialLedgerPath(root, "song-001"), [
+      JSON.stringify(first),
+      "{not json",
+      JSON.stringify(second),
+      ""
+    ].join("\n"), "utf8");
+
+    const result = await readDistributionEventsWithDiagnostics(root, 20);
+
+    expect(result.errorCount).toBe(1);
+    expect(result.events.map((record) => record.reason)).toEqual(["active", "ok"]);
+    await expect(readDistributionEvents(root, 20)).resolves.toHaveLength(2);
   });
 });

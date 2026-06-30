@@ -10,15 +10,31 @@ export interface DistributionLedgerReadOptions {
   includeArchive?: boolean;
 }
 
-async function readJsonlEntries<T>(path: string): Promise<T[]> {
+interface JsonlReadResult<T> {
+  entries: T[];
+  errorCount: number;
+}
+
+export interface DistributionLedgerReadResult {
+  events: DistributionEvent[];
+  errorCount: number;
+}
+
+async function readJsonlEntries<T>(path: string): Promise<JsonlReadResult<T>> {
   const contents = await readFile(path, "utf8").catch(() => "");
   if (!contents) {
-    return [];
+    return { entries: [], errorCount: 0 };
   }
-  return contents
-    .split("\n")
-    .filter(Boolean)
-    .map((line) => JSON.parse(line) as T);
+  const entries: T[] = [];
+  let errorCount = 0;
+  for (const line of contents.split("\n").filter(Boolean)) {
+    try {
+      entries.push(JSON.parse(line) as T);
+    } catch {
+      errorCount += 1;
+    }
+  }
+  return { entries, errorCount };
 }
 
 function dayKey(date: Date): string {
@@ -32,26 +48,36 @@ function buildWindowKeys(now: Date): string[] {
   });
 }
 
-export async function readDistributionEvents(root: string, limit = 20, options: DistributionLedgerReadOptions = {}): Promise<DistributionEvent[]> {
+export async function readDistributionEventsWithDiagnostics(root: string, limit = 20, options: DistributionLedgerReadOptions = {}): Promise<DistributionLedgerReadResult> {
   const songs = await listSongStates(root);
   const all = await Promise.all(
     songs.map(async (song) => {
       const active = await readJsonlEntries<SocialPublishLedgerEntry>(getSocialLedgerPath(root, song.songId));
       const archive = options.includeArchive
         ? await readJsonlEntries<SocialPublishLedgerEntry>(getSocialLedgerArchivePath(root, song.songId))
-        : [];
-      const entries = [...active, ...archive];
-      return entries.map((entry) => ({
-        ...entry,
-        songId: entry.songId || song.songId
-      }));
+        : { entries: [], errorCount: 0 };
+      return {
+        entries: [...active.entries, ...archive.entries].map((entry) => ({
+          ...entry,
+          songId: entry.songId || song.songId
+        })),
+        errorCount: active.errorCount + archive.errorCount
+      };
     })
   );
 
-  return all
-    .flat()
+  const events = all
+    .flatMap((item) => item.entries)
     .sort((left, right) => right.timestamp.localeCompare(left.timestamp))
     .slice(0, limit);
+  return {
+    events,
+    errorCount: all.reduce((total, item) => total + item.errorCount, 0)
+  };
+}
+
+export async function readDistributionEvents(root: string, limit = 20, options: DistributionLedgerReadOptions = {}): Promise<DistributionEvent[]> {
+  return (await readDistributionEventsWithDiagnostics(root, limit, options)).events;
 }
 
 export async function buildPlatformStats(root: string, now = new Date(), options: DistributionLedgerReadOptions = {}): Promise<Record<SocialPlatform, PlatformStat>> {
