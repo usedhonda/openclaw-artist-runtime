@@ -35,7 +35,6 @@ const SILENT_EVENTS: RuntimeEvent[] = [
   { type: "autopilot_ticker_safe_recovery", outcome: "triggered", timestamp: 1 },
   { type: "theme_starvation", source: "observation_empty", details: "empty", timestamp: 1 },
   { type: "bird_cooldown_triggered", reason: "rate", cooldownUntil: "2026-05-06T00:00:00Z", timestamp: 1 },
-  { type: "suno_take_url_ready", songId: "song-001", runId: "run-1", urls: ["https://suno.com/song/a"], timestamp: 1 },
   { type: "error", source: "autopilot", reason: "boom", timestamp: 1 }
 ];
 
@@ -51,6 +50,8 @@ describe("Telegram silent-event filter (Plan v10.12)", () => {
       { type: "song_take_completed", songId: "song-001", urls: ["https://suno.com/song/a"], timestamp: 1 },
       { type: "prompt_pack_ready", songId: "song-001", title: "t", lyricsExcerpt: "l", mood: "m", tempo: "120 BPM", styleNotes: "s", timestamp: 1 },
       { type: "suno_hard_stop", songId: "song-001", reason: "login_required", timestamp: 1 },
+      { type: "suno_take_url_ready", songId: "song-001", runId: "run-1", urls: ["https://suno.com/song/a"], timestamp: 1 },
+      { type: "suno_adoption_download_imported", songId: "song-001", runId: "run-1", urls: ["https://suno.com/song/a"], paths: ["runtime/suno/run-1/a.mp3"], timestamp: 1 },
       { type: "error", source: "telegram_manual_song_create", reason: "ai_provider_not_configured", timestamp: 1 },
       { type: "error", source: "telegram_resume_run_now", reason: "ticker_run_failed", songId: "song-001", timestamp: 1 },
       { type: "song_spawn_proposed", brief: { songId: "spawn_x", title: "t", brief: "b", lyricsTheme: "l", mood: "m", tempo: "t", duration: "d", styleNotes: "s", sourceText: "x", createdAt: "2026-05-06T00:00:00Z" }, reason: "ok", candidateSongId: "spawn_x", timestamp: 1 }
