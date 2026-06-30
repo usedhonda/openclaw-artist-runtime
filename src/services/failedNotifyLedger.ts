@@ -81,8 +81,13 @@ function assertPayloadSafe(event: RuntimeEvent): RuntimeEvent {
 
 async function appendFailedNotifyEntry(root: string, entry: FailedNotifyEntry): Promise<FailedNotifyEntry> {
   const path = failedNotifyLedgerPath(root);
-  await mkdir(dirname(path), { recursive: true });
-  await appendFile(path, `${JSON.stringify(entry)}\n`, "utf8");
+  try {
+    await mkdir(dirname(path), { recursive: true });
+    await appendFile(path, `${JSON.stringify(entry)}\n`, "utf8");
+  } catch (error) {
+    const reason = error instanceof Error ? error.message : String(error);
+    throw new Error(`failed_notify_ledger_append_failed:${reason}`);
+  }
   return entry;
 }
 

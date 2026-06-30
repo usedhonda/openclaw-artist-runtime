@@ -130,6 +130,31 @@ describe("failed-notify ledger", () => {
     });
   });
 
+  it("emits a diagnostic event when failed-notify ledger append fails", async () => {
+    process.env.OPENCLAW_TELEGRAM_RETRY_MAX = "1";
+    process.env.OPENCLAW_TELEGRAM_RETRY_BASE_MS = "1";
+    const bus = new RuntimeEventBus();
+    const events: RuntimeEvent[] = [];
+    bus.subscribe((event) => events.push(event));
+    const notifier = new TelegramNotifier({
+      token: "token",
+      chatId: 123,
+      workspaceRoot: "/dev/null",
+      fetchImpl: vi.fn().mockRejectedValue(timeoutError())
+    });
+    notifier.subscribe(bus);
+
+    bus.emit(promptPackEvent());
+
+    await vi.waitFor(() => {
+      expect(events).toContainEqual(expect.objectContaining({
+        type: "failed_notify_ledger_append_failed",
+        eventType: "prompt_pack_ready",
+        songId: "spawn_c6ad5e"
+      }));
+    });
+  });
+
   it("lists and replays failed notifications without invoking callback dispatch", async () => {
     const root = await mkdtemp(join(tmpdir(), "artist-runtime-replay-notify-"));
     const failed = await appendFailedNotification(root, {

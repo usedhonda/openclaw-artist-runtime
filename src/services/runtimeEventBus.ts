@@ -40,6 +40,7 @@ export type RuntimeEvent =
   | { type: "observation_collected"; topMotifMatch?: string; topScore?: number; entryCount: number; timestamp: number }
   | { type: "artist_presence"; trigger: "observation_high_score" | "producer_silent_after_take"; text: string; songId?: string; timestamp: number }
   | { type: "theme_starvation"; source: "observation_empty" | "motif_bucket_empty"; details?: string; songId?: string; timestamp: number }
+  | { type: "failed_notify_ledger_append_failed"; eventType: string; songId?: string; reason: string; timestamp: number }
   | { type: "error"; source: string; reason: string; songId?: string; timestamp: number };
 
 export type RuntimeEventHandler = (event: RuntimeEvent) => void | Promise<void>;

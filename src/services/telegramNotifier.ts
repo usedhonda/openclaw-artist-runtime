@@ -178,7 +178,15 @@ export class TelegramNotifier {
             error: err,
             attempts: telegramAttemptsFromError(err)
           }).catch((ledgerError) => {
-            console.error(`[telegram-notify] failed-notify ledger append failed event=${event.type} song=${songId} err=${(ledgerError as Error)?.message ?? ledgerError}`);
+            const reason = (ledgerError as Error)?.message ?? String(ledgerError);
+            console.error(`[telegram-notify] failed-notify ledger append failed event=${event.type} song=${songId} err=${reason}`);
+            bus.emit({
+              type: "failed_notify_ledger_append_failed",
+              eventType: event.type,
+              ...(songId !== "(none)" ? { songId } : {}),
+              reason,
+              timestamp: Date.now()
+            });
           });
         }
       });
@@ -1690,6 +1698,8 @@ async function formatRuntimeEventRaw(
       return `Observations collected: ${event.entryCount} entries${typeof event.topScore === "number" ? `, top score=${event.topScore}` : ""}${event.topMotifMatch ? ` (${event.topMotifMatch})` : ""}`;
     case "artist_presence":
       return joinTelegramDetailSection(event.text, `trigger: ${event.trigger}${event.songId ? `\nsongId: ${event.songId}` : ""}`);
+    case "failed_notify_ledger_append_failed":
+      return `Failed-notify ledger append failed: ${event.eventType}${event.songId ? ` (${event.songId})` : ""} ${event.reason}`;
     case "error":
       if (event.source === "telegram_manual_song_create") {
         return [
