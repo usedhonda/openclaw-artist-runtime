@@ -12,8 +12,8 @@ fi
 
 common_args=(
   --allow-unconfigured
-  --bind loopback
-  --auth none
+  --bind "${OPENCLAW_LOCAL_GATEWAY_BIND}"
+  --auth "${OPENCLAW_LOCAL_GATEWAY_AUTH}"
   --port "${OPENCLAW_LOCAL_GATEWAY_PORT}"
 )
 
@@ -40,8 +40,15 @@ try {
 }
 
 config.gateway ??= {};
+const bind = process.env.OPENCLAW_LOCAL_GATEWAY_BIND;
+if (typeof bind === "string" && bind.trim().length > 0) {
+  config.gateway.bind = bind.trim();
+}
 config.gateway.auth ??= {};
-if (typeof config.gateway.auth.mode !== "string" || config.gateway.auth.mode.trim().length === 0) {
+const authMode = process.env.OPENCLAW_LOCAL_GATEWAY_AUTH;
+if (typeof authMode === "string" && authMode.trim().length > 0) {
+  config.gateway.auth.mode = authMode.trim();
+} else if (typeof config.gateway.auth.mode !== "string" || config.gateway.auth.mode.trim().length === 0) {
   config.gateway.auth.mode = "none";
 }
 if (typeof config.gateway.auth.token !== "string" || config.gateway.auth.token.trim().length === 0) {

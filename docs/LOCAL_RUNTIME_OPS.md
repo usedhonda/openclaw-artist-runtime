@@ -11,7 +11,8 @@ The plugin runs inside a repo-local OpenClaw sandbox under `.local/openclaw/`
 kept alive by a supervisor wrapper. The artist autopilot, the Suno browser
 worker, and the Telegram producer room all run inside this gateway process.
 
-- Gateway HTTP/WS: `http://127.0.0.1:43134`
+- Gateway HTTP/WS: `http://<tailscale-ip>:43134` when Tailscale is available;
+  otherwise `http://127.0.0.1:43134`
 - Live workspace + state: `.local/openclaw/workspace/`
 - Secrets (sourced by `scripts/openclaw-local-env.sh`):
   `.local/social-credentials.env`, `.local/news-feeds.env`

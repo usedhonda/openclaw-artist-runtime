@@ -15,9 +15,21 @@ openclaw_local_logs="${openclaw_local_root}/logs"
 openclaw_local_gateway_pid="${openclaw_local_logs}/gateway.pid"
 openclaw_local_gateway_log="${openclaw_local_logs}/gateway.log"
 openclaw_local_gateway_port="${OPENCLAW_LOCAL_GATEWAY_PORT:-43134}"
-openclaw_local_gateway_http_url="http://127.0.0.1:${openclaw_local_gateway_port}"
-openclaw_local_gateway_ws_url="ws://127.0.0.1:${openclaw_local_gateway_port}"
 social_credentials_path="${repo_root}/.local/social-credentials.env"
+
+detect_tailscale_ipv4() {
+  local value=""
+  if command -v tailscale >/dev/null 2>&1; then
+    value="$(tailscale ip -4 2>/dev/null | head -n 1 || true)"
+  fi
+  if [[ -z "${value}" && -x "/Applications/Tailscale.app/Contents/MacOS/Tailscale" ]]; then
+    value="$(/Applications/Tailscale.app/Contents/MacOS/Tailscale ip -4 2>/dev/null | head -n 1 || true)"
+  fi
+  if [[ -z "${value}" ]]; then
+    value="$(ifconfig 2>/dev/null | awk '/^[a-z0-9]+:/{iface=$1; sub(":", "", iface)} /inet 100\\./{print $2; exit}' || true)"
+  fi
+  printf '%s' "${value}"
+}
 
 if [[ -f "${social_credentials_path}" ]]; then
   # shellcheck source=/dev/null
@@ -32,6 +44,21 @@ if [[ -f "${news_feeds_path}" ]]; then
   source "${news_feeds_path}"
 fi
 
+openclaw_tailscale_ip="${OPENCLAW_TAILSCALE_IP:-$(detect_tailscale_ipv4)}"
+openclaw_gateway_public_host="${OPENCLAW_GATEWAY_PUBLIC_HOST:-${openclaw_tailscale_ip:-127.0.0.1}}"
+if [[ -n "${openclaw_tailscale_ip}" ]]; then
+  openclaw_local_gateway_bind="${OPENCLAW_LOCAL_GATEWAY_BIND:-tailnet}"
+else
+  openclaw_local_gateway_bind="${OPENCLAW_LOCAL_GATEWAY_BIND:-loopback}"
+fi
+if [[ "${openclaw_local_gateway_bind}" == "loopback" ]]; then
+  openclaw_local_gateway_auth="${OPENCLAW_LOCAL_GATEWAY_AUTH:-none}"
+else
+  openclaw_local_gateway_auth="${OPENCLAW_LOCAL_GATEWAY_AUTH:-token}"
+fi
+openclaw_local_gateway_http_url="${OPENCLAW_LOCAL_GATEWAY_HTTP_URL:-http://${openclaw_gateway_public_host}:${openclaw_local_gateway_port}}"
+openclaw_local_gateway_ws_url="${OPENCLAW_LOCAL_GATEWAY_WS_URL:-ws://${openclaw_gateway_public_host}:${openclaw_local_gateway_port}}"
+
 export OPENCLAW_LOCAL_ROOT="${openclaw_local_root}"
 export OPENCLAW_LOCAL_PREFIX="${openclaw_local_prefix}"
 export OPENCLAW_HOME="${openclaw_local_home}"
@@ -42,6 +69,10 @@ export OPENCLAW_LOCAL_LOGS="${openclaw_local_logs}"
 export OPENCLAW_LOCAL_GATEWAY_PID="${openclaw_local_gateway_pid}"
 export OPENCLAW_LOCAL_GATEWAY_LOG="${openclaw_local_gateway_log}"
 export OPENCLAW_LOCAL_GATEWAY_PORT="${openclaw_local_gateway_port}"
+export OPENCLAW_LOCAL_GATEWAY_BIND="${openclaw_local_gateway_bind}"
+export OPENCLAW_LOCAL_GATEWAY_AUTH="${openclaw_local_gateway_auth}"
+export OPENCLAW_TAILSCALE_IP="${openclaw_tailscale_ip}"
+export OPENCLAW_GATEWAY_PUBLIC_HOST="${openclaw_gateway_public_host}"
 export OPENCLAW_GATEWAY_PORT="${openclaw_local_gateway_port}"
 export OPENCLAW_LOCAL_GATEWAY_HTTP_URL="${openclaw_local_gateway_http_url}"
 export OPENCLAW_LOCAL_GATEWAY_WS_URL="${openclaw_local_gateway_ws_url}"
@@ -90,8 +121,10 @@ export OPENCLAW_SUNO_LIVE=on
 export OPENCLAW_SUNO_CDP_ENDPOINT="${OPENCLAW_SUNO_CDP_ENDPOINT:-http://127.0.0.1:9222}"
 export OPENCLAW_AUTOPILOT_DRYRUN_OVERRIDE=off
 
-# v10.28-C: dashboard base URL for Telegram body Resources section.
-export OPENCLAW_DASHBOARD_BASE_URL="${OPENCLAW_DASHBOARD_BASE_URL:-http://127.0.0.1:${openclaw_local_gateway_port}}"
+# v10.28-C: dashboard base URL for Telegram body Resources section. Prefer
+# the tailnet URL because producer notifications are usually opened from a
+# phone, where 127.0.0.1 points at the phone instead of this Mac.
+export OPENCLAW_DASHBOARD_BASE_URL="${OPENCLAW_DASHBOARD_BASE_URL:-${openclaw_local_gateway_http_url}}"
 
 # v10.30 polling watchdog after forward-fix (commits c8a8fbd + 5989af1).
 # Watchdog now scoped to expire + 1 reprompt + audit-only, redispatch removed,
@@ -153,9 +186,14 @@ OPENCLAW_LOCAL_LOGS=${OPENCLAW_LOCAL_LOGS}
 OPENCLAW_LOCAL_GATEWAY_PID=${OPENCLAW_LOCAL_GATEWAY_PID}
 OPENCLAW_LOCAL_GATEWAY_LOG=${OPENCLAW_LOCAL_GATEWAY_LOG}
 OPENCLAW_LOCAL_GATEWAY_PORT=${OPENCLAW_LOCAL_GATEWAY_PORT}
+OPENCLAW_LOCAL_GATEWAY_BIND=${OPENCLAW_LOCAL_GATEWAY_BIND}
+OPENCLAW_LOCAL_GATEWAY_AUTH=${OPENCLAW_LOCAL_GATEWAY_AUTH}
+OPENCLAW_TAILSCALE_IP=${OPENCLAW_TAILSCALE_IP}
+OPENCLAW_GATEWAY_PUBLIC_HOST=${OPENCLAW_GATEWAY_PUBLIC_HOST}
 OPENCLAW_GATEWAY_PORT=${OPENCLAW_GATEWAY_PORT}
 OPENCLAW_LOCAL_GATEWAY_HTTP_URL=${OPENCLAW_LOCAL_GATEWAY_HTTP_URL}
 OPENCLAW_LOCAL_GATEWAY_WS_URL=${OPENCLAW_LOCAL_GATEWAY_WS_URL}
+OPENCLAW_DASHBOARD_BASE_URL=${OPENCLAW_DASHBOARD_BASE_URL}
 OPENCLAW_X_FIREFOX_PROFILE=${OPENCLAW_X_FIREFOX_PROFILE:-}
 TELEGRAM_OWNER_USER_IDS=${TELEGRAM_OWNER_USER_IDS:-}
 EOF

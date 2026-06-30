@@ -268,8 +268,8 @@ while true; do
     trap '' HUP
     exec "${script_dir}/openclaw-local" gateway run \
       --allow-unconfigured \
-      --bind loopback \
-      --auth none \
+      --bind "${OPENCLAW_LOCAL_GATEWAY_BIND}" \
+      --auth "${OPENCLAW_LOCAL_GATEWAY_AUTH}" \
       --port "${OPENCLAW_LOCAL_GATEWAY_PORT}" \
       "$@"
   ) >>"${OPENCLAW_LOCAL_GATEWAY_LOG}" 2>&1 &
