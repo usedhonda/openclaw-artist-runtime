@@ -52,6 +52,19 @@ interface OpenedSunoContext {
   close: () => Promise<void>;
 }
 
+interface SunoCreatePollDiagnostics {
+  bestUrlCount: number;
+  selectorMatchedCount: number;
+  expectedCount: number;
+  titleMatched: boolean;
+}
+
+interface SunoCreatePollResult {
+  urls: string[];
+  reason?: string;
+  diagnostics: SunoCreatePollDiagnostics;
+}
+
 function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
@@ -197,11 +210,11 @@ export class PlaywrightSunoDriver implements SunoBrowserDriver {
         };
       }
 
-      await this.captureCreateFailure(page, PLAYWRIGHT_LIVE_TIMEOUT_REASON, request, runId);
+      await this.captureCreateFailure(page, this.createTimeoutReason(generated.diagnostics), request, runId);
       return {
         accepted: false,
         runId,
-        reason: PLAYWRIGHT_LIVE_TIMEOUT_REASON,
+        reason: this.createTimeoutReason(generated.diagnostics),
         urls: [],
         lyricsTelemetry,
         dryRun: request.dryRun
@@ -707,29 +720,37 @@ export class PlaywrightSunoDriver implements SunoBrowserDriver {
     page: Page,
     baselineUrls: Set<string>,
     expectedTitle?: string
-  ): Promise<{ urls: string[]; reason?: string }> {
+  ): Promise<SunoCreatePollResult> {
     const createCardAttempts = Math.max(
       1,
       Math.ceil((this.polling.createCardTimeoutMs ?? PLAYWRIGHT_CREATE_CARD_TIMEOUT_MS) / this.polling.intervalMs)
     );
 
-    const createCardUrls = await this.pollCreateCards(
+    const createCards = await this.pollCreateCards(
       page,
       baselineUrls,
       createCardAttempts,
       expectedTitle,
       PLAYWRIGHT_EXPECTED_CREATE_CARD_COUNT
     );
-    if (createCardUrls.length > 0) {
-      return { urls: createCardUrls, reason: PLAYWRIGHT_CREATE_CARD_REASON };
+    if (createCards.urls.length > 0) {
+      return { urls: createCards.urls, reason: PLAYWRIGHT_CREATE_CARD_REASON, diagnostics: createCards.diagnostics };
     }
 
     const libraryUrls = await this.pollLibrarySongs(page, baselineUrls, createCardAttempts, expectedTitle, PLAYWRIGHT_EXPECTED_CREATE_CARD_COUNT);
     if (libraryUrls.length >= PLAYWRIGHT_EXPECTED_CREATE_CARD_COUNT) {
-      return { urls: libraryUrls, reason: PLAYWRIGHT_CREATE_SNAPSHOT_RECOVERY_REASON };
+      return {
+        urls: libraryUrls,
+        reason: PLAYWRIGHT_CREATE_SNAPSHOT_RECOVERY_REASON,
+        diagnostics: {
+          ...createCards.diagnostics,
+          bestUrlCount: Math.max(createCards.diagnostics.bestUrlCount, libraryUrls.length),
+          titleMatched: true
+        }
+      };
     }
 
-    return { urls: [] };
+    return { urls: [], diagnostics: createCards.diagnostics };
   }
 
   private async readCreateCardSongUrls(page: Page, expectedTitle?: string): Promise<string[]> {
@@ -855,29 +876,54 @@ export class PlaywrightSunoDriver implements SunoBrowserDriver {
     maxAttempts: number,
     expectedTitle?: string,
     expectedCount = PLAYWRIGHT_EXPECTED_CREATE_CARD_COUNT
-  ): Promise<string[]> {
+  ): Promise<{ urls: string[]; diagnostics: SunoCreatePollDiagnostics }> {
     if (!expectedTitle) {
-      return [];
+      return {
+        urls: [],
+        diagnostics: {
+          bestUrlCount: 0,
+          selectorMatchedCount: 0,
+          expectedCount,
+          titleMatched: false
+        }
+      };
     }
     let bestUrls: string[] = [];
+    let selectorMatchedCount = 0;
     for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
       const titleMatchedUrls = Array.from(
         new Set((await this.readCreateCardSongUrls(page, expectedTitle)).filter((url) => !baselineUrls.has(url)))
       );
       if (attempt === 0) {
-        await page.locator(`button[aria-label^="Play "]`).evaluateAll(() => []).catch(() => []);
+        selectorMatchedCount = await page.locator(`button[aria-label^="Play "]`).count().catch(() => 0);
       }
       if (titleMatchedUrls.length > bestUrls.length) {
         bestUrls = titleMatchedUrls;
       }
       if (bestUrls.length >= expectedCount) {
-        return bestUrls;
+        return {
+          urls: bestUrls,
+          diagnostics: {
+            bestUrlCount: bestUrls.length,
+            selectorMatchedCount,
+            expectedCount,
+            titleMatched: true
+          }
+        };
       }
       if (attempt < maxAttempts - 1) {
         await sleep(this.polling.intervalMs);
       }
     }
-    return bestUrls.length >= expectedCount ? bestUrls : [];
+    return {
+      urls: bestUrls.length >= expectedCount ? bestUrls : [],
+      diagnostics: {
+        bestUrlCount: bestUrls.length,
+        selectorMatchedCount,
+        expectedCount,
+        titleMatched: bestUrls.length > 0
+      }
+    };
   }
 
   private async pollLibrarySongs(
@@ -1015,6 +1061,16 @@ export class PlaywrightSunoDriver implements SunoBrowserDriver {
       return PLAYWRIGHT_CREATE_NETWORK_REASON;
     }
     return "playwright_create_failed";
+  }
+
+  private createTimeoutReason(diagnostics: SunoCreatePollDiagnostics): string {
+    return [
+      PLAYWRIGHT_LIVE_TIMEOUT_REASON,
+      `bestUrlCount=${diagnostics.bestUrlCount}`,
+      `selectorMatchedCount=${diagnostics.selectorMatchedCount}`,
+      `expectedCount=${diagnostics.expectedCount}`,
+      `titleMatched=${diagnostics.titleMatched ? "true" : "false"}`
+    ].join(";");
   }
 
   private errorMessage(error: unknown): string {

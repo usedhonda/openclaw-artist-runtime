@@ -433,8 +433,45 @@ describe("PlaywrightSunoDriver create", () => {
     });
 
     expect(result.accepted).toBe(false);
-    expect(result.reason).toBe(PLAYWRIGHT_LIVE_TIMEOUT_REASON);
+    expect(result.reason).toContain(PLAYWRIGHT_LIVE_TIMEOUT_REASON);
+    expect(result.reason).toContain("bestUrlCount=0");
+    expect(result.reason).toContain("selectorMatchedCount=");
+    expect(result.reason).toContain("expectedCount=2");
+    expect(result.reason).toContain("titleMatched=false");
     expect(page.goto.mock.calls.filter(([url]) => url === SUNO_LIBRARY_URL).length).toBeGreaterThan(0);
+  });
+
+  it("includes partial create-card diagnostics when only one new URL appears", async () => {
+    const { page, context } = createContext();
+    page.counts[`button[aria-label^="Play "]`] = 1;
+    page.createCardSnapshots.push(
+      ["https://suno.com/song/existing-1"],
+      ["https://suno.com/song/existing-1", "https://suno.com/song/new-only-one"]
+    );
+    launchPersistentContextMock.mockResolvedValue(context);
+    const driver = new PlaywrightSunoDriver(
+      ".openclaw-browser-profiles/suno",
+      "live",
+      ".",
+      { intervalMs: 1, timeoutMs: 4, createCardTimeoutMs: 2 }
+    );
+
+    const result = await driver.create({
+      dryRun: false,
+      authority: "auto_create_and_select_take",
+      runId: "run-partial-card",
+      payload: {
+        songName: "Run Partial",
+        lyrics: "line one"
+      }
+    });
+
+    expect(result.accepted).toBe(false);
+    expect(result.reason).toContain(PLAYWRIGHT_LIVE_TIMEOUT_REASON);
+    expect(result.reason).toContain("bestUrlCount=1");
+    expect(result.reason).toContain("selectorMatchedCount=1");
+    expect(result.reason).toContain("expectedCount=2");
+    expect(result.reason).toContain("titleMatched=true");
   });
 
   it("keeps create-card polling scoped to completed clip rows", async () => {
@@ -464,7 +501,7 @@ describe("PlaywrightSunoDriver create", () => {
     expect(createCardSelector).toBe("[aria-label=\"Play Run 003bd\"], [aria-label^=\"Play Run 003bd \"]");
     expect(createCardSelector).not.toContain("generation-card");
     expect(createCardSelector).not.toContain("generating");
-    expect(result.reason).toBe(PLAYWRIGHT_LIVE_TIMEOUT_REASON);
+    expect(result.reason).toContain(PLAYWRIGHT_LIVE_TIMEOUT_REASON);
     expect(result.urls).toEqual([]);
     expect(page.goto.mock.calls.filter(([url]) => url === SUNO_LIBRARY_URL).length).toBeGreaterThan(0);
   });
@@ -581,7 +618,10 @@ describe("PlaywrightSunoDriver create", () => {
     });
 
     expect(result.accepted).toBe(false);
-    expect(result.reason).toBe(PLAYWRIGHT_LIVE_TIMEOUT_REASON);
+    expect(result.reason).toContain(PLAYWRIGHT_LIVE_TIMEOUT_REASON);
+    expect(result.reason).toContain("bestUrlCount=0");
+    expect(result.reason).toContain("expectedCount=2");
+    expect(result.reason).toContain("titleMatched=false");
     expect(page.clicks).toContain("button[aria-label=\"Create song\"]");
     expect(page.waitForTimeout).not.toHaveBeenCalled();
     expect(page.goto.mock.calls.filter(([url]) => url === SUNO_LIBRARY_URL).length).toBeGreaterThan(0);
@@ -609,7 +649,7 @@ describe("PlaywrightSunoDriver create", () => {
     });
 
     expect(result.accepted).toBe(false);
-    expect(result.reason).toBe(PLAYWRIGHT_LIVE_TIMEOUT_REASON);
+    expect(result.reason).toContain(PLAYWRIGHT_LIVE_TIMEOUT_REASON);
     expect(page.clicks).toContain("button[aria-label=\"Create song\"]");
     expect(page.waitForTimeout).not.toHaveBeenCalled();
     expect(page.goto.mock.calls.filter(([url]) => url === SUNO_LIBRARY_URL).length).toBeGreaterThan(0);

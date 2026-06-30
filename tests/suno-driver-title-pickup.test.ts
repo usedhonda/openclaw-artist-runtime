@@ -148,7 +148,10 @@ describe("Suno driver title-based pickup", () => {
       }
     });
 
-    expect(result.reason).toBe(PLAYWRIGHT_LIVE_TIMEOUT_REASON);
+    expect(result.reason).toContain(PLAYWRIGHT_LIVE_TIMEOUT_REASON);
+    expect(result.reason).toContain("bestUrlCount=0");
+    expect(result.reason).toContain("expectedCount=2");
+    expect(result.reason).toContain("titleMatched=false");
     expect(result.urls).toEqual([]);
     expect(page.selectors).toContain("button[aria-label=\"Play Mijikai Kage\"]");
     expect(page.selectors.filter((selector) => selector === "button[aria-label^=\"Play \"]")).toHaveLength(1);
