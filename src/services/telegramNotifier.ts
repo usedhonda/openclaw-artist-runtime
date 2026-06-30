@@ -51,7 +51,8 @@ const TELEGRAM_SIGNAL_EVENT_TYPES: ReadonlySet<RuntimeEvent["type"]> = new Set([
   "planning_skeleton_incomplete",
   "artist_proactive_notice",
   "take_selection_stalled",
-  "asset_generation_stalled"
+  "asset_generation_stalled",
+  "suno_generate_failed"
 ]);
 
 const HARD_STOP_REASON_PATTERNS: Array<{ category: string; pattern: RegExp; message: string }> = [
