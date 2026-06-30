@@ -159,6 +159,33 @@ export function shouldEmitOperationalEpisode(existing: AutopilotRunState, marker
   return existing.blockedReason !== marker && existing.lastError !== marker;
 }
 
+const DEFAULT_SUNO_IMPORT_STALL_MS = 20 * 60 * 1000;
+const SUNO_IMPORT_NO_URLS_REASON = "playwright_import_no_urls";
+const SUNO_IMPORT_NO_URLS_BLOCKED_REASON = `suno_generate_retry:${SUNO_IMPORT_NO_URLS_REASON}`;
+
+function sunoImportStallMs(env: NodeJS.ProcessEnv = process.env): number {
+  const raw = env.OPENCLAW_SUNO_IMPORT_STALL_MINUTES?.trim();
+  if (!raw) {
+    return DEFAULT_SUNO_IMPORT_STALL_MS;
+  }
+  const minutes = Number(raw);
+  if (!Number.isFinite(minutes) || minutes <= 0) {
+    return DEFAULT_SUNO_IMPORT_STALL_MS;
+  }
+  return minutes * 60 * 1000;
+}
+
+function isStaleAcceptedSunoRunWithoutUrls(createdAt: string | undefined, now = Date.now()): boolean {
+  if (!createdAt) {
+    return false;
+  }
+  const createdMs = Date.parse(createdAt);
+  if (!Number.isFinite(createdMs)) {
+    return false;
+  }
+  return now - createdMs >= sunoImportStallMs();
+}
+
 // Suno's lyrics box transiently degrades (5000 -> 1250 maxLength). The driver surfaces
 // this as a retryable suno_lyrics_box_degraded reason (not a hard truncation), so the
 // autopilot self-heals across ticks instead of hard-pausing for the operator. The cap
@@ -499,7 +526,8 @@ export async function writeAutopilotRunState(root: string, state: AutopilotRunSt
 async function importPendingSunoGeneration(
   root: string,
   songId: string,
-  config: ArtistRuntimeConfig
+  config: ArtistRuntimeConfig,
+  existing?: AutopilotRunState
 ): Promise<{ imported: true } | { imported: false; reason?: string; pause?: true } | undefined> {
   const connector = new BrowserWorkerSunoConnector(root, { config });
   const latestRun = await readLatestSunoRun(root, songId);
@@ -534,6 +562,18 @@ async function importPendingSunoGeneration(
     });
   }
   if (urls.length === 0) {
+    if (hasAcceptedRun && isStaleAcceptedSunoRunWithoutUrls(latestRun?.createdAt)) {
+      if (!existing || shouldEmitOperationalEpisode(existing, SUNO_IMPORT_NO_URLS_BLOCKED_REASON)) {
+        emitRuntimeEvent({
+          type: "suno_generate_retry",
+          songId,
+          reason: SUNO_IMPORT_NO_URLS_REASON,
+          retryCount: existing ? existing.retryCount + 1 : 1,
+          timestamp: Date.now()
+        });
+      }
+      return { imported: false, reason: SUNO_IMPORT_NO_URLS_BLOCKED_REASON };
+    }
     return { imported: false, reason: "waiting for Suno result import" };
   }
 
@@ -1489,7 +1529,7 @@ export class ArtistAutopilotService {
         case "suno_generation": {
           const importBeforeUrlReadyRecovery = song.status === "suno_running";
           if (importBeforeUrlReadyRecovery) {
-            const pendingImport = await importPendingSunoGeneration(input.workspaceRoot, song.songId, config);
+            const pendingImport = await importPendingSunoGeneration(input.workspaceRoot, song.songId, config, existing);
             if (pendingImport?.imported) {
               return writeStageState(input.workspaceRoot, existing, {
                 ...baseState,

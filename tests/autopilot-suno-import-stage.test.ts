@@ -23,7 +23,7 @@ vi.mock("../src/connectors/suno/browserWorkerConnector", () => ({
   }))
 }));
 
-async function writeAcceptedRun(root: string, songId: string, runId: string, urls: string[]): Promise<void> {
+async function writeAcceptedRun(root: string, songId: string, runId: string, urls: string[], createdAt = "2026-05-15T00:00:00.000Z"): Promise<void> {
   const runsPath = join(root, "songs", songId, "suno", "runs.jsonl");
   await mkdir(join(root, "songs", songId, "suno"), { recursive: true });
   await writeFile(
@@ -31,7 +31,7 @@ async function writeAcceptedRun(root: string, songId: string, runId: string, url
     `${JSON.stringify({
       runId,
       songId,
-      createdAt: "2026-05-15T00:00:00.000Z",
+      createdAt,
       mode: "background_browser_worker",
       authorityDecision: { allowed: true, reason: "test accepted", policyDecision: "allow" },
       status: "accepted",
@@ -48,6 +48,7 @@ describe("autopilot Suno import stage", () => {
     connectorImportResults.mockReset();
     connectorCreate.mockReset();
     getRuntimeEventBus().clearForTest();
+    delete process.env.OPENCLAW_SUNO_IMPORT_STALL_MINUTES;
   });
 
   it("imports pending worker results instead of starting another create", async () => {
@@ -155,6 +156,56 @@ describe("autopilot Suno import stage", () => {
       source: "suno_lifecycle_contract",
       songId: "restart-song",
       reason: "suno_lifecycle_contract_pending_import:run-accepted"
+    }));
+    consoleError.mockRestore();
+    unsubscribe();
+  });
+
+  it("escalates an old accepted run with no URLs without starting another create", async () => {
+    process.env.OPENCLAW_SUNO_IMPORT_STALL_MINUTES = "1";
+    const root = mkdtempSync(join(tmpdir(), "artist-runtime-autopilot-import-stall-"));
+    const events: RuntimeEvent[] = [];
+    const unsubscribe = getRuntimeEventBus().subscribe((event) => events.push(event));
+    const consoleError = vi.spyOn(console, "error").mockImplementation(() => undefined);
+    await ensureArtistWorkspace(root);
+    await ensureSongState(root, "stalled-song", "Stalled Song");
+    await updateSongState(root, "stalled-song", { status: "suno_running" });
+    await writeAcceptedRun(root, "stalled-song", "run-stalled", [], "2026-05-15T00:00:00.000Z");
+    await writeAutopilotRunState(root, {
+      runId: "stalled-song",
+      currentSongId: "stalled-song",
+      stage: "suno_generation",
+      paused: false,
+      retryCount: 0,
+      cycleCount: 2,
+      updatedAt: "2026-05-15T00:10:00.000Z",
+      lastRunAt: "2026-05-15T00:00:00.000Z",
+      lastSuccessfulStage: "suno_generation",
+      blockedReason: "waiting for Suno result import"
+    });
+    connectorStatus.mockResolvedValue({
+      state: "connected",
+      connected: true
+    });
+
+    const state = await new ArtistAutopilotService().runCycle({
+      workspaceRoot: root,
+      config: { artist: { workspaceRoot: root }, autopilot: { enabled: true, dryRun: false }, music: { suno: { driver: "playwright" as const } } }
+    });
+
+    expect(connectorImportResults).not.toHaveBeenCalled();
+    expect(connectorCreate).not.toHaveBeenCalled();
+    expect(state).toMatchObject({
+      stage: "suno_generation",
+      paused: false,
+      blockedReason: "suno_generate_retry:playwright_import_no_urls",
+      lastError: "suno_generate_retry:playwright_import_no_urls"
+    });
+    expect(events).toContainEqual(expect.objectContaining({
+      type: "suno_generate_retry",
+      songId: "stalled-song",
+      reason: "playwright_import_no_urls",
+      retryCount: 1
     }));
     consoleError.mockRestore();
     unsubscribe();
