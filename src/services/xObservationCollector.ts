@@ -110,7 +110,7 @@ function observationPath(root: string, now = new Date()): string {
 
 function defaultRunner(query?: string): () => Promise<{ stdout: string; stderr?: string }> {
   return async () => {
-    const args = query ? ["search", query, "--plain"] : ["home", "--plain"];
+    const args = query ? ["search", query, "--json"] : ["home", "--plain"];
     const { execFile } = await import("node:child_process");
     return new Promise((resolve, reject) => {
       execFile("bird", args, { timeout: 30_000, maxBuffer: 512 * 1024 }, (error, stdout, stderr) => {
@@ -185,9 +185,44 @@ function parseBirdLines(source: string): XObservationEntry[] {
     });
 }
 
+interface BirdJsonTweet {
+  id?: string | number;
+  text?: string;
+  createdAt?: string;
+  author?: {
+    username?: string;
+    name?: string;
+  };
+}
+
+function parseBirdJsonOutput(source: string): XObservationEntry[] | undefined {
+  const trimmed = source.trim();
+  if (!trimmed.startsWith("[")) return undefined;
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(trimmed);
+  } catch {
+    return undefined;
+  }
+  if (!Array.isArray(parsed)) return undefined;
+  return parsed.map((item) => {
+    const tweet = item as BirdJsonTweet;
+    const author = tweet.author?.username;
+    const id = tweet.id === undefined ? undefined : String(tweet.id);
+    return {
+      text: typeof tweet.text === "string" ? tweet.text.replace(/\s+/g, " ").trim() : "",
+      author,
+      url: author && id ? `https://x.com/${author}/status/${id}` : undefined,
+      postedAt: typeof tweet.createdAt === "string" ? tweet.createdAt : undefined
+    };
+  }).filter((entry) => entry.text || entry.author || entry.url || entry.postedAt);
+}
+
 function parseBirdOutput(source: string): XObservationEntry[] {
   const trimmed = source.trim();
   if (!trimmed) return [];
+  const jsonEntries = parseBirdJsonOutput(trimmed);
+  if (jsonEntries) return jsonEntries;
   if (recordSeparatorPattern.test(trimmed)) {
     return trimmed
       .split(recordSeparatorPattern)

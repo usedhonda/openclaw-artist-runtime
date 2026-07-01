@@ -34,6 +34,38 @@ describe("x observation URL capture", () => {
     expect(written).toContain("url: \"https://x.com/city_watcher/status/1234567890\"");
     expect(written).toContain("postedAt: \"2026-05-01T15:00:00.000Z\"");
   });
+
+  it("builds tweet URLs from bird JSON search output", async () => {
+    const root = await workspace();
+    const stdout = JSON.stringify([
+      {
+        id: "2072354540402409591",
+        text: "渋谷の安全ごっこに違和感がある",
+        createdAt: "Wed Jul 01 16:19:59 +0000 2026",
+        author: {
+          username: "city_watch",
+          name: "City Watch"
+        }
+      }
+    ]);
+
+    const result = await collectObservations(root, {
+      now: FIXED_NOW,
+      query: "\"渋谷\" lang:ja",
+      runner: fakeRunner(stdout)
+    });
+
+    const report = await readObservationsReport(root, FIXED_NOW);
+    expect(result.status).toBe("collected");
+    expect(report.entries).toHaveLength(1);
+    expect(report.entries[0]).toMatchObject({
+      text: "渋谷の安全ごっこに違和感がある",
+      author: "city_watch",
+      url: "https://x.com/city_watch/status/2072354540402409591",
+      postedAt: "Wed Jul 01 16:19:59 +0000 2026"
+    });
+    await expect(readFile(join(root, "runtime", "x-observation-rejected.jsonl"), "utf8")).rejects.toThrow();
+  });
 });
 
 describe("x observation discard rules (short URL / missing author / missing postedAt)", () => {
