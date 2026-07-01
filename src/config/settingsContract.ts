@@ -21,6 +21,7 @@ export const settingContract = [
   { path: "autopilot.cycleIntervalMinutes", kind: "runtimeEffective" },
   { path: "autopilot.planningTimeoutDays", kind: "runtimeEffective" },
   { path: "autopilot.producerDigest", kind: "runtimeEffective" },
+  { path: "dashboard.baseUrl", kind: "runtimeEffective" },
   { path: "music.engine", kind: "runtimeEffective" },
   { path: "music.suno.enabled", kind: "runtimeEffective" },
   { path: "music.suno.connectionMode", kind: "runtimeEffective" },

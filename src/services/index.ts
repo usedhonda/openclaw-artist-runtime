@@ -7,7 +7,7 @@ import { getAutopilotTicker } from "./autopilotTicker.js";
 import { startCallbackPollingWatchdog } from "./callbackPollingWatchdog.js";
 import { getRuntimeEventBus } from "./runtimeEventBus.js";
 import { appendRuntimeEvent } from "./runtimeEventsLedger.js";
-import { isTelegramNotifierEnabled, resolveDefaultWorkspaceRoot, resolveRuntimeConfig } from "./runtimeConfig.js";
+import { getDashboardBaseUrl, isTelegramNotifierEnabled, resolveDefaultWorkspaceRoot, resolveRuntimeConfig } from "./runtimeConfig.js";
 import { SocialDistributionWorker } from "./socialDistributionWorker.js";
 import { SunoBrowserWorker } from "./sunoBrowserWorker.js";
 import { startFailedNotifyReplayWorker } from "./failedNotifyReplayWorker.js";
@@ -123,7 +123,7 @@ export async function startTelegramNotifierFromEnv(env: NodeJS.ProcessEnv = proc
   }
   const workspaceRoot = env.OPENCLAW_LOCAL_WORKSPACE?.trim() || resolveDefaultWorkspaceRoot();
   const config = await resolveRuntimeConfig({ artist: { workspaceRoot } } as Partial<ArtistRuntimeConfig>, workspaceRoot);
-  const dashboardBaseUrl = env.OPENCLAW_DASHBOARD_BASE_URL?.trim() || undefined;
+  const dashboardBaseUrl = getDashboardBaseUrl(config, env);
   telegramNotifierUnsubscribers = ownerIds.map((chatId) => new TelegramNotifier({
     token,
     chatId: Number.isFinite(Number(chatId)) ? Number(chatId) : chatId,

@@ -79,6 +79,9 @@ export function applyConfigDefaults(config?: PartialDeep<ArtistRuntimeConfig>): 
   if (config.autopilot) {
     Object.assign(merged.autopilot, config.autopilot);
   }
+  if (config.dashboard) {
+    Object.assign(merged.dashboard, config.dashboard);
+  }
   if (config.music) {
     if (config.music.engine !== undefined) {
       merged.music.engine = config.music.engine;
@@ -155,7 +158,7 @@ export function validateConfig(config: unknown): ValidationResult<ArtistRuntimeC
     return { ok: false, errors: ["config must be an object"], warnings };
   }
 
-  validateKnownKeys("config", config, ["schemaVersion", "artist", "autopilot", "music", "distribution", "telegram", "artistPulse", "commission", "songSpawn", "aiReview", "ui", "safety"], errors);
+  validateKnownKeys("config", config, ["schemaVersion", "artist", "autopilot", "dashboard", "music", "distribution", "telegram", "artistPulse", "commission", "songSpawn", "aiReview", "ui", "safety"], errors);
 
   if ("schemaVersion" in config && !isIntegerInRange(config.schemaVersion, 1, CURRENT_CONFIG_SCHEMA_VERSION)) {
     errors.push(`config.schemaVersion must be an integer between 1 and ${CURRENT_CONFIG_SCHEMA_VERSION}`);
@@ -218,6 +221,17 @@ export function validateConfig(config: unknown): ValidationResult<ArtistRuntimeC
       }
       if ("producerDigest" in config.autopilot) {
         validateEnum("config.autopilot.producerDigest", config.autopilot.producerDigest, producerDigestModes, errors);
+      }
+    }
+  }
+
+  if ("dashboard" in config) {
+    if (!isRecord(config.dashboard)) {
+      errors.push("config.dashboard must be an object");
+    } else {
+      validateKnownKeys("config.dashboard", config.dashboard, ["baseUrl"], errors);
+      if ("baseUrl" in config.dashboard && typeof config.dashboard.baseUrl !== "string") {
+        errors.push("config.dashboard.baseUrl must be a string");
       }
     }
   }

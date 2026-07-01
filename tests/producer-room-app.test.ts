@@ -265,6 +265,7 @@ describe("ProducerRoomApp Songs and Settings views", () => {
     expect(html).toContain("Suno Budget");
     expect(html).toContain("Platforms");
     expect(html).toContain("Telegram");
+    expect(html).toContain("Dashboard URL");
     expect(html).toContain("AI / Audit");
     expect(html).toContain("Creation driver");
     expect(html).toContain("Browser worker");
@@ -341,9 +342,11 @@ describe("ProducerRoomApp Songs and Settings views", () => {
         "music.suno.connectionMode": { source: "env" as const, editable: false, envVar: "OPENCLAW_SUNO_LIVE" },
         "music.suno.driver": { source: "env" as const, editable: false, envVar: "OPENCLAW_SUNO_LIVE" },
         "music.suno.submitMode": { source: "env" as const, editable: false, envVar: "OPENCLAW_SUNO_LIVE" },
+        "dashboard.baseUrl": { source: "env" as const, editable: true, envVar: "OPENCLAW_DASHBOARD_BASE_URL" },
         "aiReview.provider": { source: "env" as const, editable: false, envVar: "OPENCLAW_AI_REVIEW_PROVIDER" }
       },
       ui: { locale: "auto" as const },
+      dashboard: { baseUrl: "https://tailnet.example.test" },
       artist: { artistId: "artist", workspaceRoot: "/tmp/artist" },
       music: { suno: { dailyCreditLimit: 4, monthlyCreditLimit: 40, monthlyGenerationBudget: 50, maxGenerationsPerDay: 4, minMinutesBetweenCreates: 20, driver: "playwright" as const, submitMode: "live" as const } },
       autopilot: { enabled: true, dryRun: false, songsPerWeek: 3, cycleIntervalMinutes: 60, planningTimeoutDays: 7, producerDigest: "daily" as const },
@@ -381,7 +384,9 @@ describe("ProducerRoomApp Songs and Settings views", () => {
 
     expect(html).toContain("source: env OPENCLAW_AUTOPILOT_DRYRUN_OVERRIDE");
     expect(html).toContain("source: env OPENCLAW_SUNO_LIVE");
+    expect(html).toContain("source: env OPENCLAW_DASHBOARD_BASE_URL");
     expect(html).toContain("source: env OPENCLAW_AI_REVIEW_PROVIDER");
+    expect(html).toContain("editable fallback");
     expect(html).toContain("read-only here");
     expect(html).toContain("disabled");
   });

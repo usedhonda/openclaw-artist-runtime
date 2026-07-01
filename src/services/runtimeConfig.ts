@@ -264,8 +264,11 @@ export function getTelegramBotToken(env: NodeJS.ProcessEnv = process.env): strin
   return env.TELEGRAM_BOT_TOKEN;
 }
 
-export function getDashboardBaseUrl(env: NodeJS.ProcessEnv = process.env): string | undefined {
-  return env.OPENCLAW_DASHBOARD_BASE_URL?.trim() || undefined;
+export function getDashboardBaseUrl(
+  config?: Pick<ArtistRuntimeConfig, "dashboard">,
+  env: NodeJS.ProcessEnv = process.env
+): string | undefined {
+  return config?.dashboard?.baseUrl?.trim() || env.OPENCLAW_DASHBOARD_BASE_URL?.trim() || undefined;
 }
 
 export function getAutopilotTickStallMs(env: NodeJS.ProcessEnv = process.env): number | undefined {
@@ -530,6 +533,7 @@ export function mergeResolvedConfig(current: ArtistRuntimeConfig, patch: Partial
     schemaVersion: patch.schemaVersion ?? current.schemaVersion,
     artist: { ...current.artist, ...patch.artist },
     autopilot: { ...current.autopilot, ...patch.autopilot },
+    dashboard: { ...current.dashboard, ...patch.dashboard },
     music: {
       ...current.music,
       ...patch.music,

@@ -54,4 +54,31 @@ describe("config field source metadata", () => {
     expect(patch.autopilot?.cycleIntervalMinutes).toBe(180);
     expect(patch.music?.suno?.dailyCreditLimit).toBe(60);
   });
+
+  it("surfaces dashboard env fallback as editable instead of read-only", async () => {
+    const root = mkdtempSync(join(tmpdir(), "artist-runtime-config-meta-dashboard-"));
+    await mkdir(join(root, "runtime"), { recursive: true });
+    vi.stubEnv("OPENCLAW_DASHBOARD_BASE_URL", "https://tailnet.example.test");
+
+    const config = await buildConfigResponse({ artist: { workspaceRoot: root } as never });
+    const patch = buildConfigUpdatePatch(buildConfigDraft(config));
+
+    expect(config.dashboard.baseUrl).toBe("https://tailnet.example.test");
+    expect(config.fieldMeta["dashboard.baseUrl"]).toMatchObject({ source: "env", editable: true, envVar: "OPENCLAW_DASHBOARD_BASE_URL" });
+    expect(patch.dashboard?.baseUrl).toBe("https://tailnet.example.test");
+  });
+
+  it("uses configured dashboard URL ahead of env fallback", async () => {
+    const root = mkdtempSync(join(tmpdir(), "artist-runtime-config-meta-dashboard-config-"));
+    await mkdir(join(root, "runtime"), { recursive: true });
+    await writeFile(join(root, "runtime", "config-overrides.json"), JSON.stringify({
+      dashboard: { baseUrl: "https://config.example.test" }
+    }), "utf8");
+    vi.stubEnv("OPENCLAW_DASHBOARD_BASE_URL", "https://env.example.test");
+
+    const config = await buildConfigResponse({ artist: { workspaceRoot: root } as never });
+
+    expect(config.dashboard.baseUrl).toBe("https://config.example.test");
+    expect(config.fieldMeta["dashboard.baseUrl"]).toMatchObject({ source: "config", editable: true });
+  });
 });

@@ -167,6 +167,17 @@
           }
         }
       },
+      "dashboard": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "baseUrl": {
+            "type": "string",
+            "default": "",
+            "description": "Reachable Producer Console base URL used in Telegram Dashboard links. Config value takes precedence over OPENCLAW_DASHBOARD_BASE_URL."
+          }
+        }
+      },
       "music": {
         "type": "object",
         "additionalProperties": false,

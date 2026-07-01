@@ -3,6 +3,7 @@ import { buildConfigDraft, buildConfigUpdatePatch, validateConfigDraft, type Con
 
 const baseDraft = (overrides: Partial<ConfigDraft> = {}): ConfigDraft => ({
   uiLocale: "auto",
+  dashboardBaseUrl: "",
   dailyCreditLimit: "60",
   monthlyCreditLimit: "0",
   monthlyGenerationBudget: "50",
@@ -49,6 +50,9 @@ describe("config editor payload builder", () => {
   it("builds a draft from config response shape", () => {
     expect(buildConfigDraft({
       ui: { locale: "ja" },
+      dashboard: {
+        baseUrl: "https://tailnet.example.test"
+      },
       music: {
         suno: {
           dailyCreditLimit: 60,
@@ -104,6 +108,7 @@ describe("config editor payload builder", () => {
       }
     })).toEqual({
       uiLocale: "ja",
+      dashboardBaseUrl: "https://tailnet.example.test",
       dailyCreditLimit: "60",
       monthlyCreditLimit: "0",
       monthlyGenerationBudget: "50",
@@ -149,6 +154,7 @@ describe("config editor payload builder", () => {
   it("builds the config/update patch payload", () => {
     expect(buildConfigUpdatePatch(baseDraft({
       uiLocale: "en",
+      dashboardBaseUrl: "https://tailnet.example.test/plugins/artist-runtime",
       dailyCreditLimit: "120",
       monthlyCreditLimit: "240",
       monthlyGenerationBudget: "88",
@@ -191,6 +197,9 @@ describe("config editor payload builder", () => {
     }))).toEqual({
       ui: {
         locale: "en"
+      },
+      dashboard: {
+        baseUrl: "https://tailnet.example.test/plugins/artist-runtime"
       },
       music: {
         suno: {

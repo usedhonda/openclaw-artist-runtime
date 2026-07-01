@@ -21,7 +21,7 @@ import { emitRuntimeEvent, getRuntimeEventBus } from "../services/runtimeEventBu
 import { readRuntimeEvents, readSongEventsAsc } from "../services/runtimeEventsLedger.js";
 import { appendFailedNotifyReplayRecord, latestFailedNotifyEntry, listUnreplayedFailedNotifications, summarizeFailedNotifications } from "../services/failedNotifyLedger.js";
 import { getSongPromptLedgerPath } from "../services/promptLedger.js";
-import { getBirdDailyMaxOverride, getBirdMinIntervalMinutesOverride, getSunoDailyBudgetOverride, isDebugCallbackDispatchEnabled, isDebugNotifyReviewEnabled, isSunoLiveDisabled, isSunoLiveEnabled, readConfigOverrides, resolveRuntimeConfig, resolveSunoDailyBudget, type RuntimeSafetyOverridesPatch } from "../services/runtimeConfig.js";
+import { getBirdDailyMaxOverride, getBirdMinIntervalMinutesOverride, getDashboardBaseUrl, getSunoDailyBudgetOverride, isDebugCallbackDispatchEnabled, isDebugNotifyReviewEnabled, isSunoLiveDisabled, isSunoLiveEnabled, readConfigOverrides, resolveRuntimeConfig, resolveSunoDailyBudget, type RuntimeSafetyOverridesPatch } from "../services/runtimeConfig.js";
 import { readLatestSocialAction } from "../services/socialPublishing.js";
 import { SocialDistributionWorker } from "../services/socialDistributionWorker.js";
 import { listPendingSpawnProposals } from "../services/spawnProposalQueue.js";
@@ -814,10 +814,10 @@ interface ConfigFieldMeta {
 
 type ConfigFieldMetaMap = Record<string, ConfigFieldMeta>;
 
-function configField(source: ConfigFieldSource = "config", envVar?: string): ConfigFieldMeta {
+function configField(source: ConfigFieldSource = "config", envVar?: string, editable = source !== "env"): ConfigFieldMeta {
   return {
     source,
-    editable: source !== "env",
+    editable,
     ...(envVar ? { envVar } : {})
   };
 }
@@ -828,9 +828,11 @@ function envValue(env: NodeJS.ProcessEnv, key: string): string | undefined {
 }
 
 function buildConfigFieldMeta(
+  resolved: ArtistRuntimeConfig,
   env: NodeJS.ProcessEnv = process.env
 ): ConfigFieldMetaMap {
   const meta: ConfigFieldMetaMap = {
+    "dashboard.baseUrl": configField(),
     "autopilot.dryRun": configField(),
     "music.suno.connectionMode": configField(),
     "music.suno.driver": configField(),
@@ -863,14 +865,23 @@ function buildConfigFieldMeta(
     meta["aiReview.provider"] = configField("env", "OPENCLAW_AI_REVIEW_PROVIDER");
   }
 
+  if (!resolved.dashboard.baseUrl?.trim() && envValue(env, "OPENCLAW_DASHBOARD_BASE_URL")) {
+    meta["dashboard.baseUrl"] = configField("env", "OPENCLAW_DASHBOARD_BASE_URL", true);
+  }
+
   return meta;
 }
 
 export async function buildConfigResponse(config?: Partial<ArtistRuntimeConfig>) {
   const resolved = await resolveRuntimeConfig(config);
+  const dashboardBaseUrl = getDashboardBaseUrl(resolved) ?? "";
   return {
     ...resolved,
-    fieldMeta: buildConfigFieldMeta()
+    dashboard: {
+      ...resolved.dashboard,
+      baseUrl: dashboardBaseUrl
+    },
+    fieldMeta: buildConfigFieldMeta(resolved)
   };
 }
 
@@ -1626,7 +1637,7 @@ export async function buildFailedNotifyReplayResponse(
       chatId: entry.chatId,
       workspaceRoot: config.artist.workspaceRoot,
       aiReviewProvider: config.aiReview.provider,
-      dashboardBaseUrl: env.OPENCLAW_DASHBOARD_BASE_URL?.trim() || undefined
+      dashboardBaseUrl: getDashboardBaseUrl(config, env)
     }).notify(entry.eventPayload);
     await appendFailedNotifyReplayRecord(config.artist.workspaceRoot, entry, { ok: true });
     return {

@@ -478,7 +478,8 @@ function FieldSourceNote(props: { meta?: ConfigFieldMeta }) {
   const label = props.meta.source === "env"
     ? `source: env ${props.meta.envVar ?? ""}`.trim()
     : `source: ${props.meta.source}`;
-  return <div className={props.meta.source === "env" ? "warning-banner" : "muted"}>{label}{props.meta.editable === false ? " · read-only here" : ""}</div>;
+  const suffix = props.meta.editable === false ? " · read-only here" : props.meta.source === "env" ? " · editable fallback" : "";
+  return <div className={props.meta.source === "env" ? "warning-banner" : "muted"}>{label}{suffix}</div>;
 }
 
 export function SettingsView(props: {
@@ -655,6 +656,12 @@ export function SettingsView(props: {
               <label className="toggle"><input type="checkbox" checked={draft.telegramNotifyStages} onChange={(event) => props.onUpdateDraft({ telegramNotifyStages: event.target.checked })} />{t(locale, "settingsTelegramNotifyStages")}</label>
               <label className="toggle"><input type="checkbox" checked={draft.telegramAcceptFreeText} onChange={(event) => props.onUpdateDraft({ telegramAcceptFreeText: event.target.checked })} />{t(locale, "settingsTelegramAcceptFreeText")}</label>
               <div className="field-grid">
+                <label>
+                  <div className="eyebrow">{t(locale, "settingsDashboardUrl")}</div>
+                  <input type="url" value={draft.dashboardBaseUrl} onChange={(event) => props.onUpdateDraft({ dashboardBaseUrl: event.target.value })} placeholder="https://your-tailnet-host:43134" />
+                  <div className="muted">{t(locale, "settingsDashboardUrlHelp")}</div>
+                  <FieldSourceNote meta={fieldMeta("dashboard.baseUrl")} />
+                </label>
                 <NumberField label={t(locale, "settingsTelegramPollInterval")} value={draft.telegramPollIntervalMs} min={500} max={60000} onChange={(value) => props.onUpdateDraft({ telegramPollIntervalMs: value })} note={t(locale, "settingsTelegramPollIntervalHelp")} />
               </div>
             </section>

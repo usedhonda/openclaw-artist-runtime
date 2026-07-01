@@ -25,6 +25,9 @@ export type ConfigEditorSource = {
   ui?: {
     locale?: UiLocaleMode;
   };
+  dashboard?: {
+    baseUrl?: string;
+  };
   music: {
     suno: {
       dailyCreditLimit: number;
@@ -132,11 +135,15 @@ export type ConfigDraft = {
   aiReviewProvider: AiReviewProvider;
   auditLog: boolean;
   uiLocale: UiLocaleMode;
+  dashboardBaseUrl: string;
 };
 
 export type ConfigUpdatePatch = {
   ui?: {
     locale?: UiLocaleMode;
+  };
+  dashboard?: {
+    baseUrl?: string;
   };
   music?: {
     suno?: {
@@ -205,6 +212,7 @@ export function buildConfigDraft(source: ConfigEditorSource): ConfigDraft {
   return {
     ...(source.fieldMeta ? { fieldMeta: source.fieldMeta } : {}),
     uiLocale: source.ui?.locale ?? "auto",
+    dashboardBaseUrl: source.dashboard?.baseUrl ?? "",
     dailyCreditLimit: String(source.music.suno.dailyCreditLimit),
     monthlyCreditLimit: String(source.music.suno.monthlyCreditLimit),
     monthlyGenerationBudget: String(source.music.suno.monthlyGenerationBudget ?? 50),
@@ -361,6 +369,9 @@ export function buildConfigUpdatePatch(draft: ConfigDraft): ConfigUpdatePatch {
   return {
     ui: {
       locale: draft.uiLocale
+    },
+    dashboard: {
+      baseUrl: draft.dashboardBaseUrl.trim()
     },
     music: {
       suno: {

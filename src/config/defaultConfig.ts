@@ -17,6 +17,9 @@ export const defaultArtistRuntimeConfig: ArtistRuntimeConfig = {
     planningTimeoutDays: 7,
     producerDigest: "daily"
   },
+  dashboard: {
+    baseUrl: ""
+  },
   music: {
     engine: "suno",
     suno: {

@@ -409,10 +409,15 @@ export interface UiConfig {
   locale: UiLocaleMode;
 }
 
+export interface DashboardConfig {
+  baseUrl: string;
+}
+
 export interface ArtistRuntimeConfig {
   schemaVersion: number;
   artist: ArtistConfig;
   autopilot: AutopilotConfig;
+  dashboard: DashboardConfig;
   music: MusicConfig;
   distribution: DistributionConfig;
   telegram: TelegramConfig;

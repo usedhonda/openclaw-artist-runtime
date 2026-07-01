@@ -454,7 +454,8 @@ function FieldSourceNote(props: { meta?: ConfigFieldMeta }) {
   const label = props.meta.source === "env"
     ? `source: env ${props.meta.envVar ?? ""}`.trim()
     : `source: ${props.meta.source}`;
-  return <div className={props.meta.source === "env" ? "warning-banner" : "muted"}>{label}{props.meta.editable === false ? " · read-only here" : ""}</div>;
+  const suffix = props.meta.editable === false ? " · read-only here" : props.meta.source === "env" ? " · editable fallback" : "";
+  return <div className={props.meta.source === "env" ? "warning-banner" : "muted"}>{label}{suffix}</div>;
 }
 
 const apiBase = "/plugins/artist-runtime/api";
@@ -1251,6 +1252,12 @@ export function App() {
           {globalArmHeld ? <div className="warning-banner">Global live-go arm is OFF. Every platform arm stays held upstream even if its own toggle is on.</div> : null}
           {!configDraft.dryRun ? <div className="warning-banner">Dry-run is OFF. The runtime stays fail-closed, but this arm can permit live side effects if the connectors are ready.</div> : null}
           <div className="field-grid">
+            <label>
+              <div className="eyebrow">Dashboard URL</div>
+              <input type="url" value={configDraft.dashboardBaseUrl} onChange={(event) => updateConfigDraft({ dashboardBaseUrl: event.target.value })} placeholder="https://your-tailnet-host:43134" />
+              <div className="muted">Reachable URL used in Telegram Dashboard links.</div>
+              <FieldSourceNote meta={configFieldMeta("dashboard.baseUrl")} />
+            </label>
             <label>
               <div className="eyebrow">Daily credit limit (Suno)</div>
               <input type="number" min={1} max={1000} step={1} value={configDraft.dailyCreditLimit} onChange={(event) => updateConfigDraft({ dailyCreditLimit: event.target.value })} />

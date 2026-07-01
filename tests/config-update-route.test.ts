@@ -108,6 +108,20 @@ describe("config/update behaviour", () => {
     expect(persisted.ui.locale).toBe("ja");
   });
 
+  it("patchResolvedConfig persists dashboard base URL overrides", async () => {
+    const root = makeWorkspace();
+
+    const updated = await patchResolvedConfig(root, {
+      artist: { workspaceRoot: root, mode: "public_artist", artistId: "artist", profilePath: "ARTIST.md" },
+      dashboard: { baseUrl: "https://tailnet.example.test" }
+    });
+
+    expect(updated.dashboard.baseUrl).toBe("https://tailnet.example.test");
+
+    const persisted = JSON.parse(readFileSync(join(root, "runtime", "config-overrides.json"), "utf8"));
+    expect(persisted.dashboard.baseUrl).toBe("https://tailnet.example.test");
+  });
+
   it("resolveRuntimeConfig merges persisted overrides with payload config", async () => {
     const root = makeWorkspace();
 
