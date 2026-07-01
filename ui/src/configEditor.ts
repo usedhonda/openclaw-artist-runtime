@@ -21,6 +21,7 @@ import {
 } from "../../src/types";
 
 export type ConfigEditorSource = {
+  fieldMeta?: ConfigFieldMetaMap;
   ui?: {
     locale?: UiLocaleMode;
   };
@@ -79,7 +80,18 @@ export type ConfigEditorSource = {
   };
 };
 
+export type ConfigFieldSource = "config" | "override" | "env";
+
+export interface ConfigFieldMeta {
+  source: ConfigFieldSource;
+  editable: boolean;
+  envVar?: string;
+}
+
+export type ConfigFieldMetaMap = Record<string, ConfigFieldMeta>;
+
 export type ConfigDraft = {
+  fieldMeta?: ConfigFieldMetaMap;
   dailyCreditLimit: string;
   monthlyCreditLimit: string;
   monthlyGenerationBudget: string;
@@ -123,61 +135,61 @@ export type ConfigDraft = {
 };
 
 export type ConfigUpdatePatch = {
-  ui: {
-    locale: UiLocaleMode;
+  ui?: {
+    locale?: UiLocaleMode;
   };
-  music: {
-    suno: {
-      dailyCreditLimit: number;
-      monthlyCreditLimit: number;
-      monthlyGenerationBudget: number;
-      maxGenerationsPerDay: number;
-      minMinutesBetweenCreates: number;
-      driver: SunoDriverMode;
-      submitMode: SunoSubmitMode;
+  music?: {
+    suno?: {
+      dailyCreditLimit?: number;
+      monthlyCreditLimit?: number;
+      monthlyGenerationBudget?: number;
+      maxGenerationsPerDay?: number;
+      minMinutesBetweenCreates?: number;
+      driver?: SunoDriverMode;
+      submitMode?: SunoSubmitMode;
     };
   };
-  autopilot: {
-    enabled: boolean;
-    dryRun: boolean;
-    songsPerWeek: number;
-    cycleIntervalMinutes: number;
-    planningTimeoutDays: number;
-    producerDigest: ProducerDigestMode;
+  autopilot?: {
+    enabled?: boolean;
+    dryRun?: boolean;
+    songsPerWeek?: number;
+    cycleIntervalMinutes?: number;
+    planningTimeoutDays?: number;
+    producerDigest?: ProducerDigestMode;
   };
-  distribution: {
-    enabled: boolean;
-    liveGoArmed: boolean;
-    dailySharing: DailySharingMode;
-    officialRelease: OfficialReleaseMode;
+  distribution?: {
+    enabled?: boolean;
+    liveGoArmed?: boolean;
+    dailySharing?: DailySharingMode;
+    officialRelease?: OfficialReleaseMode;
     platforms: {
-      x: { enabled: boolean; liveGoArmed: boolean; authority: XAuthority; maxPostsPerDay: number; maxRepliesPerDay: number };
-      instagram: { enabled: boolean; liveGoArmed: boolean; authority: InstagramAuthority };
-      tiktok: { enabled: boolean; liveGoArmed: boolean; authority: TikTokAuthority };
+      x: { enabled?: boolean; liveGoArmed?: boolean; authority?: XAuthority; maxPostsPerDay?: number; maxRepliesPerDay?: number };
+      instagram: { enabled?: boolean; liveGoArmed?: boolean; authority?: InstagramAuthority };
+      tiktok: { enabled?: boolean; liveGoArmed?: boolean; authority?: TikTokAuthority };
     };
   };
-  telegram: {
-    enabled: boolean;
-    pollIntervalMs: number;
-    notifyStages: boolean;
-    acceptFreeText: boolean;
+  telegram?: {
+    enabled?: boolean;
+    pollIntervalMs?: number;
+    notifyStages?: boolean;
+    acceptFreeText?: boolean;
   };
-  artistPulse: {
-    enabled: boolean;
-    minIntervalHours: number;
+  artistPulse?: {
+    enabled?: boolean;
+    minIntervalHours?: number;
   };
-  commission: {
-    enabled: boolean;
+  commission?: {
+    enabled?: boolean;
   };
-  songSpawn: {
-    enabled: boolean;
-    minIntervalHours: number;
+  songSpawn?: {
+    enabled?: boolean;
+    minIntervalHours?: number;
   };
-  aiReview: {
-    provider: AiReviewProvider;
+  aiReview?: {
+    provider?: AiReviewProvider;
   };
-  safety: {
-    auditLog: boolean;
+  safety?: {
+    auditLog?: boolean;
   };
 };
 
@@ -191,6 +203,7 @@ function parseWholeNumber(value: string, label: string): number {
 
 export function buildConfigDraft(source: ConfigEditorSource): ConfigDraft {
   return {
+    ...(source.fieldMeta ? { fieldMeta: source.fieldMeta } : {}),
     uiLocale: source.ui?.locale ?? "auto",
     dailyCreditLimit: String(source.music.suno.dailyCreditLimit),
     monthlyCreditLimit: String(source.music.suno.monthlyCreditLimit),
@@ -232,6 +245,10 @@ export function buildConfigDraft(source: ConfigEditorSource): ConfigDraft {
     aiReviewProvider: source.aiReview?.provider ?? "mock",
     auditLog: source.safety?.auditLog ?? true
   };
+}
+
+function fieldEditable(draft: ConfigDraft, path: string): boolean {
+  return draft.fieldMeta?.[path]?.editable !== false;
 }
 
 export function buildConfigUpdatePatch(draft: ConfigDraft): ConfigUpdatePatch {
@@ -352,13 +369,13 @@ export function buildConfigUpdatePatch(draft: ConfigDraft): ConfigUpdatePatch {
         monthlyGenerationBudget,
         maxGenerationsPerDay,
         minMinutesBetweenCreates,
-        driver: draft.sunoDriver,
-        submitMode: draft.sunoSubmitMode
+        ...(fieldEditable(draft, "music.suno.driver") ? { driver: draft.sunoDriver } : {}),
+        ...(fieldEditable(draft, "music.suno.submitMode") ? { submitMode: draft.sunoSubmitMode } : {})
       }
     },
     autopilot: {
       enabled: draft.autopilotEnabled,
-      dryRun: draft.dryRun,
+      ...(fieldEditable(draft, "autopilot.dryRun") ? { dryRun: draft.dryRun } : {}),
       songsPerWeek,
       cycleIntervalMinutes,
       planningTimeoutDays,
@@ -395,7 +412,7 @@ export function buildConfigUpdatePatch(draft: ConfigDraft): ConfigUpdatePatch {
       minIntervalHours: songSpawnMinIntervalHours
     },
     aiReview: {
-      provider: draft.aiReviewProvider
+      ...(fieldEditable(draft, "aiReview.provider") ? { provider: draft.aiReviewProvider } : {})
     },
     safety: {
       auditLog: draft.auditLog

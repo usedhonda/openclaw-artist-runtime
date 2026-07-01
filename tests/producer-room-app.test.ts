@@ -334,6 +334,58 @@ describe("ProducerRoomApp Songs and Settings views", () => {
     expect(html).toMatch(/<button type="button" disabled="">Reset changes<\/button>/);
   });
 
+  it("renders env-forced settings as read-only with source disclosure", () => {
+    const config = {
+      fieldMeta: {
+        "autopilot.dryRun": { source: "env" as const, editable: false, envVar: "OPENCLAW_AUTOPILOT_DRYRUN_OVERRIDE" },
+        "music.suno.connectionMode": { source: "env" as const, editable: false, envVar: "OPENCLAW_SUNO_LIVE" },
+        "music.suno.driver": { source: "env" as const, editable: false, envVar: "OPENCLAW_SUNO_LIVE" },
+        "music.suno.submitMode": { source: "env" as const, editable: false, envVar: "OPENCLAW_SUNO_LIVE" },
+        "aiReview.provider": { source: "env" as const, editable: false, envVar: "OPENCLAW_AI_REVIEW_PROVIDER" }
+      },
+      ui: { locale: "auto" as const },
+      artist: { artistId: "artist", workspaceRoot: "/tmp/artist" },
+      music: { suno: { dailyCreditLimit: 4, monthlyCreditLimit: 40, monthlyGenerationBudget: 50, maxGenerationsPerDay: 4, minMinutesBetweenCreates: 20, driver: "playwright" as const, submitMode: "live" as const } },
+      autopilot: { enabled: true, dryRun: false, songsPerWeek: 3, cycleIntervalMinutes: 60, planningTimeoutDays: 7, producerDigest: "daily" as const },
+      distribution: {
+        enabled: true,
+        liveGoArmed: false,
+        dailySharing: "auto" as const,
+        officialRelease: "manual_approval" as const,
+        platforms: {
+          x: { enabled: true, liveGoArmed: false, authority: "draft_only" as const, maxPostsPerDay: 3, maxRepliesPerDay: 0 },
+          instagram: { enabled: false, liveGoArmed: false, authority: "draft_only" as const },
+          tiktok: { enabled: false, liveGoArmed: false, authority: "draft_only" as const }
+        }
+      },
+      telegram: { enabled: false, pollIntervalMs: 2000, notifyStages: true, acceptFreeText: true },
+      artistPulse: { enabled: false, minIntervalHours: 12 },
+      commission: { enabled: false },
+      songSpawn: { enabled: true, minIntervalHours: 24 },
+      aiReview: { provider: "openclaw" as const },
+      safety: { auditLog: true }
+    };
+    const html = renderToStaticMarkup(
+      React.createElement(SettingsView, {
+        config,
+        draft: buildConfigDraft(config),
+        dirty: false,
+        busy: false,
+        validationError: null,
+        onUpdateDraft: () => undefined,
+        onSave: () => undefined,
+        onReset: () => undefined,
+        onRefresh: () => undefined
+      })
+    );
+
+    expect(html).toContain("source: env OPENCLAW_AUTOPILOT_DRYRUN_OVERRIDE");
+    expect(html).toContain("source: env OPENCLAW_SUNO_LIVE");
+    expect(html).toContain("source: env OPENCLAW_AI_REVIEW_PROVIDER");
+    expect(html).toContain("read-only here");
+    expect(html).toContain("disabled");
+  });
+
   it("renders Setup as canonical inputs without raw MD tabs", () => {
     const persona = {
       artist: {

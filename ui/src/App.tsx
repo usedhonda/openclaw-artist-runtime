@@ -1,6 +1,6 @@
 import { startTransition, useEffect, useState } from "react";
 import "./styles.css";
-import { buildConfigDraft, buildConfigUpdatePatch, validateConfigDraft, type ConfigDraft } from "./configEditor";
+import { buildConfigDraft, buildConfigUpdatePatch, validateConfigDraft, type ConfigDraft, type ConfigEditorSource, type ConfigFieldMeta } from "./configEditor";
 import { SunoOutcomeCard, type FailedImportUrl, type ImportedAsset, type SunoArtifactIndexEntry } from "./SunoOutcomeCard";
 import { ObservabilityPanel } from "./ObservabilityPanel";
 import { ConnectionBanner } from "./ConnectionBanner";
@@ -285,32 +285,10 @@ type ConfigOverridesResponse = {
   values: RuntimeOverridesValues;
 };
 
-type ConfigResponse = {
+type ConfigResponse = ConfigEditorSource & {
   artist: {
     artistId: string;
     workspaceRoot: string;
-  };
-  music: {
-    suno: {
-      dailyCreditLimit: number;
-      monthlyCreditLimit: number;
-      driver: "mock" | "playwright";
-      submitMode: "skip" | "live";
-    };
-  };
-  autopilot: {
-    enabled: boolean;
-    dryRun: boolean;
-    songsPerWeek: number;
-    cycleIntervalMinutes: number;
-  };
-  distribution: {
-    liveGoArmed: boolean;
-    platforms: {
-      x: { enabled: boolean; liveGoArmed: boolean; authority: string };
-      instagram: { enabled: boolean; liveGoArmed: boolean; authority: string };
-      tiktok: { enabled: boolean; liveGoArmed: boolean; authority: string };
-    };
   };
 };
 
@@ -470,6 +448,14 @@ const consoleViews: Array<{ id: ConsoleView; label: string }> = [
   { id: "settings", label: "Settings" },
   { id: "recovery", label: "Recovery" }
 ];
+
+function FieldSourceNote(props: { meta?: ConfigFieldMeta }) {
+  if (!props.meta || props.meta.source === "config") return null;
+  const label = props.meta.source === "env"
+    ? `source: env ${props.meta.envVar ?? ""}`.trim()
+    : `source: ${props.meta.source}`;
+  return <div className={props.meta.source === "env" ? "warning-banner" : "muted"}>{label}{props.meta.editable === false ? " · read-only here" : ""}</div>;
+}
 
 const apiBase = "/plugins/artist-runtime/api";
 const fetchTimeoutMs = 10_000;
@@ -1250,13 +1236,17 @@ export function App() {
     />
   );
 
+  const configFieldMeta = (path: string) => configDraft?.fieldMeta?.[path];
+  const configFieldEditable = (path: string) => configFieldMeta(path)?.editable !== false;
+
   const configPanel = (
     <article className="panel">
       <div className="section-title">Config Editor</div>
       {config && configDraft ? (
         <div className="config-form">
           <label className="toggle"><input type="checkbox" checked={configDraft.autopilotEnabled} onChange={(event) => updateConfigDraft({ autopilotEnabled: event.target.checked })} />Autopilot enabled</label>
-          <label className="toggle"><input type="checkbox" checked={configDraft.dryRun} onChange={(event) => updateConfigDraft({ dryRun: event.target.checked })} />Dry-run safety</label>
+          <label className="toggle"><input type="checkbox" checked={configDraft.dryRun} disabled={!configFieldEditable("autopilot.dryRun")} onChange={(event) => updateConfigDraft({ dryRun: event.target.checked })} />Dry-run safety</label>
+          <FieldSourceNote meta={configFieldMeta("autopilot.dryRun")} />
           <label className="toggle"><input type="checkbox" checked={configDraft.distributionLiveGoArmed} onChange={(event) => updateConfigDraft({ distributionLiveGoArmed: event.target.checked })} />Live-Go Arm (global)</label>
           {globalArmHeld ? <div className="warning-banner">Global live-go arm is OFF. Every platform arm stays held upstream even if its own toggle is on.</div> : null}
           {!configDraft.dryRun ? <div className="warning-banner">Dry-run is OFF. The runtime stays fail-closed, but this arm can permit live side effects if the connectors are ready.</div> : null}
@@ -1272,17 +1262,19 @@ export function App() {
             </label>
             <label>
               <div className="eyebrow">Suno Driver</div>
-              <select value={configDraft.sunoDriver} onChange={(event) => updateConfigDraft({ sunoDriver: event.target.value as ConfigDraft["sunoDriver"] })}>
+              <select value={configDraft.sunoDriver} disabled={!configFieldEditable("music.suno.driver")} onChange={(event) => updateConfigDraft({ sunoDriver: event.target.value as ConfigDraft["sunoDriver"] })}>
                 {sunoDriverModes.map((mode) => <option key={mode} value={mode}>{mode}</option>)}
               </select>
               <div className="muted">mock = no browser, playwright = real Suno (operator login required).</div>
+              <FieldSourceNote meta={configFieldMeta("music.suno.driver")} />
             </label>
             <label>
               <div className="eyebrow">Suno Submit Mode</div>
-              <select value={configDraft.sunoSubmitMode} onChange={(event) => updateConfigDraft({ sunoSubmitMode: event.target.value as ConfigDraft["sunoSubmitMode"] })}>
+              <select value={configDraft.sunoSubmitMode} disabled={!configFieldEditable("music.suno.submitMode")} onChange={(event) => updateConfigDraft({ sunoSubmitMode: event.target.value as ConfigDraft["sunoSubmitMode"] })}>
                 {sunoSubmitModes.map((mode) => <option key={mode} value={mode}>{mode}</option>)}
               </select>
               {configDraft.sunoSubmitMode === "live" ? <div className="warning-banner">Live submit consumes real Suno credits. Confirm Suno login is fresh and the daily/monthly budget is set.</div> : <div className="muted">skip = no Create click, live = real submit + polling.</div>}
+              <FieldSourceNote meta={configFieldMeta("music.suno.submitMode")} />
             </label>
             <label>
               <div className="eyebrow">Songs Per Week</div>

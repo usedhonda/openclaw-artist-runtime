@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from "react";
-import { buildConfigDraft, buildConfigUpdatePatch, validateConfigDraft, type ConfigDraft, type ConfigEditorSource } from "./configEditor";
+import { buildConfigDraft, buildConfigUpdatePatch, validateConfigDraft, type ConfigDraft, type ConfigEditorSource, type ConfigFieldMeta } from "./configEditor";
 import { ErrorToastStack } from "./ErrorToast";
 import { AwaitingDecisionPanel, groupAwaitingDecisions, type AwaitingDecision } from "./components/AwaitingDecisionPanel";
 import { SongDetailCard } from "./components/SongDetailCard";
@@ -460,14 +460,25 @@ function NumberField(props: {
   max: number;
   onChange: (value: string) => void;
   note?: string;
+  disabled?: boolean;
+  sourceMeta?: ConfigFieldMeta;
 }) {
   return (
     <label>
       <div className="eyebrow">{props.label}</div>
-      <input type="number" min={props.min} max={props.max} step={1} value={props.value} onChange={(event) => props.onChange(event.target.value)} />
+      <input type="number" min={props.min} max={props.max} step={1} value={props.value} disabled={props.disabled} onChange={(event) => props.onChange(event.target.value)} />
       {props.note ? <div className="muted">{props.note}</div> : null}
+      <FieldSourceNote meta={props.sourceMeta} />
     </label>
   );
+}
+
+function FieldSourceNote(props: { meta?: ConfigFieldMeta }) {
+  if (!props.meta || props.meta.source === "config") return null;
+  const label = props.meta.source === "env"
+    ? `source: env ${props.meta.envVar ?? ""}`.trim()
+    : `source: ${props.meta.source}`;
+  return <div className={props.meta.source === "env" ? "warning-banner" : "muted"}>{label}{props.meta.editable === false ? " · read-only here" : ""}</div>;
 }
 
 export function SettingsView(props: {
@@ -515,6 +526,8 @@ export function SettingsView(props: {
         return value;
     }
   };
+  const fieldMeta = (path: string) => draft?.fieldMeta?.[path];
+  const fieldEditable = (path: string) => fieldMeta(path)?.editable !== false;
 
   return (
     <section className="single-column settings-view">
@@ -540,7 +553,8 @@ export function SettingsView(props: {
             <section className="settings-section">
               <div className="section-title">{t(locale, "settingsAutopilot")}</div>
               <label className="toggle"><input type="checkbox" checked={draft.autopilotEnabled} onChange={(event) => props.onUpdateDraft({ autopilotEnabled: event.target.checked })} />{t(locale, "settingsRunAutonomous")}</label>
-              <label className="toggle"><input type="checkbox" checked={draft.dryRun} onChange={(event) => props.onUpdateDraft({ dryRun: event.target.checked })} />{t(locale, "settingsBlockExternal")}</label>
+              <label className="toggle"><input type="checkbox" checked={draft.dryRun} disabled={!fieldEditable("autopilot.dryRun")} onChange={(event) => props.onUpdateDraft({ dryRun: event.target.checked })} />{t(locale, "settingsBlockExternal")}</label>
+              <FieldSourceNote meta={fieldMeta("autopilot.dryRun")} />
               <div className="field-grid">
                 <NumberField label={t(locale, "settingsSongsPerWeek")} value={draft.songsPerWeek} min={0} max={100} onChange={(value) => props.onUpdateDraft({ songsPerWeek: value })} note={t(locale, "settingsSongsPerWeekHelp")} />
                 <NumberField label={t(locale, "settingsCycleInterval")} value={draft.cycleIntervalMinutes} min={15} max={1440} onChange={(value) => props.onUpdateDraft({ cycleIntervalMinutes: value })} note={t(locale, "settingsCycleIntervalHelp")} />
@@ -576,11 +590,14 @@ export function SettingsView(props: {
                   <div className="eyebrow">Creation driver</div>
                   <strong>Browser worker</strong>
                   <div className="muted">{t(locale, "settingsCreationDriverHelp")}</div>
+                  <FieldSourceNote meta={fieldMeta("music.suno.connectionMode")} />
+                  <FieldSourceNote meta={fieldMeta("music.suno.driver")} />
                 </div>
                 <div className="settings-readonly">
                   <div className="eyebrow">Create button</div>
                   <strong>Live submit</strong>
                   <div className="warning-banner">{t(locale, "settingsCreateButtonWarning")}</div>
+                  <FieldSourceNote meta={fieldMeta("music.suno.submitMode")} />
                 </div>
               </div>
             </section>
@@ -646,10 +663,11 @@ export function SettingsView(props: {
               <div className="field-grid">
                 <label>
                   <div className="eyebrow">{t(locale, "settingsAiProvider")}</div>
-                  <select value={draft.aiReviewProvider} onChange={(event) => props.onUpdateDraft({ aiReviewProvider: event.target.value as ConfigDraft["aiReviewProvider"] })}>
+                  <select value={draft.aiReviewProvider} disabled={!fieldEditable("aiReview.provider")} onChange={(event) => props.onUpdateDraft({ aiReviewProvider: event.target.value as ConfigDraft["aiReviewProvider"] })}>
                     {aiReviewProviders.map((provider) => <option key={provider} value={provider}>{aiProviderLabel(provider)}</option>)}
                   </select>
                   <div className="muted">{t(locale, "settingsAiProviderHelp")}</div>
+                  <FieldSourceNote meta={fieldMeta("aiReview.provider")} />
                 </label>
                 <label className="toggle"><input type="checkbox" checked={draft.auditLog} onChange={(event) => props.onUpdateDraft({ auditLog: event.target.checked })} />{t(locale, "settingsAuditLog")}</label>
               </div>

@@ -3,6 +3,7 @@ import { join } from "node:path";
 import { InstagramConnector } from "../connectors/social/instagramConnector.js";
 import { TikTokConnector } from "../connectors/social/tiktokConnector.js";
 import { XBirdConnector } from "../connectors/social/xBirdConnector.js";
+import { applyConfigDefaults } from "../config/schema.js";
 import { BrowserWorkerSunoConnector } from "../connectors/suno/browserWorkerConnector.js";
 import { startRuntimeEventLedgerFromEnv, startTelegramNotifierFromEnv } from "../services/index.js";
 import { collectAlerts } from "../services/alerts.js";
@@ -21,7 +22,7 @@ import { emitRuntimeEvent, getRuntimeEventBus } from "../services/runtimeEventBu
 import { readRuntimeEvents, readSongEventsAsc } from "../services/runtimeEventsLedger.js";
 import { appendFailedNotifyReplayRecord, latestFailedNotifyEntry, listUnreplayedFailedNotifications, summarizeFailedNotifications } from "../services/failedNotifyLedger.js";
 import { getSongPromptLedgerPath } from "../services/promptLedger.js";
-import { getBirdDailyMaxOverride, getBirdMinIntervalMinutesOverride, getSunoDailyBudgetOverride, isDebugCallbackDispatchEnabled, isDebugNotifyReviewEnabled, readConfigOverrides, resolveRuntimeConfig, resolveSunoDailyBudget, type RuntimeSafetyOverridesPatch } from "../services/runtimeConfig.js";
+import { getBirdDailyMaxOverride, getBirdMinIntervalMinutesOverride, getSunoDailyBudgetOverride, isDebugCallbackDispatchEnabled, isDebugNotifyReviewEnabled, isSunoLiveDisabled, isSunoLiveEnabled, mergeResolvedConfig, readConfigOverrides, resolveDefaultWorkspaceRoot, resolveRuntimeConfig, resolveSunoDailyBudget, type RuntimeSafetyOverridesPatch } from "../services/runtimeConfig.js";
 import { readLatestSocialAction } from "../services/socialPublishing.js";
 import { SocialDistributionWorker } from "../services/socialDistributionWorker.js";
 import { listPendingSpawnProposals } from "../services/spawnProposalQueue.js";
@@ -804,8 +805,97 @@ export function proposalRouteError(error: unknown): Record<string, unknown> {
   };
 }
 
+type ConfigFieldSource = "config" | "override" | "env";
+
+interface ConfigFieldMeta {
+  source: ConfigFieldSource;
+  editable: boolean;
+  envVar?: string;
+}
+
+type ConfigFieldMetaMap = Record<string, ConfigFieldMeta>;
+
+function configField(source: ConfigFieldSource = "config", envVar?: string): ConfigFieldMeta {
+  return {
+    source,
+    editable: source !== "env",
+    ...(envVar ? { envVar } : {})
+  };
+}
+
+function envValue(env: NodeJS.ProcessEnv, key: string): string | undefined {
+  const value = env[key]?.trim();
+  return value ? value : undefined;
+}
+
+async function resolveConfigBeforeEnv(config?: Partial<ArtistRuntimeConfig>): Promise<ArtistRuntimeConfig> {
+  const workspaceRoot = config?.artist?.workspaceRoot ?? resolveDefaultWorkspaceRoot();
+  const persisted = applyConfigDefaults(await readConfigOverrides(workspaceRoot));
+  const normalizedPersisted = persisted.artist.workspaceRoot === "." || persisted.artist.workspaceRoot === "./" || persisted.artist.workspaceRoot === ""
+    ? { ...persisted, artist: { ...persisted.artist, workspaceRoot } }
+    : persisted;
+  return config ? mergeResolvedConfig(normalizedPersisted, config) : normalizedPersisted;
+}
+
+function buildConfigFieldMeta(
+  beforeEnv: ArtistRuntimeConfig,
+  resolved: ArtistRuntimeConfig,
+  env: NodeJS.ProcessEnv = process.env
+): ConfigFieldMetaMap {
+  const meta: ConfigFieldMetaMap = {
+    "autopilot.dryRun": configField(),
+    "music.suno.connectionMode": configField(),
+    "music.suno.driver": configField(),
+    "music.suno.submitMode": configField(),
+    "aiReview.provider": configField()
+  };
+
+  if (env.OPENCLAW_AUTOPILOT_DRYRUN_OVERRIDE?.trim().toLowerCase() === "off") {
+    meta["autopilot.dryRun"] = configField("env", "OPENCLAW_AUTOPILOT_DRYRUN_OVERRIDE");
+  }
+
+  const sunoDisabled = isSunoLiveDisabled(env);
+  const sunoEnabled = !sunoDisabled && isSunoLiveEnabled(env);
+  const submitMode = envValue(env, "OPENCLAW_SUNO_SUBMIT_MODE")?.toLowerCase();
+  if (sunoDisabled) {
+    meta["music.suno.driver"] = configField("env", env.OPENCLAW_SUNO_LIVE?.trim().toLowerCase() === "off" ? "OPENCLAW_SUNO_LIVE" : "OPENCLAW_SUNO_DRIVER");
+    meta["music.suno.submitMode"] = configField("env", env.OPENCLAW_SUNO_LIVE?.trim().toLowerCase() === "off" ? "OPENCLAW_SUNO_LIVE" : "OPENCLAW_SUNO_DRIVER");
+  } else if (sunoEnabled) {
+    const sourceVar = envValue(env, "OPENCLAW_SUNO_LIVE") ? "OPENCLAW_SUNO_LIVE" : "OPENCLAW_SUNO_DRIVER";
+    meta["music.suno.connectionMode"] = configField("env", sourceVar);
+    meta["music.suno.driver"] = configField("env", sourceVar);
+    meta["music.suno.submitMode"] = configField("env", sourceVar);
+  }
+  if (!sunoDisabled && (submitMode === "live" || submitMode === "skip")) {
+    meta["music.suno.submitMode"] = configField("env", "OPENCLAW_SUNO_SUBMIT_MODE");
+  }
+
+  const providerOverride = envValue(env, "OPENCLAW_AI_REVIEW_PROVIDER")?.toLowerCase();
+  if (providerOverride === "mock" || providerOverride === "openclaw" || providerOverride === "openai-codex") {
+    meta["aiReview.provider"] = configField("env", "OPENCLAW_AI_REVIEW_PROVIDER");
+  }
+
+  for (const [path, field] of Object.entries(meta)) {
+    if (field.source === "env") continue;
+    const before = path.split(".").reduce<unknown>((value, key) => value && typeof value === "object" ? (value as Record<string, unknown>)[key] : undefined, beforeEnv);
+    const after = path.split(".").reduce<unknown>((value, key) => value && typeof value === "object" ? (value as Record<string, unknown>)[key] : undefined, resolved);
+    if (before !== after) {
+      meta[path] = configField("override");
+    }
+  }
+
+  return meta;
+}
+
 export async function buildConfigResponse(config?: Partial<ArtistRuntimeConfig>) {
-  return resolveRuntimeConfig(config);
+  const [beforeEnv, resolved] = await Promise.all([
+    resolveConfigBeforeEnv(config),
+    resolveRuntimeConfig(config)
+  ]);
+  return {
+    ...resolved,
+    fieldMeta: buildConfigFieldMeta(beforeEnv, resolved)
+  };
 }
 
 type OverrideSource = "env" | "overrides" | "default";
