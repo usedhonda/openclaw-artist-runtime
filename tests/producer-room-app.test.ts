@@ -481,6 +481,15 @@ describe("ProducerRoomApp Songs and Settings views", () => {
     expect(html).toContain("PRODUCER.md");
     expect(html).toContain("IDENTITY.md");
     expect(html).toContain("INNER.md");
+    expect(html).toContain("Artist Core");
+    expect(html).toContain("Conversation Voice");
+    expect(html).toContain("Producer Context");
+    expect(html).toContain("Generated Identity");
+    expect(html).toContain("Runtime Inner");
+    expect(html).toContain("Current State");
+    expect(html).toContain("artist/CURRENT_STATE.md");
+    expect(html).toContain("writes ARTIST.md");
+    expect(html).toContain("shows IDENTITY.md");
     expect(html).toContain("入力");
     expect(html).toContain("必須");
     expect(html).toContain("自動");
@@ -497,8 +506,8 @@ describe("ProducerRoomApp Songs and Settings views", () => {
     expect(html).toContain("音の核");
     expect(html).toContain("断り方");
     expect(html).toContain("制作判断メモ");
-    expect(html).toContain("IDENTITY.md 自動表示");
-    expect(html).toContain("INNER.md の扱い");
+    expect(html).toContain("Artist Mind の読み取り専用 status");
+    expect(html).toContain("Setup対象外");
     expect(html).toContain("初回 setup が未完了です");
     expect(html).not.toContain("重複・置き場所の確認");
     expect(html).not.toContain("ユーザーが手で全部直すエラーではありません");
@@ -516,8 +525,9 @@ describe("ProducerRoomApp Songs and Settings views", () => {
     expect(html).toContain("raw inner");
     expect(html).toContain("内部管理");
     expect(html).toContain("読み取り専用で表示します");
+    expect(html).toContain("INNER.md の中身を見る");
     expect(html).not.toContain("readonly=\"\"");
-    expect(html).not.toContain("<summary");
+    expect(html).toContain("<summary");
     expect(html).toContain("不足を埋めると完了");
     expect(html).not.toContain("初期設定を完了");
     expect(html).toContain("空欄をAI補完");
@@ -658,6 +668,13 @@ describe("ProducerRoomApp Songs and Settings views", () => {
 
     expect(html).toContain("Artist setup");
     expect(html).toContain("This is the map of the five persona files");
+    expect(html).toContain("Artist Core");
+    expect(html).toContain("Conversation Voice");
+    expect(html).toContain("Producer Context");
+    expect(html).toContain("Generated Identity");
+    expect(html).toContain("Runtime Inner");
+    expect(html).toContain("Current State");
+    expect(html).toContain("artist/CURRENT_STATE.md");
     expect(html).toContain("The creative core");
     expect(html).not.toContain("Music core");
     expect(html).toContain("Input");

@@ -41,6 +41,19 @@ const editableSetupLayers: PersonaDraftLayer[] = ["artist", "soul", "producer"];
 const layerInfo = (layer: PersonaDraftLayer) =>
   personaLayerMap.find((entry) => entry.layer === layer);
 
+const layerRoleText: Record<PersonaDraftLayer | "current", { en: string; ja: string }> = {
+  artist: { en: "Artist Core", ja: "Artist Core" },
+  soul: { en: "Conversation Voice", ja: "Conversation Voice" },
+  producer: { en: "Producer Context", ja: "Producer Context" },
+  identity: { en: "Generated Identity", ja: "Generated Identity" },
+  inner: { en: "Runtime Inner", ja: "Runtime Inner" },
+  current: { en: "Current State", ja: "Current State" }
+};
+
+function layerRole(locale: ProducerRoomLocale, layer: PersonaDraftLayer | "current"): string {
+  return layerRoleText[layer][locale];
+}
+
 const fileEnglishText: Record<string, { kind: string; requirement: string; summary: string; purpose: string; write: string; avoid: string }> = {
   "ARTIST.md": {
     kind: "Input",
@@ -207,7 +220,8 @@ function SetupFileMap(props: { locale: ProducerRoomLocale }) {
           <article key={file.file} className={`persona-file-map-item${file.editable ? "" : " is-readonly"}${file.requirement === "必須" ? " is-required" : ""}`}>
             <header className="persona-file-map-head">
               <div className="persona-file-map-main">
-                <strong>{file.file}</strong>
+                <strong>{layerRole(props.locale, file.layer)}</strong>
+                <span className="persona-target-chip">{file.editable ? "writes " : "shows "}{file.file}</span>
               </div>
               <div className="persona-file-badges">
                 <span className="persona-badge">{text.kind}</span>
@@ -290,7 +304,7 @@ function SetupFileEditor(props: {
   return (
     <section className="settings-section persona-file-editor">
       <div className="persona-file-editor-head">
-        <span className="section-title">{info?.file ?? props.layer} {props.locale === "ja" ? "に書くこと" : "inputs"}</span>
+        <span className="section-title">{layerRole(props.locale, props.layer)} <span className="persona-target-chip">{info?.file}</span></span>
         <span className="muted">{text?.summary ?? props.layer}</span>
       </div>
       {props.layer === "artist" ? (
@@ -384,7 +398,7 @@ function IdentityProjection(props: { locale: ProducerRoomLocale; value: string }
   return (
     <section className="settings-section persona-file-editor">
       <div className="persona-file-editor-head">
-        <span className="section-title">{t(props.locale, "setupReadonlyIdentityTitle")}</span>
+        <span className="section-title">{layerRole(props.locale, "identity")} <span className="persona-target-chip">IDENTITY.md</span></span>
         <span className="muted">{t(props.locale, "setupReadonlyIdentityHelp")}</span>
       </div>
       <div className="persona-readonly-card">
@@ -402,7 +416,7 @@ function InnerFileNote(props: { locale: ProducerRoomLocale; value: string }) {
   return (
     <section className="settings-section persona-file-editor">
       <div className="persona-file-editor-head">
-        <span className="section-title">{t(props.locale, "setupInnerTitle")}</span>
+        <span className="section-title">{layerRole(props.locale, "inner")} <span className="persona-target-chip">INNER.md</span></span>
         <span className="muted">{t(props.locale, "setupInnerHelp")}</span>
       </div>
       <div className="persona-readonly-card">
@@ -420,7 +434,28 @@ function InnerFileNote(props: { locale: ProducerRoomLocale; value: string }) {
             <dd>{props.locale === "ja" ? "seed/history として保持します。読み取り専用で表示します。" : "Kept as seed/history and shown read-only."}</dd>
           </div>
         </dl>
-        <pre>{props.value.trim() || (props.locale === "ja" ? "まだ INNER.md の内容はありません。" : "INNER.md has no content yet.")}</pre>
+        <details className="persona-readonly-disclosure" open>
+          <summary>{props.locale === "ja" ? "INNER.md の中身を見る" : "Show INNER.md contents"}</summary>
+          <pre>{props.value.trim() || (props.locale === "ja" ? "まだ INNER.md の内容はありません。" : "INNER.md has no content yet.")}</pre>
+        </details>
+      </div>
+    </section>
+  );
+}
+
+function CurrentStateStatus(props: { locale: ProducerRoomLocale }) {
+  return (
+    <section className="settings-section persona-file-editor">
+      <div className="persona-file-editor-head">
+        <span className="section-title">{layerRole(props.locale, "current")} <span className="persona-target-chip">artist/CURRENT_STATE.md</span></span>
+        <span className="muted">{t(props.locale, "setupCurrentStateHelp")}</span>
+      </div>
+      <div className="persona-readonly-card">
+        <div className="persona-readonly-state">
+          <span className="persona-badge">{props.locale === "ja" ? "runtime管理" : "Runtime managed"}</span>
+          <span className="persona-badge">{props.locale === "ja" ? "Setup対象外" : "Not setup input"}</span>
+        </div>
+        <p className="persona-readonly-copy">{t(props.locale, "setupCurrentStateBody")}</p>
       </div>
     </section>
   );
@@ -592,6 +627,7 @@ export function SetupView(props: {
             ))}
             <IdentityProjection locale={locale} value={draft.snapshots.identity} />
             <InnerFileNote locale={locale} value={draft.snapshots.inner} />
+            <CurrentStateStatus locale={locale} />
             <div className="inline-actions">
               <button type="button" disabled={props.busyKey !== null} onClick={props.onRefresh}>{t(locale, "setupReload")}</button>
               {setup?.needsSetup ? (

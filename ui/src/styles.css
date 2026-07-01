@@ -699,80 +699,14 @@ textarea {
   grid-template-columns: minmax(0, 1fr);
 }
 
-.persona-layer-map {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr);
-  gap: 8px;
-  margin-top: 12px;
-}
-
-.persona-layer-chip {
-  display: grid;
-  grid-template-columns: 140px 120px minmax(0, 1fr);
-  gap: 10px;
-  align-items: baseline;
-  padding: 10px 12px;
-  border: 1px solid var(--pr-line);
-  border-radius: 12px;
-  background: var(--pr-canvas);
-}
-
-.persona-layer-chip strong {
-  color: var(--pr-indigo);
-}
-
-.persona-layer-chip span,
-.persona-layer-chip small,
 .field-help,
 .ai-draft-row {
   color: var(--muted);
 }
 
-.persona-file-tabs {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr);
-  gap: 8px;
-}
-
-.persona-file-tab {
-  display: grid;
-  grid-template-columns: 140px 150px minmax(0, 1fr);
-  gap: 10px;
-  align-items: center;
-  min-height: 0;
-  padding: 10px 12px;
-  text-align: left;
-  border: 1px solid var(--pr-line);
-  border-radius: 12px;
-  background: var(--pr-canvas);
-  color: var(--pr-ink);
-  box-shadow: none;
-}
-
-.persona-file-tab.is-active {
-  border-color: var(--pr-indigo);
-  box-shadow: inset 0 0 0 1px var(--pr-indigo);
-}
-
-.persona-file-tab-file {
-  font-weight: 800;
-  color: var(--pr-indigo);
-}
-
-.persona-file-tab-role,
-.persona-file-tab-gap {
-  font-size: 0.86rem;
-  color: var(--muted);
-}
-
-.persona-file-tab-gap {
-  color: var(--warning);
-  font-weight: 700;
-}
-
 .persona-file-map {
   display: grid;
-  grid-template-columns: minmax(0, 1fr);
+  grid-template-columns: repeat(auto-fit, minmax(230px, 1fr));
   gap: 12px;
   margin: 16px 0;
 }
@@ -795,7 +729,7 @@ textarea {
 
 .persona-file-map-main {
   display: grid;
-  gap: 3px;
+  gap: 6px;
   min-width: 0;
 }
 
@@ -865,6 +799,11 @@ textarea {
   background: var(--pr-soft);
 }
 
+.persona-badge {
+  justify-content: center;
+  min-width: 4.6rem;
+}
+
 .persona-target-chip {
   margin-top: 4px;
 }
@@ -907,6 +846,22 @@ textarea {
   font: 0.86rem/1.5 ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
 }
 
+.persona-readonly-copy {
+  margin: 0;
+  color: var(--muted);
+}
+
+.persona-readonly-disclosure {
+  display: grid;
+  gap: 8px;
+}
+
+.persona-readonly-disclosure > summary {
+  cursor: pointer;
+  color: var(--pr-indigo);
+  font-weight: 800;
+}
+
 .persona-readonly-details {
   display: grid;
   gap: 8px;
@@ -930,8 +885,6 @@ textarea {
 }
 
 @media (max-width: 720px) {
-  .persona-layer-chip,
-  .persona-file-tab,
   .song-ledger-toolbar {
     display: grid;
     grid-template-columns: minmax(0, 1fr);
