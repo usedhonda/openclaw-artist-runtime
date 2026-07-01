@@ -146,7 +146,7 @@
                 "live"
               ],
               "default": "skip",
-              "description": "Suno create submit mode. 'skip' fills the create form but never clicks Create, so credit consumption stays at zero. 'live' is reserved for a later round and is currently rejected at runtime."
+              "description": "Suno create submit mode. 'skip' fills the create form but never clicks Create, so credit consumption stays at zero. 'live' clicks Create when dry-run is off, the live worker is configured, and Suno budget gates allow it."
             },
             "authority": {
               "type": "string",
@@ -305,10 +305,11 @@
           "type": "string",
           "enum": [
             "mock",
-            "openclaw"
+            "openclaw",
+            "openai-codex"
           ],
           "default": "mock",
-          "description": "AI provider used for artist setup proposals, lyrics drafts, style synthesis, and production review. 'mock' stays local and deterministic; 'openclaw' uses the configured OpenClaw provider when available."
+          "description": "AI provider used for artist setup proposals, lyrics drafts, style synthesis, and production review. 'mock' stays local and deterministic; 'openclaw' uses the configured OpenClaw provider when available; 'openai-codex' uses a local OpenClaw auth profile."
         }
       }
     },

@@ -222,7 +222,7 @@
                   "live"
                 ],
                 "default": "skip",
-                "description": "Suno create submit mode. 'skip' fills the create form but never clicks Create, so credit consumption stays at zero. 'live' is reserved for a later round and is currently rejected at runtime."
+                "description": "Suno create submit mode. 'skip' fills the create form but never clicks Create, so credit consumption stays at zero. 'live' clicks Create when dry-run is off, the live worker is configured, and Suno budget gates allow it."
               },
               "authority": {
                 "type": "string",
@@ -381,10 +381,11 @@
             "type": "string",
             "enum": [
               "mock",
-              "openclaw"
+              "openclaw",
+              "openai-codex"
             ],
             "default": "mock",
-            "description": "AI provider used for artist setup proposals, lyrics drafts, style synthesis, and production review. 'mock' stays local and deterministic; 'openclaw' uses the configured OpenClaw provider when available."
+            "description": "AI provider used for artist setup proposals, lyrics drafts, style synthesis, and production review. 'mock' stays local and deterministic; 'openclaw' uses the configured OpenClaw provider when available; 'openai-codex' uses a local OpenClaw auth profile."
           }
         }
       },
@@ -686,6 +687,10 @@
       "label": "Dry run",
       "help": "When on, no external posts or Suno create actions are executed."
     },
+    "dashboard.baseUrl": {
+      "label": "Dashboard URL",
+      "help": "Reachable Producer Console base URL used in Telegram Dashboard links. A saved config value overrides OPENCLAW_DASHBOARD_BASE_URL."
+    },
     "music.suno.connectionMode": {
       "label": "Suno connection",
       "help": "Use a background logged-in browser profile, manual copy fallback, or a future API provider."
@@ -696,7 +701,7 @@
     },
     "music.suno.submitMode": {
       "label": "Suno submit mode",
-      "help": "Keep 'skip' to fill the Suno form without clicking Create. 'live' is reserved for a later round and is currently blocked."
+      "help": "Keep 'skip' to fill the Suno form without clicking Create. 'live' clicks Create only when dry-run is off and budget gates allow it."
     },
     "music.suno.authority": {
       "label": "Suno authority",
@@ -712,7 +717,15 @@
     },
     "music.suno.monthlyGenerationBudget": {
       "label": "Monthly Suno generation budget",
-      "help": "Hard cap enforced by MusicAuthority."
+      "help": "Hard cap for Suno create runs per UTC month. 0 blocks new runs."
+    },
+    "music.suno.maxGenerationsPerDay": {
+      "label": "Max generations per day",
+      "help": "Hard cap for Suno create runs per UTC day."
+    },
+    "music.suno.minMinutesBetweenCreates": {
+      "label": "Minutes between creates",
+      "help": "Cooldown between real Suno Create clicks."
     },
     "distribution.enabled": {
       "label": "Social distribution",
@@ -762,9 +775,29 @@
       "label": "Telegram free-text inbox",
       "help": "Allow owner free-text messages to be staged for a later operator inbox path."
     },
+    "artistPulse.enabled": {
+      "label": "Artist pulse",
+      "help": "Allow the artist to send routine studio notes."
+    },
+    "artistPulse.minIntervalHours": {
+      "label": "Artist pulse interval",
+      "help": "Minimum hours between routine artist studio notes."
+    },
+    "commission.enabled": {
+      "label": "Producer commissions",
+      "help": "Allow producer song requests through Telegram and conversation flows."
+    },
+    "songSpawn.enabled": {
+      "label": "Autonomous song ideas",
+      "help": "Allow the artist to propose new song ideas on its own."
+    },
+    "songSpawn.minIntervalHours": {
+      "label": "Song idea interval",
+      "help": "Minimum hours between autonomous song idea proposals."
+    },
     "aiReview.provider": {
       "label": "AI helper provider",
-      "help": "Chooses the AI helper used for persona proposals, lyrics, Suno style synthesis, and review. Mock is local/deterministic; OpenClaw uses the configured provider."
+      "help": "Chooses the AI helper used for persona proposals, lyrics, Suno style synthesis, and review. Mock is local/deterministic; OpenClaw and OpenAI Codex use configured local auth."
     },
     "ui.locale": {
       "label": "Producer Room language",
