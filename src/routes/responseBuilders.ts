@@ -21,7 +21,7 @@ import { emitRuntimeEvent, getRuntimeEventBus } from "../services/runtimeEventBu
 import { readRuntimeEvents, readSongEventsAsc } from "../services/runtimeEventsLedger.js";
 import { appendFailedNotifyReplayRecord, latestFailedNotifyEntry, listUnreplayedFailedNotifications, summarizeFailedNotifications } from "../services/failedNotifyLedger.js";
 import { getSongPromptLedgerPath } from "../services/promptLedger.js";
-import { getBirdDailyMaxOverride, getBirdMinIntervalMinutesOverride, getDashboardBaseUrl, isDebugCallbackDispatchEnabled, isDebugNotifyReviewEnabled, isSunoLiveDisabled, isSunoLiveEnabled, readConfigOverrides, resolveRuntimeConfig, type RuntimeSafetyOverridesPatch } from "../services/runtimeConfig.js";
+import { getBirdDailyMaxOverride, getBirdMinIntervalMinutesOverride, getDashboardBaseUrl, getNewsRssUrls, isDebugCallbackDispatchEnabled, isDebugNotifyReviewEnabled, isNewsArticleResolverEnabled, isNewsBrowserResolverEnabled, isSunoLiveDisabled, isSunoLiveEnabled, isTelegramNotifierEnabled, isXTcoFetchEnabled, readConfigOverrides, resolveRuntimeConfig, type RuntimeSafetyOverridesPatch } from "../services/runtimeConfig.js";
 import { readLatestSocialAction } from "../services/socialPublishing.js";
 import { SocialDistributionWorker } from "../services/socialDistributionWorker.js";
 import { listPendingSpawnProposals } from "../services/spawnProposalQueue.js";
@@ -44,6 +44,7 @@ import { buildSunoArtifactIndex, readAllSunoRuns, readLatestSunoRun } from "../s
 import { workerImportOutcomeFromSong } from "../services/sunoBrowserWorker.js";
 import { readTakeHistory } from "../services/takeSelection.js";
 import { routeTelegramCallback } from "../services/telegramCallbackHandler.js";
+import { getTelegramOwnerUserIds } from "../services/telegramAuth.js";
 import type { TelegramClient } from "../services/telegramClient.js";
 import { TelegramNotifier } from "../services/telegramNotifier.js";
 import { integerFromPayloadOrQuery, isLocalRoutePayload, optionalInteger, payloadInteger, payloadRecord, queryValueFromPayload } from "./payloadHelpers.js";
@@ -813,6 +814,47 @@ interface ConfigFieldMeta {
 
 type ConfigFieldMetaMap = Record<string, ConfigFieldMeta>;
 
+type RuntimeDiagnosticSource = "env" | "default";
+
+interface RuntimeDiagnosticFlag {
+  envVar: string;
+  source: RuntimeDiagnosticSource;
+  editable: false;
+  enabled: boolean;
+}
+
+interface RuntimeDiagnosticConfigured {
+  envVar: string;
+  source: RuntimeDiagnosticSource;
+  editable: false;
+  configured: boolean;
+}
+
+interface RuntimeDiagnosticCount {
+  envVar: string;
+  source: RuntimeDiagnosticSource;
+  editable: false;
+  configured: boolean;
+  count: number;
+}
+
+interface RuntimeDiagnostics {
+  newsX: {
+    rssUrls: RuntimeDiagnosticCount;
+    browserResolve: RuntimeDiagnosticFlag;
+    articleResolve: RuntimeDiagnosticFlag;
+    firefoxProfile: RuntimeDiagnosticConfigured;
+    tcoFetch: RuntimeDiagnosticFlag;
+  };
+  telegram: {
+    active: boolean;
+    reason: "ready" | "disabled_by_flag" | "missing_token" | "missing_owner_user_ids";
+    botToken: RuntimeDiagnosticConfigured;
+    ownerUserIds: RuntimeDiagnosticCount;
+    notifier: RuntimeDiagnosticFlag;
+  };
+}
+
 function configField(source: ConfigFieldSource = "config", envVar?: string, editable = source !== "env"): ConfigFieldMeta {
   return {
     source,
@@ -824,6 +866,85 @@ function configField(source: ConfigFieldSource = "config", envVar?: string, edit
 function envValue(env: NodeJS.ProcessEnv, key: string): string | undefined {
   const value = env[key]?.trim();
   return value ? value : undefined;
+}
+
+function diagnosticSource(env: NodeJS.ProcessEnv, key: string): RuntimeDiagnosticSource {
+  return envValue(env, key) ? "env" : "default";
+}
+
+function buildRuntimeDiagnostics(env: NodeJS.ProcessEnv = process.env): RuntimeDiagnostics {
+  const newsRssUrls = getNewsRssUrls(env);
+  const ownerUserIds = getTelegramOwnerUserIds(env);
+  const tokenConfigured = Boolean(envValue(env, "TELEGRAM_BOT_TOKEN"));
+  const ownerUserIdsConfigured = ownerUserIds.size > 0;
+  const notifierEnabled = isTelegramNotifierEnabled(env);
+  let telegramReason: RuntimeDiagnostics["telegram"]["reason"] = "ready";
+  if (!notifierEnabled) {
+    telegramReason = "disabled_by_flag";
+  } else if (!tokenConfigured) {
+    telegramReason = "missing_token";
+  } else if (!ownerUserIdsConfigured) {
+    telegramReason = "missing_owner_user_ids";
+  }
+
+  return {
+    newsX: {
+      rssUrls: {
+        envVar: "OPENCLAW_NEWS_RSS_URLS",
+        source: diagnosticSource(env, "OPENCLAW_NEWS_RSS_URLS"),
+        editable: false,
+        configured: newsRssUrls.length > 0,
+        count: newsRssUrls.length
+      },
+      browserResolve: {
+        envVar: "OPENCLAW_NEWS_BROWSER_RESOLVE",
+        source: diagnosticSource(env, "OPENCLAW_NEWS_BROWSER_RESOLVE"),
+        editable: false,
+        enabled: isNewsBrowserResolverEnabled(env)
+      },
+      articleResolve: {
+        envVar: "OPENCLAW_NEWS_ARTICLE_RESOLVE",
+        source: diagnosticSource(env, "OPENCLAW_NEWS_ARTICLE_RESOLVE"),
+        editable: false,
+        enabled: isNewsArticleResolverEnabled(env)
+      },
+      firefoxProfile: {
+        envVar: "OPENCLAW_X_FIREFOX_PROFILE",
+        source: diagnosticSource(env, "OPENCLAW_X_FIREFOX_PROFILE"),
+        editable: false,
+        configured: Boolean(envValue(env, "OPENCLAW_X_FIREFOX_PROFILE"))
+      },
+      tcoFetch: {
+        envVar: "OPENCLAW_X_TCO_FETCH_ENABLED",
+        source: diagnosticSource(env, "OPENCLAW_X_TCO_FETCH_ENABLED"),
+        editable: false,
+        enabled: isXTcoFetchEnabled(env)
+      }
+    },
+    telegram: {
+      active: notifierEnabled && tokenConfigured && ownerUserIdsConfigured,
+      reason: telegramReason,
+      botToken: {
+        envVar: "TELEGRAM_BOT_TOKEN",
+        source: diagnosticSource(env, "TELEGRAM_BOT_TOKEN"),
+        editable: false,
+        configured: tokenConfigured
+      },
+      ownerUserIds: {
+        envVar: "TELEGRAM_OWNER_USER_IDS",
+        source: diagnosticSource(env, "TELEGRAM_OWNER_USER_IDS"),
+        editable: false,
+        configured: ownerUserIdsConfigured,
+        count: ownerUserIds.size
+      },
+      notifier: {
+        envVar: "OPENCLAW_TELEGRAM_NOTIFIER",
+        source: diagnosticSource(env, "OPENCLAW_TELEGRAM_NOTIFIER"),
+        editable: false,
+        enabled: notifierEnabled
+      }
+    }
+  };
 }
 
 function buildConfigFieldMeta(
@@ -880,6 +1001,7 @@ export async function buildConfigResponse(config?: Partial<ArtistRuntimeConfig>)
       ...resolved.dashboard,
       baseUrl: dashboardBaseUrl
     },
+    diagnostics: buildRuntimeDiagnostics(),
     fieldMeta: buildConfigFieldMeta(resolved)
   };
 }

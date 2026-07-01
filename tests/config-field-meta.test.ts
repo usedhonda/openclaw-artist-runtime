@@ -81,4 +81,36 @@ describe("config field source metadata", () => {
     expect(config.dashboard.baseUrl).toBe("https://config.example.test");
     expect(config.fieldMeta["dashboard.baseUrl"]).toMatchObject({ source: "config", editable: true });
   });
+
+  it("surfaces runtime diagnostics without leaking credential or source values", async () => {
+    const root = mkdtempSync(join(tmpdir(), "artist-runtime-config-meta-diagnostics-"));
+    await mkdir(join(root, "runtime"), { recursive: true });
+    vi.stubEnv("OPENCLAW_NEWS_RSS_URLS", "https://secret-news.example/rss,https://another-secret.example/rss");
+    vi.stubEnv("OPENCLAW_NEWS_BROWSER_RESOLVE", "on");
+    vi.stubEnv("OPENCLAW_NEWS_ARTICLE_RESOLVE", "off");
+    vi.stubEnv("OPENCLAW_X_FIREFOX_PROFILE", "/Users/operator/PrivateFirefoxProfile");
+    vi.stubEnv("OPENCLAW_X_TCO_FETCH_ENABLED", "1");
+    vi.stubEnv("TELEGRAM_BOT_TOKEN", "123456:secret-token-value");
+    vi.stubEnv("TELEGRAM_OWNER_USER_IDS", "111111,222222");
+    vi.stubEnv("OPENCLAW_TELEGRAM_NOTIFIER", "on");
+
+    const config = await buildConfigResponse({ artist: { workspaceRoot: root } as never });
+    const serialized = JSON.stringify(config);
+
+    expect(config.diagnostics.newsX.rssUrls).toMatchObject({ count: 2, configured: true, editable: false, source: "env", envVar: "OPENCLAW_NEWS_RSS_URLS" });
+    expect(config.diagnostics.newsX.browserResolve).toMatchObject({ enabled: true, editable: false, source: "env" });
+    expect(config.diagnostics.newsX.articleResolve).toMatchObject({ enabled: false, editable: false, source: "env" });
+    expect(config.diagnostics.newsX.firefoxProfile).toMatchObject({ configured: true, editable: false, source: "env", envVar: "OPENCLAW_X_FIREFOX_PROFILE" });
+    expect(config.diagnostics.newsX.tcoFetch).toMatchObject({ enabled: true, editable: false, source: "env" });
+    expect(config.diagnostics.telegram.active).toBe(true);
+    expect(config.diagnostics.telegram.reason).toBe("ready");
+    expect(config.diagnostics.telegram.botToken).toMatchObject({ configured: true, editable: false, source: "env", envVar: "TELEGRAM_BOT_TOKEN" });
+    expect(config.diagnostics.telegram.ownerUserIds).toMatchObject({ count: 2, configured: true, editable: false, source: "env", envVar: "TELEGRAM_OWNER_USER_IDS" });
+    expect(serialized).not.toContain("secret-news.example");
+    expect(serialized).not.toContain("another-secret.example");
+    expect(serialized).not.toContain("PrivateFirefoxProfile");
+    expect(serialized).not.toContain("secret-token-value");
+    expect(serialized).not.toContain("111111");
+    expect(serialized).not.toContain("222222");
+  });
 });

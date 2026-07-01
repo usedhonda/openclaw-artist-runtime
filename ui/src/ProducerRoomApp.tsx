@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from "react";
-import { buildConfigDraft, buildConfigUpdatePatch, validateConfigDraft, type ConfigDraft, type ConfigEditorSource, type ConfigFieldMeta } from "./configEditor";
+import { buildConfigDraft, buildConfigUpdatePatch, validateConfigDraft, type ConfigDraft, type ConfigEditorSource, type ConfigFieldMeta, type RuntimeDiagnosticSource } from "./configEditor";
 import { ErrorToastStack } from "./ErrorToast";
 import { AwaitingDecisionPanel, groupAwaitingDecisions, type AwaitingDecision } from "./components/AwaitingDecisionPanel";
 import { SongDetailCard } from "./components/SongDetailCard";
@@ -482,6 +482,24 @@ function FieldSourceNote(props: { meta?: ConfigFieldMeta }) {
   return <div className={props.meta.source === "env" ? "warning-banner" : "muted"}>{label}{suffix}</div>;
 }
 
+function DiagnosticReadout(props: {
+  label: string;
+  value: string;
+  source: RuntimeDiagnosticSource;
+  envVar: string;
+  detail?: string;
+}) {
+  const sourceLabel = props.source === "env" ? `source: env ${props.envVar}` : "source: default";
+  return (
+    <div className="settings-readonly">
+      <div className="eyebrow">{props.label}</div>
+      <strong>{props.value}</strong>
+      {props.detail ? <div className="muted">{props.detail}</div> : null}
+      <div className={props.source === "env" ? "warning-banner" : "muted"}>{sourceLabel} · read-only here</div>
+    </div>
+  );
+}
+
 export function SettingsView(props: {
   locale?: ProducerRoomLocale;
   config: ConfigResponse | null;
@@ -497,6 +515,10 @@ export function SettingsView(props: {
   const locale = props.locale ?? "en";
   const draft = props.draft;
   const globalArmHeld = Boolean(draft && (!draft.distributionEnabled || !draft.distributionLiveGoArmed));
+  const diagnostics = props.config?.diagnostics;
+  const enabledLabel = (value: boolean) => value ? t(locale, "settingsDiagnosticEnabled") : t(locale, "settingsDiagnosticDisabled");
+  const configuredLabel = (value: boolean) => value ? t(locale, "settingsDiagnosticConfigured") : t(locale, "settingsDiagnosticMissing");
+  const countLabel = (count: number) => count > 0 ? t(locale, "settingsDiagnosticCount", { count }) : t(locale, "settingsDiagnosticMissing");
   const authorityLabel = (value: string) => {
     switch (value) {
       case "auto_publish":
@@ -665,6 +687,22 @@ export function SettingsView(props: {
                 <NumberField label={t(locale, "settingsTelegramPollInterval")} value={draft.telegramPollIntervalMs} min={500} max={60000} onChange={(value) => props.onUpdateDraft({ telegramPollIntervalMs: value })} note={t(locale, "settingsTelegramPollIntervalHelp")} />
               </div>
             </section>
+            {diagnostics ? (
+              <section className="settings-section">
+                <div className="section-title">{t(locale, "settingsRuntimeDiagnostics")}</div>
+                <div className="muted">{t(locale, "settingsRuntimeDiagnosticsHelp")}</div>
+                <div className="field-grid">
+                  <DiagnosticReadout label={t(locale, "settingsNewsRssUrls")} value={countLabel(diagnostics.newsX.rssUrls.count)} source={diagnostics.newsX.rssUrls.source} envVar={diagnostics.newsX.rssUrls.envVar} detail={t(locale, "settingsNewsRssUrlsHelp")} />
+                  <DiagnosticReadout label={t(locale, "settingsNewsBrowserResolve")} value={enabledLabel(diagnostics.newsX.browserResolve.enabled)} source={diagnostics.newsX.browserResolve.source} envVar={diagnostics.newsX.browserResolve.envVar} />
+                  <DiagnosticReadout label={t(locale, "settingsNewsArticleResolve")} value={enabledLabel(diagnostics.newsX.articleResolve.enabled)} source={diagnostics.newsX.articleResolve.source} envVar={diagnostics.newsX.articleResolve.envVar} />
+                  <DiagnosticReadout label={t(locale, "settingsXFirefoxProfile")} value={configuredLabel(diagnostics.newsX.firefoxProfile.configured)} source={diagnostics.newsX.firefoxProfile.source} envVar={diagnostics.newsX.firefoxProfile.envVar} detail={t(locale, "settingsCredentialValueHidden")} />
+                  <DiagnosticReadout label={t(locale, "settingsXTcoFetch")} value={enabledLabel(diagnostics.newsX.tcoFetch.enabled)} source={diagnostics.newsX.tcoFetch.source} envVar={diagnostics.newsX.tcoFetch.envVar} />
+                  <DiagnosticReadout label={t(locale, "settingsTelegramReadiness")} value={diagnostics.telegram.active ? t(locale, "settingsDiagnosticActive") : t(locale, "settingsDiagnosticInactive")} source={diagnostics.telegram.notifier.source} envVar={diagnostics.telegram.notifier.envVar} detail={t(locale, "settingsTelegramReadinessReason", { reason: diagnostics.telegram.reason })} />
+                  <DiagnosticReadout label={t(locale, "settingsTelegramBotToken")} value={configuredLabel(diagnostics.telegram.botToken.configured)} source={diagnostics.telegram.botToken.source} envVar={diagnostics.telegram.botToken.envVar} detail={t(locale, "settingsCredentialValueHidden")} />
+                  <DiagnosticReadout label={t(locale, "settingsTelegramOwnerIds")} value={countLabel(diagnostics.telegram.ownerUserIds.count)} source={diagnostics.telegram.ownerUserIds.source} envVar={diagnostics.telegram.ownerUserIds.envVar} detail={t(locale, "settingsTelegramOwnerIdsHelp")} />
+                </div>
+              </section>
+            ) : null}
             <section className="settings-section">
               <div className="section-title">{t(locale, "settingsAiAudit")}</div>
               <div className="field-grid">

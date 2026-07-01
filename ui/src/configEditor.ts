@@ -22,6 +22,7 @@ import {
 
 export type ConfigEditorSource = {
   fieldMeta?: ConfigFieldMetaMap;
+  diagnostics?: RuntimeDiagnostics;
   ui?: {
     locale?: UiLocaleMode;
   };
@@ -92,6 +93,47 @@ export interface ConfigFieldMeta {
 }
 
 export type ConfigFieldMetaMap = Record<string, ConfigFieldMeta>;
+
+export type RuntimeDiagnosticSource = "env" | "default";
+
+export interface RuntimeDiagnosticFlag {
+  envVar: string;
+  source: RuntimeDiagnosticSource;
+  editable: false;
+  enabled: boolean;
+}
+
+export interface RuntimeDiagnosticConfigured {
+  envVar: string;
+  source: RuntimeDiagnosticSource;
+  editable: false;
+  configured: boolean;
+}
+
+export interface RuntimeDiagnosticCount {
+  envVar: string;
+  source: RuntimeDiagnosticSource;
+  editable: false;
+  configured: boolean;
+  count: number;
+}
+
+export interface RuntimeDiagnostics {
+  newsX: {
+    rssUrls: RuntimeDiagnosticCount;
+    browserResolve: RuntimeDiagnosticFlag;
+    articleResolve: RuntimeDiagnosticFlag;
+    firefoxProfile: RuntimeDiagnosticConfigured;
+    tcoFetch: RuntimeDiagnosticFlag;
+  };
+  telegram: {
+    active: boolean;
+    reason: "ready" | "disabled_by_flag" | "missing_token" | "missing_owner_user_ids";
+    botToken: RuntimeDiagnosticConfigured;
+    ownerUserIds: RuntimeDiagnosticCount;
+    notifier: RuntimeDiagnosticFlag;
+  };
+}
 
 export type ConfigDraft = {
   fieldMeta?: ConfigFieldMetaMap;

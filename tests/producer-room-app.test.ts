@@ -345,6 +345,22 @@ describe("ProducerRoomApp Songs and Settings views", () => {
         "dashboard.baseUrl": { source: "env" as const, editable: true, envVar: "OPENCLAW_DASHBOARD_BASE_URL" },
         "aiReview.provider": { source: "env" as const, editable: false, envVar: "OPENCLAW_AI_REVIEW_PROVIDER" }
       },
+      diagnostics: {
+        newsX: {
+          rssUrls: { envVar: "OPENCLAW_NEWS_RSS_URLS", source: "env" as const, editable: false as const, configured: true, count: 2 },
+          browserResolve: { envVar: "OPENCLAW_NEWS_BROWSER_RESOLVE", source: "env" as const, editable: false as const, enabled: true },
+          articleResolve: { envVar: "OPENCLAW_NEWS_ARTICLE_RESOLVE", source: "env" as const, editable: false as const, enabled: false },
+          firefoxProfile: { envVar: "OPENCLAW_X_FIREFOX_PROFILE", source: "env" as const, editable: false as const, configured: true },
+          tcoFetch: { envVar: "OPENCLAW_X_TCO_FETCH_ENABLED", source: "env" as const, editable: false as const, enabled: true }
+        },
+        telegram: {
+          active: true,
+          reason: "ready" as const,
+          botToken: { envVar: "TELEGRAM_BOT_TOKEN", source: "env" as const, editable: false as const, configured: true },
+          ownerUserIds: { envVar: "TELEGRAM_OWNER_USER_IDS", source: "env" as const, editable: false as const, configured: true, count: 2 },
+          notifier: { envVar: "OPENCLAW_TELEGRAM_NOTIFIER", source: "env" as const, editable: false as const, enabled: true }
+        }
+      },
       ui: { locale: "auto" as const },
       dashboard: { baseUrl: "https://tailnet.example.test" },
       artist: { artistId: "artist", workspaceRoot: "/tmp/artist" },
@@ -389,6 +405,15 @@ describe("ProducerRoomApp Songs and Settings views", () => {
     expect(html).toContain("editable fallback");
     expect(html).toContain("read-only here");
     expect(html).toContain("disabled");
+    expect(html).toContain("Runtime inputs");
+    expect(html).toContain("News RSS feeds");
+    expect(html).toContain("X Firefox profile");
+    expect(html).toContain("Telegram readiness");
+    expect(html).toContain("Telegram bot token");
+    expect(html).toContain("2 configured");
+    expect(html).toContain("reason: ready");
+    expect(html).not.toContain("secret-token-value");
+    expect(html).not.toContain("PrivateFirefoxProfile");
   });
 
   it("renders Setup as canonical inputs without raw MD tabs", () => {
