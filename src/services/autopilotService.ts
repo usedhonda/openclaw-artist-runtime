@@ -1106,7 +1106,7 @@ export class ArtistAutopilotService {
     const reactionQuery = input.manualSeed ? { queries: [] } : buildNewsReactionQueries(newsObservation.entries, { personaText });
     const cycleObservation = await collectObservations(input.workspaceRoot, {
       personaText,
-      query: input.manualSeed?.hint ? undefined : reactionQuery.queries[0] ?? "music OR society OR culture",
+      queries: input.manualSeed?.hint ? undefined : reactionQuery.queries.length > 0 ? reactionQuery.queries : ["music OR society OR culture"],
       reactionSeed: reactionQuery.seed,
       manualSeed: input.manualSeed,
       runner: input.observationRunner

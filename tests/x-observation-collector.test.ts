@@ -97,6 +97,77 @@ describe("x observation collector", () => {
     expect(cache).not.toContain("generic culture chatter");
   });
 
+  it("tries the next reaction query when the first query has no acceptable entries", async () => {
+    const root = workspace();
+    const runner = vi.fn(async (query?: string) => ({
+      stdout: query === "\"LUUP 事故\""
+        ? ""
+        : "@citywatch 便利の顔で危険を薄める街 https://x.com/citywatch/status/2222222222222222222 2026-04-29T01:30:00.000Z"
+    }));
+
+    const result = await collectObservations(root, {
+      now: new Date("2026-04-29T02:00:00.000Z"),
+      queries: ["\"LUUP 事故\"", "\"LUUP 事故\" lang:ja since:2026-04-22"],
+      reactionSeed: {
+        title: "LUUP 事故、渋谷で発生",
+        source: "Example"
+      },
+      runner
+    });
+
+    expect(result.status).toBe("collected");
+    expect(runner).toHaveBeenCalledTimes(2);
+    expect(runner.mock.calls.map(([query]) => query)).toEqual(["\"LUUP 事故\"", "\"LUUP 事故\" lang:ja since:2026-04-22"]);
+    const cache = await readTodayObservations(root, new Date("2026-04-29T02:00:00.000Z"));
+    expect(cache).toContain("Query: \"LUUP 事故\" lang:ja since:2026-04-22");
+    expect(cache).toContain("便利の顔で危険を薄める街");
+  });
+
+  it("does not exceed the remaining bird call budget while broadening", async () => {
+    const root = workspace();
+    await mkdir(join(root, "runtime"), { recursive: true });
+    await writeFile(join(root, "runtime", "config-overrides.json"), JSON.stringify({ bird: { rateLimits: { dailyMax: 1, minIntervalMinutes: 60 } } }), "utf8");
+    const runner = vi.fn(async () => ({ stdout: "" }));
+
+    const result = await collectObservations(root, {
+      now: new Date("2026-04-29T01:00:00.000Z"),
+      queries: ["\"too narrow\"", "\"broader\""],
+      runner
+    });
+
+    expect(result.status).toBe("collected");
+    expect(runner).toHaveBeenCalledTimes(1);
+  });
+
+  it("uses a short TTL for empty observation caches", async () => {
+    const root = workspace();
+    await mkdir(join(root, "runtime"), { recursive: true });
+    await writeFile(join(root, "runtime", "config-overrides.json"), JSON.stringify({ bird: { rateLimits: { dailyMax: 5, minIntervalMinutes: 1 } } }), "utf8");
+    const runner = vi.fn(async () => ({ stdout: "" }));
+    const firstNow = new Date("2026-04-29T01:00:00.000Z");
+    const first = await collectObservations(root, {
+      now: firstNow,
+      query: "\"empty topic\"",
+      runner
+    });
+    await utimes(first.path, firstNow, firstNow);
+
+    const cached = await collectObservations(root, {
+      now: new Date("2026-04-29T01:10:00.000Z"),
+      query: "\"empty topic\"",
+      runner
+    });
+    const refreshed = await collectObservations(root, {
+      now: new Date("2026-04-29T01:25:00.000Z"),
+      query: "\"empty topic\"",
+      runner
+    });
+
+    expect(cached.status).toBe("cached");
+    expect(refreshed.status).toBe("collected");
+    expect(runner).toHaveBeenCalledTimes(2);
+  });
+
   it("blocks secret-like observation output", async () => {
     const root = workspace();
     const result = await collectObservations(root, {

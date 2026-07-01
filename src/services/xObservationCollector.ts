@@ -10,6 +10,7 @@ import { rankObservations, summarizeMatches, type ScoredObservation } from "./xO
 export interface XObservationContext {
   personaText?: string;
   query?: string;
+  queries?: string[];
   reactionSeed?: {
     title: string;
     url?: string;
@@ -18,7 +19,7 @@ export interface XObservationContext {
   observationHistory?: string;
   manualSeed?: { hint?: string };
   now?: Date;
-  runner?: () => Promise<{ stdout: string; stderr?: string }>;
+  runner?: (query?: string) => Promise<{ stdout: string; stderr?: string }>;
 }
 
 export interface XObservationResult {
@@ -42,6 +43,8 @@ const fullTweetUrlPattern = /https:\/\/(?:twitter|x)\.com\/[^/\s]+\/status\/\d+/
 const authorPattern = /(?:^|\s)@([A-Za-z0-9_]{1,20})\b/;
 const isoDatePattern = /\b\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{3})?Z\b/;
 const observationCacheTtlMs = 6 * 60 * 60 * 1000;
+const emptyObservationCacheTtlMs = 20 * 60 * 1000;
+const maxObservationQueryAttempts = 3;
 
 type RejectionReason = "short_url_only" | "missing_author" | "missing_postedAt";
 
@@ -371,15 +374,31 @@ function sameReactionSeed(
 
 function cachedObservationMatches(
   cached: string,
-  targetQuery: string | undefined,
+  targetQueries: Array<string | undefined>,
   reactionSeed: XObservationContext["reactionSeed"] | undefined
 ): boolean {
   const parsed = parseObservationFile(cached);
   if (!parsed.query && !parsed.reactionSeed) {
     return reactionSeed === undefined;
   }
-  return (normalizedCachedQuery(parsed.query) ?? "") === (targetQuery ?? "")
+  return targetQueries.some((targetQuery) => (normalizedCachedQuery(parsed.query) ?? "") === (targetQuery ?? ""))
     && sameReactionSeed(parsed.reactionSeed, reactionSeed);
+}
+
+function cacheTtlFor(content: string): number {
+  return parseObservationFile(content).entries.length === 0 ? emptyObservationCacheTtlMs : observationCacheTtlMs;
+}
+
+function uniqueQueries(values: Array<string | undefined>): string[] {
+  const seen = new Set<string>();
+  const result: string[] = [];
+  for (const value of values) {
+    const query = value?.trim();
+    if (!query || seen.has(query)) continue;
+    seen.add(query);
+    result.push(query);
+  }
+  return result;
 }
 
 export async function readObservationsReport(root: string, dateOrNow: string | Date = new Date()): Promise<ObservationReport> {
@@ -408,14 +427,14 @@ export async function collectObservations(root: string, context: XObservationCon
     manualSeed: context.manualSeed,
     motifs
   });
-  const targetQuery = context.query ?? strategy.query;
+  const targetQueries = uniqueQueries([...(context.queries ?? []), context.query ?? strategy.query]);
   const cached = await readFile(path, "utf8").catch(() => "");
   if (cached) {
     const cachedStat = await stat(path).catch(() => undefined);
     if (
       cachedStat
-      && now.getTime() - cachedStat.mtime.getTime() < observationCacheTtlMs
-      && cachedObservationMatches(cached, targetQuery, context.reactionSeed)
+      && now.getTime() - cachedStat.mtime.getTime() < cacheTtlFor(cached)
+      && cachedObservationMatches(cached, targetQueries, context.reactionSeed)
     ) {
       return { status: "cached", path, observations: cached };
     }
@@ -425,28 +444,40 @@ export async function collectObservations(root: string, context: XObservationCon
     const status = gate.cooldownUntil ? "cooldown" : "skipped";
     return { status, path, observations: "", reason: gate.reason };
   }
-  const runner = context.runner ?? defaultRunner(targetQuery);
+  const queriesToTry = targetQueries.length > 0 ? targetQueries : [undefined];
+  const maxAttempts = Math.max(1, Math.min(maxObservationQueryAttempts, gate.remaining || 1, queriesToTry.length));
   try {
-    const result = await runner();
-    const combined = `${result.stdout}\n${result.stderr ?? ""}`;
-    if (isBirdBanIndication(combined)) {
-      await recordBirdCall(root, now, { query: targetQuery, mode: strategy.mode });
-      await triggerCooldown(root, combined.slice(0, 240), now);
-      emitRuntimeEvent({
-        type: "bird_cooldown_triggered",
-        reason: "bird returned a rate-limit or ban indication",
-        cooldownUntil: new Date(now.getTime() + 24 * 60 * 60 * 1000).toISOString(),
-        timestamp: now.getTime()
-      });
-      return { status: "cooldown", path, observations: "", reason: "bird returned a rate-limit or ban indication" };
+    let finalFiltered: ReturnType<typeof filterObservationEntries> | undefined;
+    let finalQuery: string | undefined;
+    for (const query of queriesToTry.slice(0, maxAttempts)) {
+      const runner = context.runner ?? defaultRunner(query);
+      const result = await runner(query);
+      const combined = `${result.stdout}\n${result.stderr ?? ""}`;
+      if (isBirdBanIndication(combined)) {
+        await recordBirdCall(root, now, { query, mode: strategy.mode });
+        await triggerCooldown(root, combined.slice(0, 240), now);
+        emitRuntimeEvent({
+          type: "bird_cooldown_triggered",
+          reason: "bird returned a rate-limit or ban indication",
+          cooldownUntil: new Date(now.getTime() + 24 * 60 * 60 * 1000).toISOString(),
+          timestamp: now.getTime()
+        });
+        return { status: "cooldown", path, observations: "", reason: "bird returned a rate-limit or ban indication" };
+      }
+      if (secretLikePattern.test(result.stdout)) {
+        throw new Error("x_observation_contains_secret_like_text");
+      }
+      await recordBirdCall(root, now, { query, mode: strategy.mode });
+      const filtered = filterObservationEntries(result.stdout, motifs);
+      await appendRejectedLog(root, now, filtered.rejected);
+      finalFiltered = filtered;
+      finalQuery = query;
+      if (filtered.entries.length > 0) {
+        break;
+      }
     }
-    if (secretLikePattern.test(result.stdout)) {
-      throw new Error("x_observation_contains_secret_like_text");
-    }
-    await recordBirdCall(root, now, { query: targetQuery, mode: strategy.mode });
-    const filtered = filterObservationEntries(result.stdout, motifs);
-    await appendRejectedLog(root, now, filtered.rejected);
-    const observations = renderObservation(filtered.entries, now, targetQuery, motifs, context.reactionSeed);
+    const filtered = finalFiltered ?? { entries: [], scored: [], rejected: [] };
+    const observations = renderObservation(filtered.entries, now, finalQuery, motifs, context.reactionSeed);
     await mkdir(dirname(path), { recursive: true });
     await writeFile(path, `${observations.trim()}\n`, "utf8");
     const topScored = filtered.scored[0];
@@ -460,7 +491,7 @@ export async function collectObservations(root: string, context: XObservationCon
     return { status: "collected", path, observations };
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
-    await recordBirdCall(root, now, { query: targetQuery, mode: strategy.mode });
+    await recordBirdCall(root, now, { query: targetQueries[0], mode: strategy.mode });
     if (isBirdBanIndication(message)) {
       await triggerCooldown(root, message, now);
       emitRuntimeEvent({
