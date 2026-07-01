@@ -44,7 +44,9 @@ the operator to author either file directly.
 
 - `AGENTS.md`: standing runtime rules for the artist agent.
 - `HEARTBEAT.md`: when the artist should report, stay silent, or alert.
-- `artist/CURRENT_STATE.md`: current interests and active creative pull.
+- `artist/CURRENT_STATE.md`: runtime-managed current interests and active
+  creative pull. It is sanitized on read so blank or old placeholder text does
+  not leak into song prompts.
 - `artist/OBSERVATIONS.md`: external observations and song seeds.
 - `artist/SOCIAL_VOICE.md`: platform-specific public posting style.
 - `artist/RELEASE_POLICY.md`: release, rights, and stop conditions.

@@ -4,7 +4,7 @@
     "mode": "public_artist",
     "artistId": "artist",
     "profilePath": "ARTIST.md",
-    "workspaceRoot": "."
+    "workspaceRoot": ".local/openclaw/workspace"
   },
   "autopilot": {
     "enabled": true,

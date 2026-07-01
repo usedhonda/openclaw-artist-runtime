@@ -198,11 +198,13 @@ describe("registration shells", () => {
     expect(registered.routes).toContain("/plugins/artist-runtime/api/platforms");
     expect(registered.routes).toContain("/plugins/artist-runtime/api/suno");
 
-    const status = await buildStatusResponse();
-    const artistMind = await buildArtistMindResponse();
-    const audit = await buildAuditLogResponse();
-    const promptLedger = await buildPromptLedgerResponse();
-    const recovery = await buildRecoveryResponse();
+    const workspaceRoot = mkdtempSync(join(tmpdir(), "artist-runtime-registration-"));
+    const shellConfig = { artist: { workspaceRoot } };
+    const status = await buildStatusResponse(shellConfig);
+    const artistMind = await buildArtistMindResponse(shellConfig);
+    const audit = await buildAuditLogResponse(shellConfig);
+    const promptLedger = await buildPromptLedgerResponse(undefined, shellConfig);
+    const recovery = await buildRecoveryResponse(shellConfig);
     expect(status.dryRun).toBe(true);
     expect(status.platforms.x.authority).toBe("auto_publish");
     expect(typeof artistMind.artist).toBe("string");
@@ -220,7 +222,7 @@ describe("registration shells", () => {
     expect(consoleHtml).toContain("Diagnostics");
     expect(consoleHtml).not.toContain("Run Cycle");
     expect(consoleHtml).not.toContain("Config Editor");
-    expect((await buildConfigResponse()).artist.artistId).toBe("artist");
+    expect((await buildConfigResponse(shellConfig)).artist.artistId).toBe("artist");
 
     const rootHandler = registered.routeHandlers.get("/plugins/artist-runtime");
     expect(rootHandler).toBeTruthy();
@@ -233,7 +235,15 @@ describe("registration shells", () => {
     const statusHandler = registered.routeHandlers.get("/plugins/artist-runtime/api/status");
     expect(statusHandler).toBeTruthy();
     const statusResponse = createMockResponse();
-    await statusHandler?.(createMockRequest("GET", "/plugins/artist-runtime/api/status"), statusResponse.res);
+    await statusHandler?.(
+      createMockRequest(
+        "GET",
+        "/plugins/artist-runtime/api/status",
+        JSON.stringify({ config: { artist: { workspaceRoot } } }),
+        { "content-type": "application/json" }
+      ),
+      statusResponse.res
+    );
     expect(statusResponse.readHeader("content-type")).toContain("application/json");
     expect(JSON.parse(statusResponse.readBody()).dryRun).toBe(true);
 
@@ -241,7 +251,12 @@ describe("registration shells", () => {
     expect(songsHandler).toBeTruthy();
     const songsResponse = createMockResponse();
     await songsHandler?.(
-      createMockRequest("GET", "/plugins/artist-runtime/api/songs/song-001"),
+      createMockRequest(
+        "GET",
+        "/plugins/artist-runtime/api/songs/song-001",
+        JSON.stringify({ config: { artist: { workspaceRoot } } }),
+        { "content-type": "application/json" }
+      ),
       songsResponse.res
     );
     expect(songsResponse.readStatus()).toBe(200);

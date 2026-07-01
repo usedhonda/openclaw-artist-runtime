@@ -23,7 +23,8 @@ The `files` array in `package.json` controls the tarball. Current contents:
 - `ui/dist/index.html` — the built, self-contained Producer Console bundle
   served by the plugin from `ui/dist/`.
 - `templates/**` — install-time templates (`ARTIST.md`, `CURRENT_STATE.md`,
-  `HEARTBEAT.md`, `SONGBOOK.md`).
+  `HEARTBEAT.md`, `SONGBOOK.md`). Persona runtime writes target the live
+  workspace, not repository-root package files.
 - `prompts/**` — prompt fragments (`suno-style-generation.md`,
   `suno-yaml-lyrics.md`, `take-selection.md`).
 - `schemas/**` — JSON Schema files (`config.schema.json`,
@@ -55,6 +56,10 @@ The `files` array in `package.json` controls the tarball. Current contents:
   snapshot helpers.
 - `docs/PRODUCER_CONSOLE.md` — bundled Console reference (config editor,
   platform authority selectors, ticker / Suno outcome cards).
+- `docs/PERSONA_CANONICAL.md` — five-file persona ownership, generated
+  projections, and runtime-managed state rules.
+- `docs/RUNTIME_SETTINGS.md` — settings layers, precedence, env-only
+  diagnostics, and retired legacy values.
 - `docs/CONNECTOR_AUTH.md` — connector setup / refresh guide for Bird
   (X), Instagram, TikTok.
 - `docs/GATEWAY_AUTH.md` — plugin-level gateway auth boundary.

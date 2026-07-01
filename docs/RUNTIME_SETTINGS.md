@@ -31,7 +31,8 @@ manifest schema.
 | Path | Owner | Precedence / notes |
 | --- | --- | --- |
 | `ui.locale` | Schema config | Producer Room language selection. |
-| `artist.identity.displayName`, `artist.identity.producerCallname` | Schema config | Canonical user-editable artist and producer names. Persona files are generated projections. |
+| `artist.workspaceRoot` | Schema config, env fallback | Default live workspace is `.local/openclaw/workspace`; `OPENCLAW_LOCAL_WORKSPACE` can select another local workspace. Repo-root persona files are package/reference files unless this is explicitly set to `.`. |
+| `artist.identity.displayName`, `artist.identity.producerCallname` | Schema config | Canonical user-editable artist and producer names. `IDENTITY.md` is generated from these values plus `ARTIST.md`/`SOUL.md`; `INNER.md` and `artist/CURRENT_STATE.md` are runtime-managed. See `docs/PERSONA_CANONICAL.md`. |
 | `dashboard.baseUrl` | Schema config, env fallback | Config value wins over `OPENCLAW_DASHBOARD_BASE_URL`; used for Telegram Dashboard links. |
 | `autopilot.enabled`, `autopilot.dryRun`, `autopilot.songsPerWeek`, `autopilot.cycleIntervalMinutes`, `autopilot.planningTimeoutDays`, `autopilot.producerDigest` | Schema config | `OPENCLAW_AUTOPILOT_DRYRUN_OVERRIDE=off` can force `dryRun=false` and makes the field read-only in Settings. Legacy `autopilot.intervalMinutes` is read as `cycleIntervalMinutes` and not written back. |
 | `music.suno.driver`, `music.suno.submitMode`, `music.suno.connectionMode` | Schema config, env forced | `OPENCLAW_SUNO_LIVE`, `OPENCLAW_SUNO_DRIVER`, and `OPENCLAW_SUNO_SUBMIT_MODE` can force these values and make them read-only in Settings. |

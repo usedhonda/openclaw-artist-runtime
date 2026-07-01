@@ -39,6 +39,9 @@ export async function writeSnapshotPersonaFile(
   filename: SnapshotPersonaFilename,
   fullText: string
 ): Promise<{ path: string; bytes: number }> {
+  if (filename !== "PRODUCER.md") {
+    throw new Error(filename === "IDENTITY.md" ? "identity_projection_read_only" : "inner_projection_read_only");
+  }
   const path = snapshotPersonaPath(root, filename);
   const normalized = normalizeSnapshotPersonaText(fullText);
   await mkdir(dirname(path), { recursive: true });

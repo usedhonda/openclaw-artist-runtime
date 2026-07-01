@@ -62,12 +62,12 @@ describe("resolveRuntimeConfig env-aware workspace fallback", () => {
   });
 
   it("falls back to defaultArtistRuntimeConfig workspaceRoot when env is unset", () => {
-    expect(resolveDefaultWorkspaceRoot()).toBe(".");
+    expect(resolveDefaultWorkspaceRoot()).toBe(".local/openclaw/workspace");
   });
 
   it("ignores empty OPENCLAW_LOCAL_WORKSPACE", () => {
     process.env[ENV_KEY] = "   ";
-    expect(resolveDefaultWorkspaceRoot()).toBe(".");
+    expect(resolveDefaultWorkspaceRoot()).toBe(".local/openclaw/workspace");
   });
 
   it("payload workspaceRoot still takes priority over env", async () => {

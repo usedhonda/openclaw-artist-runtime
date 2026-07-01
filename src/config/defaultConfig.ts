@@ -6,7 +6,7 @@ export const defaultArtistRuntimeConfig: ArtistRuntimeConfig = {
     mode: "public_artist",
     artistId: "artist",
     profilePath: "ARTIST.md",
-    workspaceRoot: ".",
+    workspaceRoot: ".local/openclaw/workspace",
     identity: {}
   },
   autopilot: {

@@ -129,12 +129,15 @@ created from Telegram while all external side effects remain opt-in.
    preview, and `/persona reset` requires `/confirm reset` before removing only
    Telegram-managed persona blocks.
 
-> **Which identity files matter.** `ARTIST.md` is the file the setup gate checks
-> and `/setup` writes (artist name, sound, lyrics, Suno profile). The companion
-> files `IDENTITY.md`, `INNER.md`, and `PRODUCER.md` are also injected into the
-> artist's AI prompts but are **not** written by `/setup` — edit them by hand if
-> you want them filled (they ship as `TBD` placeholders). If the openclaw config
-> sets `artist.identity.displayName`, that value overrides the `ARTIST.md` name.
+> **Which persona files matter.** Setup writes only the canonical user inputs:
+> `ARTIST.md` for artist concept and music stance, `SOUL.md` for conversation
+> voice, and `PRODUCER.md` for producer facts that change decisions.
+> `artist.identity.displayName` and `artist.identity.producerCallname` are
+> config fields. `IDENTITY.md` is auto-generated from those config values plus
+> `ARTIST.md`/`SOUL.md`; do not hand-edit it. `INNER.md` is runtime-managed
+> internal state; setup and the persona API reject direct edits. Current creative
+> pull lives in `artist/CURRENT_STATE.md` as a runtime-managed projection, while
+> producer notes belong in `artist/PRODUCER_NOTES.md`.
 
 After the persona is saved, start or resume autopilot in the usual staged way:
 keep `autopilot.dryRun=true` for the first cycle, watch Telegram stage events,

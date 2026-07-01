@@ -27,7 +27,7 @@
         },
         "workspaceRoot": {
           "type": "string",
-          "default": "."
+          "default": ".local/openclaw/workspace"
         },
         "identity": {
           "type": "object",

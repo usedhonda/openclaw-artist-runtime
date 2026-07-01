@@ -1,7 +1,7 @@
 import { appendFile, mkdir, readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { buildSoulPersonaBlock, soulPersonaBlockEnd, soulPersonaBlockStart } from "./soulFileBuilder.js";
-import { extractManagedPersonaBlock } from "./personaFileBuilder.js";
+import { artistPersonaBlockEnd, artistPersonaBlockStart, extractManagedPersonaBlock } from "./personaFileBuilder.js";
 import { buildProducerPersonaBlock, producerPersonaBlockEnd, producerPersonaBlockStart } from "./producerFileBuilder.js";
 
 export interface PersonaCanonicalCleanupResult {
@@ -25,7 +25,37 @@ function canonicalProducerContents(existing: string): string {
   return `# PRODUCER.md\n\n${block}\n`;
 }
 
-async function archiveLegacyPersonaFile(root: string, file: "SOUL.md" | "PRODUCER.md", contents: string, reason: string): Promise<string> {
+const staleArtistOwnerPatterns = [
+  /^\s*artist\s*name\s*:/i,
+  /^\s*artistName\s*:/i,
+  /^\s*display\s*name\s*:/i,
+  /^\s*producer\s*callname\s*:/i,
+  /^\s*producer_callname\s*:/i,
+  /^\s*-\s*(artist\s*name|artistName|display\s*name|producer\s*callname|producer_callname)\s*:/i
+];
+
+function collapseBlankLines(contents: string): string {
+  return contents.replace(/\n{3,}/g, "\n\n").trimEnd();
+}
+
+function cleanArtistOwnerDriftOutsideManagedBlock(existing: string): string {
+  const block = extractManagedPersonaBlock(existing, artistPersonaBlockStart, artistPersonaBlockEnd);
+  if (!block) {
+    return existing;
+  }
+  const blockStart = existing.indexOf(block);
+  const blockEnd = blockStart + block.length;
+  const cleanOutside = (segment: string) =>
+    collapseBlankLines(segment
+      .split("\n")
+      .filter((line) => !staleArtistOwnerPatterns.some((pattern) => pattern.test(line)))
+      .join("\n"));
+  const before = cleanOutside(existing.slice(0, blockStart));
+  const after = cleanOutside(existing.slice(blockEnd));
+  return collapseBlankLines([before, block, after].filter((part) => part.trim()).join("\n\n")) + "\n";
+}
+
+async function archiveLegacyPersonaFile(root: string, file: "ARTIST.md" | "SOUL.md" | "PRODUCER.md", contents: string, reason: string): Promise<string> {
   const archiveRoot = join(root, "runtime", "persona-legacy");
   await mkdir(archiveRoot, { recursive: true });
   const archivePath = join(archiveRoot, `${utcStamp()}-${file}`);
@@ -40,6 +70,16 @@ async function archiveLegacyPersonaFile(root: string, file: "SOUL.md" | "PRODUCE
 
 export async function cleanupCanonicalPersonaSources(root: string): Promise<PersonaCanonicalCleanupResult> {
   const archivedPaths: string[] = [];
+  const artistPath = join(root, "ARTIST.md");
+  const artistContents = await readFile(artistPath, "utf8").catch(() => "");
+  if (artistContents.trim()) {
+    const nextArtist = cleanArtistOwnerDriftOutsideManagedBlock(artistContents);
+    if (artistContents.trim() !== nextArtist.trim()) {
+      archivedPaths.push(await archiveLegacyPersonaFile(root, "ARTIST.md", artistContents, "canonical_setup_source_cleanup"));
+      await writeFile(artistPath, nextArtist, "utf8");
+    }
+  }
+
   const soulPath = join(root, "SOUL.md");
   const soulContents = await readFile(soulPath, "utf8").catch(() => "");
   if (soulContents.trim()) {

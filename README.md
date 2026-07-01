@@ -56,6 +56,10 @@ contains everything needed to run and operate the artist daemon. Start here:
   verification, and the explicit live-publish handoff boundary.
 - `docs/PRODUCER_CONSOLE.md` — Producer Console reference for the bundled UI
   and the fallback inline shell.
+- `docs/PERSONA_CANONICAL.md` — persona five-file ownership and generated
+  projection contract.
+- `docs/RUNTIME_SETTINGS.md` — runtime settings layers, precedence, and
+  env-only diagnostics.
 - `docs/OPERATOR_RUNBOOK.md` — manual doctor, log rotation, and runtime state
   snapshot helpers.
 - `docs/TROUBLESHOOTING.md` — symptom-first recovery decision tree linked to
@@ -142,7 +146,13 @@ in `src/services/personaCanonical.ts` and exposes only these user-input surfaces
 `artist.identity.displayName` and `artist.identity.producerCallname` are runtime
 config fields. `IDENTITY.md` is a derived read-only projection, and `INNER.md` is
 runtime-managed internal state. Setup must not ask the producer to edit either
-file directly.
+file directly. `artist/CURRENT_STATE.md` is also runtime-managed and should not
+be used for producer notes. The default runtime workspace is
+`.local/openclaw/workspace`; repo-root persona files are package/reference files,
+not the live artist workspace unless an operator explicitly sets
+`artist.workspaceRoot` to the repository root.
+
+See `docs/PERSONA_CANONICAL.md` for the full five-file ownership map.
 
 ## Key package files
 
