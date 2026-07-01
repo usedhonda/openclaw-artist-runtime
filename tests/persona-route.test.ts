@@ -102,6 +102,7 @@ describe("persona route", () => {
     expect(response.identity.readOnly).toBe(true);
     expect(response.identity.source).toBe("derived");
     expect(response.identity.text).toContain("Display name: Neon Relay");
+    expect(readFileSync(join(root, "IDENTITY.md"), "utf8")).toBe(response.identity.text);
     expect(response.producer.text).toBe("");
     expect(response.inner.text).toContain("raw inner");
     expect(response.inner.readOnly).toBe(true);
@@ -195,6 +196,7 @@ describe("persona route", () => {
     expect(contents).toContain("operator note after");
     expect(contents).not.toContain("Artist name: Glass Commuter");
     expect(contents).not.toContain("old block");
+    expect(readFileSync(join(root, "IDENTITY.md"), "utf8")).toContain("Turns commute damage into songs.");
   });
 
   it("keeps IDENTITY.md and INNER.md read-only and rejects secret-like snapshot text", async () => {
@@ -222,6 +224,23 @@ describe("persona route", () => {
     expect(rejected.statusCode).toBe(400);
     expect(producer.ok).toBe(true);
     expect(readFileSync(join(root, "PRODUCER.md"), "utf8")).toContain("Producer decision notes: avoid vague praise");
+  });
+
+  it("archives hand-written IDENTITY.md once and overwrites it with the derived projection", async () => {
+    const root = makeWorkspace();
+    await writeArtistPersona(root, { identityLine: "Turns station damage into songs." });
+    await writeSoulPersona(root, { conversationTone: "short and precise", refusalStyle: "refuse weak ideas plainly" });
+    writeFileSync(join(root, "IDENTITY.md"), "# IDENTITY.md\n\nmanual self myth\n", "utf8");
+
+    const response = await callPersona(personaHandler(), "GET", "", root) as unknown as PersonaRouteResponse;
+    const physical = readFileSync(join(root, "IDENTITY.md"), "utf8");
+    const manifest = readFileSync(join(root, "runtime", "persona-legacy", "manifest.jsonl"), "utf8");
+
+    expect(response.identity.text).toBe(physical);
+    expect(physical).toContain("Derived identity card. Do not edit directly.");
+    expect(physical).not.toContain("manual self myth");
+    expect(manifest).toContain("IDENTITY.md");
+    expect(manifest).toContain("persona_response_projection_sync");
   });
 
   it("proposes whitelisted setup fields and marks setup complete from web", async () => {

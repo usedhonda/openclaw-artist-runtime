@@ -4,8 +4,10 @@ import type { AiReviewProvider } from "../types.js";
 import { callAiProvider } from "./aiProviderClient.js";
 import { composeArtistFallback, type UserIntent } from "./artistVoiceComposer.js";
 import type { ChangeSetProposal } from "./freeformChangesetProposer.js";
+import { writeDerivedIdentityProjection } from "./personaIdentityProjection.js";
 import { extractPersonaMotifs, summarizeMotifs } from "./personaMotifExtractor.js";
 import { secretLikePattern } from "./personaMigrator.js";
+import { readResolvedConfig } from "./runtimeConfig.js";
 import {
   isVoiceFingerprintReady,
   parseVoiceFingerprint,
@@ -138,10 +140,14 @@ function fallbackArtistResponse(userMessage: string, context: ArtistVoiceContext
 }
 
 export async function readArtistVoiceContext(root: string, options: Partial<Pick<ArtistVoiceContext, "topic" | "recentHistory" | "lastEndings">> = {}): Promise<ArtistVoiceContext> {
+  const identityProjection = await readResolvedConfig(root)
+    .then((config) => writeDerivedIdentityProjection(root, config, "artist_voice_identity_projection_sync"))
+    .then((result) => result.text)
+    .catch(() => undefined);
   const [artistMd, soulMd, identityMd, innerMd, producerMd, currentState, socialVoice] = await Promise.all([
     readFile(join(root, "ARTIST.md"), "utf8").catch(() => ""),
     readFile(join(root, "SOUL.md"), "utf8").catch(() => ""),
-    readFile(join(root, "IDENTITY.md"), "utf8").catch(() => ""),
+    identityProjection ?? readFile(join(root, "IDENTITY.md"), "utf8").catch(() => ""),
     readFile(join(root, "INNER.md"), "utf8").catch(() => ""),
     readFile(join(root, "PRODUCER.md"), "utf8").catch(() => ""),
     readFile(join(root, "artist", "CURRENT_STATE.md"), "utf8").catch(() => ""),

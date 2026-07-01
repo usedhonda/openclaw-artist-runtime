@@ -5,6 +5,7 @@ import { migrateConfig } from "../config/migrations.js";
 import { applyConfigDefaults, validateConfig } from "../config/schema.js";
 import type { ArtistIdentity, ArtistRuntimeConfig } from "../types.js";
 import { readArtistPersonaSummary } from "./personaFileBuilder.js";
+import { writeDerivedIdentityProjection } from "./personaIdentityProjection.js";
 import { parseVoiceFingerprint } from "./voiceFingerprintParser.js";
 
 function configOverridePath(root: string): string {
@@ -530,5 +531,10 @@ export async function writeConfigOverrides(root: string, config: ArtistRuntimeCo
 export async function patchResolvedConfig(root: string, patch: Partial<ArtistRuntimeConfig>): Promise<ArtistRuntimeConfig> {
   const current = await readResolvedConfig(root);
   const merged = mergeResolvedConfig(current, patch);
-  return writeConfigOverrides(root, merged);
+  const written = await writeConfigOverrides(root, merged);
+  await writeDerivedIdentityProjection(root, written, "config_identity_projection_sync").catch((error: unknown) => {
+    const reason = error instanceof Error ? error.message : String(error);
+    console.error(`[runtime-config] identity projection sync failed: ${reason}`);
+  });
+  return written;
 }

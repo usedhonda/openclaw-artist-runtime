@@ -7,9 +7,10 @@ import { composeArtistFallback } from "./artistVoiceComposer.js";
 import { listSongStates } from "./artistState.js";
 import { readCallbackActionEntries } from "./callbackActionRegistry.js";
 import { extractPersonaMotifs, extractTagSet, pickWeightedMotif } from "./personaMotifExtractor.js";
+import { writeDerivedIdentityProjection } from "./personaIdentityProjection.js";
 import { secretLikePattern } from "./personaMigrator.js";
 import { emitRuntimeEvent } from "./runtimeEventBus.js";
-import { getArtistIdentity } from "./runtimeConfig.js";
+import { getArtistIdentity, readResolvedConfig } from "./runtimeConfig.js";
 import { validateAgainstVoiceContract } from "./voiceContractValidator.js";
 import { isVoiceFingerprintReady, parseVoiceFingerprint, type VoiceFingerprintBundle } from "./voiceFingerprintParser.js";
 import { readObservationsReport } from "./xObservationCollector.js";
@@ -804,10 +805,14 @@ function composeReasonFromBrief(
 
 export async function proposeSpawn(root: string, options: ProposeSpawnOptions = {}): Promise<SongSpawnProposal | null> {
   const now = options.now ?? new Date();
+  const identityProjection = await readResolvedConfig(root)
+    .then((config) => writeDerivedIdentityProjection(root, config, "song_spawn_identity_projection_sync"))
+    .then((result) => result.text)
+    .catch(() => undefined);
   const [artistMd, soulMd, identityMd, innerMd, producerMd, heartbeat, obsData, songs, recentThemes] = await Promise.all([
     readFile(join(root, "ARTIST.md"), "utf8").catch(() => ""),
     readFile(join(root, "SOUL.md"), "utf8").catch(() => ""),
-    readFile(join(root, "IDENTITY.md"), "utf8").catch(() => ""),
+    identityProjection ?? readFile(join(root, "IDENTITY.md"), "utf8").catch(() => ""),
     readFile(join(root, "INNER.md"), "utf8").catch(() => ""),
     readFile(join(root, "PRODUCER.md"), "utf8").catch(() => ""),
     readFile(join(root, "runtime", "heartbeat-state.json"), "utf8").catch(() => ""),

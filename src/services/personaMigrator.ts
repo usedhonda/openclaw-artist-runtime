@@ -15,6 +15,7 @@ import { buildSoulPersonaBlock, readSoulPersonaSummary, soulPersonaBlockEnd, sou
 import { patchResolvedConfig, readResolvedConfig } from "./runtimeConfig.js";
 import { parseVoiceFingerprint } from "./voiceFingerprintParser.js";
 import { artistManagedSections, personaCanonicalFieldFromAlias, personaCanonicalLegacyFields, soulManagedSections } from "./personaCanonical.js";
+import { writeDerivedIdentityProjection } from "./personaIdentityProjection.js";
 
 export interface PersonaMigratePlan {
   artistBackupPath: string;
@@ -349,6 +350,7 @@ export async function planPersonaMigrate(root: string, options: PersonaMigrateOp
 export async function executePersonaMigrate(root: string, plan: PersonaMigratePlan): Promise<void> {
   if (plan.warnings.includes("already migrated")) {
     await syncMigratedIdentityConfig(root);
+    await writeDerivedIdentityProjection(root, await readResolvedConfig(root), "persona_migration_identity_projection");
     return;
   }
   const legacyArtistSummary = await readArtistPersonaSummary(root);
@@ -368,6 +370,7 @@ export async function executePersonaMigrate(root: string, plan: PersonaMigratePl
   ]);
   await writePersonaCompletionMarker(root);
   await syncMigratedIdentityConfig(root, { displayName: migratedDisplayName });
+  await writeDerivedIdentityProjection(root, await readResolvedConfig(root), "persona_migration_identity_projection");
 }
 
 export function formatPersonaMigratePlan(plan: PersonaMigratePlan): string {

@@ -1,5 +1,5 @@
 import { mkdtempSync } from "node:fs";
-import { mkdir, writeFile } from "node:fs/promises";
+import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
@@ -63,5 +63,21 @@ describe("spawn proposer voice-contract (Plan v10.11)", () => {
     const fingerprint = parseVoiceFingerprint(POPULATED_SOUL_MD);
     expect(fingerprint.producerCallname).not.toBeNull();
     expect(fingerprint.firstPerson).not.toBeNull();
+  });
+
+  it("regenerates IDENTITY.md before building the spawn prompt context", async () => {
+    const root = await workspace();
+    await writeFile(join(root, "IDENTITY.md"), "# IDENTITY.md\n\nmanual stale identity\n", "utf8");
+
+    await proposeSpawn(root, {
+      aiReviewProvider: "mock",
+      now: new Date("2026-05-05T00:00:00.000Z")
+    });
+
+    const identity = await readFile(join(root, "IDENTITY.md"), "utf8");
+    const manifest = await readFile(join(root, "runtime", "persona-legacy", "manifest.jsonl"), "utf8");
+    expect(identity).toContain("Derived identity card. Do not edit directly.");
+    expect(identity).not.toContain("manual stale identity");
+    expect(manifest).toContain("song_spawn_identity_projection_sync");
   });
 });

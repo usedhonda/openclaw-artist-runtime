@@ -30,6 +30,7 @@ import { readDistributionDetectionState } from "../services/songDistributionPoll
 import { secretLikePattern } from "../services/personaMigrator.js";
 import { cleanupCanonicalPersonaSources } from "../services/personaCanonicalCleanup.js";
 import { auditPersonaCompleteness } from "../services/personaFieldAuditor.js";
+import { writeDerivedIdentityProjection } from "../services/personaIdentityProjection.js";
 import { readProducerPersonaSummary, writeProducerPersona } from "../services/producerFileBuilder.js";
 import { proposePersonaFields } from "../services/personaProposer.js";
 import { personaCanonicalLegacyFields } from "../services/personaCanonical.js";
@@ -672,26 +673,6 @@ function personaRouteError(error: unknown): Record<string, unknown> {
   return { error: "persona_route_failed", message, statusCode: 500 };
 }
 
-function buildDerivedIdentityProjection(
-  config: ArtistRuntimeConfig,
-  artist: Awaited<ReturnType<typeof readArtistPersonaSummary>>,
-  soul: Awaited<ReturnType<typeof readSoulPersonaSummary>>
-): string {
-  const displayName = config.artist.identity.displayName?.trim() || artist.artistName || "Unnamed OpenClaw Artist";
-  const producerCallname = config.artist.identity.producerCallname?.trim() || "producer";
-  return [
-    "# IDENTITY.md",
-    "",
-    "Derived identity card. Do not edit directly.",
-    "",
-    `- Display name: ${displayName}`,
-    `- Producer callname: ${producerCallname}`,
-    `- Artist concept: ${artist.identityLine || "(not set)"}`,
-    `- Speaking anchor: ${soul.conversationTone || "(not set)"}`,
-    ""
-  ].join("\n");
-}
-
 export async function buildPersonaResponse(config?: Partial<ArtistRuntimeConfig>): Promise<PersonaRouteResponse> {
   const mergedConfig = await resolveRuntimeConfig(config);
   const root = mergedConfig.artist.workspaceRoot;
@@ -708,10 +689,11 @@ export async function buildPersonaResponse(config?: Partial<ArtistRuntimeConfig>
     ...artist,
     artistName: mergedConfig.artist.identity.displayName?.trim() || artist.artistName
   };
+  const identityProjection = await writeDerivedIdentityProjection(root, mergedConfig, "persona_response_projection_sync");
   return {
     artist: responseArtist,
     soul,
-    identity: { text: buildDerivedIdentityProjection(mergedConfig, responseArtist, soul), readOnly: true, source: "derived" },
+    identity: { text: identityProjection.text, readOnly: true, source: "derived" },
     producer: { text: producer.producerFacts },
     inner: { text: inner, readOnly: true, source: "internal" },
     setup: { ...setupStatus, reasonsText: describePersonaSetupReasons(setupStatus.reasons) },

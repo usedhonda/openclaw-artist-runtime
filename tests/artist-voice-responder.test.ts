@@ -1,4 +1,4 @@
-import { mkdir, writeFile } from "node:fs/promises";
+import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -106,11 +106,13 @@ describe("artist voice responder", () => {
       ].join("\n"),
       "utf8"
     );
-    await writeFile(join(root, "IDENTITY.md"), "# IDENTITY.md\n- Name: test artist\n", "utf8");
+    await writeFile(join(root, "IDENTITY.md"), "# IDENTITY.md\n\nmanual stale identity\n", "utf8");
     await writeFile(join(root, "INNER.md"), "# INNER.md\n揺らぎの記録。\n", "utf8");
     await writeFile(join(root, "PRODUCER.md"), "# PRODUCER.md\n- Name: Yuzuru Honda\n", "utf8");
 
     const context = await readArtistVoiceContext(root);
+    const physicalIdentity = await readFile(join(root, "IDENTITY.md"), "utf8");
+    const legacyManifest = await readFile(join(root, "runtime", "persona-legacy", "manifest.jsonl"), "utf8");
     const prompt = buildPrompt("聴いた", context, "discuss");
 
     // Layer 1: Voice Contract index
@@ -126,10 +128,14 @@ describe("artist voice responder", () => {
     expect(prompt).toContain("===== SOUL.md =====");
     expect(prompt).toContain("===== ARTIST.md =====");
     expect(prompt).toContain("===== IDENTITY.md =====");
+    expect(prompt).toContain("Derived identity card. Do not edit directly.");
+    expect(prompt).not.toContain("manual stale identity");
     expect(prompt).toContain("===== INNER.md =====");
     expect(prompt).toContain("===== PRODUCER.md =====");
     expect(prompt).toContain("揺らぎの記録");
     expect(prompt).toContain("Yuzuru Honda");
+    expect(physicalIdentity).toBe(context.identityMd);
+    expect(legacyManifest).toContain("artist_voice_identity_projection_sync");
   });
 
   it("blocks secret-like user input and secret-like context", async () => {

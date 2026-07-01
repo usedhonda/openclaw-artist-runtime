@@ -2,6 +2,8 @@ import { constants } from "node:fs";
 import { access, copyFile, mkdir, readdir, readFile, stat } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
 import { dirname, join, relative } from "node:path";
+import { writeDerivedIdentityProjection } from "./personaIdentityProjection.js";
+import { readResolvedConfig } from "./runtimeConfig.js";
 
 const defaultTemplateRoot = fileURLToPath(new URL("../../workspace-template/", import.meta.url));
 
@@ -37,6 +39,12 @@ export async function ensureArtistWorkspace(root: string, templateRoot = default
   await mkdir(root, { recursive: true });
   const result: WorkspaceBootstrapResult = { created: [], skipped: [] };
   await copyDirectory(templateRoot, root, root, result);
+  const config = await readResolvedConfig(root);
+  const identity = await writeDerivedIdentityProjection(root, config, "workspace_bootstrap_identity_projection");
+  if (identity.overwritten && !result.created.includes("IDENTITY.md")) {
+    result.skipped = result.skipped.filter((path) => path !== "IDENTITY.md");
+    result.created.push("IDENTITY.md");
+  }
   return result;
 }
 
