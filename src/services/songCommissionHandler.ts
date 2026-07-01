@@ -2,6 +2,7 @@ import { createHash, randomBytes } from "node:crypto";
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 import type { AiReviewProvider, CommissionBrief, CommissionResult, SongUpdateField } from "../types.js";
+import { readManagedCurrentState } from "./currentStateProjection.js";
 import { secretLikePattern } from "./personaMigrator.js";
 import { proposeFreeformChangeSet, type ChangeSetProposal } from "./freeformChangesetProposer.js";
 
@@ -117,7 +118,7 @@ export async function handleCommission(root: string, options: HandleCommissionOp
   const now = options.now ?? new Date();
   const songId = shortId(`${rawBrief}:${now.toISOString()}`);
   const [currentState, songbookEntry] = await Promise.all([
-    readFile(join(root, "artist", "CURRENT_STATE.md"), "utf8").catch(() => ""),
+    readManagedCurrentState(root),
     readFile(join(root, "artist", "SONGBOOK.md"), "utf8").catch(() => "")
   ]);
   const proposed = await proposeFreeformChangeSet({

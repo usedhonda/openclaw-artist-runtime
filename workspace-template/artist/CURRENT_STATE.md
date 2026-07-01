@@ -1,8 +1,10 @@
 # CURRENT_STATE.md
 
+Runtime-managed current artist state. Do not use this as a setup input.
+
 ## Current Obsessions
 
-- TBD
+- Watching public signals until they become song material.
 
 ## Current Work
 
@@ -10,7 +12,7 @@
 
 ## Emotional Weather
 
-Quiet. Watching.
+Focused and observant.
 
 ## Refusals This Week
 

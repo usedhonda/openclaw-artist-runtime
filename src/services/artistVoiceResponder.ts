@@ -3,6 +3,7 @@ import { join } from "node:path";
 import type { AiReviewProvider } from "../types.js";
 import { callAiProvider } from "./aiProviderClient.js";
 import { composeArtistFallback, type UserIntent } from "./artistVoiceComposer.js";
+import { readManagedCurrentState } from "./currentStateProjection.js";
 import type { ChangeSetProposal } from "./freeformChangesetProposer.js";
 import { writeDerivedIdentityProjection } from "./personaIdentityProjection.js";
 import { extractPersonaMotifs, summarizeMotifs } from "./personaMotifExtractor.js";
@@ -150,7 +151,7 @@ export async function readArtistVoiceContext(root: string, options: Partial<Pick
     identityProjection ?? readFile(join(root, "IDENTITY.md"), "utf8").catch(() => ""),
     readFile(join(root, "INNER.md"), "utf8").catch(() => ""),
     readFile(join(root, "PRODUCER.md"), "utf8").catch(() => ""),
-    readFile(join(root, "artist", "CURRENT_STATE.md"), "utf8").catch(() => ""),
+    readManagedCurrentState(root),
     readFile(join(root, "artist", "SOCIAL_VOICE.md"), "utf8").catch(() => "")
   ]);
   return {

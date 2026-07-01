@@ -4,6 +4,7 @@ import type { AiReviewProvider, AutopilotStatus } from "../types.js";
 import { ArtistAutopilotService, readAutopilotRunState } from "./autopilotService.js";
 import { listSongStates, readSongState } from "./artistState.js";
 import { readArtistVoiceContext, generateArtistResponse } from "./artistVoiceResponder.js";
+import { readManagedCurrentState } from "./currentStateProjection.js";
 import {
   appendConversationTurn,
   createConversationalSession,
@@ -124,7 +125,7 @@ async function proposeFromConversation(root: string, text: string, session: Conv
     session.topic.songId ? readFile(join(root, "songs", session.topic.songId, "song.md"), "utf8").catch(() => "") : Promise.resolve(""),
     session.topic.songId ? readFile(join(root, "songs", session.topic.songId, "brief.md"), "utf8").catch(() => "") : Promise.resolve(""),
     readFile(join(root, "artist", "SONGBOOK.md"), "utf8").catch(() => ""),
-    readFile(join(root, "artist", "CURRENT_STATE.md"), "utf8").catch(() => "")
+    readManagedCurrentState(root)
   ]);
   return proposeFreeformChangeSet({
     domain,

@@ -2,6 +2,7 @@ import { mkdir, readdir, readFile, writeFile } from "node:fs/promises";
 import { isAbsolute, normalize, join } from "node:path";
 import { createSongSkeleton } from "../repositories/songRepository.js";
 import type { ObservationSummary, SongState, SongStateImportOutcome, SongStatus } from "../types.js";
+import { readManagedCurrentState } from "./currentStateProjection.js";
 import { readResolvedConfig } from "./runtimeConfig.js";
 
 const stateBlockStart = "<!-- artist-runtime:song-state:start -->";
@@ -262,7 +263,7 @@ export async function readArtistMind(root: string): Promise<ArtistMindSnapshot> 
     : join(root, "ARTIST.md");
   const [artist, currentState, socialVoice, songbook] = await Promise.all([
     readFile(artistProfilePath, "utf8").catch(() => ""),
-    readFile(join(root, "artist", "CURRENT_STATE.md"), "utf8").catch(() => ""),
+    readManagedCurrentState(root),
     readFile(join(root, "artist", "SOCIAL_VOICE.md"), "utf8").catch(() => ""),
     readFile(songbookPath(root), "utf8").catch(() => defaultSongbook)
   ]);

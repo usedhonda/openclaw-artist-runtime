@@ -1,6 +1,7 @@
 import { readdir, readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { composeArtistFallback, type ArtistObservationContext, type ArtistObservationContextEntry, type UserIntent } from "./artistVoiceComposer.js";
+import { readManagedCurrentState } from "./currentStateProjection.js";
 import { extractPersonaMotifs, extractTagSet, type PersonaMotifBundle } from "./personaMotifExtractor.js";
 import { parseVoiceFingerprint } from "./voiceFingerprintParser.js";
 import { secretLikePattern } from "./personaMigrator.js";
@@ -61,7 +62,7 @@ async function readVoiceFiles(root: string | undefined): Promise<{ artistMd: str
   const [artistMd, soulMd, currentState] = await Promise.all([
     readFile(join(root, "ARTIST.md"), "utf8").catch(() => ""),
     readFile(join(root, "SOUL.md"), "utf8").catch(() => ""),
-    readFile(join(root, "artist", "CURRENT_STATE.md"), "utf8").catch(() => "")
+    readManagedCurrentState(root)
   ]);
   return { artistMd, soulMd, currentState };
 }

@@ -2,6 +2,7 @@ import { constants } from "node:fs";
 import { access, copyFile, mkdir, readdir, readFile, stat } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
 import { dirname, join, relative } from "node:path";
+import { ensureCurrentStateInitialized, readManagedCurrentState } from "./currentStateProjection.js";
 import { writeDerivedIdentityProjection } from "./personaIdentityProjection.js";
 import { readResolvedConfig } from "./runtimeConfig.js";
 
@@ -39,6 +40,7 @@ export async function ensureArtistWorkspace(root: string, templateRoot = default
   await mkdir(root, { recursive: true });
   const result: WorkspaceBootstrapResult = { created: [], skipped: [] };
   await copyDirectory(templateRoot, root, root, result);
+  await ensureCurrentStateInitialized(root);
   const config = await readResolvedConfig(root);
   const identity = await writeDerivedIdentityProjection(root, config, "workspace_bootstrap_identity_projection");
   if (identity.overwritten && !result.created.includes("IDENTITY.md")) {
@@ -60,7 +62,9 @@ export async function bootstrapArtistContext(root: string): Promise<string> {
     paths.map(async (path) => {
       const fullPath = join(root, path);
       try {
-        const file = await readFile(fullPath, "utf8");
+        const file = path === "artist/CURRENT_STATE.md"
+          ? await readManagedCurrentState(root)
+          : await readFile(fullPath, "utf8");
         return `## ${path}\n\n${file.trim()}`;
       } catch {
         return `## ${path}\n\nMissing.`;
@@ -83,7 +87,7 @@ export async function workspaceExists(root: string): Promise<boolean> {
 export async function readArtistSnapshots(root: string): Promise<{ artistSnapshot: string; currentStateSnapshot: string }> {
   const [artistSnapshot, currentStateSnapshot] = await Promise.all([
     readFile(join(root, "ARTIST.md"), "utf8").catch(() => ""),
-    readFile(join(root, "artist", "CURRENT_STATE.md"), "utf8").catch(() => "")
+    readManagedCurrentState(root)
   ]);
 
   return { artistSnapshot, currentStateSnapshot };
