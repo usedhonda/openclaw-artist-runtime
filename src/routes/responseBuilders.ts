@@ -21,7 +21,7 @@ import { emitRuntimeEvent, getRuntimeEventBus } from "../services/runtimeEventBu
 import { readRuntimeEvents, readSongEventsAsc } from "../services/runtimeEventsLedger.js";
 import { appendFailedNotifyReplayRecord, latestFailedNotifyEntry, listUnreplayedFailedNotifications, summarizeFailedNotifications } from "../services/failedNotifyLedger.js";
 import { getSongPromptLedgerPath } from "../services/promptLedger.js";
-import { getBirdDailyMaxOverride, getBirdMinIntervalMinutesOverride, getDashboardBaseUrl, getSunoDailyBudgetOverride, isDebugCallbackDispatchEnabled, isDebugNotifyReviewEnabled, isSunoLiveDisabled, isSunoLiveEnabled, readConfigOverrides, resolveRuntimeConfig, resolveSunoDailyBudget, type RuntimeSafetyOverridesPatch } from "../services/runtimeConfig.js";
+import { getBirdDailyMaxOverride, getBirdMinIntervalMinutesOverride, getDashboardBaseUrl, isDebugCallbackDispatchEnabled, isDebugNotifyReviewEnabled, isSunoLiveDisabled, isSunoLiveEnabled, readConfigOverrides, resolveRuntimeConfig, type RuntimeSafetyOverridesPatch } from "../services/runtimeConfig.js";
 import { readLatestSocialAction } from "../services/socialPublishing.js";
 import { SocialDistributionWorker } from "../services/socialDistributionWorker.js";
 import { listPendingSpawnProposals } from "../services/spawnProposalQueue.js";
@@ -39,7 +39,6 @@ import { readSoulPersonaSummary, writeSoulPersona } from "../services/soulFileBu
 import { readSnapshotPersonaFile, snapshotPersonaFilenames, writeSnapshotPersonaFile, type SnapshotPersonaLayer } from "../services/snapshotPersonaFileBuilder.js";
 import { STATUS_SUNO_ARTIFACT_LIMIT } from "../services/sunoArtifacts.js";
 import { SunoBudgetTracker } from "../services/sunoBudget.js";
-import { readBudgetDetail as readSunoDailyBudgetDetail, readBudgetState as readSunoDailyBudgetState } from "../services/sunoBudgetLedger.js";
 import { readLatestPromptPackMetadata } from "../services/sunoPromptPackFiles.js";
 import { buildSunoArtifactIndex, readAllSunoRuns, readLatestSunoRun } from "../services/sunoRuns.js";
 import { workerImportOutcomeFromSong } from "../services/sunoBrowserWorker.js";
@@ -898,10 +897,8 @@ interface RuntimeOverrideField {
 interface ConfigOverridesResponse {
   raw: Record<string, unknown>;
   values: {
-    sunoDailyBudget: RuntimeOverrideField;
     birdDailyMax: RuntimeOverrideField;
     birdMinIntervalMinutes: RuntimeOverrideField;
-    autopilotIntervalMinutes: RuntimeOverrideField;
   };
 }
 
@@ -930,26 +927,15 @@ export async function buildConfigOverridesResponse(config?: Partial<ArtistRuntim
   const mergedConfig = await resolveRuntimeConfig(config);
   const root = mergedConfig.artist.workspaceRoot;
   const raw = await readConfigOverrides(root) as Record<string, unknown> & {
-    suno?: { dailyBudget?: unknown };
     bird?: { rateLimits?: { dailyMax?: unknown; minIntervalMinutes?: unknown } };
-    autopilot?: { intervalMinutes?: unknown; cycleIntervalMinutes?: unknown };
   };
   const bird = await readBirdRateLimitStatus(root);
-  const envSuno = getSunoDailyBudgetOverride();
   const envBirdDailyMax = getBirdDailyMaxOverride();
   const envBirdMinInterval = getBirdMinIntervalMinutesOverride();
-  const autopilotOverridePresent = hasOwnRecordKey(raw.autopilot, "intervalMinutes") || hasOwnRecordKey(raw.autopilot, "cycleIntervalMinutes");
 
   return {
     raw,
     values: {
-      sunoDailyBudget: runtimeOverrideField({
-        value: await resolveSunoDailyBudget(root),
-        defaultValue: 50,
-        envVar: "OPENCLAW_SUNO_DAILY_BUDGET",
-        envValue: envSuno,
-        overridePresent: hasOwnRecordKey(raw.suno, "dailyBudget")
-      }),
       birdDailyMax: runtimeOverrideField({
         value: bird.dailyMax,
         defaultValue: 5,
@@ -963,34 +949,17 @@ export async function buildConfigOverridesResponse(config?: Partial<ArtistRuntim
         envVar: "OPENCLAW_BIRD_MIN_INTERVAL_MINUTES",
         envValue: envBirdMinInterval,
         overridePresent: hasOwnRecordKey(raw.bird?.rateLimits, "minIntervalMinutes")
-      }),
-      autopilotIntervalMinutes: runtimeOverrideField({
-        value: mergedConfig.autopilot.cycleIntervalMinutes,
-        defaultValue: 180,
-        overridePresent: autopilotOverridePresent
       })
     }
   };
 }
 
 function validateRuntimeOverridePayload(payload: Record<string, unknown>): string[] {
-  const allowedRoot = new Set(["requestMethod", "requestPath", "config", "suno", "bird", "autopilot"]);
+  const allowedRoot = new Set(["requestMethod", "requestPath", "config", "bird"]);
   const errors: string[] = [];
   for (const key of Object.keys(payload)) {
     if (!allowedRoot.has(key)) {
       errors.push(`unknown override key: ${key}`);
-    }
-  }
-  const suno = payload.suno as Record<string, unknown> | undefined;
-  if (suno !== undefined) {
-    if (typeof suno !== "object" || suno === null || Array.isArray(suno)) {
-      errors.push("suno must be an object");
-    } else {
-      for (const key of Object.keys(suno)) {
-        if (key !== "dailyBudget") {
-          errors.push(`unknown override key: suno.${key}`);
-        }
-      }
     }
   }
   const bird = payload.bird as Record<string, unknown> | undefined;
@@ -1017,18 +986,6 @@ function validateRuntimeOverridePayload(payload: Record<string, unknown>): strin
       }
     }
   }
-  const autopilot = payload.autopilot as Record<string, unknown> | undefined;
-  if (autopilot !== undefined) {
-    if (typeof autopilot !== "object" || autopilot === null || Array.isArray(autopilot)) {
-      errors.push("autopilot must be an object");
-    } else {
-      for (const key of Object.keys(autopilot)) {
-        if (key !== "intervalMinutes") {
-          errors.push(`unknown override key: autopilot.${key}`);
-        }
-      }
-    }
-  }
   return errors;
 }
 
@@ -1045,24 +1002,18 @@ function integerInRange(value: unknown, label: string, min: number, max: number,
 
 export function runtimeSafetyPatchFromPayload(payload: Record<string, unknown>): { patch?: RuntimeSafetyOverridesPatch; errors: string[] } {
   const errors = validateRuntimeOverridePayload(payload);
-  const suno = payload.suno as { dailyBudget?: unknown } | undefined;
   const bird = payload.bird as { rateLimits?: { dailyMax?: unknown; minIntervalMinutes?: unknown } } | undefined;
-  const autopilot = payload.autopilot as { intervalMinutes?: unknown } | undefined;
-  const dailyBudget = integerInRange(suno?.dailyBudget, "suno.dailyBudget", 1, 1000, errors);
   const dailyMax = integerInRange(bird?.rateLimits?.dailyMax, "bird.rateLimits.dailyMax", 1, 100, errors);
   const minIntervalMinutes = integerInRange(bird?.rateLimits?.minIntervalMinutes, "bird.rateLimits.minIntervalMinutes", 1, 1440, errors);
-  const intervalMinutes = integerInRange(autopilot?.intervalMinutes, "autopilot.intervalMinutes", 15, 1440, errors);
   if (errors.length > 0) {
     return { errors };
   }
   return {
     errors: [],
     patch: {
-      ...(dailyBudget !== undefined ? { suno: { dailyBudget } } : {}),
       ...(dailyMax !== undefined || minIntervalMinutes !== undefined
         ? { bird: { rateLimits: { ...(dailyMax !== undefined ? { dailyMax } : {}), ...(minIntervalMinutes !== undefined ? { minIntervalMinutes } : {}) } } }
-        : {}),
-      ...(intervalMinutes !== undefined ? { autopilot: { intervalMinutes } } : {})
+        : {})
     }
   };
 }
@@ -1205,15 +1156,13 @@ export async function buildStatusResponse(config?: Partial<ArtistRuntimeConfig>)
   const platforms = await buildPlatformStatuses(mergedConfig);
   const alerts = await collectAlerts(mergedConfig.artist.workspaceRoot, sunoWorker, platforms, mergedConfig);
   const sunoBudgetTracker = new SunoBudgetTracker(mergedConfig.artist.workspaceRoot);
-  const [sunoBudgetState, sunoBudgetResetHistory, sunoArtifacts, sunoDailyBudget, sunoBudgetDetail, birdRateLimit, birdLedger, distributionDetection, pendingApprovals, pendingCallbacks, failedNotifications] = await Promise.all([
+  const [sunoBudgetState, sunoBudgetResetHistory, sunoArtifacts, birdRateLimit, birdLedger, distributionDetection, pendingApprovals, pendingCallbacks, failedNotifications] = await Promise.all([
     sunoBudgetTracker.getState(
       mergedConfig.music.suno.dailyCreditLimit,
       mergedConfig.music.suno.monthlyCreditLimit
     ),
     sunoBudgetTracker.getResetHistory(10),
     buildSunoArtifactIndex(mergedConfig.artist.workspaceRoot),
-    readSunoDailyBudgetState(mergedConfig.artist.workspaceRoot),
-    readSunoDailyBudgetDetail(mergedConfig.artist.workspaceRoot),
     readBirdRateLimitStatus(mergedConfig.artist.workspaceRoot),
     readBirdLedgerDetail(mergedConfig.artist.workspaceRoot),
     readDistributionDetectionState(mergedConfig.artist.workspaceRoot),
@@ -1234,22 +1183,10 @@ export async function buildStatusResponse(config?: Partial<ArtistRuntimeConfig>)
   ]);
   const setupReadiness = await buildSetupReadiness(mergedConfig, autopilotStatus, sunoWorker, platforms, workspaceStatus);
   const effectiveDryRunMap = buildEffectiveDryRunMap(mergedConfig);
-  const rawConfigOverrides = await readConfigOverrides(mergedConfig.artist.workspaceRoot) as { suno?: { dailyBudget?: unknown } };
-  const hasRuntimeSunoBudget = getSunoDailyBudgetOverride() !== undefined
-    || hasOwnRecordKey(rawConfigOverrides.suno, "dailyBudget");
-  const statusSunoBudget = hasRuntimeSunoBudget
-    ? {
-        ...sunoBudgetState,
-        limit: sunoDailyBudget.limit,
-        remaining: Math.max(0, sunoDailyBudget.limit - sunoBudgetState.consumed),
-        used: sunoDailyBudget.used,
-        resetHistory: sunoBudgetResetHistory
-      }
-    : {
-        ...sunoBudgetState,
-        used: sunoDailyBudget.used,
-        resetHistory: sunoBudgetResetHistory
-      };
+  const statusSunoBudget = {
+    ...sunoBudgetState,
+    resetHistory: sunoBudgetResetHistory
+  };
 
   return {
     config: mergedConfig,
@@ -1262,7 +1199,6 @@ export async function buildStatusResponse(config?: Partial<ArtistRuntimeConfig>)
     ticker: buildTickerStatus(mergedConfig),
     suno: {
       budget: statusSunoBudget,
-      budgetDetail: sunoBudgetDetail,
       artifacts: sunoArtifacts.slice(0, STATUS_SUNO_ARTIFACT_LIMIT),
       profile: {
         stale: sunoWorker.sunoProfileStale,

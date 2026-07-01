@@ -2,15 +2,12 @@ import { mkdtempSync } from "node:fs";
 import { mkdir, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { afterEach, describe, expect, it } from "vitest";
+import { describe, expect, it } from "vitest";
 import { ensureArtistWorkspace } from "../src/services/artistWorkspace";
 import { ensureSongState, updateSongState, writeSongBrief } from "../src/services/artistState";
 import { ArtistAutopilotService, shouldEmitOperationalEpisode, writeAutopilotRunState } from "../src/services/autopilotService";
 import { getRuntimeEventBus, type RuntimeEvent } from "../src/services/runtimeEventBus";
-import { tryConsumeBudget } from "../src/services/sunoBudgetLedger";
 import { createAndPersistSunoPromptPack } from "../src/services/sunoPromptPackFiles";
-
-const originalBudget = process.env.OPENCLAW_SUNO_DAILY_BUDGET;
 
 function workspace(prefix: string): string {
   getRuntimeEventBus().clearForTest();
@@ -41,14 +38,6 @@ async function seedBudgetSong(root: string): Promise<void> {
 }
 
 describe("operational event dedup", () => {
-  afterEach(() => {
-    if (originalBudget === undefined) {
-      delete process.env.OPENCLAW_SUNO_DAILY_BUDGET;
-    } else {
-      process.env.OPENCLAW_SUNO_DAILY_BUDGET = originalBudget;
-    }
-  });
-
   it("emits take selection stalled only once while the pending reason is unchanged", async () => {
     const root = workspace("artist-runtime-take-stalled-dedup-");
     await seedTakePendingSong(root);
@@ -62,24 +51,6 @@ describe("operational event dedup", () => {
 
     expect(events.filter((event) => event.type === "take_select_pending")).toHaveLength(1);
     expect(events.filter((event) => event.type === "take_selection_stalled")).toHaveLength(1);
-  });
-
-  it("emits budget low/exhausted only once for the same budget window", async () => {
-    const root = workspace("artist-runtime-budget-dedup-");
-    await seedBudgetSong(root);
-    process.env.OPENCLAW_SUNO_DAILY_BUDGET = "1";
-    await tryConsumeBudget(root, 1, new Date());
-    const events: RuntimeEvent[] = [];
-    const unsubscribe = getRuntimeEventBus().subscribe((event) => events.push(event));
-    const service = new ArtistAutopilotService();
-    const config = { artist: { workspaceRoot: root }, autopilot: { enabled: true, dryRun: true }, music: { suno: { driver: "mock" as const } } };
-
-    await service.runCycle({ workspaceRoot: root, config });
-    await service.runCycle({ workspaceRoot: root, config });
-    unsubscribe();
-
-    expect(events.filter((event) => event.type === "suno_budget_low")).toHaveLength(1);
-    expect(events.filter((event) => event.type === "budget_exhausted")).toHaveLength(1);
   });
 
   it("emits suno generate retry only once while the retry wait reason is unchanged", async () => {

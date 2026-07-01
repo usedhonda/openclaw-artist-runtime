@@ -1137,17 +1137,6 @@ export interface StatusResponse {
   ticker: AutopilotTickerStatus;
   suno: {
     budget: SunoBudgetStatus;
-    budgetDetail?: {
-      todayCalls: Array<{
-        timestamp: string;
-        amount: number;
-        kind: "consume";
-      }>;
-      lastResetAt: string;
-      remaining: number;
-      used: number;
-      limit: number;
-    };
     artifacts: SunoArtifactIndexEntry[];
     profile?: {
       stale?: boolean;

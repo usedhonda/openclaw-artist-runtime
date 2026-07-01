@@ -126,7 +126,7 @@ These remaining matches are retained as intentional fallbacks: optional file rea
 - `src/services/alertAcks.ts:11`
 - `src/services/callbackLedgerMaintenance.ts:44,57`
 - `src/services/telegramPersonaSession.ts:69`
-- `src/services/sunoBudgetLedger.ts:43`
+- `src/services/sunoBudgetLedger.ts:43` (retired in P2c; legacy dailyBudget generation-count gate removed)
 - `src/services/birdRateLimiter.ts:74,84`
 - `src/services/distributionLedgerReader.ts:14`
 - `src/services/personaSetupDetector.ts:38,56,66`

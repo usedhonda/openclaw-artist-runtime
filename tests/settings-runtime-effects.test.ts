@@ -113,4 +113,23 @@ describe("settings runtime effects", () => {
     }), now);
     expect(failed).toBeUndefined();
   });
+
+  it("keeps accepted Suno runs as the daily generation hard cap", async () => {
+    const now = new Date("2026-06-28T12:00:00.000Z");
+    const root = makeRoot("artist-runtime-suno-accepted-daily-");
+    await appendRun(root, "song-one", "2026-06-28T10:00:00.000Z");
+    await appendRun(root, "song-two", "2026-06-28T11:00:00.000Z");
+    await appendRun(root, "song-failed", "2026-06-28T11:30:00.000Z", "failed");
+
+    const decision = await evaluateSunoGenerationLimits(root, applyConfigDefaults({
+      music: { suno: { maxGenerationsPerDay: 2, monthlyGenerationBudget: 10, minMinutesBetweenCreates: 1 } }
+    }), now);
+
+    expect(decision).toMatchObject({
+      allowed: false,
+      hardStop: true,
+      policyDecision: "stop_daily_generation_limit"
+    });
+    expect(decision?.reason).toContain("2/2");
+  });
 });

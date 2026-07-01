@@ -1,5 +1,5 @@
 import type { IncomingMessage, ServerResponse } from "node:http";
-import { mkdtempSync, readFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Readable } from "node:stream";
@@ -84,49 +84,36 @@ describe("config overrides route", () => {
     await ensureArtistWorkspace(root);
 
     let response = await buildConfigOverridesResponse({ artist: { workspaceRoot: root } });
-    expect(response.values.sunoDailyBudget).toMatchObject({ value: 50, source: "default", editable: true });
     expect(response.values.birdDailyMax).toMatchObject({ value: 5, source: "default" });
     expect(response.values.birdMinIntervalMinutes).toMatchObject({ value: 60, source: "default" });
-    expect(response.values.autopilotIntervalMinutes).toMatchObject({ value: 180, source: "default" });
 
     await writeRuntimeSafetyOverrides(root, {
-      suno: { dailyBudget: 70 },
-      bird: { rateLimits: { dailyMax: 4, minIntervalMinutes: 120 } },
-      autopilot: { intervalMinutes: 45 }
+      bird: { rateLimits: { dailyMax: 4, minIntervalMinutes: 120 } }
     });
     response = await buildConfigOverridesResponse({ artist: { workspaceRoot: root } });
-    expect(response.values.sunoDailyBudget).toMatchObject({ value: 70, source: "overrides" });
     expect(response.values.birdDailyMax).toMatchObject({ value: 4, source: "overrides" });
     expect(response.values.birdMinIntervalMinutes).toMatchObject({ value: 120, source: "overrides" });
-    expect(response.values.autopilotIntervalMinutes).toMatchObject({ value: 45, source: "overrides" });
   });
 
-  it("writes valid overrides, records audit, and updates status budget limit", async () => {
+  it("writes valid Bird overrides and records audit", async () => {
     const root = mkdtempSync(join(tmpdir(), "artist-runtime-api-overrides-post-"));
     await ensureArtistWorkspace(root);
     const handler = registerOverridesHandler();
 
     const response = await invoke(handler, "POST", root, {
-      suno: { dailyBudget: 80 },
-      bird: { rateLimits: { dailyMax: 6, minIntervalMinutes: 75 } },
-      autopilot: { intervalMinutes: 60 }
+      bird: { rateLimits: { dailyMax: 6, minIntervalMinutes: 75 } }
     });
 
     expect(response.readStatus()).toBe(200);
     expect(response.json()).toMatchObject({
       values: {
-        sunoDailyBudget: { value: 80, source: "overrides" },
         birdDailyMax: { value: 6, source: "overrides" },
-        birdMinIntervalMinutes: { value: 75, source: "overrides" },
-        autopilotIntervalMinutes: { value: 60, source: "overrides" }
+        birdMinIntervalMinutes: { value: 75, source: "overrides" }
       }
     });
     const auditText = readFileSync(join(root, "runtime", "config-overrides-audit.jsonl"), "utf8");
     expect(auditText).toContain("config_overrides_update");
     expect(auditText).toContain("\"actor\":\"producer\"");
-
-    const status = await buildStatusResponse({ artist: { workspaceRoot: root } });
-    expect(status.suno.budget.limit).toBe(80);
   });
 
   it("rejects non-whitelisted and invalid override payloads", async () => {
@@ -144,28 +131,26 @@ describe("config overrides route", () => {
     expect((response.json().errors as string[]).join(" ")).toContain("unknown override key: music");
 
     response = await invoke(handler, "POST", root, {
-      suno: { dailyBudget: -1 }
+      suno: { dailyBudget: 80 }
     });
     expect(response.json()).toMatchObject({
       error: "invalid_config_overrides",
       statusCode: 400
     });
-    expect((response.json().errors as string[]).join(" ")).toContain("suno.dailyBudget");
+    expect((response.json().errors as string[]).join(" ")).toContain("unknown override key: suno");
   });
 
-  it("marks env overrides as effective and read-only", async () => {
+  it("ignores stale Suno dailyBudget overrides without crashing", async () => {
     const root = mkdtempSync(join(tmpdir(), "artist-runtime-api-overrides-env-"));
     await ensureArtistWorkspace(root);
-    await writeRuntimeSafetyOverrides(root, { suno: { dailyBudget: 12 } });
-    vi.stubEnv("OPENCLAW_SUNO_DAILY_BUDGET", "99");
+    mkdirSync(join(root, "runtime"), { recursive: true });
+    writeFileSync(join(root, "runtime", "config-overrides.json"), JSON.stringify({ suno: { dailyBudget: 12 } }), "utf8");
 
     const response = await buildConfigOverridesResponse({ artist: { workspaceRoot: root } });
+    const status = await buildStatusResponse({ artist: { workspaceRoot: root } });
 
-    expect(response.values.sunoDailyBudget).toMatchObject({
-      value: 99,
-      source: "env",
-      editable: false,
-      envVar: "OPENCLAW_SUNO_DAILY_BUDGET"
-    });
+    expect(response.raw).toMatchObject({ suno: { dailyBudget: 12 } });
+    expect(response.values).not.toHaveProperty("sunoDailyBudget");
+    expect(status.suno.budget.limit).toBe(60);
   });
 });

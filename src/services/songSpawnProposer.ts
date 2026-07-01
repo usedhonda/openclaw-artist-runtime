@@ -9,7 +9,6 @@ import { readCallbackActionEntries } from "./callbackActionRegistry.js";
 import { extractPersonaMotifs, extractTagSet, pickWeightedMotif } from "./personaMotifExtractor.js";
 import { secretLikePattern } from "./personaMigrator.js";
 import { emitRuntimeEvent } from "./runtimeEventBus.js";
-import { readBudgetState } from "./sunoBudgetLedger.js";
 import { getArtistIdentity } from "./runtimeConfig.js";
 import { validateAgainstVoiceContract } from "./voiceContractValidator.js";
 import { isVoiceFingerprintReady, parseVoiceFingerprint, type VoiceFingerprintBundle } from "./voiceFingerprintParser.js";
@@ -428,7 +427,7 @@ export function dedupeStyleBpm(styleNotes: string, tempo: string): string {
     .trim();
 }
 
-function buildBrief(context: { observation: string; artistMd: string; soulMd: string; fingerprint: VoiceFingerprintBundle; budgetRemaining: number; now: Date; observationTopTags?: string[]; rng?: () => number }): CommissionBrief {
+function buildBrief(context: { observation: string; artistMd: string; soulMd: string; fingerprint: VoiceFingerprintBundle; now: Date; observationTopTags?: string[]; rng?: () => number }): CommissionBrief {
   const seed = context.observation || context.soulMd || "観察が薄い夜に、街の温度だけ残っている。";
   const titleMotifs = extractPersonaMotifs([context.artistMd, context.soulMd].join("\n"));
   const observationTopTags = context.observationTopTags ?? [];
@@ -591,7 +590,6 @@ function buildPrompt(context: {
   observation: string;
   heartbeat: string;
   recentSongs: SongState[];
-  budgetRemaining: number;
   recentThemes: RecentSpawnTheme[];
   fingerprint: VoiceFingerprintBundle;
   identity: ArtistIdentity;
@@ -628,7 +626,6 @@ function buildPrompt(context: {
     "",
     ...buildVoiceContractLines(context.fingerprint),
     "",
-    `Budget remaining: ${context.budgetRemaining}`,
     `Recent songs: ${context.recentSongs.slice(0, 5).map((song) => `${song.songId}:${song.status}:${song.title}`).join(" | ")}`,
     `Recently proposed themes to avoid: ${context.recentThemes.length > 0 ? context.recentThemes.map((t) => t.title).join(" | ") : "none"}`,
     "",
@@ -806,7 +803,7 @@ function composeReasonFromBrief(
 
 export async function proposeSpawn(root: string, options: ProposeSpawnOptions = {}): Promise<SongSpawnProposal | null> {
   const now = options.now ?? new Date();
-  const [artistMd, soulMd, identityMd, innerMd, producerMd, heartbeat, obsData, songs, budget, recentThemes] = await Promise.all([
+  const [artistMd, soulMd, identityMd, innerMd, producerMd, heartbeat, obsData, songs, recentThemes] = await Promise.all([
     readFile(join(root, "ARTIST.md"), "utf8").catch(() => ""),
     readFile(join(root, "SOUL.md"), "utf8").catch(() => ""),
     readFile(join(root, "IDENTITY.md"), "utf8").catch(() => ""),
@@ -815,12 +812,10 @@ export async function proposeSpawn(root: string, options: ProposeSpawnOptions = 
     readFile(join(root, "runtime", "heartbeat-state.json"), "utf8").catch(() => ""),
     latestObservationData(root),
     listSongStates(root).catch(() => []),
-    readBudgetState(root, now),
     recentSpawnThemes(root, now)
   ]);
   const observation = obsData.raw;
   const observationSummary = obsData.summary;
-  const budgetRemaining = budget.limit - budget.used;
   // Plan v10.38 Phase D: surface theme starvation. When the observation pool is
   // empty or near-empty, autopilot has been silently falling back to the same
   // hard-coded title ("静かな夜の勘定書" / "街の違和感") cycle after cycle. Emit
@@ -834,16 +829,16 @@ export async function proposeSpawn(root: string, options: ProposeSpawnOptions = 
       timestamp: now.getTime()
     });
   }
-  if (budgetRemaining <= 1 || hasRestMood(heartbeat, soulMd) || (!options.ignoreRecentCompletion && recentCompletedTooClose(songs, now)) || observation.trim().length < 12) {
+  if (hasRestMood(heartbeat, soulMd) || (!options.ignoreRecentCompletion && recentCompletedTooClose(songs, now)) || observation.trim().length < 12) {
     return null;
   }
-  const inputContext = [artistMd, soulMd, identityMd, innerMd, producerMd, heartbeat, observation, JSON.stringify(songs.slice(0, 5)), JSON.stringify(budget)].join("\n");
+  const inputContext = [artistMd, soulMd, identityMd, innerMd, producerMd, heartbeat, observation, JSON.stringify(songs.slice(0, 5))].join("\n");
   assertSafe("input", inputContext);
 
   const fingerprint = parseVoiceFingerprint(soulMd);
   const identity = await getArtistIdentity(root);
   const pitchContext = { observation, artistMd, soulMd, fingerprint };
-  const fallback = buildBrief({ observation, artistMd, soulMd, fingerprint, budgetRemaining, now });
+  const fallback = buildBrief({ observation, artistMd, soulMd, fingerprint, now });
   // Plan v10.38 Phase F hallucination guard: stamp the fallback brief with
   // the observation entries it was actually built from so mock / not_configured
   // paths still leave a verifiable citation trail.
@@ -871,7 +866,6 @@ export async function proposeSpawn(root: string, options: ProposeSpawnOptions = 
       observation,
       heartbeat,
       recentSongs: songs,
-      budgetRemaining,
       recentThemes,
       fingerprint,
       identity,

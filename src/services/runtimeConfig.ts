@@ -48,19 +48,16 @@ export async function readConfigOverrides(root: string): Promise<Partial<ArtistR
 }
 
 type ConfigOverridesRecord = Omit<Partial<ArtistRuntimeConfig>, "autopilot"> & {
-  suno?: { dailyBudget?: unknown };
   bird?: { rateLimits?: { dailyMax?: unknown; minIntervalMinutes?: unknown } };
   autopilot?: Partial<ArtistRuntimeConfig["autopilot"]> & { intervalMinutes?: unknown };
 };
 
 export interface RuntimeSafetyOverridesPatch {
-  suno?: { dailyBudget?: number };
   bird?: { rateLimits?: { dailyMax?: number; minIntervalMinutes?: number } };
-  autopilot?: { intervalMinutes?: number };
 }
 
 function normalizeResolvedOverrideConfig(overrides: ConfigOverridesRecord): Partial<ArtistRuntimeConfig> {
-  const { suno: _suno, bird: _bird, ...rest } = overrides;
+  const { bird: _bird, ...rest } = overrides;
   const autopilot = rest.autopilot
     ? { ...rest.autopilot } as Partial<ArtistRuntimeConfig["autopilot"]> & { intervalMinutes?: unknown }
     : undefined;
@@ -337,10 +334,6 @@ export function isXTcoFetchEnabled(env: NodeJS.ProcessEnv = process.env): boolea
   return env.OPENCLAW_X_TCO_FETCH_ENABLED === "1";
 }
 
-export function getSunoDailyBudgetOverride(env: NodeJS.ProcessEnv = process.env): number | undefined {
-  return positiveInteger(env.OPENCLAW_SUNO_DAILY_BUDGET);
-}
-
 export function getBirdDailyMaxOverride(env: NodeJS.ProcessEnv = process.env): number | undefined {
   return positiveInteger(env.OPENCLAW_BIRD_DAILY_MAX);
 }
@@ -442,38 +435,9 @@ export function getSongSpawnIntervalHours(
   return Math.max(12, parsed);
 }
 
-function positiveNumber(value: unknown): number | undefined {
-  if (typeof value === "number" && Number.isFinite(value) && value > 0) {
-    return value;
-  }
-  if (typeof value === "string" && value.trim()) {
-    const parsed = Number.parseInt(value.trim(), 10);
-    return Number.isFinite(parsed) && parsed > 0 ? parsed : undefined;
-  }
-  return undefined;
-}
-
-export async function resolveSunoDailyBudget(
-  root: string = resolveDefaultWorkspaceRoot(),
-  env: NodeJS.ProcessEnv = process.env
-): Promise<number> {
-  const envBudget = positiveNumber(env.OPENCLAW_SUNO_DAILY_BUDGET);
-  if (envBudget !== undefined) {
-    return envBudget;
-  }
-  const overrides = await readConfigOverrides(root);
-  const rawSuno = (overrides as { suno?: { dailyBudget?: unknown } }).suno;
-  const overrideBudget = positiveNumber(rawSuno?.dailyBudget);
-  return overrideBudget ?? 50;
-}
-
 function deepMergeRuntimeOverrides(current: ConfigOverridesRecord, patch: RuntimeSafetyOverridesPatch): ConfigOverridesRecord {
   return {
     ...current,
-    suno: {
-      ...current.suno,
-      ...patch.suno
-    },
     bird: {
       ...current.bird,
       ...(patch.bird ? {
@@ -482,10 +446,6 @@ function deepMergeRuntimeOverrides(current: ConfigOverridesRecord, patch: Runtim
           ...patch.bird.rateLimits
         }
       } : {})
-    },
-    autopilot: {
-      ...current.autopilot,
-      ...patch.autopilot
     }
   };
 }

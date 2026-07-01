@@ -2,12 +2,10 @@ import { mkdtempSync } from "node:fs";
 import { mkdir, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { afterEach, describe, expect, it } from "vitest";
+import { describe, expect, it } from "vitest";
 import { registerCallbackAction } from "../src/services/callbackActionRegistry";
 import { getRuntimeEventBus, type RuntimeEvent } from "../src/services/runtimeEventBus";
 import { proposeSpawn } from "../src/services/songSpawnProposer";
-
-const originalBudget = process.env.OPENCLAW_SUNO_DAILY_BUDGET;
 
 async function workspace(): Promise<string> {
   const root = mkdtempSync(join(tmpdir(), "artist-runtime-spawn-proposer-"));
@@ -21,14 +19,6 @@ async function workspace(): Promise<string> {
 }
 
 describe("song spawn proposer", () => {
-  afterEach(() => {
-    if (originalBudget === undefined) {
-      delete process.env.OPENCLAW_SUNO_DAILY_BUDGET;
-    } else {
-      process.env.OPENCLAW_SUNO_DAILY_BUDGET = originalBudget;
-    }
-  });
-
   it("proposes a next-song brief from observations and budget", async () => {
     const root = await workspace();
     const proposal = await proposeSpawn(root, { aiReviewProvider: "mock", now: new Date("2026-04-29T00:00:00.000Z") });
@@ -41,12 +31,8 @@ describe("song spawn proposer", () => {
     expect(proposal?.reason).not.toMatch(/\b[a-z]{4,}\b/);
   });
 
-  it("skips when budget is too tight or heartbeat asks for rest", async () => {
+  it("skips when heartbeat asks for rest", async () => {
     const root = await workspace();
-    process.env.OPENCLAW_SUNO_DAILY_BUDGET = "1";
-    await expect(proposeSpawn(root, { now: new Date("2026-04-29T00:00:00.000Z") })).resolves.toBeNull();
-
-    delete process.env.OPENCLAW_SUNO_DAILY_BUDGET;
     await writeFile(join(root, "runtime", "heartbeat-state.json"), JSON.stringify({ mood: "rest" }), "utf8");
     await expect(proposeSpawn(root, { now: new Date("2026-04-29T00:00:00.000Z") })).resolves.toBeNull();
   });

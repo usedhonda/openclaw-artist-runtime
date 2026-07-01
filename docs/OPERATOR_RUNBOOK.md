@@ -456,8 +456,10 @@ Operational flags:
 
 Runtime safety knobs:
 
-- Suno daily budget: set `runtime/config-overrides.json` under
-  `suno.dailyBudget`, or set `OPENCLAW_SUNO_DAILY_BUDGET`.
+- Suno daily create cap: set `music.suno.maxGenerationsPerDay` in Settings.
+- Suno credit budget: set `music.suno.dailyCreditLimit` and
+  `music.suno.monthlyCreditLimit` in Settings. Legacy `suno.dailyBudget` and
+  `OPENCLAW_SUNO_DAILY_BUDGET` are ignored.
 - X observation pacing: set `bird.rateLimits.dailyMax` and
   `bird.rateLimits.minIntervalMinutes` in `runtime/config-overrides.json`, or
   use `OPENCLAW_BIRD_DAILY_MAX` and `OPENCLAW_BIRD_MIN_INTERVAL_MINUTES`.
@@ -794,8 +796,8 @@ the configured timeout window, default 7 days, autopilot pauses and records
 
 The Suno stage now has an explicit guard and retry layer:
 
-- `sunoBudgetGuard` checks daily budget before a generate attempt. Budget-low
-  cases emit a Telegram notification and pause/skip the unsafe path.
+- `SunoBudgetTracker` checks live Suno credit budget before a live create
+  submit. Daily generation count is controlled by `maxGenerationsPerDay`.
 - `sunoRetryHandler` applies bounded exponential backoff for transient Suno
   failures.
 - hard failures emit `suno_generate_failed` and leave the artist in a recoverable

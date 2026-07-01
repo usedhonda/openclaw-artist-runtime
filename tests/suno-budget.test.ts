@@ -123,6 +123,52 @@ describe("SunoBudgetTracker", () => {
     });
   });
 
+  it("blocks live submit when one create would exceed the daily credit limit", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-04-23T12:00:00.000Z"));
+
+    const root = mkdtempSync(join(tmpdir(), "artist-runtime-suno-budget-single-create-"));
+    await ensureArtistWorkspace(root);
+    await createAndPersistSunoPromptPack({
+      workspaceRoot: root,
+      songId: "song-001",
+      songTitle: "Credit Wall",
+      artistReason: "credit edge",
+      lyricsText: "static signal",
+      knowledgePackVersion: "test-pack"
+    });
+    connectorStatusMock.mockResolvedValue({ state: "connected" });
+    connectorCreateMock.mockResolvedValue({
+      accepted: true,
+      runId: "unexpected",
+      reason: "unexpected",
+      urls: ["https://suno.com/song/unexpected"]
+    });
+
+    const result = await generateSunoRun({
+      workspaceRoot: root,
+      songId: "song-001",
+      config: {
+        autopilot: {
+          ...defaultArtistRuntimeConfig.autopilot,
+          dryRun: false
+        },
+        music: {
+          ...defaultArtistRuntimeConfig.music,
+          suno: {
+            ...defaultArtistRuntimeConfig.music.suno,
+            submitMode: "live",
+            dailyCreditLimit: 9
+          }
+        }
+      }
+    });
+
+    expect(connectorCreateMock).not.toHaveBeenCalled();
+    expect(result.status).toBe("failed");
+    expect(result.error?.message).toBe(SUNO_BUDGET_EXHAUSTED_REASON);
+  });
+
   it("resets the counter on the next UTC day before reserving again", async () => {
     const root = mkdtempSync(join(tmpdir(), "artist-runtime-suno-budget-reset-"));
     await mkdir(join(root, "runtime", "suno"), { recursive: true });

@@ -1,7 +1,6 @@
 import React from "../ui/node_modules/react/index.js";
 import { renderToStaticMarkup } from "../ui/node_modules/react-dom/server.node.js";
 import { describe, expect, it, vi } from "vitest";
-import { BudgetRateStatusStrip } from "../ui/src/components/BudgetRateStatusStrip";
 import { ManualSongCreateCard, submitManualSongCreate } from "../ui/src/components/ManualSongCreateCard";
 import { PendingApprovalsCard } from "../ui/src/components/PendingApprovalsCard";
 import {
@@ -12,29 +11,8 @@ import {
   submitProposalYes,
   type ProposalDetail
 } from "../ui/src/components/PendingChangeSetCard";
-import {
-  buildRuntimeOverridesSavePayload,
-  SettingsRuntimeOverridesPanel,
-  submitRuntimeOverrides,
-  type RuntimeOverridesValues
-} from "../ui/src/components/SettingsRuntimeOverridesPanel";
 
 describe("producer console cockpit cards", () => {
-  it("renders budget/rate/detection status", () => {
-    const html = renderToStaticMarkup(
-      React.createElement(BudgetRateStatusStrip, {
-        suno: { used: 2, limit: 50, remaining: 48 },
-        bird: { todayCalls: 1, dailyMax: 5, minIntervalMinutes: 60, nextAllowedAt: "2026-04-29T02:00:00.000Z" },
-        distribution: { spotify: { url: "https://open.spotify.com/test", detectedAt: "2026-04-29T01:00:00.000Z" } }
-      })
-    );
-
-    expect(html).toContain("Today 2/50");
-    expect(html).toContain("Today 1/5");
-    expect(html).toContain("Spotify ✓");
-    expect(html).toContain("Apple Music -");
-  });
-
   it("renders pending approval summaries", () => {
     const html = renderToStaticMarkup(
       React.createElement(PendingApprovalsCard, {
@@ -126,55 +104,4 @@ describe("producer console cockpit cards", () => {
     expect(html).toContain("No pending persona ChangeSet.");
   });
 
-  it("renders runtime safety override settings and read-only env state", () => {
-    const values: RuntimeOverridesValues = {
-      sunoDailyBudget: { value: 99, source: "env", editable: false, defaultValue: 50, envVar: "OPENCLAW_SUNO_DAILY_BUDGET" },
-      birdDailyMax: { value: 5, source: "default", editable: true, defaultValue: 5, envVar: "OPENCLAW_BIRD_DAILY_MAX" },
-      birdMinIntervalMinutes: { value: 60, source: "default", editable: true, defaultValue: 60, envVar: "OPENCLAW_BIRD_MIN_INTERVAL_MINUTES" },
-      autopilotIntervalMinutes: { value: 180, source: "default", editable: true, defaultValue: 180 }
-    };
-    const html = renderToStaticMarkup(
-      React.createElement(SettingsRuntimeOverridesPanel, {
-        values,
-        busy: false,
-        dryRun: true,
-        liveGoArmed: false,
-        onSave: vi.fn()
-      })
-    );
-
-    expect(html).toContain("Runtime Safety Settings");
-    expect(html).toContain("Suno daily budget");
-    expect(html).toContain("source: env OPENCLAW_SUNO_DAILY_BUDGET");
-    expect(html).toContain("Environment override is active");
-    expect(html).toContain("dryRun: on");
-    expect(html).toContain("liveGoArmed: held");
-  });
-
-  it("submits only editable runtime override fields", async () => {
-    const values: RuntimeOverridesValues = {
-      sunoDailyBudget: { value: 99, source: "env", editable: false, defaultValue: 50, envVar: "OPENCLAW_SUNO_DAILY_BUDGET" },
-      birdDailyMax: { value: 5, source: "default", editable: true, defaultValue: 5, envVar: "OPENCLAW_BIRD_DAILY_MAX" },
-      birdMinIntervalMinutes: { value: 60, source: "default", editable: true, defaultValue: 60, envVar: "OPENCLAW_BIRD_MIN_INTERVAL_MINUTES" },
-      autopilotIntervalMinutes: { value: 180, source: "default", editable: true, defaultValue: 180 }
-    };
-    const draft = {
-      sunoDailyBudget: "120",
-      birdDailyMax: "7",
-      birdMinIntervalMinutes: "90",
-      autopilotIntervalMinutes: "240"
-    };
-    const onSave = vi.fn();
-
-    expect(buildRuntimeOverridesSavePayload(values, draft)).toEqual({
-      bird: { rateLimits: { dailyMax: 7, minIntervalMinutes: 90 } },
-      autopilot: { intervalMinutes: 240 }
-    });
-
-    await submitRuntimeOverrides(onSave, values, draft);
-    expect(onSave).toHaveBeenCalledWith({
-      bird: { rateLimits: { dailyMax: 7, minIntervalMinutes: 90 } },
-      autopilot: { intervalMinutes: 240 }
-    });
-  });
 });

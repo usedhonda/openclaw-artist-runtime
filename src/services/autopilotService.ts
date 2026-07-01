@@ -21,8 +21,6 @@ import { publishSocialAction } from "./socialPublishing.js";
 import { selectTake } from "./takeSelection.js";
 import { evaluateSunoTakeSelection } from "./sunoTakeSelector.js";
 import { emitRuntimeEvent } from "./runtimeEventBus.js";
-import { resetIfNewDay } from "./sunoBudgetLedger.js";
-import { reserveSunoGenerationBudget, type SunoBudgetGuardResult } from "./sunoBudgetGuard.js";
 import { classifySunoGenerateFailure, nextSunoRetryDecision } from "./sunoRetryHandler.js";
 import { PLAYWRIGHT_LYRICS_BOX_DEGRADED_REASON } from "./sunoPlaywrightDriver.js";
 import { collectObservations, type XObservationContext } from "./xObservationCollector.js";
@@ -194,34 +192,6 @@ export const SUNO_LYRICS_BOX_DEGRADED_MARKER = PLAYWRIGHT_LYRICS_BOX_DEGRADED_RE
 const SUNO_LYRICS_BOX_DEGRADED_MAX_ATTEMPTS = 8;
 export function isDegradedLyricsBoxReason(value?: string | null): boolean {
   return Boolean(value && value.includes(SUNO_LYRICS_BOX_DEGRADED_MARKER));
-}
-
-function budgetWindowBlockedReason(budget: SunoBudgetGuardResult): string {
-  const reason = budget.reason ?? "daily Suno budget exhausted";
-  return `budget_exhausted:${reason}:${budget.state.used}/${budget.state.limit}`;
-}
-
-function emitSunoBudgetBlockedIfNeeded(existing: AutopilotRunState, songId: string, budget: SunoBudgetGuardResult): string {
-  const reason = budget.reason ?? "daily Suno budget exhausted";
-  const marker = budgetWindowBlockedReason(budget);
-  if (shouldEmitOperationalEpisode(existing, marker)) {
-    emitRuntimeEvent({
-      type: "suno_budget_low",
-      songId,
-      reason: budget.reason ?? "daily Suno budget low",
-      limit: budget.state.limit,
-      used: budget.state.used,
-      timestamp: Date.now()
-    });
-    emitRuntimeEvent({
-      type: "budget_exhausted",
-      reason,
-      limit: budget.state.limit,
-      used: budget.state.used,
-      timestamp: Date.now()
-    });
-  }
-  return marker;
 }
 
 async function hasProducerSpawnApproval(root: string, songId: string): Promise<boolean> {
@@ -1294,7 +1264,6 @@ export class ArtistAutopilotService {
       const reason = error instanceof Error ? error.message : String(error);
       console.warn(`[artist-runtime] stale queue maintenance failed: ${reason}`);
     });
-    await resetIfNewDay(input.workspaceRoot);
     await pollSongDistribution(input.workspaceRoot).catch((error) => {
       emitRuntimeEvent({
         type: "error",
@@ -1572,19 +1541,6 @@ export class ArtistAutopilotService {
             });
           }
           if (isMockSunoGenerationBypass(config)) {
-            const budget = await reserveSunoGenerationBudget(input.workspaceRoot, 1);
-            if (!budget.ok) {
-              const budgetBlockedReason = emitSunoBudgetBlockedIfNeeded(existing, song.songId, budget);
-              return writeStageState(input.workspaceRoot, existing, {
-                ...baseState,
-                currentSongId: song.songId,
-                stage: "suno_generation",
-                blockedReason: budgetBlockedReason,
-                lastError: budgetBlockedReason,
-                lastSuccessfulStage: existing.lastSuccessfulStage,
-                cycleCount: existing.cycleCount + 1
-              });
-            }
             await importMockSunoGeneration(input.workspaceRoot, song.songId, existing, config);
             return writeStageState(input.workspaceRoot, existing, {
               ...baseState,
@@ -1636,23 +1592,6 @@ export class ArtistAutopilotService {
             }
             if (retryDecision.action === "failed") {
               return handleSunoGenerateFailure(input.workspaceRoot, existing, baseState, song, retryDecision.reason);
-            }
-          }
-          // A degraded-box self-heal retry already reserved a generation on its first
-          // attempt (the create fails before submitting), so skip re-reserving each retry.
-          if (!isDegradedLyricsBoxReason(existing.blockedReason)) {
-            const budget = await reserveSunoGenerationBudget(input.workspaceRoot, 1);
-            if (!budget.ok) {
-              const budgetBlockedReason = emitSunoBudgetBlockedIfNeeded(existing, song.songId, budget);
-              return writeStageState(input.workspaceRoot, existing, {
-                ...baseState,
-                currentSongId: song.songId,
-                stage: "suno_generation",
-                blockedReason: budgetBlockedReason,
-                lastError: budgetBlockedReason,
-                lastSuccessfulStage: existing.lastSuccessfulStage,
-                cycleCount: existing.cycleCount + 1
-              });
             }
           }
           let generateError: unknown;

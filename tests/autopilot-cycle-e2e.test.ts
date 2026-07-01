@@ -8,7 +8,6 @@ import { ensureArtistWorkspace } from "../src/services/artistWorkspace";
 import { getRuntimeEventBus, type RuntimeEvent } from "../src/services/runtimeEventBus";
 import { ensureSongState, updateSongState } from "../src/services/artistState";
 import { createAndPersistSunoPromptPack } from "../src/services/sunoPromptPackFiles";
-import { tryConsumeBudget } from "../src/services/sunoBudgetLedger";
 
 function workspace(): string {
   return mkdtempSync(join(tmpdir(), "artist-runtime-autopilot-cycle-e2e-"));
@@ -50,24 +49,23 @@ describe("autopilot autonomous production loop", () => {
     expect((await service.status(true, true, root)).dryRun).toBe(true);
   });
 
-  it("skips Suno generation when the daily budget is exhausted", async () => {
+  it("does not block mock Suno generation on the retired dailyBudget knob", async () => {
     const root = workspace();
     await seedSongForSuno(root);
     vi.stubEnv("OPENCLAW_SUNO_DAILY_BUDGET", "1");
-    await tryConsumeBudget(root, 1, new Date());
     const service = new ArtistAutopilotService();
-    const events: RuntimeEvent[] = [];
-    const unsubscribe = getRuntimeEventBus().subscribe((event) => events.push(event));
 
     const state = await service.runCycle({
       workspaceRoot: root,
-      config: { artist: { workspaceRoot: root }, autopilot: { enabled: true, dryRun: true } }
+      config: { artist: { workspaceRoot: root }, autopilot: { enabled: true, dryRun: true }, music: { suno: { driver: "mock" } } }
+    }).finally(() => {
+      vi.unstubAllEnvs();
     });
-
-    unsubscribe();
-    vi.unstubAllEnvs();
-    expect(state.blockedReason).toContain("budget exhausted");
-    expect(events.some((event) => event.type === "budget_exhausted")).toBe(true);
+    expect(state).toMatchObject({
+      stage: "take_selection",
+      blockedReason: undefined,
+      lastError: undefined
+    });
   }, 30_000);
 
   it("emits song_take_completed after take selection", async () => {

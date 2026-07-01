@@ -6,12 +6,9 @@ import { ObservabilityPanel } from "./ObservabilityPanel";
 import { ConnectionBanner } from "./ConnectionBanner";
 import { ErrorToastStack } from "./ErrorToast";
 import { ShortcutHelpOverlay, useKeyboardShortcuts } from "./KeyboardShortcuts";
-import { BudgetRateStatusStrip } from "./components/BudgetRateStatusStrip";
 import { ManualSongCreateCard } from "./components/ManualSongCreateCard";
 import { PendingApprovalsCard } from "./components/PendingApprovalsCard";
 import { PendingChangeSetCard, type ProposalDetail } from "./components/PendingChangeSetCard";
-import { SettingsRuntimeOverridesPanel, type RuntimeOverridesSavePayload, type RuntimeOverridesValues } from "./components/SettingsRuntimeOverridesPanel";
-import { SunoDailyBudgetDetailCard, type SunoBudgetDetail } from "./components/SunoDailyBudgetDetailCard";
 import { BirdCallLedgerCard, type BirdLedgerDetail } from "./components/BirdCallLedgerCard";
 import { DistributionDetectionCard, type DistributionDetectionDetail } from "./components/DistributionDetectionCard";
 import { RuntimeActionMirrorCard, type RuntimeActionMirrorEvent } from "./components/RuntimeActionMirrorCard";
@@ -107,7 +104,6 @@ type StatusResponse = {
         unlimited: boolean;
       };
     };
-    budgetDetail?: SunoBudgetDetail;
     artifacts: SunoArtifactIndexEntry[];
     profile?: {
       stale?: boolean;
@@ -278,11 +274,6 @@ type CallbackActionsResponse = {
 type SpawnProposalsResponse = {
   count: number;
   proposals: SpawnProposalQueueItem[];
-};
-
-type ConfigOverridesResponse = {
-  raw: Record<string, unknown>;
-  values: RuntimeOverridesValues;
 };
 
 type ConfigResponse = ConfigEditorSource & {
@@ -597,7 +588,6 @@ function platformProbeBadge(
 export function App() {
   const [status, setStatus] = useState<StatusResponse | null>(null);
   const [config, setConfig] = useState<ConfigResponse | null>(null);
-  const [configOverrides, setConfigOverrides] = useState<ConfigOverridesResponse | null>(null);
   const [songs, setSongs] = useState<SongSummary[]>([]);
   const [detail, setDetail] = useState<SongDetail | null>(null);
   const [sunoStatus, setSunoStatus] = useState<SunoStatusResponse | null>(null);
@@ -638,11 +628,10 @@ export function App() {
     setIsRefreshing(true);
     try {
       setError(null);
-      const [nextStatus, nextSongs, nextConfig, nextConfigOverrides, nextSunoStatus, nextArtistMind, nextAuditEntries, nextRecovery, nextProposals, nextAwaitingDecisions, nextSpawnProposalQueue] = await Promise.all([
+      const [nextStatus, nextSongs, nextConfig, nextSunoStatus, nextArtistMind, nextAuditEntries, nextRecovery, nextProposals, nextAwaitingDecisions, nextSpawnProposalQueue] = await Promise.all([
         apiGet<StatusResponse>("/status"),
         apiGet<SongSummary[]>("/songs"),
         apiGet<ConfigResponse>("/config"),
-        apiGet<ConfigOverridesResponse>("/config/overrides"),
         apiGet<SunoStatusResponse>("/suno/status"),
         apiGet<ArtistMindResponse>("/artist-mind"),
         apiGet<AuditEntry[]>("/audit"),
@@ -667,7 +656,6 @@ export function App() {
       startTransition(() => {
         setStatus(nextStatus);
         setConfig(nextConfig);
-        setConfigOverrides(nextConfigOverrides);
         setSunoStatus(nextSunoStatus);
         setArtistMind(nextArtistMind);
         setAuditEntries(nextAuditEntries);
@@ -940,22 +928,6 @@ export function App() {
       const message = caughtError instanceof Error ? caughtError.message : String(caughtError);
       setError(message);
       showErrorToast("config-patch", "config_update_failed", message);
-    } finally {
-      setBusy(null);
-    }
-  };
-
-  const saveRuntimeOverrides = async (payload: RuntimeOverridesSavePayload) => {
-    setBusy("runtime-overrides");
-    try {
-      const updated = await apiPost<ConfigOverridesResponse>("/config/overrides", payload);
-      setConfigOverrides(updated);
-      await refresh(selectedSongId, true);
-      showErrorToast("runtime", "runtime_overrides_updated", "Settings updated.");
-    } catch (caughtError) {
-      const message = caughtError instanceof Error ? caughtError.message : String(caughtError);
-      setError(message);
-      showErrorToast("runtime", "runtime_overrides_update_failed", message);
     } finally {
       setBusy(null);
     }
@@ -1389,16 +1361,6 @@ export function App() {
     </article>
   );
 
-  const runtimeOverridesPanel = (
-    <SettingsRuntimeOverridesPanel
-      values={configOverrides?.values}
-      dryRun={config?.autopilot.dryRun}
-      liveGoArmed={config?.distribution.liveGoArmed}
-      busy={busy !== null}
-      onSave={saveRuntimeOverrides}
-    />
-  );
-
   const isArchivedSong = (status: string) => status === "scheduled" || status === "published" || status === "archived" || status === "failed";
   const activeSongs = songs.filter((song) => !isArchivedSong(song.status));
   const archiveSongs = songs.filter((song) => isArchivedSong(song.status));
@@ -1528,18 +1490,6 @@ export function App() {
         <button disabled={busy !== null} onClick={() => void refresh(selectedSongId, true)}>Refresh</button>
       </div>
     </article>
-  );
-
-  const cockpitStrip = (
-    <BudgetRateStatusStrip
-      suno={status?.suno.budget}
-      bird={status?.bird?.rateLimit}
-      distribution={status?.distribution?.detected}
-    />
-  );
-
-  const sunoBudgetDetailPanel = (
-    <SunoDailyBudgetDetailCard detail={status?.suno.budgetDetail} />
   );
 
   const birdLedgerPanel = (
@@ -1888,15 +1838,15 @@ export function App() {
         <section className="single-column song-page-shell">{songDetailPanel}</section>
       ) : (
         <>
-          {activeView === "dashboard" ? <section className="two-column">{spawnProposalQueuePanel}{awaitingDecisionPanel}{cockpitStrip}{systemStatusOverviewPanel}{sunoWorkerHandoffPanel}{manualSongCreatePanel}{runtimeActionMirrorPanel}{songLifecycleTimelinePanel}{pendingApprovalsPanel}{lastCyclePanel}{setupPanel}{alertsPanel}{currentSongPanel}{distributionWorkerPanel}{observabilityPanel}{recentXResultPanel}</section> : null}
+          {activeView === "dashboard" ? <section className="two-column">{spawnProposalQueuePanel}{awaitingDecisionPanel}{systemStatusOverviewPanel}{sunoWorkerHandoffPanel}{manualSongCreatePanel}{runtimeActionMirrorPanel}{songLifecycleTimelinePanel}{pendingApprovalsPanel}{lastCyclePanel}{setupPanel}{alertsPanel}{currentSongPanel}{distributionWorkerPanel}{observabilityPanel}{recentXResultPanel}</section> : null}
           {activeView === "setup" ? <section className="two-column">{setupPanel}{sunoPanel}{platformsPanel}{configPanel}</section> : null}
-          {activeView === "music" ? <section className="two-column">{sunoWorkerHandoffPanel}{sunoBudgetDetailPanel}{sunoPanel}{currentSongPanel}{recentXResultPanel}</section> : null}
+          {activeView === "music" ? <section className="two-column">{sunoWorkerHandoffPanel}{sunoPanel}{currentSongPanel}{recentXResultPanel}</section> : null}
           {activeView === "platforms" ? <section className="two-column">{birdLedgerPanel}{distributionDetectionPanel}{runtimeActionMirrorPanel}{platformsPanel}{distributionWorkerPanel}{observabilityPanel}{replySimulationPanel}</section> : null}
           {activeView === "songs" ? <section className="two-column">{songChangeSetPanel}{runtimeSongbookPanel}{runtimeActionMirrorPanel}{songLifecycleTimelinePanel}{songsPanel}{currentSongPanel}</section> : null}
           {activeView === "prompt-ledger" ? <section className="two-column">{songsPanel}{promptLedgerPanel}</section> : null}
           {activeView === "alerts" ? <section className="two-column">{alertsPanel}{auditPanel}</section> : null}
           {activeView === "artist-mind" ? <section className="single-column">{personaChangeSetPanel}{artistMindPanel}</section> : null}
-          {activeView === "settings" ? <section className="two-column">{runtimeOverridesPanel}{configPanel}{setupPanel}</section> : null}
+          {activeView === "settings" ? <section className="two-column">{configPanel}{setupPanel}</section> : null}
           {activeView === "recovery" ? <section className="two-column">{recoveryPanel}{sunoPanel}{alertsPanel}</section> : null}
         </>
       )}

@@ -1,19 +1,18 @@
 import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { describe, expect, it, vi } from "vitest";
+import { describe, expect, it } from "vitest";
 import { buildStatusResponse } from "../src/routes";
 import { createConversationalSession } from "../src/services/conversationalSession";
 import { ensureArtistWorkspace } from "../src/services/artistWorkspace";
 import { recordBirdCall } from "../src/services/birdRateLimiter";
-import { tryConsumeBudget } from "../src/services/sunoBudgetLedger";
+import { SunoBudgetTracker } from "../src/services/sunoBudget";
 
 describe("extended status fields", () => {
   it("surfaces suno budget, bird rate limits, distribution detection stub, and pending approvals", async () => {
     const root = mkdtempSync(join(tmpdir(), "artist-runtime-status-extended-"));
     await ensureArtistWorkspace(root);
-    vi.stubEnv("OPENCLAW_SUNO_DAILY_BUDGET", "4");
-    await tryConsumeBudget(root, 1, new Date());
+    await new SunoBudgetTracker(root).reserve(1, 4);
     await recordBirdCall(root, new Date());
     await createConversationalSession(root, {
       chatId: 1,
@@ -45,8 +44,8 @@ describe("extended status fields", () => {
     });
 
     expect(status.suno.budget).toMatchObject({
-      used: 1,
-      remaining: 4,
+      consumed: 1,
+      remaining: 3,
       limit: 4
     });
     expect(status.bird?.rateLimit).toMatchObject({
@@ -67,6 +66,5 @@ describe("extended status fields", () => {
         }
       ]
     });
-    vi.unstubAllEnvs();
   });
 });

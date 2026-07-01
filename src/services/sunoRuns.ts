@@ -252,7 +252,7 @@ export async function generateSunoRun(input: GenerateSunoRunInput): Promise<Suno
   const createdAt = new Date().toISOString();
   const provisionalRunId = runId();
   const shouldReserveDailyCredits = !config.autopilot.dryRun && config.music.suno.submitMode === "live";
-  const dailyBudget = authorityDecision.allowed && shouldReserveDailyCredits
+  const creditBudget = authorityDecision.allowed && shouldReserveDailyCredits
     ? await new SunoBudgetTracker(input.workspaceRoot).reserve(
         DEFAULT_SUNO_LIVE_CREATE_CREDIT_COST,
         config.music.suno.dailyCreditLimit,
@@ -260,11 +260,11 @@ export async function generateSunoRun(input: GenerateSunoRunInput): Promise<Suno
       )
     : undefined;
   const createResult = authorityDecision.allowed
-    ? dailyBudget?.ok === false
+    ? creditBudget?.ok === false
       ? {
           accepted: false,
           runId: provisionalRunId,
-          reason: dailyBudget.reason ?? SUNO_BUDGET_EXHAUSTED_REASON,
+          reason: creditBudget.reason ?? SUNO_BUDGET_EXHAUSTED_REASON,
           urls: [],
           dryRun: config.autopilot.dryRun
         }
