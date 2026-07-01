@@ -24,7 +24,8 @@ import { emitRuntimeEvent } from "./runtimeEventBus.js";
 import { classifySunoGenerateFailure, nextSunoRetryDecision } from "./sunoRetryHandler.js";
 import { PLAYWRIGHT_LYRICS_BOX_DEGRADED_REASON } from "./sunoPlaywrightDriver.js";
 import { collectObservations, type XObservationContext } from "./xObservationCollector.js";
-import { collectNewsObservations, type NewsObservationEntry } from "./newsObservationCollector.js";
+import { collectNewsObservations } from "./newsObservationCollector.js";
+import { buildNewsReactionQueries } from "./newsReactionQuery.js";
 import { proposeTheme } from "./themeProposer.js";
 import { pollSongDistribution } from "./songDistributionPoller.js";
 import { cleanupExpiredCallbacks } from "./callbackLedgerMaintenance.js";
@@ -228,33 +229,6 @@ function observationFromBrief(contents: string, song: SongState): ObservationSum
   const quote = firstBriefField(contents, ["Quote", "quote"]) ?? firstSectionLine(contents, "Observation source");
   if (!url && !author && !quote) return undefined;
   return { url, author, quote };
-}
-
-function cleanNewsSearchToken(value: string): string {
-  return value
-    .replace(/https?:\/\/\S+/g, " ")
-    .replace(/[^\p{Letter}\p{Number}一-龠ぁ-んァ-ヶー]+/gu, " ")
-    .replace(/\s+/g, " ")
-    .trim();
-}
-
-function buildNewsReactionQuery(entries: NewsObservationEntry[]): { query?: string; seed?: XObservationContext["reactionSeed"] } {
-  const top = entries.find((entry) => entry.url || entry.text.trim().length > 0);
-  if (!top) return {};
-  const tokens = cleanNewsSearchToken(top.text)
-    .split(/\s+/)
-    .filter((token) => Array.from(token).length >= 2)
-    .filter((token) => !/^(?:https?|www|com|news|google|rss)$/i.test(token))
-    .slice(0, 6);
-  if (tokens.length === 0) return {};
-  return {
-    query: tokens.join(" OR "),
-    seed: {
-      title: top.text.slice(0, 140),
-      url: top.url,
-      source: top.source
-    }
-  };
 }
 
 function sourcesFromObservation(summary?: ObservationSummary): CommissionBriefSource[] | undefined {
@@ -1128,10 +1102,11 @@ export class ArtistAutopilotService {
       emitRuntimeEvent({ type: "error", source: "news_observation", reason, timestamp: Date.now() });
       return { status: "skipped" as const, path: "", entries: [], reason };
     });
-    const reactionQuery = input.manualSeed ? {} : buildNewsReactionQuery(newsObservation.entries);
+    const personaText = `${artistMind.artist}\n${artistMind.socialVoice}`;
+    const reactionQuery = input.manualSeed ? { queries: [] } : buildNewsReactionQueries(newsObservation.entries, { personaText });
     const cycleObservation = await collectObservations(input.workspaceRoot, {
-      personaText: `${artistMind.artist}\n${artistMind.socialVoice}`,
-      query: input.manualSeed?.hint ? undefined : reactionQuery.query ?? "music OR society OR culture",
+      personaText,
+      query: input.manualSeed?.hint ? undefined : reactionQuery.queries[0] ?? "music OR society OR culture",
       reactionSeed: reactionQuery.seed,
       manualSeed: input.manualSeed,
       runner: input.observationRunner
