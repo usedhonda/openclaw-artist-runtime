@@ -47,6 +47,7 @@ import {
 import { emitDraftBoxProactiveNoticeIfNeeded } from "./draftBoxProactiveNotice.js";
 import { readPersonaSetupStatus } from "./personaSetupDetector.js";
 import { injectCommissionSong } from "./songStateInjector.js";
+import { appendDopagakiMoodHint, decideDopagakiVariation } from "./creativeVariationPolicy.js";
 
 export function isPublishBlockedByDryRun(
   result: Pick<SocialPublishResult, "accepted" | "dryRun">,
@@ -806,6 +807,11 @@ async function createPromptPackForSong(root: string, song: SongState, config?: P
     readFile(join(root, "songs", readySong.songId, "brief.md"), "utf8").catch(() => ""),
     readFile(join(root, "songs", readySong.songId, "mood-hint.txt"), "utf8").catch(() => "")
   ]);
+  const dopagakiVariation = decideDopagakiVariation({
+    songId: readySong.songId,
+    date: readySong.createdAt,
+    briefText
+  });
   const observationPath = briefText.match(/^- Path:\s*(.+)$/m)?.[1]?.trim();
   await createAndPersistSunoPromptPack({
     workspaceRoot: root,
@@ -815,7 +821,8 @@ async function createPromptPackForSong(root: string, song: SongState, config?: P
     lyricsText: lyricsText || briefText || readySong.title,
     knowledgePackVersion: "local-dev",
     configSnapshot: config,
-    moodHint: moodHint.trim() || undefined,
+    moodHint: appendDopagakiMoodHint(moodHint.trim() || undefined, dopagakiVariation),
+    styleVariationSeed: dopagakiVariation.variationSeed,
     observationPath: observationPath && observationPath !== "(runtime observation)" ? isAbsolute(observationPath) ? observationPath : join(root, observationPath) : undefined,
     aiReviewProvider: config?.aiReview?.provider
   });

@@ -5,6 +5,7 @@ import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { registerCallbackAction } from "../src/services/callbackActionRegistry";
 import { getRuntimeEventBus, type RuntimeEvent } from "../src/services/runtimeEventBus";
+import { AGGRESSIVE_ARTIST_MOOD } from "../src/services/creativeVariationPolicy";
 import { proposeSpawn } from "../src/services/songSpawnProposer";
 
 async function workspace(): Promise<string> {
@@ -27,6 +28,7 @@ describe("song spawn proposer", () => {
     expect(proposal?.candidateSongId).toMatch(/^spawn_/);
     expect(proposal?.brief.songId).toBe(proposal?.candidateSongId);
     expect(proposal?.brief.brief).toContain("ライブハウス");
+    expect(proposal?.brief.mood).toBe(AGGRESSIVE_ARTIST_MOOD);
     expect(proposal?.reason).toMatch(/[ぁ-ん一-龠]/);
     expect(proposal?.reason).not.toMatch(/\b[a-z]{4,}\b/);
   });

@@ -14,6 +14,7 @@ import { validateAgainstVoiceContract } from "./voiceContractValidator.js";
 import { isVoiceFingerprintReady, parseVoiceFingerprint, type VoiceFingerprintBundle } from "./voiceFingerprintParser.js";
 import { readObservationsReport } from "./xObservationCollector.js";
 import { readTodayNewsObservations } from "./newsObservationCollector.js";
+import { AGGRESSIVE_ARTIST_MOOD } from "./creativeVariationPolicy.js";
 
 const FULL_TWEET_URL_PATTERN = /^https:\/\/(?:twitter|x)\.com\/[^/\s]+\/status\/\d+/i;
 
@@ -454,7 +455,7 @@ function buildBrief(context: { observation: string; artistMd: string; soulMd: st
     title,
     brief: briefSentence,
     lyricsTheme: normalizePitchField("lyricsTheme", undefined, densityContext),
-    mood: "observational, slight sarcasm, late-night urban pressure",
+    mood: AGGRESSIVE_ARTIST_MOOD,
     tempo: "artist decides",
     styleNotes: normalizePitchField("styleNotes", undefined, densityContext),
     duration: "artist decides",

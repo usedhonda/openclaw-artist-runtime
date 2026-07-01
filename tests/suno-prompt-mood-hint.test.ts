@@ -65,4 +65,18 @@ describe("Suno prompt mood hint", () => {
     expect(String(pack.payload.styleAndFeel)).toContain("overt dopamine-pop pressure");
     expect(pack.yamlLyrics).toContain("language: Japanese 60% / English 40%");
   });
+
+  it("honors per-song dopagaki variation seed without changing registration lyrics", () => {
+    const pack = createSunoPromptPack({
+      ...base,
+      lyricsText: "[Verse]\n街の灯りが遅れる",
+      moodHint: "aggressive urban critique",
+      styleVariationSeed: "dopagaki:overt:spawn_seed"
+    });
+
+    expect(pack.style).toContain("overt dopamine-pop pressure");
+    expect(pack.style).toContain("instant bilingual chant hook");
+    expect(pack.lyricsBundle?.originalLyricsText).toContain("街の灯りが遅れる");
+    expect(pack.lyricsBundle?.lyricsText).toContain("まちのあかりがおくれる");
+  });
 });

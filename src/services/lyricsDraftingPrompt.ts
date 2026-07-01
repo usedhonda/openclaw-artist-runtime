@@ -4,6 +4,11 @@ import {
   getDurationPlan
 } from "../suno-production/durationPlan.js";
 import type { LyricsLanguagePolicy } from "./lyricsLanguagePolicy.js";
+import {
+  dopagakiPromptLines,
+  shibuyaAngerLensLines,
+  type DopagakiVariationDecision
+} from "./creativeVariationPolicy.js";
 
 export const LYRICS_WRITER_INSTRUCTIONS_ATTRIBUTION =
   "Source: sunomanual/mygpts/lyrics-writer/instructions.md (MIT, Copyright 2025-2026 usedhonda)";
@@ -48,6 +53,7 @@ export interface BuildLyricsPromptInput {
   lyricBodyLimit?: number;
   artistName?: string;
   languagePolicy?: LyricsLanguagePolicy;
+  dopagakiVariation?: DopagakiVariationDecision;
 }
 
 function truncate(value: string, max = 8000): string {
@@ -122,6 +128,8 @@ export function buildLyricsDraftingPrompt(input: BuildLyricsPromptInput): string
     "If the brief contains both news and x_reaction sources, use both: news supplies the event, x_reaction supplies crowd temperature, slang, irritation, irony, or sympathy. Do not merely summarize them; assign them to lyric sections.",
     "Prioritize 韻, 伏線, 情景, genre-aware flow, hook design, Suno V5.5 section tags, and singable line length.",
     "Rap density rule: for rap/trap/drill/fast social songs, produce at least two 12-16 bar verses, physical hook repeats, internal rhyme in each verse, and one punchline/perspective turn per verse. If the first draft feels short, expand verse detail before returning JSON.",
+    ...shibuyaAngerLensLines(),
+    ...dopagakiPromptLines(input.dopagakiVariation),
     languagePolicy ? `Language policy: ${languagePolicy.instruction}` : "",
     "Return strict JSON only: {\"title\":\"2-4 words\",\"form\":\"duration_plan_v1 form\",\"sections\":[{\"tag\":\"Verse 1 - 16 bars, spacious rap phrasing, no double-time\",\"lines\":[\"line\"]}],\"bilingual_hint\":\"short note\",\"moodHint\":\"2-4 word sonic mood\"}.",
     "Use the DurationPlan section plan below as the only form source. Do not invent a shorter 7-section form.",

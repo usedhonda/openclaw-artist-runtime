@@ -4,6 +4,7 @@ import type { ArtistRuntimeConfig, ObservationSummary, SongIdeaResult } from "..
 import { ensureSongState, readArtistMind, updateSongState, writeSongBrief } from "./artistState.js";
 import { ensureArtistWorkspace } from "./artistWorkspace.js";
 import { appendPromptLedger, createPromptLedgerEntry, getSongPromptLedgerPath } from "./promptLedger.js";
+import { AGGRESSIVE_ARTIST_MOOD } from "./creativeVariationPolicy.js";
 
 function titleCase(value: string): string {
   return value
@@ -134,7 +135,7 @@ function buildBrief(title: string, theme: string, artistReason: string, observat
     "",
     `- Core theme: ${theme}`,
     `- Artist reason: ${artistReason}`,
-    "- Mood: cold, observant, quietly obsessive",
+    `- Mood: ${AGGRESSIVE_ARTIST_MOOD}`,
     "- Keep the images concrete and the chorus short"
   ];
   const observation = excerpt(observationText);

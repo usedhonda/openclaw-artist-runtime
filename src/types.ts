@@ -1004,6 +1004,7 @@ export interface CreateSunoPromptPackInput {
   moodHint?: string;
   bpm?: number;
   vocalGender?: "male" | "female" | "neutral";
+  styleVariationSeed?: string;
 }
 
 export interface PersistSunoPromptPackInput extends Omit<CreateSunoPromptPackInput, "artistSnapshot" | "currentStateSnapshot"> {

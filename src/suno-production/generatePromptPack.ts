@@ -92,7 +92,8 @@ export function createSunoPromptPack(input: CreateSunoPromptPackInput): SunoProm
     genre,
     vibe: input.moodHint,
     bpm,
-    vocalGender
+    vocalGender,
+    variationSeed: input.styleVariationSeed
   });
   const style = styleResult.total;
   const exclude = buildExcludeV55({
@@ -189,7 +190,8 @@ export async function createSunoPromptPackWithAi(
     genre,
     vibe: input.moodHint,
     bpm,
-    vocalGender
+    vocalGender,
+    variationSeed: input.styleVariationSeed
   }, { provider: input.aiReviewProvider });
   const excludeResult = await synthesizeExclude({
     genre,

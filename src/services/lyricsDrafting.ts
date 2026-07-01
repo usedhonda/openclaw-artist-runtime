@@ -11,6 +11,7 @@ import { emitRuntimeEvent } from "./runtimeEventBus.js";
 import { buildLyricsDraftingPrompt, readLyricsKnowledgeDigest } from "./lyricsDraftingPrompt.js";
 import { parseLyricsLanguagePolicy } from "./lyricsLanguagePolicy.js";
 import { getArtistIdentity, getSunoLyricsLimit } from "./runtimeConfig.js";
+import { decideDopagakiVariation } from "./creativeVariationPolicy.js";
 
 export interface DraftLyricsInput {
   workspaceRoot: string;
@@ -166,6 +167,10 @@ async function composeLyricsDraft(input: DraftLyricsInput, title: string, briefT
   const languagePolicy = parseLyricsLanguagePolicy(mind.artist);
   const lyricsBoxLimit = getSunoLyricsLimit();
   const lyricBodyLimit = lyricBodyLimitForSunoBox(lyricsBoxLimit);
+  const dopagakiVariation = decideDopagakiVariation({
+    songId: input.songId,
+    briefText
+  });
   let repairNotes: string[] = [];
   for (let attempt = 0; attempt < 3; attempt += 1) {
     const prompt = buildLyricsDraftingPrompt({
@@ -178,7 +183,8 @@ async function composeLyricsDraft(input: DraftLyricsInput, title: string, briefT
       lyricsBoxLimit,
       lyricBodyLimit,
       artistName: identity.artistName,
-      languagePolicy
+      languagePolicy,
+      dopagakiVariation
     });
     assertSafe("input", prompt);
     const raw = provider === "mock" ? mockStructuredDraft(title, briefText) : await callAiProvider(prompt, { provider });

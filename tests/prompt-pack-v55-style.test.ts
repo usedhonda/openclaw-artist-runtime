@@ -123,4 +123,17 @@ describe("Suno V5.5 style builder", () => {
     expect(result.coreTags).not.toContain(",,");
     expect(result.coreTags).not.toContain(" ,");
   });
+
+  it("uses the overt dopagaki variation from the per-song variation seed", () => {
+    const result = buildStyle({
+      genre: "nu-jazz rap",
+      moodHint: "aggressive urban critique",
+      brief: "Keep the same low-bass artist core.",
+      variationSeed: "dopagaki:overt:spawn_001"
+    });
+
+    expect(result.total).toContain("overt dopamine-pop pressure");
+    expect(result.total).toContain("instant bilingual chant hook");
+    expect(result.total).not.toContain("light dopamine-pop pressure");
+  });
 });
