@@ -27,6 +27,7 @@ export interface XObservationResult {
   path: string;
   observations: string;
   reason?: string;
+  queryAttempts?: XObservationAttemptDiagnostic[];
 }
 
 export interface XObservationEntry {
@@ -46,7 +47,20 @@ const observationCacheTtlMs = 6 * 60 * 60 * 1000;
 const emptyObservationCacheTtlMs = 20 * 60 * 1000;
 const maxObservationQueryAttempts = 3;
 
-type RejectionReason = "short_url_only" | "missing_author" | "missing_postedAt";
+export type RejectionReason = "short_url_only" | "missing_author" | "missing_postedAt";
+
+export interface XObservationAttemptDiagnostic {
+  query?: string;
+  rawCount: number;
+  acceptedCount: number;
+  rejectedCountsByReason: Partial<Record<RejectionReason, number>>;
+  firstRejectionSample?: {
+    reason: RejectionReason;
+    hasAuthor: boolean;
+    urlKind: "full" | "short" | "missing";
+    hasPostedAt: boolean;
+  };
+}
 
 interface RejectedEntry {
   text: string;
@@ -187,7 +201,7 @@ function parseBirdOutput(source: string): XObservationEntry[] {
 function filterObservationEntries(
   source: string,
   motifs: PersonaMotifBundle
-): { entries: XObservationEntry[]; scored: ScoredObservation<XObservationEntry>[]; rejected: RejectedEntry[] } {
+): { entries: XObservationEntry[]; scored: ScoredObservation<XObservationEntry>[]; rejected: RejectedEntry[]; rawCount: number } {
   const parsed = parseBirdOutput(source);
   const accepted: XObservationEntry[] = [];
   const rejected: RejectedEntry[] = [];
@@ -205,7 +219,49 @@ function filterObservationEntries(
     motifMatch: scored.matched.length > 0 ? summarizeMatches(scored) : undefined,
     motifScore: scored.score
   }));
-  return { entries, scored: ranked, rejected };
+  return { entries, scored: ranked, rejected, rawCount: parsed.length };
+}
+
+function rejectionSummary(rejected: RejectedEntry[]): Partial<Record<RejectionReason, number>> {
+  const counts: Partial<Record<RejectionReason, number>> = {};
+  for (const entry of rejected) {
+    counts[entry.reason] = (counts[entry.reason] ?? 0) + 1;
+  }
+  return counts;
+}
+
+function rejectionSample(entry: RejectedEntry | undefined): XObservationAttemptDiagnostic["firstRejectionSample"] {
+  if (!entry) return undefined;
+  return {
+    reason: entry.reason,
+    hasAuthor: Boolean(entry.author && entry.author !== "_"),
+    urlKind: entry.url && fullTweetUrlPattern.test(entry.url)
+      ? "full"
+      : entry.url
+        ? "short"
+        : "missing",
+    hasPostedAt: Boolean(entry.postedAt)
+  };
+}
+
+function attemptDiagnostic(query: string | undefined, filtered: ReturnType<typeof filterObservationEntries>): XObservationAttemptDiagnostic {
+  return {
+    query,
+    rawCount: filtered.rawCount,
+    acceptedCount: filtered.entries.length,
+    rejectedCountsByReason: rejectionSummary(filtered.rejected),
+    firstRejectionSample: rejectionSample(filtered.rejected[0])
+  };
+}
+
+function aggregateRejectedCounts(attempts: XObservationAttemptDiagnostic[]): Partial<Record<RejectionReason, number>> {
+  const counts: Partial<Record<RejectionReason, number>> = {};
+  for (const attempt of attempts) {
+    for (const [reason, count] of Object.entries(attempt.rejectedCountsByReason) as Array<[RejectionReason, number]>) {
+      counts[reason] = (counts[reason] ?? 0) + count;
+    }
+  }
+  return counts;
 }
 
 function jsonValue(value: string | undefined): string {
@@ -449,6 +505,7 @@ export async function collectObservations(root: string, context: XObservationCon
   try {
     let finalFiltered: ReturnType<typeof filterObservationEntries> | undefined;
     let finalQuery: string | undefined;
+    const queryAttempts: XObservationAttemptDiagnostic[] = [];
     for (const query of queriesToTry.slice(0, maxAttempts)) {
       const runner = context.runner ?? defaultRunner(query);
       const result = await runner(query);
@@ -470,13 +527,14 @@ export async function collectObservations(root: string, context: XObservationCon
       await recordBirdCall(root, now, { query, mode: strategy.mode });
       const filtered = filterObservationEntries(result.stdout, motifs);
       await appendRejectedLog(root, now, filtered.rejected);
+      queryAttempts.push(attemptDiagnostic(query, filtered));
       finalFiltered = filtered;
       finalQuery = query;
       if (filtered.entries.length > 0) {
         break;
       }
     }
-    const filtered = finalFiltered ?? { entries: [], scored: [], rejected: [] };
+    const filtered = finalFiltered ?? { entries: [], scored: [], rejected: [], rawCount: 0 };
     const observations = renderObservation(filtered.entries, now, finalQuery, motifs, context.reactionSeed);
     await mkdir(dirname(path), { recursive: true });
     await writeFile(path, `${observations.trim()}\n`, "utf8");
@@ -486,9 +544,14 @@ export async function collectObservations(root: string, context: XObservationCon
       topMotifMatch: topScored?.matched.length ? topScored.entry.motifMatch : undefined,
       topScore: topScored?.score,
       entryCount: filtered.entries.length,
+      rawCount: queryAttempts.reduce((total, attempt) => total + attempt.rawCount, 0),
+      acceptedCount: filtered.entries.length,
+      rejectedCountsByReason: aggregateRejectedCounts(queryAttempts),
+      firstRejectionSample: queryAttempts.find((attempt) => attempt.firstRejectionSample)?.firstRejectionSample,
+      queryAttempts,
       timestamp: now.getTime()
     });
-    return { status: "collected", path, observations };
+    return { status: "collected", path, observations, queryAttempts };
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     await recordBirdCall(root, now, { query: targetQueries[0], mode: strategy.mode });

@@ -5,6 +5,7 @@ import { join } from "node:path";
 import { describe, expect, it, vi } from "vitest";
 import { collectObservations, readTodayObservations } from "../src/services/xObservationCollector";
 import { isInCooldown } from "../src/services/birdRateLimiter";
+import { getRuntimeEventBus, type RuntimeEvent } from "../src/services/runtimeEventBus";
 
 function workspace(): string {
   return mkdtempSync(join(tmpdir(), "artist-runtime-x-observation-collector-"));
@@ -166,6 +167,43 @@ describe("x observation collector", () => {
     expect(cached.status).toBe("cached");
     expect(refreshed.status).toBe("collected");
     expect(runner).toHaveBeenCalledTimes(2);
+  });
+
+  it("emits query attempt diagnostics without rejected tweet body or URL", async () => {
+    const root = workspace();
+    const bus = getRuntimeEventBus();
+    bus.clearForTest();
+    const events: RuntimeEvent[] = [];
+    const unsubscribe = bus.subscribe((event) => events.push(event));
+    try {
+      await collectObservations(root, {
+        now: new Date("2026-04-29T02:00:00.000Z"),
+        queries: ["\"narrow\"", "\"broad\""],
+        runner: async (query?: string) => ({
+          stdout: query === "\"narrow\""
+            ? "private rejected body https://t.co/secret"
+            : "@citywatch accepted note https://x.com/citywatch/status/2222222222222222222 2026-04-29T01:30:00.000Z"
+        })
+      });
+    } finally {
+      unsubscribe();
+    }
+
+    const event = events.find((entry): entry is Extract<RuntimeEvent, { type: "observation_collected" }> => entry.type === "observation_collected");
+    expect(event).toBeDefined();
+    expect(event?.rawCount).toBe(2);
+    expect(event?.acceptedCount).toBe(1);
+    expect(event?.rejectedCountsByReason).toMatchObject({ short_url_only: 1 });
+    expect(event?.firstRejectionSample).toEqual({
+      reason: "short_url_only",
+      hasAuthor: false,
+      urlKind: "short",
+      hasPostedAt: false
+    });
+    expect(event?.queryAttempts).toHaveLength(2);
+    const payload = JSON.stringify(event);
+    expect(payload).not.toContain("private rejected body");
+    expect(payload).not.toContain("https://t.co/secret");
   });
 
   it("blocks secret-like observation output", async () => {

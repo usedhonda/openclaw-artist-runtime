@@ -1,6 +1,7 @@
 import type { AutopilotStage, ObservationSummary, SunoImportedAssetMetadata } from "../types.js";
 import type { CommissionBrief, DailyVoiceDraft } from "../types.js";
 import type { ChangeSetProposal } from "./freeformChangesetProposer.js";
+import type { RejectionReason, XObservationAttemptDiagnostic } from "./xObservationCollector.js";
 
 export type RuntimeEvent =
   | { type: "autopilot_stage_changed"; songId?: string; from?: AutopilotStage; to: AutopilotStage; timestamp: number }
@@ -37,7 +38,7 @@ export type RuntimeEvent =
   | { type: "spawn_proposal_appended"; proposalId: string; pendingCount: number; timestamp: number }
   | { type: "artist_proactive_notice"; trigger: "draft_idle" | "suno_trouble"; message: string; nextAction: string; draftCount: number; buildingCount: number; songId?: string; title?: string; reason?: string; stateKey: string; timestamp: number }
   | { type: "autopilot_ticker_safe_recovery"; outcome: string; songId?: string; timestamp: number }
-  | { type: "observation_collected"; topMotifMatch?: string; topScore?: number; entryCount: number; timestamp: number }
+  | { type: "observation_collected"; topMotifMatch?: string; topScore?: number; entryCount: number; rawCount?: number; acceptedCount?: number; rejectedCountsByReason?: Partial<Record<RejectionReason, number>>; firstRejectionSample?: XObservationAttemptDiagnostic["firstRejectionSample"]; queryAttempts?: XObservationAttemptDiagnostic[]; timestamp: number }
   | { type: "artist_presence"; trigger: "observation_high_score" | "producer_silent_after_take"; text: string; songId?: string; timestamp: number }
   | { type: "theme_starvation"; source: "observation_empty" | "motif_bucket_empty"; details?: string; songId?: string; timestamp: number }
   | { type: "failed_notify_ledger_append_failed"; eventType: string; songId?: string; reason: string; timestamp: number }
