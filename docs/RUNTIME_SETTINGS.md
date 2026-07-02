@@ -96,6 +96,59 @@ Privacy rule: rejected tweet body text and rejected URLs are never displayed in
 Telegram, Producer Room, or status JSON. Only counts, rejection reason enums,
 and boolean/url-kind diagnostics are exposed.
 
+## X Search Verification Runbook
+
+Use this to confirm that live X (Bird) observation search is actually pulling
+reactions, without burning the daily call budget.
+
+### Procedure
+
+1. Check budget and cooldown first. Read the Bird ledger
+   (`runtime/bird-call-ledger.json`, or the Bird rate-limit detail in `/api/status`):
+   confirm `todayCalls` is below `dailyMax` and there is no active `cooldownUntil`.
+   If a `bird_cooldown_triggered` event fired recently, wait it out rather than
+   forcing a run.
+2. Trigger one collection. Prefer the natural autopilot cycle; use `/api/run-cycle`
+   only when you need it immediately. Do not run twice in a row -- a second call
+   spends budget and may read the empty-result cache instead of searching.
+3. Read `runtime/x-observation-diagnostics.json`. For each attempt, record the query
+   order and stage (phrase -> shortened phrase -> `lang:ja since` -> motif -> broad
+   fallback), each stage's `rawCount` -> `acceptedCount`, and
+   `rejectedCountsByReason`. Confirm whether accepted reactions landed in
+   `observations/*.md` and flowed into the next spawn brief as an `x` observation
+   source.
+4. Judge the outcome:
+   - PASS: at least one query stage has `acceptedCount >= 1` and the observation file
+     records an X entry.
+   - PARTIAL: raw results arrive but every entry is rejected. Read
+     `rejectedCountsByReason` to pick the next improvement (filter tuning, URL/author
+     requirements, motif scope).
+   - FAIL: every stage returns `rawCount 0`. Split the cause between query generation
+     (too narrow, or none produced) and the Bird environment (auth, profile, network).
+
+### Measurement log
+
+- 2026-07-02 04:38Z, news seed "NY supertall building summit". Two ordered query
+  variants were tried (full phrase, then shortened phrase); both returned
+  `rawCount 0`. FAIL by the rule above, but a genuine "no reaction exists" case:
+  query generation and the Bird environment were healthy, the topic simply had no
+  matching X reaction at that moment. Recorded as the first live measurement example.
+- Context: on 2026-06-30 a ban false-positive stopped X collection for 24h -- an
+  ordinary tweet containing 制限 tripped the ban detector and set a 24h cooldown.
+  That is fixed in commit `91a0f90`: ban detection now scopes to stderr / error
+  output only and never scans parsed tweet payload (see Observation Diagnostics
+  above).
+
+### Notes
+
+- Bird `dailyMax` is 5 calls/day. A single collection can spend several calls because
+  it walks the ordered query variants until one returns entries.
+- Empty results are cached for 20 minutes; re-triggering inside that window reads the
+  empty cache instead of searching, so wait out the TTL before re-measuring.
+- The same diagnostics are readable from the Telegram `/observations [YYYY-MM-DD]`
+  command and the Producer Room diagnostics view (the `X search diagnostics` card),
+  not only the raw JSON file.
+
 ## Retired Legacy Values
 
 | Legacy value | Current behavior |
