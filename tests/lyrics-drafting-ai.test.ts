@@ -52,6 +52,9 @@ describe("AI lyrics drafting", () => {
     expect(prompt).toContain("Suno lyrics box limit: 4800 characters total");
     expect(prompt).toContain("news and x_reaction sources");
     expect(prompt).toContain("Rap density rule");
+    expect(prompt).toContain("| Verse | 14-16行 | × 2 / 各16 bars |");
+    expect(prompt).toContain("dense rap phrasing, internal rhymes, no double-time");
+    expect(prompt).toContain("stay above the enforced 1800 bare-lyrics floor");
     expect(prompt).toContain("target 2800-3400 lyric-body characters");
     expect(LYRICS_KNOWLEDGE_DIGEST_FILES).toContain("rap_and_flow.md");
     expect(LYRICS_KNOWLEDGE_DIGEST_FILES).toContain("english_lyrics.md");

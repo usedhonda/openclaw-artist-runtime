@@ -22,7 +22,7 @@ const DURATION_ALIGNED_LYRICS_WRITER_SYSTEM_PROMPT = LYRICS_WRITER_SYSTEM_PROMPT
   )
   .replace(
     "| Verse | 4行 | × 2 |\n| Pre-Chorus | 2行 | × 2 |\n| Chorus | 4行 | × 2（Final Chorusで歌詞を変えて伏線回収） |\n| Bridge | 2行 | × 1 |\n| Intro/Outro | 0-1行 | ユーザー指定時のみ |",
-    "| Intro | 0-1行 | 4 bars |\n| Verse | 8行 | × 2 / 各16 bars |\n| Pre-Hook | 2行 | × 2 / 各4 bars |\n| Hook | 4行 | 物理再掲で3回 |\n| Bridge | 3行 | 8 bars |\n| Outro | 0-1行 | 4 bars |"
+    "| Intro | 0-1行 | 4 bars |\n| Verse | 14-16行 | × 2 / 各16 bars |\n| Pre-Hook | 3-4行 | × 2 / 各4 bars |\n| Hook | 4行 | 物理再掲で3回 |\n| Bridge | 4-6行 | 8 bars |\n| Outro | 0-1行 | 4 bars |"
   )
   .replace(
     "**🚨 Suno文字数制約（セクションタグ・アノテーション・歌詞・空行すべて含む）:**",
@@ -131,14 +131,14 @@ export function buildLyricsDraftingPrompt(input: BuildLyricsPromptInput): string
     ...shibuyaAngerLensLines(),
     ...dopagakiPromptLines(input.dopagakiVariation),
     languagePolicy ? `Language policy: ${languagePolicy.instruction}` : "",
-    "Return strict JSON only: {\"title\":\"2-4 words\",\"form\":\"duration_plan_v1 form\",\"sections\":[{\"tag\":\"Verse 1 - 16 bars, spacious rap phrasing, no double-time\",\"lines\":[\"line\"]}],\"bilingual_hint\":\"short note\",\"moodHint\":\"2-4 word sonic mood\"}.",
+    "Return strict JSON only: {\"title\":\"2-4 words\",\"form\":\"duration_plan_v1 form\",\"sections\":[{\"tag\":\"Verse 1 - 16 bars, dense rap phrasing, internal rhymes, no double-time\",\"lines\":[\"line\"]}],\"bilingual_hint\":\"short note\",\"moodHint\":\"2-4 word sonic mood\"}.",
     "Use the DurationPlan section plan below as the only form source. Do not invent a shorter 7-section form.",
     "Physically repeat the Hook text in Hook 2 and Final Hook; do not write only \"repeat hook\" as an instruction.",
-    "Keep vocal pacing spacious and never request double-time delivery.",
+    "Keep vocal pacing dense but controlled and never request double-time delivery.",
     "Every section tag must include an annotation after the section name. Do not place commands outside tags. Do not name existing artists or songs. Do not reuse title kanji directly in hook or refrain lines; convert any title phrase used inside lyrics to hiragana.",
     `Suno lyrics box limit: ${lyricsBoxLimit} characters total, including YAML META, marker lines, section tags, lyrics, and blank lines.`,
     `Length budget: total lyric body (joined section lines + tag overhead, before YAML META) must stay within ${lyricBodyLimit} characters. Do not exceed this budget; leave room for the YAML META layer. A short, complete lyric is better than text that Suno silently truncates.`,
-    "Minimum useful density: avoid tiny drafts. For the default 80-bar DurationPlan, target 2800-3400 lyric-body characters when the Suno box allows it; rap/trap/drill should not come back as a sparse sketch.",
+    "Minimum useful density: avoid tiny drafts. For the default 80-bar DurationPlan, stay above the enforced 1800 bare-lyrics floor and target 2800-3400 lyric-body characters when the Suno box allows it; rap/trap/drill should not come back as a sparse sketch.",
     "",
     "DurationPlan SoT (overrides any older source text that asks for compact section cues or shorter forms):",
     formatDurationPlanForPrompt(durationPlan),
