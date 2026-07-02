@@ -65,17 +65,17 @@ const DEFAULT_DURATION_PLAN: DurationPlan = {
       key: "verse1",
       label: "Verse 1",
       bars: 16,
-      lineTarget: "8 lines",
-      modifier: "16 bars, spacious rap phrasing, no double-time",
-      lyricInstruction: "8 lines; observational setup with roomy phrasing and no double-time delivery."
+      lineTarget: "14-16 lines",
+      modifier: "16 bars, dense rap phrasing, internal rhymes, no double-time",
+      lyricInstruction: "14-16 lines; aim for about one line per bar with dense rap phrasing, internal rhymes, and no double-time delivery."
     },
     {
       key: "prehook1",
       label: "Pre-Hook",
       bars: 4,
-      lineTarget: "2 lines",
-      modifier: "4 bars, rising tension, leave breath",
-      lyricInstruction: "2 lines; lift tension into the hook and leave breathing room."
+      lineTarget: "3-4 lines",
+      modifier: "4 bars, rising tension, tight turn",
+      lyricInstruction: "3-4 lines; lift tension into the hook with a tight turn."
     },
     {
       key: "hook1",
@@ -89,17 +89,17 @@ const DEFAULT_DURATION_PLAN: DurationPlan = {
       key: "verse2",
       label: "Verse 2",
       bars: 16,
-      lineTarget: "8 lines",
-      modifier: "16 bars, spacious rap phrasing, no double-time",
-      lyricInstruction: "8 lines; extend the image from Verse 1 without compressing syllables."
+      lineTarget: "14-16 lines",
+      modifier: "16 bars, dense rap phrasing, internal rhymes, no double-time",
+      lyricInstruction: "14-16 lines; extend the image from Verse 1 with about one line per bar and controlled syllable density."
     },
     {
       key: "prehook2",
       label: "Pre-Hook 2",
       bars: 4,
-      lineTarget: "2 lines",
+      lineTarget: "3-4 lines",
       modifier: "4 bars, rising tension, answer verse",
-      lyricInstruction: "2 lines; answer Verse 2 and rise into the repeated hook."
+      lyricInstruction: "3-4 lines; answer Verse 2 and rise into the repeated hook."
     },
     {
       key: "hook2",
@@ -114,9 +114,9 @@ const DEFAULT_DURATION_PLAN: DurationPlan = {
       key: "bridge",
       label: "Bridge",
       bars: 8,
-      lineTarget: "3 lines",
+      lineTarget: "4-6 lines",
       modifier: "8 bars, reduced drums, perspective shift",
-      lyricInstruction: "3 lines; reduce drums, change viewpoint, and set up the final hook."
+      lyricInstruction: "4-6 lines; reduce drums, change viewpoint, and set up the final hook."
     },
     {
       key: "finalhook",
@@ -169,8 +169,8 @@ export function durationPlanCues(plan: DurationPlan = getDurationPlan()): string
 
 export function durationPlanProductionNotes(plan: DurationPlan = getDurationPlan()): string[] {
   return [
-    `target ${plan.targetSeconds}s with ${plan.totalPlannedBars} planned bars; do not compress sections`,
-    `keep vocal pacing spacious at ${plan.bpm.target} BPM and avoid double-time delivery`,
+    `target ${plan.targetSeconds}s with ${plan.totalPlannedBars} planned bars; preserve the full section map`,
+    `keep vocal pacing dense but controlled at ${plan.bpm.target} BPM and avoid double-time delivery`,
     "let pre-hooks lift into full hooks, then drop energy in the bridge before the final hook",
     "repeat the hook text physically in Hook 2 and Final Hook so Suno hears the form"
   ];
