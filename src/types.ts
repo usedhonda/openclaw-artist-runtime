@@ -200,6 +200,7 @@ export interface SongSpawnConfig {
 
 export interface ObservationConfig {
   newsRssUrls?: string[];
+  xTcoFetchEnabled?: boolean;
 }
 
 export interface TelegramUser {

@@ -490,6 +490,10 @@
               "type": "string"
             },
             "default": []
+          },
+          "xTcoFetchEnabled": {
+            "type": "boolean",
+            "default": false
           }
         },
         "default": {

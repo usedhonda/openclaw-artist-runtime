@@ -338,7 +338,14 @@ export function getSpotifyBearerToken(env: NodeJS.ProcessEnv = process.env): str
   return env.SPOTIFY_BEARER_TOKEN;
 }
 
-export function isXTcoFetchEnabled(env: NodeJS.ProcessEnv = process.env): boolean {
+export function isXTcoFetchEnabled(
+  config?: Pick<ArtistRuntimeConfig, "observation">,
+  env: NodeJS.ProcessEnv = process.env
+): boolean {
+  const configured = config?.observation?.xTcoFetchEnabled;
+  if (typeof configured === "boolean") {
+    return configured;
+  }
   return env.OPENCLAW_X_TCO_FETCH_ENABLED === "1";
 }
 

@@ -902,7 +902,7 @@ function buildRuntimeDiagnostics(config?: Pick<ArtistRuntimeConfig, "observation
         envVar: "OPENCLAW_X_TCO_FETCH_ENABLED",
         source: diagnosticSource(env, "OPENCLAW_X_TCO_FETCH_ENABLED"),
         editable: false,
-        enabled: isXTcoFetchEnabled(env)
+        enabled: isXTcoFetchEnabled(config, env)
       }
     },
     telegram: {

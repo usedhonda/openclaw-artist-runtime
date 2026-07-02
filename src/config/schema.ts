@@ -424,9 +424,12 @@ export function validateConfig(config: unknown): ValidationResult<ArtistRuntimeC
     if (!isRecord(config.observation)) {
       errors.push("config.observation must be an object");
     } else {
-      validateKnownKeys("config.observation", config.observation, ["newsRssUrls"], errors);
+      validateKnownKeys("config.observation", config.observation, ["newsRssUrls", "xTcoFetchEnabled"], errors);
       if ("newsRssUrls" in config.observation) {
         validateNonEmptyStringArray("config.observation.newsRssUrls", config.observation.newsRssUrls, errors);
+      }
+      if ("xTcoFetchEnabled" in config.observation && typeof config.observation.xTcoFetchEnabled !== "boolean") {
+        errors.push("config.observation.xTcoFetchEnabled must be a boolean");
       }
     }
   }
