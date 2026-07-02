@@ -5,6 +5,7 @@ import { describe, expect, it, vi } from "vitest";
 import { readSongState } from "../src/services/artistState";
 import { getRuntimeEventBus, type RuntimeEvent } from "../src/services/runtimeEventBus";
 import { createAndPersistSunoPromptPack } from "../src/services/sunoPromptPackFiles";
+import { classifyLyricsZoneForPromptCounts } from "../src/suno-production/generatePromptPack";
 import { CANONICAL_STYLE_TARGET_MAX_CHARS } from "../src/suno-production/buildStyle";
 import { validateSunoPromptPack } from "../src/validators/promptPackValidator";
 
@@ -51,6 +52,12 @@ describe("prompt pack character audit", () => {
     expect(validation.valid).toBe(true);
     expect(validation.errors.join("\n")).not.toContain("lyrics length out of range");
     expect(validation.warnings.join("\n")).toContain("payloadYaml leaves Suno lyrics box budget underused");
+  });
+
+  it("classifies near/under lyric zones from bare lyrics after marker budget", () => {
+    expect(classifyLyricsZoneForPromptCounts(1200, 3200, 4400, 4800)).toBe("underused");
+    expect(classifyLyricsZoneForPromptCounts(1500, 3200, 4700, 4800)).toBe("near_max");
+    expect(classifyLyricsZoneForPromptCounts(1500, 3301, 4801, 4800)).toBe("overflow");
   });
 
   it("stops the prompt-pack pipeline when YAML would exceed the effective Suno box", async () => {

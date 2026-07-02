@@ -10,8 +10,8 @@ describe("Suno V5.5 lyrics header modifiers", () => {
       vocals: { parts: [{ id: "lead", gender: "male", tone: "mid-range male rap" }] }
     });
 
-    expect(yaml).toContain("[Verse 1 - 16 bars, dense rap phrasing, internal rhymes, no double-time, mid-range male vocal]");
-    expect(yaml).toContain("[Hook - 8 bars, full hook, repeat melody, no double-time, mid-range male vocal]");
+    expect(yaml).toContain("[Verse 1 - dense rap, male vocal]");
+    expect(yaml).toContain("[Hook - full hook, male vocal]");
   });
 
   it("leaves existing modifiers untouched", () => {

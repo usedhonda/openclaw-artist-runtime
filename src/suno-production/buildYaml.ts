@@ -83,16 +83,33 @@ function canonicalDurationLabel(label: string, index: string): string {
   return cleanIndex ? `${label} ${cleanIndex}` : label;
 }
 
+function compactHeaderAnnotation(section: { key: string }, gender: "male" | "female" | "neutral"): string {
+  const voice = gender === "female" ? "female vocal" : gender === "neutral" ? "dry vocal" : "male vocal";
+  const cue = section.key.startsWith("verse")
+    ? "dense rap"
+    : section.key.startsWith("prehook")
+      ? "rising turn"
+      : section.key === "hook1" || section.key === "hook2"
+        ? "full hook"
+        : section.key === "bridge"
+          ? "reduced pivot"
+          : section.key === "finalhook"
+            ? "final payoff"
+            : section.key === "intro"
+              ? "sparse scene"
+              : "clean stop";
+  return `${cue}, ${voice}`;
+}
+
 function decorateBareHeader(line: string, gender: "male" | "female" | "neutral", plan: DurationPlan): string {
   const match = line.match(/^\[(Intro|Verse|Hook|Chorus|Bridge|Outro|Pre-Chorus|Pre-Hook|Final Hook|Final Chorus)(\s+\d+)?\]$/i);
   if (!match) return line;
   const label = match[1];
   const index = match[2] ?? "";
-  const voice = gender === "female" ? "close female lead" : gender === "neutral" ? "dry lead" : "mid-range male vocal";
   const canonical = canonicalDurationLabel(label, index);
   const section = findDurationPlanSection(canonical, plan);
   if (!section) return line;
-  return `[${canonical} - ${section.modifier}, ${voice}]`;
+  return `[${canonical} - ${compactHeaderAnnotation(section, gender)}]`;
 }
 
 export function prepareSunoLyrics(

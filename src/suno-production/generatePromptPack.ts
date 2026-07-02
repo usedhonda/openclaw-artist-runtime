@@ -53,6 +53,17 @@ function artistDefaultVocalGender(artistSnapshot: string): "male" | "female" | "
   return (match?.[1]?.toLowerCase() as "male" | "female" | "neutral" | undefined) ?? "male";
 }
 
+export function classifyLyricsZoneForPromptCounts(
+  lyricsLength: number,
+  markerChars: number,
+  submittedPayloadChars: number,
+  lyricsBoxLimit: number
+): "underused" | "near_max" | "overflow" {
+  if (submittedPayloadChars > lyricsBoxLimit) return "overflow";
+  const bareLyricsCapacity = Math.max(1, lyricsBoxLimit - markerChars);
+  return lyricsLength < bareLyricsCapacity * 0.8 ? "underused" : "near_max";
+}
+
 function promptCharCounts(title: string, style: string, lyrics: string, payloadYaml: string, lyricsBoxLimit: number) {
   const durationPlan = getDurationPlan();
   const styleLength = style.length;
@@ -71,7 +82,7 @@ function promptCharCounts(title: string, style: string, lyrics: string, payloadY
     plannedBars: durationPlan.totalPlannedBars,
     durationTargetSeconds: durationPlan.targetSeconds,
     styleZone: styleLength > CANONICAL_STYLE_HARD_MAX_CHARS ? "overflow" : styleLength > CANONICAL_STYLE_TARGET_MAX_CHARS ? "long" : styleLength < 40 ? "short" : "sweet",
-    lyricsZone: submittedPayloadChars > lyricsBoxLimit ? "overflow" : submittedPayloadChars < lyricsBoxLimit * 0.8 ? "underused" : "near_max",
+    lyricsZone: classifyLyricsZoneForPromptCounts(lyricsLength, markerChars, submittedPayloadChars, lyricsBoxLimit),
     titleZone: titleLength < 4 ? "short" : titleLength > 80 ? "overflow" : "sweet"
   };
 }
