@@ -70,6 +70,8 @@ diagnostic switches.
 
 ## Observation Diagnostics
 
+For how the observation queries are built, staged, broadened, cached, and parsed, see [Observation Pipeline](OBSERVATION_PIPELINE.md).
+
 X search diagnostics are read-only runtime facts, not editable settings. The
 latest collection writes `<workspace>/runtime/x-observation-diagnostics.json`
 and `/api/status` exposes the same safe summary as `observationDiagnostics`.
@@ -99,7 +101,8 @@ and boolean/url-kind diagnostics are exposed.
 ## X Search Verification Runbook
 
 Use this to confirm that live X (Bird) observation search is actually pulling
-reactions, without burning the daily call budget.
+reactions, without burning the daily call budget. For the underlying query and
+collection mechanism, see [Observation Pipeline](OBSERVATION_PIPELINE.md).
 
 ### Procedure
 
