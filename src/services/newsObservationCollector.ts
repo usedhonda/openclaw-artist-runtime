@@ -13,6 +13,7 @@ import { mkdir, readFile, stat, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import type { Page } from "playwright";
 import { secretLikePattern } from "./personaMigrator.js";
+import { guardedFetchText } from "./ssrfGuard.js";
 import { getNewsRssUrls, isNewsArticleResolverEnabled, isNewsBrowserResolverEnabled } from "./runtimeConfig.js";
 import {
   extractPersonaMotifs,
@@ -104,45 +105,32 @@ function newsRssUrlsForRun(motifs: PersonaMotifBundle): string[] {
 }
 
 async function defaultFetcher(url: string, timeoutMs = 15_000): Promise<string> {
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), timeoutMs);
-  try {
-    const response = await fetch(url, {
-      signal: controller.signal,
-      headers: {
-        "User-Agent": "openclaw-artist-runtime/0.3 (+rss-news-observation)",
-        Accept: "application/rss+xml, application/atom+xml, application/xml, text/xml"
-      }
-    });
-    if (!response.ok) {
-      throw new Error(`rss_fetch_failed_${response.status}`);
+  const { status, text } = await guardedFetchText(url, {
+    timeoutMs,
+    headers: {
+      "User-Agent": "openclaw-artist-runtime/0.3 (+rss-news-observation)",
+      Accept: "application/rss+xml, application/atom+xml, application/xml, text/xml"
     }
-    return await response.text();
-  } finally {
-    clearTimeout(timer);
+  });
+  if (status < 200 || status >= 300) {
+    throw new Error(`rss_fetch_failed_${status}`);
   }
+  return text;
 }
 
 async function defaultHtmlFetcher(url: string, timeoutMs = 15_000): Promise<string> {
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), timeoutMs);
-  try {
-    const response = await fetch(url, {
-      redirect: "follow",
-      signal: controller.signal,
-      headers: {
-        "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) openclaw-artist-runtime/0.3",
-        Accept: "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
-        "Accept-Language": "ja,en-US;q=0.8,en;q=0.6"
-      }
-    });
-    if (!response.ok) {
-      throw new Error(`html_fetch_failed_${response.status}`);
+  const { status, text } = await guardedFetchText(url, {
+    timeoutMs,
+    headers: {
+      "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) openclaw-artist-runtime/0.3",
+      Accept: "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+      "Accept-Language": "ja,en-US;q=0.8,en;q=0.6"
     }
-    return await response.text();
-  } finally {
-    clearTimeout(timer);
+  });
+  if (status < 200 || status >= 300) {
+    throw new Error(`html_fetch_failed_${status}`);
   }
+  return text;
 }
 
 function decodeXmlEntities(value: string): string {
