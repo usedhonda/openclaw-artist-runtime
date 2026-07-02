@@ -8,6 +8,7 @@ import type {
   AuthorityDecision,
   PromptLedgerEntry,
   SunoArtifactIndexEntry,
+  SunoCreateResult,
   SunoImportedAssetMetadata,
   SunoRunRecord,
   SunoRunStatus
@@ -255,31 +256,48 @@ export async function generateSunoRun(input: GenerateSunoRunInput): Promise<Suno
   const createdAt = new Date().toISOString();
   const provisionalRunId = runId();
   const shouldReserveDailyCredits = !config.autopilot.dryRun && config.music.suno.submitMode === "live";
+  const budgetTracker = new SunoBudgetTracker(input.workspaceRoot);
   const creditBudget = authorityDecision.allowed && shouldReserveDailyCredits
-    ? await new SunoBudgetTracker(input.workspaceRoot).reserve(
+    ? await budgetTracker.reserve(
         DEFAULT_SUNO_LIVE_CREATE_CREDIT_COST,
         config.music.suno.dailyCreditLimit,
         config.music.suno.monthlyCreditLimit
       )
     : undefined;
-  const createResult = authorityDecision.allowed
-    ? creditBudget?.ok === false
-      ? {
-          accepted: false,
-          runId: provisionalRunId,
-          reason: creditBudget.reason ?? SUNO_BUDGET_EXHAUSTED_REASON,
-          urls: [],
-          dryRun: config.autopilot.dryRun
-        }
-      : await connector.create({
-          dryRun: config.autopilot.dryRun,
-          authority: config.music.suno.authority,
-          payload,
-          songId: input.songId,
-          runId: provisionalRunId,
-          payloadHash
-        })
-    : undefined;
+  // Credits are reserved before the create attempt so the daily/monthly cap stays fail-closed.
+  // A reservation only becomes a real spend when the create reaches a successful submit
+  // (accepted === true). Any create that fails before submit (dom_missing, network, throw)
+  // must refund the reservation, otherwise failed attempts silently burn budget.
+  const reservedCredits = creditBudget?.ok === true ? DEFAULT_SUNO_LIVE_CREATE_CREDIT_COST : 0;
+  let createResult: SunoCreateResult | undefined;
+  try {
+    createResult = authorityDecision.allowed
+      ? creditBudget?.ok === false
+        ? {
+            accepted: false,
+            runId: provisionalRunId,
+            reason: creditBudget.reason ?? SUNO_BUDGET_EXHAUSTED_REASON,
+            urls: [],
+            dryRun: config.autopilot.dryRun
+          }
+        : await connector.create({
+            dryRun: config.autopilot.dryRun,
+            authority: config.music.suno.authority,
+            payload,
+            songId: input.songId,
+            runId: provisionalRunId,
+            payloadHash
+          })
+      : undefined;
+  } finally {
+    if (reservedCredits > 0 && createResult?.accepted !== true) {
+      await budgetTracker.release(reservedCredits).catch((error) => {
+        console.error(
+          `[suno-budget] release after unsuccessful create failed: ${error instanceof Error ? error.message : String(error)}`
+        );
+      });
+    }
+  }
   const finalRunId = createResult?.runId ?? provisionalRunId;
   const record: SunoRunRecord = {
     runId: finalRunId,

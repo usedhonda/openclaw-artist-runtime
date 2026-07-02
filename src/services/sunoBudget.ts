@@ -211,6 +211,21 @@ export class SunoBudgetTracker {
     };
   }
 
+  // Refund a prior reservation. A reservation is only a real spend once the create reaches a
+  // successful submit; a create that fails before submit must release the reserved credits so
+  // failed attempts do not permanently burn daily/monthly budget.
+  async release(credits: number): Promise<void> {
+    if (!(credits > 0)) {
+      return;
+    }
+    const normalized = this.normalizeState(await this.readState());
+    await this.writeState({
+      ...normalized,
+      consumed: Math.max(normalized.consumed - credits, 0),
+      monthlyConsumed: Math.max(normalized.monthlyConsumed - credits, 0)
+    });
+  }
+
   async getState(
     limit = DEFAULT_SUNO_DAILY_CREDIT_LIMIT,
     monthlyLimit = DEFAULT_SUNO_MONTHLY_CREDIT_LIMIT

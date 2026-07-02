@@ -169,6 +169,105 @@ describe("SunoBudgetTracker", () => {
     expect(result.error?.message).toBe(SUNO_BUDGET_EXHAUSTED_REASON);
   });
 
+  it("refunds the reserved credits when a live create fails before submit", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-04-23T12:00:00.000Z"));
+
+    const root = mkdtempSync(join(tmpdir(), "artist-runtime-suno-budget-refund-"));
+    await ensureArtistWorkspace(root);
+    await createAndPersistSunoPromptPack({
+      workspaceRoot: root,
+      songId: "song-001",
+      songTitle: "Ghost Station",
+      artistReason: "refund on failure",
+      lyricsText: "static signal",
+      knowledgePackVersion: "test-pack"
+    });
+    await mkdir(join(root, "runtime", "suno"), { recursive: true });
+    await writeFile(
+      join(root, "runtime", "suno", "budget.json"),
+      `${JSON.stringify({ date: "2026-04-23", consumed: 10, month: "2026-04", monthlyConsumed: 10 }, null, 2)}\n`,
+      "utf8"
+    );
+    connectorStatusMock.mockResolvedValue({ state: "connected" });
+    connectorCreateMock.mockResolvedValue({
+      accepted: false,
+      runId: "run-dom-miss",
+      reason: "playwright_create_dom_missing: locator.waitFor timeout",
+      urls: []
+    });
+
+    const result = await generateSunoRun({
+      workspaceRoot: root,
+      songId: "song-001",
+      config: {
+        autopilot: { ...defaultArtistRuntimeConfig.autopilot, dryRun: false },
+        music: {
+          ...defaultArtistRuntimeConfig.music,
+          suno: { ...defaultArtistRuntimeConfig.music.suno, submitMode: "live", dailyCreditLimit: 100 }
+        }
+      }
+    });
+    const persisted = JSON.parse(await readFile(join(root, "runtime", "suno", "budget.json"), "utf8")) as {
+      consumed: number;
+      monthlyConsumed: number;
+    };
+
+    // Reservation of 10 was refunded because the create never reached a successful submit,
+    // so the failed attempt leaves the budget exactly where it started.
+    expect(connectorCreateMock).toHaveBeenCalled();
+    expect(result.status).toBe("failed");
+    expect(persisted).toMatchObject({ consumed: 10, monthlyConsumed: 10 });
+  });
+
+  it("keeps the reserved credits when a live create reaches a successful submit", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-04-23T12:00:00.000Z"));
+
+    const root = mkdtempSync(join(tmpdir(), "artist-runtime-suno-budget-keep-"));
+    await ensureArtistWorkspace(root);
+    await createAndPersistSunoPromptPack({
+      workspaceRoot: root,
+      songId: "song-001",
+      songTitle: "Ghost Station",
+      artistReason: "keep on success",
+      lyricsText: "static signal",
+      knowledgePackVersion: "test-pack"
+    });
+    await mkdir(join(root, "runtime", "suno"), { recursive: true });
+    await writeFile(
+      join(root, "runtime", "suno", "budget.json"),
+      `${JSON.stringify({ date: "2026-04-23", consumed: 10, month: "2026-04", monthlyConsumed: 10 }, null, 2)}\n`,
+      "utf8"
+    );
+    connectorStatusMock.mockResolvedValue({ state: "connected" });
+    connectorCreateMock.mockResolvedValue({
+      accepted: true,
+      runId: "run-accepted",
+      reason: "created",
+      urls: ["https://suno.com/song/accepted-1"]
+    });
+
+    const result = await generateSunoRun({
+      workspaceRoot: root,
+      songId: "song-001",
+      config: {
+        autopilot: { ...defaultArtistRuntimeConfig.autopilot, dryRun: false },
+        music: {
+          ...defaultArtistRuntimeConfig.music,
+          suno: { ...defaultArtistRuntimeConfig.music.suno, submitMode: "live", dailyCreditLimit: 100 }
+        }
+      }
+    });
+    const persisted = JSON.parse(await readFile(join(root, "runtime", "suno", "budget.json"), "utf8")) as {
+      consumed: number;
+      monthlyConsumed: number;
+    };
+
+    expect(result.status).toBe("accepted");
+    expect(persisted).toMatchObject({ consumed: 20, monthlyConsumed: 20 });
+  });
+
   it("resets the counter on the next UTC day before reserving again", async () => {
     const root = mkdtempSync(join(tmpdir(), "artist-runtime-suno-budget-reset-"));
     await mkdir(join(root, "runtime", "suno"), { recursive: true });
