@@ -5,7 +5,7 @@ import { join } from "node:path";
 import { describe, expect, it, vi } from "vitest";
 import { collectObservations, readTodayObservations } from "../src/services/xObservationCollector";
 import { readXObservationDiagnostics } from "../src/services/xObservationDiagnostics";
-import { isInCooldown } from "../src/services/birdRateLimiter";
+import { isInCooldown, readBirdRateLimitStatus } from "../src/services/birdRateLimiter";
 import { getRuntimeEventBus, type RuntimeEvent } from "../src/services/runtimeEventBus";
 
 function workspace(): string {
@@ -257,15 +257,70 @@ describe("x observation collector", () => {
     expect(result.reason).toContain("secret");
   });
 
-  it("triggers cooldown for bird rate-limit output", async () => {
+  it("triggers cooldown for bird rate-limit output on stderr", async () => {
     const root = workspace();
     const result = await collectObservations(root, {
       now: new Date("2026-04-29T01:00:00.000Z"),
-      runner: async () => ({ stdout: "HTTP 429 rate limit" })
+      runner: async () => ({ stdout: "", stderr: "HTTP 429 rate limit" })
     });
 
     expect(result.status).toBe("cooldown");
+    expect(result.reason).toBe("ban_indication: 429 (source: stderr)");
     expect(await isInCooldown(root, new Date("2026-04-29T02:00:00.000Z"))).toBe(true);
+  });
+
+  it("does not cool down on ordinary tweets containing 制限/凍結 when entries parse", async () => {
+    const root = workspace();
+    const result = await collectObservations(root, {
+      now: new Date("2026-04-29T01:00:00.000Z"),
+      personaText: "都市 交通",
+      runner: async () => ({
+        stdout: [
+          "@watch_a 首都高の速度制限が解除された https://x.com/watch_a/status/1111111111111111111 2026-04-29T00:30:00.000Z",
+          "@watch_b 路面凍結に注意して https://x.com/watch_b/status/2222222222222222222 2026-04-29T00:45:00.000Z"
+        ].join("\n")
+      })
+    });
+
+    expect(result.status).toBe("collected");
+    expect(await isInCooldown(root, new Date("2026-04-29T02:00:00.000Z"))).toBe(false);
+  });
+
+  it("keeps tweet bodies out of the cooldown reason and writes cooldown diagnostics", async () => {
+    const root = workspace();
+    const tweetBody = "首都高の速度制限が解除された";
+    const result = await collectObservations(root, {
+      now: new Date("2026-04-29T01:00:00.000Z"),
+      personaText: "都市 交通",
+      runner: async () => ({
+        stdout: `@watch_a ${tweetBody} https://x.com/watch_a/status/1111111111111111111 2026-04-29T00:30:00.000Z`,
+        stderr: "bird: HTTP 429 rate limit exceeded"
+      })
+    });
+
+    expect(result.status).toBe("cooldown");
+    expect(result.reason).toBe("ban_indication: 429 (source: stderr)");
+    const status = await readBirdRateLimitStatus(root, new Date("2026-04-29T01:05:00.000Z"));
+    expect(status.cooldownReason).toBe("ban_indication: 429 (source: stderr)");
+    expect(status.cooldownReason).not.toContain(tweetBody);
+
+    const diagnostics = await readXObservationDiagnostics(root);
+    expect(diagnostics?.outcome).toBe("cooldown");
+    expect(diagnostics?.reason).toBe("ban_indication: 429 (source: stderr)");
+    expect(JSON.stringify(diagnostics)).not.toContain(tweetBody);
+  });
+
+  it("writes error-outcome diagnostics when collection throws", async () => {
+    const root = workspace();
+    const result = await collectObservations(root, {
+      now: new Date("2026-04-29T01:00:00.000Z"),
+      runner: async () => ({ stdout: "API_KEY=do-not-store" })
+    });
+
+    expect(result.status).toBe("skipped");
+    const diagnostics = await readXObservationDiagnostics(root);
+    expect(diagnostics?.outcome).toBe("error");
+    expect(diagnostics?.reason).toContain("secret");
   });
 
   it("parses bird v0.8 chunk-by-record output with 50-char separator lines", async () => {

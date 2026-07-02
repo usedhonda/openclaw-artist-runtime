@@ -1,6 +1,6 @@
 import { appendFile, mkdir, readFile, stat, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
-import { isBirdBanIndication, recordBirdCall, triggerCooldown, tryAcquireBirdCall } from "./birdRateLimiter.js";
+import { matchBirdBanIndication, recordBirdCall, triggerCooldown, tryAcquireBirdCall } from "./birdRateLimiter.js";
 import { emitRuntimeEvent } from "./runtimeEventBus.js";
 import { secretLikePattern } from "./personaMigrator.js";
 import { planQueryStrategy } from "./xQueryStrategyPlanner.js";
@@ -512,6 +512,37 @@ export async function readObservationsReport(root: string, dateOrNow: string | D
   return { date, path, exists: true, query, reactionSeed, entries, diagnostics: matchingDiagnostics };
 }
 
+// stdout that parsed at least one raw entry is real payload (tweet bodies), never
+// an error surface: it is excluded from ban detection. stdout is only scanned when
+// it yielded zero entries and looks like a short, non-JSON error blurb.
+function stdoutLooksLikeBirdError(stdout: string): boolean {
+  const trimmed = stdout.trim();
+  if (!trimmed || trimmed.startsWith("[")) return false;
+  return trimmed.length < 400;
+}
+
+function detectBirdBanIndication(input: {
+  stderr: string;
+  stdout: string;
+  stdoutHadEntries: boolean;
+}): { token: string; source: "stderr" | "stdout" } | undefined {
+  const stderrToken = input.stderr.trim() ? matchBirdBanIndication(input.stderr) : undefined;
+  if (stderrToken) {
+    return { token: stderrToken, source: "stderr" };
+  }
+  if (!input.stdoutHadEntries && stdoutLooksLikeBirdError(input.stdout)) {
+    const stdoutToken = matchBirdBanIndication(input.stdout);
+    if (stdoutToken) {
+      return { token: stdoutToken, source: "stdout" };
+    }
+  }
+  return undefined;
+}
+
+function banIndicationReason(token: string, source: "stderr" | "stdout" | "error"): string {
+  return `ban_indication: ${token} (source: ${source})`;
+}
+
 export async function collectObservations(root: string, context: XObservationContext = {}): Promise<XObservationResult> {
   const now = context.now ?? new Date();
   const path = observationPath(root, now);
@@ -541,30 +572,44 @@ export async function collectObservations(root: string, context: XObservationCon
   }
   const queriesToTry = targetQueries.length > 0 ? targetQueries : [undefined];
   const maxAttempts = Math.max(1, Math.min(maxObservationQueryAttempts, gate.remaining || 1, queriesToTry.length));
+  const queryAttempts: XObservationAttemptDiagnostic[] = [];
   try {
     let finalFiltered: ReturnType<typeof filterObservationEntries> | undefined;
     let finalQuery: string | undefined;
-    const queryAttempts: XObservationAttemptDiagnostic[] = [];
     for (const query of queriesToTry.slice(0, maxAttempts)) {
       const runner = context.runner ?? defaultRunner(query);
       const result = await runner(query);
-      const combined = `${result.stdout}\n${result.stderr ?? ""}`;
-      if (isBirdBanIndication(combined)) {
+      const filtered = filterObservationEntries(result.stdout, motifs);
+      const ban = detectBirdBanIndication({
+        stderr: result.stderr ?? "",
+        stdout: result.stdout,
+        stdoutHadEntries: filtered.rawCount > 0
+      });
+      if (ban) {
         await recordBirdCall(root, now, { query, mode: strategy.mode });
-        await triggerCooldown(root, combined.slice(0, 240), now);
+        queryAttempts.push(attemptDiagnostic(query, filtered));
+        const reason = banIndicationReason(ban.token, ban.source);
+        await triggerCooldown(root, reason, now);
+        await writeXObservationDiagnostics(root, buildXObservationDiagnosticsSnapshot({
+          date: jstDate(now),
+          now,
+          attempts: queryAttempts,
+          acceptedCount: 0,
+          outcome: "cooldown",
+          reason
+        }));
         emitRuntimeEvent({
           type: "bird_cooldown_triggered",
-          reason: "bird returned a rate-limit or ban indication",
+          reason,
           cooldownUntil: new Date(now.getTime() + 24 * 60 * 60 * 1000).toISOString(),
           timestamp: now.getTime()
         });
-        return { status: "cooldown", path, observations: "", reason: "bird returned a rate-limit or ban indication" };
+        return { status: "cooldown", path, observations: "", reason };
       }
       if (secretLikePattern.test(result.stdout)) {
         throw new Error("x_observation_contains_secret_like_text");
       }
       await recordBirdCall(root, now, { query, mode: strategy.mode });
-      const filtered = filterObservationEntries(result.stdout, motifs);
       await appendRejectedLog(root, now, filtered.rejected);
       queryAttempts.push(attemptDiagnostic(query, filtered));
       finalFiltered = filtered;
@@ -581,7 +626,8 @@ export async function collectObservations(root: string, context: XObservationCon
       date: jstDate(now),
       now,
       attempts: queryAttempts,
-      acceptedCount: filtered.entries.length
+      acceptedCount: filtered.entries.length,
+      outcome: "collected"
     });
     await writeXObservationDiagnostics(root, diagnostics);
     const topScored = filtered.scored[0];
@@ -601,16 +647,35 @@ export async function collectObservations(root: string, context: XObservationCon
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     await recordBirdCall(root, now, { query: targetQueries[0], mode: strategy.mode });
-    if (isBirdBanIndication(message)) {
-      await triggerCooldown(root, message, now);
+    const banToken = matchBirdBanIndication(message);
+    if (banToken) {
+      const reason = banIndicationReason(banToken, "error");
+      await triggerCooldown(root, reason, now);
+      await writeXObservationDiagnostics(root, buildXObservationDiagnosticsSnapshot({
+        date: jstDate(now),
+        now,
+        attempts: queryAttempts,
+        acceptedCount: 0,
+        outcome: "cooldown",
+        reason
+      }));
       emitRuntimeEvent({
         type: "bird_cooldown_triggered",
-        reason: message,
+        reason,
         cooldownUntil: new Date(now.getTime() + 24 * 60 * 60 * 1000).toISOString(),
         timestamp: now.getTime()
       });
-      return { status: "cooldown", path, observations: "", reason: message };
+      return { status: "cooldown", path, observations: "", reason };
     }
+    const errorReason = message.slice(0, 200);
+    await writeXObservationDiagnostics(root, buildXObservationDiagnosticsSnapshot({
+      date: jstDate(now),
+      now,
+      attempts: queryAttempts,
+      acceptedCount: 0,
+      outcome: "error",
+      reason: errorReason
+    }));
     return { status: "skipped", path, observations: "", reason: message };
   }
 }

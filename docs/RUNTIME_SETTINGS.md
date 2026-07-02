@@ -79,6 +79,19 @@ raw result counts, accepted counts, and the top rejection reason. Telegram
 `/observations [YYYY-MM-DD]` appends the same search trail under `🔎 探し方`;
 this section is especially important when accepted observations are zero.
 
+The snapshot also carries an `outcome` field (`collected` | `cooldown` | `error`)
+and a sanitized `reason`, so cooldown and error runs leave a diagnostics trail too
+(not only successful collections). On a cooldown or error the file is still written
+with the attempts made so far.
+
+Ban detection scope: bird ban/rate-limit detection runs on the runner's stderr
+always, and on stdout only when stdout produced zero parsed entries and looks like a
+short non-JSON error blurb. stdout that parsed at least one raw entry is treated as
+real tweet payload and never scanned, so ordinary tweets containing words like
+速度制限 or 路面凍結 cannot trigger a 24h cooldown. When a genuine ban indicator
+fires, `cooldownReason` stores only a sanitized marker
+(`ban_indication: <token> (source: stderr|stdout|error)`), never raw tweet text.
+
 Privacy rule: rejected tweet body text and rejected URLs are never displayed in
 Telegram, Producer Room, or status JSON. Only counts, rejection reason enums,
 and boolean/url-kind diagnostics are exposed.

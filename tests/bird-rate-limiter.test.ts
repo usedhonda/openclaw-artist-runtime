@@ -47,6 +47,20 @@ describe("bird rate limiter", () => {
     expect(isBirdBanIndication("the account was banned after rate limit errors")).toBe(true);
   });
 
+  it("ignores bare Japanese 制限/凍結 words that appear in ordinary tweets", () => {
+    expect(isBirdBanIndication("首都高で速度制限が解除された")).toBe(false);
+    expect(isBirdBanIndication("路面凍結に注意して")).toBe(false);
+    expect(isBirdBanIndication("交通規制と入場制限のお知らせ")).toBe(false);
+  });
+
+  it("still fires on bird-error compound Japanese phrases and error tokens", () => {
+    expect(isBirdBanIndication("レート制限に達しました")).toBe(true);
+    expect(isBirdBanIndication("アカウント凍結の可能性")).toBe(true);
+    expect(isBirdBanIndication("API制限を超過")).toBe(true);
+    expect(isBirdBanIndication("利用制限がかかっています")).toBe(true);
+    expect(isBirdBanIndication("HTTP 429 rate limit")).toBe(true);
+  });
+
   it("reads runtime override limits", async () => {
     const root = workspace();
     await mkdir(join(root, "runtime"), { recursive: true });

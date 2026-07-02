@@ -101,8 +101,17 @@ async function writeLedger(root: string, ledger: BirdCallLedger): Promise<BirdCa
   return ledger;
 }
 
+// Bare Japanese words 制限/凍結 are intentionally excluded: ordinary tweets
+// (速度制限, 路面凍結, 交通規制) must not read as a ban. Japanese triggers are only
+// the bird-error compound phrases below; English error tokens stay as-is.
+const birdBanIndicationPattern = /\b(?:429|403|suspended|shadowban|rate[\s-]?limit|banned|banning|bantype)\b|アカウント凍結|API制限|レート制限|利用制限/i;
+
+export function matchBirdBanIndication(value: string): string | undefined {
+  return birdBanIndicationPattern.exec(value)?.[0];
+}
+
 export function isBirdBanIndication(value: string): boolean {
-  return /(?:\b(?:429|403|suspended|shadowban|rate[\s-]?limit|banned|banning|bantype)\b|制限|凍結)/i.test(value);
+  return birdBanIndicationPattern.test(value);
 }
 
 export async function isInCooldown(root: string, now = new Date()): Promise<boolean> {

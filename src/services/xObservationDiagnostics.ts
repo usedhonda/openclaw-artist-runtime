@@ -2,6 +2,8 @@ import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import type { XObservationAttemptDiagnostic } from "./xObservationCollector.js";
 
+export type XObservationOutcome = "collected" | "cooldown" | "error";
+
 export interface XObservationDiagnosticsSnapshot {
   date: string;
   collectedAt: string;
@@ -11,6 +13,8 @@ export interface XObservationDiagnosticsSnapshot {
     ttlMinutes: number;
     until?: string;
   };
+  outcome?: XObservationOutcome;
+  reason?: string;
 }
 
 const emptyCacheTtlMinutes = 20;
@@ -24,6 +28,8 @@ export function buildXObservationDiagnosticsSnapshot(input: {
   now: Date;
   attempts: XObservationAttemptDiagnostic[];
   acceptedCount: number;
+  outcome?: XObservationOutcome;
+  reason?: string;
 }): XObservationDiagnosticsSnapshot {
   const empty = input.acceptedCount === 0;
   return {
@@ -34,7 +40,9 @@ export function buildXObservationDiagnosticsSnapshot(input: {
       active: empty,
       ttlMinutes: emptyCacheTtlMinutes,
       until: empty ? new Date(input.now.getTime() + emptyCacheTtlMinutes * 60 * 1000).toISOString() : undefined
-    }
+    },
+    ...(input.outcome ? { outcome: input.outcome } : {}),
+    ...(input.reason ? { reason: input.reason } : {})
   };
 }
 
