@@ -43,6 +43,8 @@ manifest schema.
 | `artistPulse.enabled`, `artistPulse.minIntervalHours` | Schema config, env opt-in | Settings value can enable routine artist notes; env can also opt in for local operator runs. |
 | `commission.enabled` | Schema config, env opt-in | Settings value can enable producer song requests; env can also opt in for local operator runs. |
 | `songSpawn.enabled`, `songSpawn.minIntervalHours` | Schema config, env opt-in | Settings value controls autonomous song ideas; env can also opt in and override interval for local operator runs. |
+| `observation.newsRssUrls` | Schema config, env fallback | Operator news RSS feed list used by the news observation collector. A non-empty config list wins over `OPENCLAW_NEWS_RSS_URLS`; the env var remains the fallback when the config list is empty. Diagnostics show count only. |
+| `observation.xTcoFetchEnabled` | Schema config, env fallback | Enables t.co link expansion during X reply-target resolution. A defined config boolean wins over `OPENCLAW_X_TCO_FETCH_ENABLED`; the env var remains the fallback when the config value is unset. |
 | `aiReview.provider` | Schema config, env forced | Supported values are `mock`, `openclaw`, and `openai-codex`. `OPENCLAW_AI_REVIEW_PROVIDER` can force the effective provider and makes the field read-only in Settings. |
 | `safety.*` | Schema config | Safety policy defaults and invariant guard settings. |
 
@@ -57,10 +59,8 @@ diagnostic switches.
 | `TELEGRAM_BOT_TOKEN` | Settings diagnostics: configured/missing only | Credential. Never return or persist the token value. |
 | `TELEGRAM_OWNER_USER_IDS` | Settings diagnostics: count only | Private account identifiers. Runtime uses them for owner checks and notifier chat targets. |
 | `OPENCLAW_TELEGRAM_NOTIFIER` | Settings diagnostics: enabled/disabled | Local transport switch. It can disable Telegram even when schema settings are on. |
-| `OPENCLAW_NEWS_RSS_URLS` | Settings diagnostics: count only | News source list can contain private/local feeds. Runtime only shows how many are configured. |
 | `OPENCLAW_NEWS_BROWSER_RESOLVE`, `OPENCLAW_NEWS_ARTICLE_RESOLVE` | Settings diagnostics: enabled/disabled | Local network/browser behavior; kept env-only to avoid marketplace operators enabling browser fetch accidentally. |
 | `OPENCLAW_X_FIREFOX_PROFILE` | Settings diagnostics: configured/missing only | Local Firefox profile path for Bird/X. Paths are private machine details. |
-| `OPENCLAW_X_TCO_FETCH_ENABLED` | Settings diagnostics: enabled/disabled | Local X link-resolution switch. |
 | `OPENCLAW_CONFIG`, `OPENCLAW_AUTH_PROFILES` | Not shown | Local OpenClaw auth/config file locations. Paths may reveal user account layout. |
 | `SPOTIFY_BEARER_TOKEN` | Not shown | Credential for optional music lookup helpers. |
 | `OPENCLAW_SUNO_CDP_ENDPOINT`, `OPENCLAW_SUNO_USE_CDP` | Not shown | Low-level browser attach controls; CDP is an emergency/operator-only path. |
