@@ -900,7 +900,14 @@ describe("ProducerRoomApp diagnostics creative quality card", () => {
                 dissBankHitCount: 5,
                 degraded: false
               }
-            ]
+            ],
+            rolling: {
+              sampleSize: 4,
+              dopagakiRate: 0.5,
+              averageBareChars: 1500,
+              averageBareLines: 59,
+              averageDissBankHits: 3
+            }
           }
         }
       } as never)
@@ -910,6 +917,8 @@ describe("ProducerRoomApp diagnostics creative quality card", () => {
     expect(html).toContain("Neon Ledger");
     expect(html).toContain("dopagaki on");
     expect(html).toContain("diss-bank 5 hits");
+    expect(html).toContain("last 4 songs");
+    expect(html).toContain("dopagaki 50%");
   });
 
   it("shows an empty state when there are no creative quality records", () => {

@@ -15,8 +15,46 @@ export interface CreativeQualityEntry {
   degraded: boolean;
 }
 
+export interface CreativeQualityAggregate {
+  sampleSize: number;
+  dopagakiRate: number;
+  averageBareChars: number;
+  averageBareLines: number;
+  averageDissBankHits: number;
+}
+
 export function creativeQualityLedgerPath(root: string): string {
   return join(root, "runtime", "creative-quality-ledger.jsonl");
+}
+
+// Rolling view over the newest window (default 20 songs) so the operator can
+// see whether the dopagaki target rate and density are actually landing.
+export function aggregateCreativeQuality(entries: CreativeQualityEntry[]): CreativeQualityAggregate {
+  const sampleSize = entries.length;
+  if (sampleSize === 0) {
+    return { sampleSize: 0, dopagakiRate: 0, averageBareChars: 0, averageBareLines: 0, averageDissBankHits: 0 };
+  }
+  const dopagakiCount = entries.filter((entry) => entry.dopagakiActive).length;
+  const totals = entries.reduce(
+    (acc, entry) => {
+      acc.chars += entry.bareLyricsChars;
+      acc.lines += entry.bareLines;
+      acc.hits += entry.dissBankHitCount;
+      return acc;
+    },
+    { chars: 0, lines: 0, hits: 0 }
+  );
+  const round = (value: number, decimals: number) => {
+    const factor = 10 ** decimals;
+    return Math.round(value * factor) / factor;
+  };
+  return {
+    sampleSize,
+    dopagakiRate: round(dopagakiCount / sampleSize, 4),
+    averageBareChars: round(totals.chars / sampleSize, 1),
+    averageBareLines: round(totals.lines / sampleSize, 1),
+    averageDissBankHits: round(totals.hits / sampleSize, 2)
+  };
 }
 
 export async function appendCreativeQualityEntry(root: string, entry: CreativeQualityEntry): Promise<CreativeQualityEntry> {

@@ -4,6 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
+  aggregateCreativeQuality,
   appendCreativeQualityEntry,
   computeDissBankHits,
   creativeQualityLedgerPath,
@@ -147,6 +148,23 @@ describe("creative quality ledger", () => {
     expect(computeDissBankHits(BANK_MD, "夜のビル風が路地を抜ける")).toEqual(["再開発ビルが作るビル風"]);
     expect(computeDissBankHits(BANK_MD, "夜の街に空席だけが残る")).toEqual(["逃げ出した若い子の空席"]);
     expect(computeDissBankHits(BANK_MD, "まったく無関係な歌詞")).toEqual([]);
+  });
+
+  it("aggregates dopagaki rate and average density over a window", () => {
+    const empty = aggregateCreativeQuality([]);
+    expect(empty).toEqual({ sampleSize: 0, dopagakiRate: 0, averageBareChars: 0, averageBareLines: 0, averageDissBankHits: 0 });
+
+    const rolling = aggregateCreativeQuality([
+      entry({ dopagakiActive: true, bareLyricsChars: 1200, bareLines: 52, dissBankHitCount: 2 }),
+      entry({ dopagakiActive: false, bareLyricsChars: 1400, bareLines: 58, dissBankHitCount: 4 }),
+      entry({ dopagakiActive: true, bareLyricsChars: 1600, bareLines: 60, dissBankHitCount: 0 }),
+      entry({ dopagakiActive: false, bareLyricsChars: 1800, bareLines: 66, dissBankHitCount: 6 })
+    ]);
+    expect(rolling.sampleSize).toBe(4);
+    expect(rolling.dopagakiRate).toBe(0.5);
+    expect(rolling.averageBareChars).toBe(1500);
+    expect(rolling.averageBareLines).toBe(59);
+    expect(rolling.averageDissBankHits).toBe(3);
   });
 
   it("writes a ledger entry when a draft is confirmed", async () => {

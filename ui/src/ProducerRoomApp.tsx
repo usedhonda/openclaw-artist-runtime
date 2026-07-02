@@ -91,6 +91,13 @@ type StatusResponse = {
       dissBankHitCount: number;
       degraded: boolean;
     }>;
+    rolling?: {
+      sampleSize: number;
+      dopagakiRate: number;
+      averageBareChars: number;
+      averageBareLines: number;
+      averageDissBankHits: number;
+    };
   };
 };
 
@@ -805,6 +812,14 @@ export function DiagnosticsView(props: { locale?: ProducerRoomLocale; status?: S
       </article>
       <article className="panel">
         <div className="section-title">Creative quality</div>
+        {creativeQuality?.rolling && creativeQuality.rolling.sampleSize > 0 ? (
+          <div className="item">
+            <strong>last {creativeQuality.rolling.sampleSize} songs</strong>
+            <div className="muted">
+              dopagaki {Math.round(creativeQuality.rolling.dopagakiRate * 100)}% · avg bare {creativeQuality.rolling.averageBareChars}/{creativeQuality.rolling.averageBareLines} · avg diss-bank {creativeQuality.rolling.averageDissBankHits}
+            </div>
+          </div>
+        ) : null}
         {creativeQuality && creativeQuality.recent.length > 0 ? (
           <div className="list">
             {creativeQuality.recent.map((song, index) => (

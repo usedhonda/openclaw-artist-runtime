@@ -1201,6 +1201,13 @@ export interface StatusResponse {
       dissBankHitCount: number;
       degraded: boolean;
     }>;
+    rolling: {
+      sampleSize: number;
+      dopagakiRate: number;
+      averageBareChars: number;
+      averageBareLines: number;
+      averageDissBankHits: number;
+    };
   };
   distribution?: {
     detected: {

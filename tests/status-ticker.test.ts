@@ -159,6 +159,12 @@ describe("status ticker and reply simulation routes", () => {
       dissBankHitCount: 1
     });
     expect(status.creativeQuality?.recent[1]).toMatchObject({ songId: "s1", dopagakiActive: false, dissBankHitCount: 0 });
+    expect(status.creativeQuality?.rolling).toMatchObject({
+      sampleSize: 2,
+      dopagakiRate: 0.5,
+      averageBareChars: 1400,
+      averageBareLines: 58
+    });
   });
 
   it("reads persisted config overrides into /api/status", async () => {

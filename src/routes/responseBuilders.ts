@@ -49,7 +49,7 @@ import { getTelegramOwnerUserIds } from "../services/telegramAuth.js";
 import type { TelegramClient } from "../services/telegramClient.js";
 import { TelegramNotifier } from "../services/telegramNotifier.js";
 import { readXObservationDiagnostics } from "../services/xObservationDiagnostics.js";
-import { readCreativeQualityLedger } from "../services/creativeQualityLedger.js";
+import { aggregateCreativeQuality, readCreativeQualityLedger } from "../services/creativeQualityLedger.js";
 import { integerFromPayloadOrQuery, isLocalRoutePayload, optionalInteger, payloadInteger, payloadRecord, queryValueFromPayload } from "./payloadHelpers.js";
 import { serializeRuntimeEventForSse } from "./runtimeEventStream.js";
 import type {
@@ -1299,7 +1299,8 @@ export async function buildStatusResponse(config?: Partial<ArtistRuntimeConfig>)
       bareLines: entry.bareLines,
       dissBankHitCount: entry.dissBankHitCount,
       degraded: entry.degraded
-    }))
+    })),
+    rolling: aggregateCreativeQuality(creativeQualityEntries)
   };
   const setupReadiness = await buildSetupReadiness(mergedConfig, autopilotStatus, sunoWorker, platforms, workspaceStatus);
   const effectiveDryRunMap = buildEffectiveDryRunMap(mergedConfig);
