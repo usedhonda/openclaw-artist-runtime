@@ -72,6 +72,56 @@ function goodJsonDraft(): string {
   });
 }
 
+// ~1238 bare chars over 58 lines after repair: below the retired 1800-char floor
+// but above the calibrated 1200-char / 52-line dual floor, so it must be accepted.
+function denseBelowOldFloorDraft(): string {
+  const line = (index: number) => `しぶやのよるにさびたひかりがのこるまだ${index}`;
+  const many = (count: number) => Array.from({ length: count }, (_, index) => line(index));
+  return JSON.stringify({
+    title: "Repair Night",
+    form: "compact pop",
+    sections: [
+      { tag: "Intro - muted street image", lines: many(1) },
+      { tag: "Verse 1 - tight civic flow", lines: many(16) },
+      { tag: "Pre-Hook - pressure turn", lines: many(4) },
+      { tag: "Hook - repeated anchor", lines: many(4) },
+      { tag: "Verse 2 - detail turn", lines: many(16) },
+      { tag: "Pre-Hook 2 - pressure answer", lines: many(4) },
+      { tag: "Hook 2 - final anchor", lines: many(4) },
+      { tag: "Bridge - thin contrast", lines: many(3) },
+      { tag: "Final Hook - final anchor", lines: many(5) },
+      { tag: "Outro - hard stop", lines: many(1) }
+    ],
+    bilingual_hint: "Japanese main text",
+    moodHint: "civic dread pulse"
+  });
+}
+
+// 40 non-marker lines but long enough to clear the 1200-char floor: this must be
+// rejected purely on the 52-line floor, proving the line floor is independent.
+function fortyLineDraft(): string {
+  const line = (index: number) => `しぶやのよるにさびたひかりがのこるまだむねでなるおとがきえないから${index}`;
+  const many = (count: number) => Array.from({ length: count }, (_, index) => line(index));
+  return JSON.stringify({
+    title: "Repair Night",
+    form: "compact pop",
+    sections: [
+      { tag: "Intro - muted street image", lines: many(1) },
+      { tag: "Verse 1 - tight civic flow", lines: many(8) },
+      { tag: "Pre-Hook - pressure turn", lines: many(4) },
+      { tag: "Hook - repeated anchor", lines: many(4) },
+      { tag: "Verse 2 - detail turn", lines: many(7) },
+      { tag: "Pre-Hook 2 - pressure answer", lines: many(4) },
+      { tag: "Hook 2 - final anchor", lines: many(4) },
+      { tag: "Bridge - thin contrast", lines: many(3) },
+      { tag: "Final Hook - final anchor", lines: many(4) },
+      { tag: "Outro - hard stop", lines: many(1) }
+    ],
+    bilingual_hint: "Japanese main text",
+    moodHint: "civic dread pulse"
+  });
+}
+
 describe("lyrics drafting repair-not-reject orchestration", () => {
   beforeEach(() => {
     callAiProviderMock.mockReset();
@@ -86,6 +136,33 @@ describe("lyrics drafting repair-not-reject orchestration", () => {
     expect(callAiProviderMock).toHaveBeenCalledTimes(1);
     expect(result.lyricsText).toContain("[Verse 1 - tight civic flow]");
     expect((await readSongState(root, "song-001")).degradedLyrics).toBe(false);
+  });
+
+  it("accepts a ~1238-char draft with 52+ lines that the old 1800 floor would have blocked", async () => {
+    const root = await workspace();
+    callAiProviderMock.mockResolvedValueOnce(denseBelowOldFloorDraft());
+
+    const result = await draftLyrics({ workspaceRoot: root, songId: "song-001", aiReviewProvider: "openai-codex" });
+
+    expect(callAiProviderMock).toHaveBeenCalledTimes(1);
+    expect(result.lyricsText).toContain("[Verse 1 - tight civic flow]");
+    expect((await readSongState(root, "song-001")).degradedLyrics).toBe(false);
+  });
+
+  it("rejects a 40-line draft on the line floor even when the character floor is cleared", async () => {
+    const root = await workspace();
+    callAiProviderMock.mockResolvedValue(fortyLineDraft());
+
+    let thrown: Error | undefined;
+    await draftLyrics({ workspaceRoot: root, songId: "song-001", aiReviewProvider: "openai-codex" }).catch((error) => {
+      thrown = error as Error;
+    });
+
+    expect(callAiProviderMock).toHaveBeenCalledTimes(3);
+    const repairNotes = (thrown as { repairNotes?: string[] } | undefined)?.repairNotes ?? [];
+    expect(repairNotes.some((note) => /lyrics_too_short_for_duration_plan/.test(note))).toBe(true);
+    expect(repairNotes.some((note) => /lines 40\/52/.test(note))).toBe(true);
+    expect((await readSongState(root, "song-001")).degradedLyrics).toBe(true);
   });
 
   it("reprompts up to a valid third draft after repair still fails", async () => {

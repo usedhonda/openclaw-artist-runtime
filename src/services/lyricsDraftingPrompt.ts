@@ -138,7 +138,7 @@ export function buildLyricsDraftingPrompt(input: BuildLyricsPromptInput): string
     "Every section tag must include an annotation after the section name. Do not place commands outside tags. Do not name existing artists or songs. Do not reuse title kanji directly in hook or refrain lines; convert any title phrase used inside lyrics to hiragana.",
     `Suno lyrics box limit: ${lyricsBoxLimit} characters total, including YAML META, marker lines, section tags, lyrics, and blank lines.`,
     `Length budget: total lyric body (joined section lines + tag overhead, before YAML META) must stay within ${lyricBodyLimit} characters. Do not exceed this budget; leave room for the YAML META layer. A short, complete lyric is better than text that Suno silently truncates.`,
-    "Minimum useful density: avoid tiny drafts. For the default 80-bar DurationPlan, stay above the enforced 1800 bare-lyrics floor and target 2800-3400 lyric-body characters when the Suno box allows it; rap/trap/drill should not come back as a sparse sketch.",
+    "Minimum useful density: avoid tiny drafts. For the default 80-bar DurationPlan, stay above the enforced 1200-character / 52-line bare-lyrics floor and target 2800-3400 lyric-body characters when the Suno box allows it; rap/trap/drill should not come back as a sparse sketch.",
     "",
     "DurationPlan SoT (overrides any older source text that asks for compact section cues or shorter forms):",
     formatDurationPlanForPrompt(durationPlan),

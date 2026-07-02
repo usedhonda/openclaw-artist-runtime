@@ -144,7 +144,14 @@ export function getDurationPlan(): DurationPlan {
 }
 
 export function minimumBareLyricsChars(plan: DurationPlan = getDurationPlan()): number {
-  return Math.round(plan.totalPlannedBars * 22.5);
+  return Math.round(plan.totalPlannedBars * 15);
+}
+
+export function minimumBareLyricsLines(plan: DurationPlan = getDurationPlan()): number {
+  void plan;
+  // Derived from the default section plan's lower-bound line targets:
+  // verse1 14 + verse2 14 + prehook1 3 + prehook2 3 + hook1 4 + hook2 4 + bridge 4 + finalhook 4 + intro 1 + outro 1 = 52.
+  return 52;
 }
 
 function normalizeSectionLabel(value: string): string {

@@ -12,7 +12,7 @@ import { buildLyricsDraftingPrompt, readLyricsKnowledgeDigest } from "./lyricsDr
 import { parseLyricsLanguagePolicy } from "./lyricsLanguagePolicy.js";
 import { getArtistIdentity, getSunoLyricsLimit } from "./runtimeConfig.js";
 import { decideDopagakiVariation } from "./creativeVariationPolicy.js";
-import { getDurationPlan, minimumBareLyricsChars } from "../suno-production/durationPlan.js";
+import { getDurationPlan, minimumBareLyricsChars, minimumBareLyricsLines } from "../suno-production/durationPlan.js";
 
 export interface DraftLyricsInput {
   workspaceRoot: string;
@@ -198,6 +198,14 @@ function bareLyricsCharsForDraft(lyrics: string): number {
     .length;
 }
 
+function bareLyricsLinesForDraft(lyrics: string): number {
+  return lyrics
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter((line) => line.length > 0 && !/^\[[^\]]+\]$/.test(line))
+    .length;
+}
+
 async function composeLyricsDraft(input: DraftLyricsInput, title: string, briefText: string): Promise<LyricsDraft> {
   const provider = input.aiReviewProvider ?? input.config?.aiReview?.provider ?? "mock";
   const mind = await readArtistMind(input.workspaceRoot);
@@ -208,6 +216,7 @@ async function composeLyricsDraft(input: DraftLyricsInput, title: string, briefT
   const lyricBodyLimit = lyricBodyLimitForSunoBox(lyricsBoxLimit);
   const durationPlan = getDurationPlan();
   const minimumBareChars = minimumBareLyricsChars();
+  const minimumBareLines = minimumBareLyricsLines();
   const dopagakiVariation = decideDopagakiVariation({
     songId: input.songId,
     briefText
@@ -249,9 +258,10 @@ async function composeLyricsDraft(input: DraftLyricsInput, title: string, briefT
       continue;
     }
     const bareLyricsChars = bareLyricsCharsForDraft(repaired);
-    if (bareLyricsChars < minimumBareChars) {
+    const bareLyricsLines = bareLyricsLinesForDraft(repaired);
+    if (bareLyricsChars < minimumBareChars || bareLyricsLines < minimumBareLines) {
       repairNotes = [
-        `lyrics_too_short_for_duration_plan: bare lyric body ${bareLyricsChars}/${minimumBareChars}, planned bars ${durationPlan.totalPlannedBars}`
+        `lyrics_too_short_for_duration_plan: bare lyric body ${bareLyricsChars}/${minimumBareChars}, lines ${bareLyricsLines}/${minimumBareLines}, planned bars ${durationPlan.totalPlannedBars}`
       ];
       continue;
     }

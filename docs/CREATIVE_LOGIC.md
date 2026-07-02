@@ -37,7 +37,7 @@ The same decision feeds both lyric prompting and Suno style variation:
 The default 80-bar nu-jazz rap DurationPlan is dense by default. Verse 1 and Verse 2 should carry 14-16 lines each, roughly one lyric line per bar, with internal rhymes and controlled syllable density instead of spacious sketch writing.
 
 - Source of truth: `src/suno-production/durationPlan.ts`.
-- Bare lyrics must clear the enforced default floor of 1800 characters before a draft is accepted.
+- Bare lyrics must clear a dual floor before a draft is accepted: at least 1200 bare-lyric characters (80 bars x 15) AND at least 52 non-marker lyric lines. Either shortfall rejects the draft.
 - Short drafts trigger the existing lyrics repair/retry path and then `lyrics_generation_degraded` if all attempts stay thin.
 - Section marker annotations in Suno YAML stay compact, usually 2-5 words, so metadata does not consume the lyrics box.
 - `lyricsZone` reports overflow from the submitted Suno payload, but underused/near-max status is based on bare lyrics against the box remaining after markers.
