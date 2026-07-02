@@ -6,6 +6,7 @@ import { secretLikePattern } from "./personaMigrator.js";
 import { planQueryStrategy } from "./xQueryStrategyPlanner.js";
 import { extractPersonaMotifs, summarizeMotifs, type PersonaMotifBundle } from "./personaMotifExtractor.js";
 import { rankObservations, summarizeMatches, type ScoredObservation } from "./xObservationScorer.js";
+import { buildXObservationDiagnosticsSnapshot, writeXObservationDiagnostics } from "./xObservationDiagnostics.js";
 
 export interface XObservationContext {
   personaText?: string;
@@ -573,6 +574,13 @@ export async function collectObservations(root: string, context: XObservationCon
     const observations = renderObservation(filtered.entries, now, finalQuery, motifs, context.reactionSeed);
     await mkdir(dirname(path), { recursive: true });
     await writeFile(path, `${observations.trim()}\n`, "utf8");
+    const diagnostics = buildXObservationDiagnosticsSnapshot({
+      date: jstDate(now),
+      now,
+      attempts: queryAttempts,
+      acceptedCount: filtered.entries.length
+    });
+    await writeXObservationDiagnostics(root, diagnostics);
     const topScored = filtered.scored[0];
     emitRuntimeEvent({
       type: "observation_collected",

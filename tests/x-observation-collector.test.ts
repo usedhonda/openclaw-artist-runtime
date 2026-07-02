@@ -4,6 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it, vi } from "vitest";
 import { collectObservations, readTodayObservations } from "../src/services/xObservationCollector";
+import { readXObservationDiagnostics } from "../src/services/xObservationDiagnostics";
 import { isInCooldown } from "../src/services/birdRateLimiter";
 import { getRuntimeEventBus, type RuntimeEvent } from "../src/services/runtimeEventBus";
 
@@ -122,6 +123,46 @@ describe("x observation collector", () => {
     const cache = await readTodayObservations(root, new Date("2026-04-29T02:00:00.000Z"));
     expect(cache).toContain("Query: \"LUUP 事故\" lang:ja since:2026-04-22");
     expect(cache).toContain("便利の顔で危険を薄める街");
+  });
+
+  it("persists latest search diagnostics without rejected tweet content", async () => {
+    const root = workspace();
+    const result = await collectObservations(root, {
+      now: new Date("2026-04-29T02:00:00.000Z"),
+      queries: ["\"narrow\"", "\"broad\""],
+      runner: async (query?: string) => ({
+        stdout: query === "\"narrow\""
+          ? "private rejected body https://t.co/secret"
+          : ""
+      })
+    });
+
+    expect(result.status).toBe("collected");
+    const diagnostics = await readXObservationDiagnostics(root);
+    expect(diagnostics).toMatchObject({
+      date: "2026-04-29",
+      emptyCache: {
+        active: true,
+        ttlMinutes: 20,
+        until: "2026-04-29T02:20:00.000Z"
+      }
+    });
+    expect(diagnostics?.attempts.length).toBeGreaterThanOrEqual(2);
+    expect(diagnostics?.attempts[0]).toMatchObject({
+      query: "\"narrow\"",
+      rawCount: 1,
+      acceptedCount: 0,
+      rejectedCountsByReason: { short_url_only: 1 },
+      firstRejectionSample: {
+        reason: "short_url_only",
+        hasAuthor: false,
+        urlKind: "short",
+        hasPostedAt: false
+      }
+    });
+    const payload = JSON.stringify(diagnostics);
+    expect(payload).not.toContain("private rejected body");
+    expect(payload).not.toContain("https://t.co/secret");
   });
 
   it("does not exceed the remaining bird call budget while broadening", async () => {
