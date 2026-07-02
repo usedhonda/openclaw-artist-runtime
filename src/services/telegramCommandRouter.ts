@@ -1361,12 +1361,52 @@ function truncateInline(value: string, max: number): string {
   return collapsed.length <= max ? collapsed : `${collapsed.slice(0, max - 1)}…`;
 }
 
+function topRejectReasons(counts: Partial<Record<string, number>> | undefined): string {
+  const entries = Object.entries(counts ?? {})
+    .filter(([, count]) => typeof count === "number" && count > 0)
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, 3);
+  return entries.length > 0 ? entries.map(([reason, count]) => `${reason} x${count}`).join(", ") : "none";
+}
+
+function formatObservationDiagnostics(report: ObservationReport): string[] {
+  const diagnostics = report.diagnostics;
+  if (!diagnostics?.attempts.length) return [];
+  const lines = ["", "🔎 探し方"];
+  diagnostics.attempts.forEach((attempt, index) => {
+    const query = attempt.query?.trim() || "timeline";
+    lines.push(`${index + 1}. ${truncateInline(query, 160)} — raw ${attempt.rawCount} → accepted ${attempt.acceptedCount}`);
+    const rejectTop = topRejectReasons(attempt.rejectedCountsByReason);
+    if (rejectTop !== "none") {
+      lines.push(`   reject: ${rejectTop}`);
+    }
+  });
+  const totalRaw = diagnostics.attempts.reduce((sum, attempt) => sum + attempt.rawCount, 0);
+  const totalAccepted = diagnostics.attempts.reduce((sum, attempt) => sum + attempt.acceptedCount, 0);
+  const allRejects = topRejectReasons(diagnostics.attempts.reduce<Partial<Record<string, number>>>((counts, attempt) => {
+    for (const [reason, count] of Object.entries(attempt.rejectedCountsByReason)) {
+      counts[reason] = (counts[reason] ?? 0) + (count ?? 0);
+    }
+    return counts;
+  }, {}));
+  lines.push(`summary: raw ${totalRaw} → accepted ${totalAccepted}; rejected top: ${allRejects}`);
+  if (totalAccepted === 0) {
+    const reason = totalRaw === 0 ? "全クエリで raw 0" : `全候補が reject (${allRejects})`;
+    lines.push(`0件理由: ${reason}`);
+    if (diagnostics.emptyCache.active) {
+      lines.push(`空キャッシュ: ${diagnostics.emptyCache.ttlMinutes}分中${diagnostics.emptyCache.until ? ` (until ${diagnostics.emptyCache.until})` : ""}`);
+    }
+  }
+  return lines;
+}
+
 export function formatObservationsReport(report: ObservationReport): string {
   const header = `🌐 X 観察 ${report.date}`;
   if (!report.exists || report.entries.length === 0) {
     return [
       header,
       report.exists ? "(エントリなし)" : "(まだ収集されてない)",
+      ...formatObservationDiagnostics(report),
       `Source: ${report.path}`
     ].join("\n");
   }
@@ -1393,6 +1433,7 @@ export function formatObservationsReport(report: ObservationReport): string {
       lines.push(`   ${entry.url}`);
     }
   });
+  lines.push(...formatObservationDiagnostics(report));
   lines.push("");
   lines.push(`Source: ${report.path}`);
   const joined = lines.join("\n");

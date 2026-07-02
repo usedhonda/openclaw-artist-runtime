@@ -6,7 +6,7 @@ import { secretLikePattern } from "./personaMigrator.js";
 import { planQueryStrategy } from "./xQueryStrategyPlanner.js";
 import { extractPersonaMotifs, summarizeMotifs, type PersonaMotifBundle } from "./personaMotifExtractor.js";
 import { rankObservations, summarizeMatches, type ScoredObservation } from "./xObservationScorer.js";
-import { buildXObservationDiagnosticsSnapshot, writeXObservationDiagnostics } from "./xObservationDiagnostics.js";
+import { buildXObservationDiagnosticsSnapshot, readXObservationDiagnostics, writeXObservationDiagnostics, type XObservationDiagnosticsSnapshot } from "./xObservationDiagnostics.js";
 
 export interface XObservationContext {
   personaText?: string;
@@ -356,6 +356,7 @@ export interface ObservationReport {
     source?: string;
   };
   entries: XObservationEntry[];
+  diagnostics?: XObservationDiagnosticsSnapshot;
 }
 
 const isoDateOnlyPattern = /^\d{4}-\d{2}-\d{2}$/;
@@ -502,11 +503,13 @@ export async function readObservationsReport(root: string, dateOrNow: string | D
   const date = jstDate(now);
   const path = observationPath(root, now);
   const content = await readFile(path, "utf8").catch(() => "");
+  const diagnostics = await readXObservationDiagnostics(root);
+  const matchingDiagnostics = diagnostics?.date === date ? diagnostics : undefined;
   if (!content) {
-    return { date, path, exists: false, entries: [] };
+    return { date, path, exists: false, entries: [], diagnostics: matchingDiagnostics };
   }
   const { query, reactionSeed, entries } = parseObservationFile(content);
-  return { date, path, exists: true, query, reactionSeed, entries };
+  return { date, path, exists: true, query, reactionSeed, entries, diagnostics: matchingDiagnostics };
 }
 
 export async function collectObservations(root: string, context: XObservationContext = {}): Promise<XObservationResult> {
