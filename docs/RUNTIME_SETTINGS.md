@@ -68,6 +68,21 @@ diagnostic switches.
 | `OPENCLAW_BIRD_DAILY_MAX`, `OPENCLAW_BIRD_MIN_INTERVAL_MINUTES` | `/config/overrides` read/write helper only | Operator runtime safety override for Bird rate limiting; not part of the general Settings form. |
 | `OPENCLAW_PRE_GENERATION_APPROVAL`, debug/replay/watchdog env vars | Not shown in Settings | Operational/debug toggles. They should stay in runbooks and diagnostics, not become casual Settings controls. |
 
+## Observation Diagnostics
+
+X search diagnostics are read-only runtime facts, not editable settings. The
+latest collection writes `<workspace>/runtime/x-observation-diagnostics.json`
+and `/api/status` exposes the same safe summary as `observationDiagnostics`.
+
+Producer Room shows an `X search diagnostics` card with the attempted queries,
+raw result counts, accepted counts, and the top rejection reason. Telegram
+`/observations [YYYY-MM-DD]` appends the same search trail under `🔎 探し方`;
+this section is especially important when accepted observations are zero.
+
+Privacy rule: rejected tweet body text and rejected URLs are never displayed in
+Telegram, Producer Room, or status JSON. Only counts, rejection reason enums,
+and boolean/url-kind diagnostics are exposed.
+
 ## Retired Legacy Values
 
 | Legacy value | Current behavior |
