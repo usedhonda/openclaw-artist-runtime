@@ -52,6 +52,13 @@ export function runCycleFeedback(result: RunCycleResult): { reason: string; mess
   };
 }
 
+function topRejectReason(counts: Record<string, number> | undefined): string {
+  const top = Object.entries(counts ?? {})
+    .filter(([, count]) => count > 0)
+    .sort((a, b) => b[1] - a[1])[0];
+  return top ? `${top[0]} x${top[1]}` : "none";
+}
+
 type StatusResponse = {
   dryRun: boolean;
   summary?: {
@@ -158,6 +165,27 @@ type StatusResponse = {
       nextAllowedAt?: string;
     };
     ledger?: BirdLedgerDetail;
+  };
+  observationDiagnostics?: {
+    date: string;
+    collectedAt: string;
+    attempts: Array<{
+      query?: string;
+      rawCount: number;
+      acceptedCount: number;
+      rejectedCountsByReason: Record<string, number>;
+      firstRejectionSample?: {
+        reason: string;
+        hasAuthor: boolean;
+        urlKind: "full" | "short" | "missing";
+        hasPostedAt: boolean;
+      };
+    }>;
+    emptyCache: {
+      active: boolean;
+      ttlMinutes: number;
+      until?: string;
+    };
   };
   distribution?: {
     detected: DistributionDetectionDetail;
@@ -1496,6 +1524,31 @@ export function App() {
     <BirdCallLedgerCard ledger={status?.bird?.ledger} />
   );
 
+  const xSearchDiagnosticsPanel = (
+    <article className="panel">
+      <div className="section-title">X search diagnostics</div>
+      {status?.observationDiagnostics ? (
+        <div className="list">
+          <div className="item">
+            <strong>{status.observationDiagnostics.date}</strong>
+            <div className="muted">
+              collected {status.observationDiagnostics.collectedAt}
+              {status.observationDiagnostics.emptyCache.active ? ` · empty cache ${status.observationDiagnostics.emptyCache.ttlMinutes}m${status.observationDiagnostics.emptyCache.until ? ` until ${status.observationDiagnostics.emptyCache.until}` : ""}` : ""}
+            </div>
+          </div>
+          {status.observationDiagnostics.attempts.slice(0, 5).map((attempt, index) => (
+            <div className="item" key={`${attempt.query ?? "timeline"}-${index}`}>
+              <strong>{attempt.query || "timeline"}</strong>
+              <div className="muted">raw {attempt.rawCount} → accepted {attempt.acceptedCount} · reject {topRejectReason(attempt.rejectedCountsByReason)}</div>
+            </div>
+          ))}
+        </div>
+      ) : (
+        <div className="item muted">No X search diagnostics yet.</div>
+      )}
+    </article>
+  );
+
   const distributionDetectionPanel = (
     <DistributionDetectionCard detected={status?.distribution?.detected} />
   );
@@ -1838,10 +1891,10 @@ export function App() {
         <section className="single-column song-page-shell">{songDetailPanel}</section>
       ) : (
         <>
-          {activeView === "dashboard" ? <section className="two-column">{spawnProposalQueuePanel}{awaitingDecisionPanel}{systemStatusOverviewPanel}{sunoWorkerHandoffPanel}{manualSongCreatePanel}{runtimeActionMirrorPanel}{songLifecycleTimelinePanel}{pendingApprovalsPanel}{lastCyclePanel}{setupPanel}{alertsPanel}{currentSongPanel}{distributionWorkerPanel}{observabilityPanel}{recentXResultPanel}</section> : null}
+          {activeView === "dashboard" ? <section className="two-column">{spawnProposalQueuePanel}{awaitingDecisionPanel}{systemStatusOverviewPanel}{sunoWorkerHandoffPanel}{manualSongCreatePanel}{runtimeActionMirrorPanel}{songLifecycleTimelinePanel}{pendingApprovalsPanel}{lastCyclePanel}{setupPanel}{alertsPanel}{currentSongPanel}{distributionWorkerPanel}{xSearchDiagnosticsPanel}{observabilityPanel}{recentXResultPanel}</section> : null}
           {activeView === "setup" ? <section className="two-column">{setupPanel}{sunoPanel}{platformsPanel}{configPanel}</section> : null}
           {activeView === "music" ? <section className="two-column">{sunoWorkerHandoffPanel}{sunoPanel}{currentSongPanel}{recentXResultPanel}</section> : null}
-          {activeView === "platforms" ? <section className="two-column">{birdLedgerPanel}{distributionDetectionPanel}{runtimeActionMirrorPanel}{platformsPanel}{distributionWorkerPanel}{observabilityPanel}{replySimulationPanel}</section> : null}
+          {activeView === "platforms" ? <section className="two-column">{birdLedgerPanel}{xSearchDiagnosticsPanel}{distributionDetectionPanel}{runtimeActionMirrorPanel}{platformsPanel}{distributionWorkerPanel}{observabilityPanel}{replySimulationPanel}</section> : null}
           {activeView === "songs" ? <section className="two-column">{songChangeSetPanel}{runtimeSongbookPanel}{runtimeActionMirrorPanel}{songLifecycleTimelinePanel}{songsPanel}{currentSongPanel}</section> : null}
           {activeView === "prompt-ledger" ? <section className="two-column">{songsPanel}{promptLedgerPanel}</section> : null}
           {activeView === "alerts" ? <section className="two-column">{alertsPanel}{auditPanel}</section> : null}

@@ -828,7 +828,7 @@ function formatObservationMetadata(summary?: ObservationSummary): string[] {
 function topRuntimeRejectReason(counts: Partial<Record<string, number>> | undefined): string | undefined {
   return Object.entries(counts ?? {})
     .filter(([, count]) => typeof count === "number" && count > 0)
-    .sort((a, b) => b[1] - a[1])
+    .sort((a, b) => Number(b[1]) - Number(a[1]))
     .map(([reason, count]) => `${reason} x${count}`)[0];
 }
 

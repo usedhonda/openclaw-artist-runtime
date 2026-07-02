@@ -73,6 +73,58 @@ describe("status ticker and reply simulation routes", () => {
     expect(status.ticker.intervalMs).toBe(120000);
   });
 
+  it("surfaces X observation diagnostics in /api/status without rejected content", async () => {
+    const root = mkdtempSync(join(tmpdir(), "artist-runtime-status-x-diag-"));
+    await ensureArtistWorkspace(root);
+    await mkdir(join(root, "runtime"), { recursive: true });
+    await writeFile(join(root, "runtime", "x-observation-diagnostics.json"), `${JSON.stringify({
+      date: "2026-04-29",
+      collectedAt: "2026-04-29T02:00:00.000Z",
+      attempts: [
+        {
+          query: "\"narrow\"",
+          rawCount: 1,
+          acceptedCount: 0,
+          rejectedCountsByReason: { short_url_only: 1 },
+          firstRejectionSample: {
+            reason: "short_url_only",
+            hasAuthor: false,
+            urlKind: "short",
+            hasPostedAt: false
+          }
+        }
+      ],
+      emptyCache: {
+        active: true,
+        ttlMinutes: 20,
+        until: "2026-04-29T02:20:00.000Z"
+      }
+    }, null, 2)}\n`, "utf8");
+
+    const status = await buildStatusResponse({
+      artist: { workspaceRoot: root }
+    });
+
+    expect(status.observationDiagnostics).toMatchObject({
+      date: "2026-04-29",
+      attempts: [
+        {
+          query: "\"narrow\"",
+          rawCount: 1,
+          acceptedCount: 0,
+          rejectedCountsByReason: { short_url_only: 1 }
+        }
+      ],
+      emptyCache: {
+        active: true,
+        ttlMinutes: 20
+      }
+    });
+    const payload = JSON.stringify(status.observationDiagnostics);
+    expect(payload).not.toContain("private rejected body");
+    expect(payload).not.toContain("https://t.co/secret");
+  });
+
   it("reads persisted config overrides into /api/status", async () => {
     const root = mkdtempSync(join(tmpdir(), "artist-runtime-status-config-"));
     await ensureArtistWorkspace(root);

@@ -48,6 +48,7 @@ import { routeTelegramCallback } from "../services/telegramCallbackHandler.js";
 import { getTelegramOwnerUserIds } from "../services/telegramAuth.js";
 import type { TelegramClient } from "../services/telegramClient.js";
 import { TelegramNotifier } from "../services/telegramNotifier.js";
+import { readXObservationDiagnostics } from "../services/xObservationDiagnostics.js";
 import { integerFromPayloadOrQuery, isLocalRoutePayload, optionalInteger, payloadInteger, payloadRecord, queryValueFromPayload } from "./payloadHelpers.js";
 import { serializeRuntimeEventForSse } from "./runtimeEventStream.js";
 import type {
@@ -1279,11 +1280,12 @@ export async function buildStatusResponse(config?: Partial<ArtistRuntimeConfig>)
     buildDistributionSummary(mergedConfig, platforms),
     buildAwaitingSunoTakeUrlReady(mergedConfig.artist.workspaceRoot)
   ]);
-  const [recentDistributionEvents, platformStats, runtimeEventsLedger, telegramInbound] = await Promise.all([
+  const [recentDistributionEvents, platformStats, runtimeEventsLedger, telegramInbound, observationDiagnostics] = await Promise.all([
     readDistributionEvents(mergedConfig.artist.workspaceRoot, 20),
     buildPlatformStats(mergedConfig.artist.workspaceRoot),
     readRuntimeEvents(mergedConfig.artist.workspaceRoot, 20),
-    readReceiveHealth(mergedConfig.artist.workspaceRoot)
+    readReceiveHealth(mergedConfig.artist.workspaceRoot),
+    readXObservationDiagnostics(mergedConfig.artist.workspaceRoot)
   ]);
   const setupReadiness = await buildSetupReadiness(mergedConfig, autopilotStatus, sunoWorker, platforms, workspaceStatus);
   const effectiveDryRunMap = buildEffectiveDryRunMap(mergedConfig);
@@ -1316,6 +1318,7 @@ export async function buildStatusResponse(config?: Partial<ArtistRuntimeConfig>)
       rateLimit: birdRateLimit,
       ledger: birdLedger
     },
+    observationDiagnostics,
     distribution: {
       detected: distributionDetection.detected
     },

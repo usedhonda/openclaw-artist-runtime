@@ -1169,6 +1169,27 @@ export interface StatusResponse {
       nextAllowedAt?: string;
     };
   };
+  observationDiagnostics?: {
+    date: string;
+    collectedAt: string;
+    attempts: Array<{
+      query?: string;
+      rawCount: number;
+      acceptedCount: number;
+      rejectedCountsByReason: Partial<Record<string, number>>;
+      firstRejectionSample?: {
+        reason: string;
+        hasAuthor: boolean;
+        urlKind: "full" | "short" | "missing";
+        hasPostedAt: boolean;
+      };
+    }>;
+    emptyCache: {
+      active: boolean;
+      ttlMinutes: number;
+      until?: string;
+    };
+  };
   distribution?: {
     detected: {
       unitedMasters?: { url?: string; detectedAt?: string; lastCheckedAt?: string };

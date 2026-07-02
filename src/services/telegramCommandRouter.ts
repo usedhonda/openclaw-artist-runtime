@@ -1364,7 +1364,7 @@ function truncateInline(value: string, max: number): string {
 function topRejectReasons(counts: Partial<Record<string, number>> | undefined): string {
   const entries = Object.entries(counts ?? {})
     .filter(([, count]) => typeof count === "number" && count > 0)
-    .sort((a, b) => b[1] - a[1])
+    .sort((a, b) => Number(b[1]) - Number(a[1]))
     .slice(0, 3);
   return entries.length > 0 ? entries.map(([reason, count]) => `${reason} x${count}`).join(", ") : "none";
 }
