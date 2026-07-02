@@ -29,6 +29,11 @@ export const PLAYWRIGHT_TITLE_REQUIRED_REASON = "playwright_title_required";
 export const PLAYWRIGHT_IMPORT_NO_URLS_REASON = "playwright_import_no_urls";
 export const PLAYWRIGHT_POLL_INTERVAL_MS = 3_000;
 export const PLAYWRIGHT_POLL_TIMEOUT_MS = 10 * 60 * 1_000;
+// suno.com/create can sit on a Clerk __clerk_handshake skeleton for ~10s, so every element
+// wait on the create path (form readiness, lyrics mode, field fills, instrumental toggle,
+// Create button click) shares one generous timeout instead of per-step 5s waits that race
+// the handshake and fail as false dom_missing / timeouts.
+export const CREATE_STEP_TIMEOUT_MS = 25_000;
 export const PLAYWRIGHT_CREATE_CARD_TIMEOUT_MS = 3 * 60 * 1_000;
 export const PLAYWRIGHT_EXPECTED_CREATE_CARD_COUNT = 2;
 export const PLAYWRIGHT_CREATE_CARD_REASON = "submitted_via_create_card";
@@ -184,7 +189,7 @@ export class PlaywrightSunoDriver implements SunoBrowserDriver {
         };
       }
 
-      await page.locator('button[aria-label="Create song"]').click({ timeout: 10_000 });
+      await page.locator('button[aria-label="Create song"]').click({ timeout: CREATE_STEP_TIMEOUT_MS });
       await page.waitForLoadState("domcontentloaded").catch(() => undefined);
       const generated = await this.pollForGeneratedSongs(page, baselineCreateUrls, title);
       if (generated.urls.length >= PLAYWRIGHT_EXPECTED_CREATE_CARD_COUNT) {
@@ -532,7 +537,7 @@ export class PlaywrightSunoDriver implements SunoBrowserDriver {
       };
       if (buttonWithOptionalMethods.waitFor) {
         try {
-          await buttonWithOptionalMethods.waitFor({ state: "visible", timeout: 5_000 });
+          await buttonWithOptionalMethods.waitFor({ state: "visible", timeout: CREATE_STEP_TIMEOUT_MS });
         } catch (error) {
           if (buttonWithOptionalMethods.isEnabled) {
             throw error;
@@ -618,7 +623,7 @@ export class PlaywrightSunoDriver implements SunoBrowserDriver {
     };
     if (fieldWithOptionalMethods.waitFor) {
       try {
-        await fieldWithOptionalMethods.waitFor({ state: "visible", timeout: 5_000 });
+        await fieldWithOptionalMethods.waitFor({ state: "visible", timeout: CREATE_STEP_TIMEOUT_MS });
       } catch (error) {
         if (fieldWithOptionalMethods.evaluate) {
           throw error;
@@ -709,7 +714,7 @@ export class PlaywrightSunoDriver implements SunoBrowserDriver {
     if (typeof first.waitFor !== "function") {
       return;
     }
-    const timeoutMs = 20_000;
+    const timeoutMs = CREATE_STEP_TIMEOUT_MS;
     // Any-of-visible: resolve as soon as ONE selector is visible. A comma-joined
     // locator's .first() pins to the first DOM match and would wait forever on an
     // existing-but-hidden element (e.g. a skeleton styles-wrapper) even while the
@@ -729,7 +734,7 @@ export class PlaywrightSunoDriver implements SunoBrowserDriver {
   private async ensureLyricsMode(page: Page): Promise<void> {
     const textarea = page.locator('textarea[data-testid="lyrics-textarea"]');
     try {
-      await textarea.first().waitFor({ state: "visible", timeout: 25_000 });
+      await textarea.first().waitFor({ state: "visible", timeout: CREATE_STEP_TIMEOUT_MS });
       return;
     } catch {
       // Suno's React mount can lag after domcontentloaded; fall through only if the toggle is usable.
