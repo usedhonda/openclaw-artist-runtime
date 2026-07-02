@@ -501,6 +501,7 @@ export class PlaywrightSunoDriver implements SunoBrowserDriver {
       title?: string;
     }
   ): Promise<SunoLyricsSubmitTelemetry | undefined> {
+    await this.waitForCreateFormReady(page);
     let lyricsTelemetry: SunoLyricsSubmitTelemetry | undefined;
     if (input.lyrics) {
       lyricsTelemetry = await this.fillLyricsWithDegradedRecovery(page, input.lyrics);
@@ -691,10 +692,33 @@ export class PlaywrightSunoDriver implements SunoBrowserDriver {
     );
   }
 
+  // suno.com/create routes through a Clerk __clerk_handshake redirect and can show an
+  // app-shell skeleton + spinner for several seconds on a fresh persistent-context launch.
+  // Wait for the create form to actually render before touching any field, using a resilient
+  // multi-selector so a single relabeled element does not defeat the guard.
+  private async waitForCreateFormReady(page: Page): Promise<void> {
+    const formReady = page.locator(
+      'textarea[data-testid="lyrics-textarea"], button[aria-label="Add your own lyrics"], [data-testid="create-form-styles-wrapper"], button[aria-label="Create song"]'
+    );
+    const first = formReady.first() as unknown as {
+      waitFor?: (options: { state: "visible"; timeout: number }) => Promise<void>;
+    };
+    if (!first.waitFor) {
+      return;
+    }
+    try {
+      await first.waitFor({ state: "visible", timeout: 20_000 });
+    } catch {
+      throw new Error(
+        `${PLAYWRIGHT_CREATE_DOM_MISSING_REASON}: create form not found within 20000ms; lyrics textarea, add-lyrics button, styles wrapper, and create button never became visible after Clerk handshake`
+      );
+    }
+  }
+
   private async ensureLyricsMode(page: Page): Promise<void> {
     const textarea = page.locator('textarea[data-testid="lyrics-textarea"]');
     try {
-      await textarea.first().waitFor({ state: "visible", timeout: 5_000 });
+      await textarea.first().waitFor({ state: "visible", timeout: 25_000 });
       return;
     } catch {
       // Suno's React mount can lag after domcontentloaded; fall through only if the toggle is usable.

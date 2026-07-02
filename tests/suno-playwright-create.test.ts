@@ -82,11 +82,14 @@ function createPage() {
     evaluate: vi.fn(async () => songUrlSnapshots.shift() ?? []),
     locator: vi.fn((selector: string) => {
       selectors.push(selector);
+      // A comma-joined locator (e.g. the create-form-ready guard) is visible when any of
+      // its constituent selectors is visible, mirroring real Playwright CSS-list semantics.
+      const anyVisible = () => selector.split(",").some((part) => visible[part.trim()] ?? false);
       return {
       first: () => ({
-        isVisible: vi.fn(async () => visible[selector] ?? false),
+        isVisible: vi.fn(async () => anyVisible()),
         waitFor: vi.fn(async () => {
-          if (visible[selector]) {
+          if (anyVisible()) {
             return;
           }
           throw new Error(`not visible: ${selector}`);
@@ -240,6 +243,9 @@ describe("PlaywrightSunoDriver create", () => {
     const { page, context } = createContext();
     page.visible["textarea[data-testid=\"lyrics-textarea\"]"] = false;
     page.visible["button[aria-label=\"Add your own lyrics\"]"] = false;
+    // Form shell rendered (styles wrapper visible) but the lyrics textarea/toggle are hidden,
+    // so the create-form-ready guard passes and ensureLyricsMode exercises the "toggle hidden" branch.
+    page.visible["[data-testid=\"create-form-styles-wrapper\"]"] = true;
     launchPersistentContextMock.mockResolvedValue(context);
     const driver = new PlaywrightSunoDriver(".openclaw-browser-profiles/suno", "skip");
 
