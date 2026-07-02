@@ -235,14 +235,17 @@ export async function buildSunoArtifactIndex(root: string): Promise<SunoArtifact
 export async function generateSunoRun(input: GenerateSunoRunInput): Promise<SunoRunRecord> {
   const config = applyRuntimeEnvOverrides(applyConfigDefaults(input.config));
   const connector = new BrowserWorkerSunoConnector(input.workspaceRoot, { config });
-  const workerStatus = input.workerState ? { state: input.workerState } : await connector.status();
+  const workerStatus = input.workerState
+    ? { state: input.workerState }
+    : await connector.status().catch(() => undefined);
+  const workerState = workerStatus?.state ?? "disconnected";
   const { payload, payloadHash, payloadPath } = await loadPayload(input.workspaceRoot, input.songId);
   let authorityDecision = decideMusicAuthority({
     dryRun: config.autopilot.dryRun,
     authority: config.music.suno.authority,
     budgetRemaining: config.music.suno.monthlyGenerationBudget,
     connectionMode: config.music.suno.connectionMode,
-    workerState: workerStatus.state,
+    workerState,
     requestedAction: "create"
   });
   if (authorityDecision.allowed) {
