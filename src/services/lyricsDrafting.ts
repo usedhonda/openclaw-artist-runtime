@@ -12,6 +12,7 @@ import { buildLyricsDraftingPrompt, readLyricsKnowledgeDigest } from "./lyricsDr
 import { parseLyricsLanguagePolicy } from "./lyricsLanguagePolicy.js";
 import { getArtistIdentity, getSunoLyricsLimit } from "./runtimeConfig.js";
 import { decideDopagakiVariation } from "./creativeVariationPolicy.js";
+import { getDurationPlan, minimumBareLyricsChars } from "../suno-production/durationPlan.js";
 
 export interface DraftLyricsInput {
   workspaceRoot: string;
@@ -88,18 +89,47 @@ function mockStructuredDraft(title: string, briefText: string): string {
   const source = rawSource.replace(/^-\s*text:\s*"?(.+?)"?\s*$/i, "$1");
   const safeTitle = JSON.stringify(title.split(/\s+/).slice(0, 4).join(" ") || "Night Ledger");
   const safeSource = JSON.stringify(sunoSafeMockLine(source).slice(0, 60));
+  const verseOneLines = Array.from({ length: 16 }, (_, index) => `しぶやのガラスがまたあんぜんのふりをして${index % 2 === 0 ? "だれかのせきにんだけうすくぬるからのポケットにさびたひかりをつめる" : "べんりなかおでよるをすりへらすからのからだにノイズをのこす"}まだほこりがむねでなる`);
+  const verseTwoLines = Array.from({ length: 16 }, (_, index) => `ひくいベースがからっぽなりんぎをゆらして${index % 2 === 0 ? "きれいなことばほどくつあとをけすからのまどにほこりをためる" : "まちのねつだけのどにのこるからのサインをかみくだく"}まだがいとうがおくれてまたたく`);
+  const prehookOneLines = [
+    "safe safe ってだれのため",
+    "white white なかべがわらう",
+    "ひびだけがさきにうたう",
+    "まだかえさない"
+  ];
+  const prehookTwoLines = [
+    "fast fast でまわるあかり",
+    "late late なこえがのこる",
+    "からのサインがむねをける",
+    "まだとまらない"
+  ];
+  const hookLines = [
+    "にげたこえをおわない",
+    "がめんのそとでなる",
+    "にげたこえをおわない",
+    "safe safe だけじゃたりない"
+  ];
+  const bridgeLines = [
+    "それでもつめのさきだけあつい",
+    "だまったままかどをまがる",
+    "きれいなビルほどかげをふやす",
+    "こわれたまちでもまだうたう",
+    "はくしゅのあとでほこりがたつ"
+  ];
   return [
     "{",
     `  "title": ${safeTitle},`,
     "  \"form\": \"nine-section compact pop\",",
     "  \"sections\": [",
     `    { "tag": "Intro - muted street image", "lines": [${safeSource}] },`,
-    "    { \"tag\": \"Verse 1 - tight civic flow\", \"lines\": [\"だれもみないまどにだけしんごうがのこる\", \"きどくのまちでせきにんだけがおくれる\", \"ひくいベースがなまえをけずっていく\", \"あさのてまえでまだいきをかぞえる\"] },",
-    "    { \"tag\": \"Hook - repeated anchor\", \"lines\": [\"にげたこえをおわない\", \"がめんのそとでなる\", \"にげたこえをおわない\"] },",
-    "    { \"tag\": \"Verse 2 - detail turn\", \"lines\": [\"べんりなはしほどあしあとをけした\", \"かみだなみたいなりんぎがしろくひかる\", \"わらったかおだけログにのこって\", \"だれのよるかをだれもいわない\"] },",
-    "    { \"tag\": \"Bridge - thin contrast\", \"lines\": [\"それでもつめのさきだけあつい\", \"だまったままかどをまがる\"] },",
-    "    { \"tag\": \"Verse 3 - consequence\", \"lines\": [\"さびたとけいがにびょうだけずれる\", \"ふるいてんめいがあめでほどける\", \"とおいつうちにがいとうがまたたく\", \"まだきえないものをひろう\"] },",
-    "    { \"tag\": \"Hook - final anchor\", \"lines\": [\"にげたこえをおわない\", \"がめんのそとでなる\", \"にげたこえをおわない\"] },",
+    `    { "tag": "Verse 1 - tight civic flow", "lines": ${JSON.stringify(verseOneLines)} },`,
+    `    { "tag": "Pre-Hook - pressure turn", "lines": ${JSON.stringify(prehookOneLines)} },`,
+    `    { "tag": "Hook - repeated anchor", "lines": ${JSON.stringify(hookLines)} },`,
+    `    { "tag": "Verse 2 - detail turn", "lines": ${JSON.stringify(verseTwoLines)} },`,
+    `    { "tag": "Pre-Hook 2 - pressure answer", "lines": ${JSON.stringify(prehookTwoLines)} },`,
+    `    { "tag": "Hook 2 - repeated anchor", "lines": ${JSON.stringify(hookLines)} },`,
+    `    { "tag": "Bridge - thin contrast", "lines": ${JSON.stringify(bridgeLines)} },`,
+    `    { "tag": "Final Hook - final anchor", "lines": ${JSON.stringify([...hookLines, "はくしゅよりさきにほこりがたつ"])} },`,
     "    { \"tag\": \"Outro - hard stop\", \"lines\": [\"よあけだけがみそうしんのまま\"] }",
     "  ],",
     "  \"bilingual_hint\": \"keep Japanese main text\",",
@@ -159,6 +189,15 @@ function lyricBodyLimitForSunoBox(boxLimit: number): number {
   return Math.max(200, Math.min(3400, boxLimit - 900));
 }
 
+function bareLyricsCharsForDraft(lyrics: string): number {
+  return lyrics
+    .split(/\r?\n/)
+    .filter((line) => !/^\s*\[[^\]]+\]\s*$/.test(line.trim()))
+    .join("\n")
+    .trim()
+    .length;
+}
+
 async function composeLyricsDraft(input: DraftLyricsInput, title: string, briefText: string): Promise<LyricsDraft> {
   const provider = input.aiReviewProvider ?? input.config?.aiReview?.provider ?? "mock";
   const mind = await readArtistMind(input.workspaceRoot);
@@ -167,6 +206,8 @@ async function composeLyricsDraft(input: DraftLyricsInput, title: string, briefT
   const languagePolicy = parseLyricsLanguagePolicy(mind.artist);
   const lyricsBoxLimit = getSunoLyricsLimit();
   const lyricBodyLimit = lyricBodyLimitForSunoBox(lyricsBoxLimit);
+  const durationPlan = getDurationPlan();
+  const minimumBareChars = minimumBareLyricsChars();
   const dopagakiVariation = decideDopagakiVariation({
     songId: input.songId,
     briefText
@@ -204,6 +245,13 @@ async function composeLyricsDraft(input: DraftLyricsInput, title: string, briefT
     if (repaired.length > lyricBodyLimit) {
       repairNotes = [
         `lyrics_too_long_for_suno_box: lyric body ${repaired.length}/${lyricBodyLimit}, lyrics box ${lyricsBoxLimit}`
+      ];
+      continue;
+    }
+    const bareLyricsChars = bareLyricsCharsForDraft(repaired);
+    if (bareLyricsChars < minimumBareChars) {
+      repairNotes = [
+        `lyrics_too_short_for_duration_plan: bare lyric body ${bareLyricsChars}/${minimumBareChars}, planned bars ${durationPlan.totalPlannedBars}`
       ];
       continue;
     }

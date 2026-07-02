@@ -46,17 +46,25 @@ function fieldDraft(lyrics: string): string {
 }
 
 function goodJsonDraft(): string {
+  const verseOneLines = Array.from({ length: 16 }, (_, index) => `誰も見ない窓にだけ信号が残る 既読の街で責任だけが遅れる ${index % 2 === 0 ? "低いベースが名前を削っていく からの埃がまだ胸で鳴る" : "朝の手前でまだ息を数える からの安全だけ白く剥がれる"}`);
+  const verseTwoLines = Array.from({ length: 16 }, (_, index) => `便利な橋ほど足跡を消した 神棚みたいな稟議が白く光る ${index % 2 === 0 ? "笑った顔だけログに残って からのサインが喉を叩く" : "誰の夜かを誰も言わない からの街灯が遅れて瞬く"}`);
+  const prehookOneLines = ["逃げた声を追わない", "画面の外で鳴る", "安全のふりだけ白くなる", "まだ角の埃が熱を持つ"];
+  const prehookTwoLines = ["錆びた時計が二拍だけずれる", "古い店名が雨でほどける", "遠い通知に街灯が瞬く", "まだ消えないものを拾う"];
+  const hookLines = ["逃げた声を追わない", "画面の外で鳴る", "逃げた声を追わない", "拍手より先に埃が立つ"];
+  const bridgeLines = ["それでも爪の先だけ熱い", "黙ったまま角を曲がる", "白い壁だけ安全のふりをする", "低いベースが名前を削っていく", "夜明けだけが未送信のまま"];
   return JSON.stringify({
     title: "Repair Night",
     form: "compact pop",
     sections: [
       { tag: "Intro - muted street image", lines: ["駅前の時計だけが少し遅れる"] },
-      { tag: "Verse 1 - tight civic flow", lines: ["誰も見ない窓にだけ信号が残る", "既読の街で責任だけが遅れる", "低いベースが名前を削っていく", "朝の手前でまだ息を数える"] },
-      { tag: "Hook - repeated anchor", lines: ["逃げた声を追わない", "画面の外で鳴る", "逃げた声を追わない"] },
-      { tag: "Verse 2 - detail turn", lines: ["便利な橋ほど足跡を消した", "神棚みたいな稟議が白く光る", "笑った顔だけログに残って", "誰の夜かを誰も言わない"] },
-      { tag: "Bridge - thin contrast", lines: ["それでも爪の先だけ熱い", "黙ったまま角を曲がる"] },
-      { tag: "Verse 3 - consequence", lines: ["錆びた時計が二拍だけずれる", "古い店名が雨でほどける", "遠い通知に街灯が瞬く", "まだ消えないものを拾う"] },
-      { tag: "Hook - final anchor", lines: ["逃げた声を追わない", "画面の外で鳴る", "逃げた声を追わない"] },
+      { tag: "Verse 1 - tight civic flow", lines: verseOneLines },
+      { tag: "Pre-Hook - pressure turn", lines: prehookOneLines },
+      { tag: "Hook - repeated anchor", lines: hookLines },
+      { tag: "Verse 2 - detail turn", lines: verseTwoLines },
+      { tag: "Pre-Hook 2 - pressure answer", lines: prehookTwoLines },
+      { tag: "Hook 2 - final anchor", lines: hookLines },
+      { tag: "Bridge - thin contrast", lines: bridgeLines },
+      { tag: "Final Hook - final anchor", lines: [...hookLines, "夜明けだけが未送信のまま"] },
       { tag: "Outro - hard stop", lines: ["夜明けだけが未送信のまま"] }
     ],
     bilingual_hint: "Japanese main text",
@@ -69,14 +77,14 @@ describe("lyrics drafting repair-not-reject orchestration", () => {
     callAiProviderMock.mockReset();
   });
 
-  it("repairs a structurally rough provider draft without retrying", async () => {
+  it("accepts a dense provider draft without retrying", async () => {
     const root = await workspace();
-    callAiProviderMock.mockResolvedValueOnce(fieldDraft(fixture("lyrics-v55-bad-no-tags.md")));
+    callAiProviderMock.mockResolvedValueOnce(goodJsonDraft());
 
     const result = await draftLyrics({ workspaceRoot: root, songId: "song-001", aiReviewProvider: "openai-codex" });
 
     expect(callAiProviderMock).toHaveBeenCalledTimes(1);
-    expect(result.lyricsText).toContain("[Verse 1 - tight flow]");
+    expect(result.lyricsText).toContain("[Verse 1 - tight civic flow]");
     expect((await readSongState(root, "song-001")).degradedLyrics).toBe(false);
   });
 
@@ -90,7 +98,7 @@ describe("lyrics drafting repair-not-reject orchestration", () => {
     const result = await draftLyrics({ workspaceRoot: root, songId: "song-001", aiReviewProvider: "openai-codex" });
 
     expect(callAiProviderMock).toHaveBeenCalledTimes(3);
-    expect(result.lyricsText).toContain("[Hook - final anchor]");
+    expect(result.lyricsText).toContain("[Final Hook - final anchor]");
     expect((await readSongState(root, "song-001")).degradedLyrics).toBe(false);
   });
 
@@ -116,7 +124,7 @@ describe("lyrics drafting repair-not-reject orchestration", () => {
       type: "lyrics_generation_degraded",
       reason: thrown?.message,
       detail: expect.any(String),
-      repairNotes: expect.arrayContaining([expect.stringContaining(":")])
+      repairNotes: expect.arrayContaining([expect.stringContaining("lyrics_too_short_for_duration_plan")])
     });
     if (degraded?.type === "lyrics_generation_degraded") {
       expect(thrown?.message).toContain(degraded.detail);

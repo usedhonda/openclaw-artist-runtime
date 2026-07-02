@@ -143,6 +143,10 @@ export function getDurationPlan(): DurationPlan {
   return DEFAULT_DURATION_PLAN;
 }
 
+export function minimumBareLyricsChars(plan: DurationPlan = getDurationPlan()): number {
+  return Math.round(plan.totalPlannedBars * 22.5);
+}
+
 function normalizeSectionLabel(value: string): string {
   return value.toLowerCase().replace(/[\s_-]+/g, "");
 }
