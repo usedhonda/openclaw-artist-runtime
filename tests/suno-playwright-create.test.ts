@@ -82,14 +82,11 @@ function createPage() {
     evaluate: vi.fn(async () => songUrlSnapshots.shift() ?? []),
     locator: vi.fn((selector: string) => {
       selectors.push(selector);
-      // A comma-joined locator (e.g. the create-form-ready guard) is visible when any of
-      // its constituent selectors is visible, mirroring real Playwright CSS-list semantics.
-      const anyVisible = () => selector.split(",").some((part) => visible[part.trim()] ?? false);
       return {
       first: () => ({
-        isVisible: vi.fn(async () => anyVisible()),
+        isVisible: vi.fn(async () => visible[selector] ?? false),
         waitFor: vi.fn(async () => {
-          if (anyVisible()) {
+          if (visible[selector]) {
             return;
           }
           throw new Error(`not visible: ${selector}`);
@@ -257,6 +254,33 @@ describe("PlaywrightSunoDriver create", () => {
     });
 
     expect(page.clicks).not.toContain("button[aria-label=\"Add your own lyrics\"]");
+    expect(page.fills).toContainEqual({
+      selector: "textarea[data-testid=\"lyrics-textarea\"]",
+      value: "line one"
+    });
+  });
+
+  it("passes the create-form-ready guard when only a later selector (Create song) is visible", async () => {
+    // Regression: the guard must be any-of-visible. Here every earlier selector is hidden
+    // (lyrics textarea, add-lyrics button, styles wrapper) and only the last one, the Create
+    // song button, is visible. A comma-joined locator.first() would pin to the first DOM
+    // match and time out; Promise.any resolves on the visible Create button.
+    const { page, context } = createContext();
+    page.visible["textarea[data-testid=\"lyrics-textarea\"]"] = false;
+    page.visible["button[aria-label=\"Add your own lyrics\"]"] = false;
+    page.visible["button[aria-label=\"Create song\"]"] = true;
+    launchPersistentContextMock.mockResolvedValue(context);
+    const driver = new PlaywrightSunoDriver(".openclaw-browser-profiles/suno", "skip");
+
+    const result = await driver.create({
+      dryRun: false,
+      authority: "auto_create_and_select_take",
+      runId: "run-any-of-visible",
+      payload: { lyrics: "line one" }
+    });
+
+    expect(result.reason).toBe(PLAYWRIGHT_CREATE_SKIPPED_REASON);
+    expect(result.reason).not.toContain(PLAYWRIGHT_CREATE_DOM_MISSING_REASON);
     expect(page.fills).toContainEqual({
       selector: "textarea[data-testid=\"lyrics-textarea\"]",
       value: "line one"

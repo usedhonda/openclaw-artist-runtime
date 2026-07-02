@@ -695,22 +695,33 @@ export class PlaywrightSunoDriver implements SunoBrowserDriver {
   // suno.com/create routes through a Clerk __clerk_handshake redirect and can show an
   // app-shell skeleton + spinner for several seconds on a fresh persistent-context launch.
   // Wait for the create form to actually render before touching any field, using a resilient
-  // multi-selector so a single relabeled element does not defeat the guard.
+  // set of selectors so a single relabeled element does not defeat the guard.
   private async waitForCreateFormReady(page: Page): Promise<void> {
-    const formReady = page.locator(
-      'textarea[data-testid="lyrics-textarea"], button[aria-label="Add your own lyrics"], [data-testid="create-form-styles-wrapper"], button[aria-label="Create song"]'
-    );
-    const first = formReady.first() as unknown as {
+    const selectors = [
+      'textarea[data-testid="lyrics-textarea"]',
+      'button[aria-label="Add your own lyrics"]',
+      '[data-testid="create-form-styles-wrapper"]',
+      'button[aria-label="Create song"]'
+    ];
+    const first = page.locator(selectors[0]).first() as unknown as {
       waitFor?: (options: { state: "visible"; timeout: number }) => Promise<void>;
     };
-    if (!first.waitFor) {
+    if (typeof first.waitFor !== "function") {
       return;
     }
+    const timeoutMs = 20_000;
+    // Any-of-visible: resolve as soon as ONE selector is visible. A comma-joined
+    // locator's .first() pins to the first DOM match and would wait forever on an
+    // existing-but-hidden element (e.g. a skeleton styles-wrapper) even while the
+    // add-lyrics / create buttons are already visible. Promise.any waits per-selector
+    // and ignores the ones that stay hidden or absent.
     try {
-      await first.waitFor({ state: "visible", timeout: 20_000 });
+      await Promise.any(
+        selectors.map((selector) => page.locator(selector).first().waitFor({ state: "visible", timeout: timeoutMs }))
+      );
     } catch {
       throw new Error(
-        `${PLAYWRIGHT_CREATE_DOM_MISSING_REASON}: create form not found within 20000ms; lyrics textarea, add-lyrics button, styles wrapper, and create button never became visible after Clerk handshake`
+        `${PLAYWRIGHT_CREATE_DOM_MISSING_REASON}: create form not found within ${timeoutMs}ms; lyrics textarea, add-lyrics button, styles wrapper, and create button never became visible after Clerk handshake`
       );
     }
   }
