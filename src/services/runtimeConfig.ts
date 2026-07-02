@@ -451,6 +451,29 @@ function deepMergeRuntimeOverrides(current: ConfigOverridesRecord, patch: Runtim
   };
 }
 
+// Retired legacy overrides that are ignored by resolved config and should be
+// physically removed from config-overrides.json on the next write. Pruning here
+// keeps resolved-config semantics unchanged (the key is already ignored) and
+// only strips dead state. Idempotent and safe when the key is absent.
+function pruneRetiredOverrideKeys(value: unknown): unknown {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return value;
+  }
+  const record = value as Record<string, unknown>;
+  const suno = record.suno;
+  if (suno && typeof suno === "object" && !Array.isArray(suno) && "dailyBudget" in (suno as Record<string, unknown>)) {
+    const { dailyBudget: _dailyBudget, ...restSuno } = suno as Record<string, unknown>;
+    const next = { ...record };
+    if (Object.keys(restSuno).length > 0) {
+      next.suno = restSuno;
+    } else {
+      delete next.suno;
+    }
+    return next;
+  }
+  return value;
+}
+
 async function writeOverridesFile(root: string, value: unknown): Promise<void> {
   const path = configOverridePath(root);
   const runtimeDir = dirname(path);
@@ -459,8 +482,9 @@ async function writeOverridesFile(root: string, value: unknown): Promise<void> {
   if (existing) {
     await copyFile(path, configOverrideBackupPath(root)).catch((error) => logRuntimeConfigFailure("config override backup", error));
   }
+  const pruned = pruneRetiredOverrideKeys(value);
   const tmpPath = `${path}.${process.pid}.${Date.now()}.tmp`;
-  await writeFile(tmpPath, `${JSON.stringify(value, null, 2)}\n`, "utf8");
+  await writeFile(tmpPath, `${JSON.stringify(pruned, null, 2)}\n`, "utf8");
   await rename(tmpPath, path);
 }
 

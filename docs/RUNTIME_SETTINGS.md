@@ -156,7 +156,7 @@ collection mechanism, see [Observation Pipeline](OBSERVATION_PIPELINE.md).
 
 | Legacy value | Current behavior |
 | --- | --- |
-| `suno.dailyBudget` in `config-overrides.json` | Retired. It may remain in raw overrides for compatibility, but it is ignored by resolved config and no longer gates generation. |
+| `suno.dailyBudget` in `config-overrides.json` | Retired. It is ignored by resolved config and no longer gates generation. It is auto-pruned from `config-overrides.json` on the next overrides write (any config or safety-override update). |
 | `OPENCLAW_SUNO_DAILY_BUDGET` | Retired. Suno daily credit budget is `music.suno.dailyCreditLimit`; daily create-run cap is `music.suno.maxGenerationsPerDay`. |
 | `autopilot.intervalMinutes` | Compatibility read. It is normalized to `autopilot.cycleIntervalMinutes` and removed from resolved config. |
 

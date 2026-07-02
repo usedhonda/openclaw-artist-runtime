@@ -140,6 +140,26 @@ describe("config overrides route", () => {
     expect((response.json().errors as string[]).join(" ")).toContain("unknown override key: suno");
   });
 
+  it("prunes retired suno.dailyBudget from the persisted file on next write, preserving other keys", async () => {
+    const root = mkdtempSync(join(tmpdir(), "artist-runtime-api-overrides-prune-"));
+    await ensureArtistWorkspace(root);
+    const overridesPath = join(root, "runtime", "config-overrides.json");
+    mkdirSync(join(root, "runtime"), { recursive: true });
+    writeFileSync(
+      overridesPath,
+      JSON.stringify({ suno: { dailyBudget: 12 }, bird: { rateLimits: { dailyMax: 3 } } }),
+      "utf8"
+    );
+
+    await writeRuntimeSafetyOverrides(root, {
+      bird: { rateLimits: { minIntervalMinutes: 90 } }
+    });
+
+    const persisted = JSON.parse(readFileSync(overridesPath, "utf8")) as Record<string, unknown>;
+    expect(persisted).not.toHaveProperty("suno");
+    expect(persisted).toMatchObject({ bird: { rateLimits: { dailyMax: 3, minIntervalMinutes: 90 } } });
+  });
+
   it("ignores stale Suno dailyBudget overrides without crashing", async () => {
     const root = mkdtempSync(join(tmpdir(), "artist-runtime-api-overrides-env-"));
     await ensureArtistWorkspace(root);
