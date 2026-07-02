@@ -60,6 +60,42 @@ describe("TelegramNotifier", () => {
     })).resolves.toBe("Autopilot stage: planning -> prompt_pack (song-001)");
   });
 
+  it("formats observation collection diagnostics without making rejected tweets visible", async () => {
+    const text = await formatRuntimeEvent({
+      type: "observation_collected",
+      entryCount: 1,
+      rawCount: 3,
+      acceptedCount: 1,
+      rejectedCountsByReason: { short_url_only: 2 },
+      queryAttempts: [
+        {
+          query: "\"narrow\"",
+          rawCount: 2,
+          acceptedCount: 0,
+          rejectedCountsByReason: { short_url_only: 2 },
+          firstRejectionSample: {
+            reason: "short_url_only",
+            hasAuthor: false,
+            urlKind: "short",
+            hasPostedAt: false
+          }
+        },
+        {
+          query: "\"broad\"",
+          rawCount: 1,
+          acceptedCount: 1,
+          rejectedCountsByReason: {}
+        }
+      ],
+      timestamp: 1
+    });
+
+    expect(text).toContain("Observations collected: 1 entries");
+    expect(text).toContain("raw 3; accepted 1; rejected 2; top: short_url_only x2; via 2 queries");
+    expect(text).not.toContain("private rejected body");
+    expect(text).not.toContain("https://t.co/secret");
+  });
+
   it("formats completed Suno take URLs for private Telegram notification", async () => {
     await expect(formatRuntimeEvent({
       type: "song_take_completed",

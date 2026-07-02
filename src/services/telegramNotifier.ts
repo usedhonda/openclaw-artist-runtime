@@ -825,6 +825,29 @@ function formatObservationMetadata(summary?: ObservationSummary): string[] {
   return [motivation, source, quote];
 }
 
+function topRuntimeRejectReason(counts: Partial<Record<string, number>> | undefined): string | undefined {
+  return Object.entries(counts ?? {})
+    .filter(([, count]) => typeof count === "number" && count > 0)
+    .sort((a, b) => b[1] - a[1])
+    .map(([reason, count]) => `${reason} x${count}`)[0];
+}
+
+function observationDiagnosticsSuffix(event: Extract<RuntimeEvent, { type: "observation_collected" }>): string {
+  const queryCount = event.queryAttempts?.length ?? 0;
+  const rawCount = event.rawCount;
+  const acceptedCount = event.acceptedCount ?? event.entryCount;
+  const topReject = topRuntimeRejectReason(event.rejectedCountsByReason);
+  if (queryCount === 0 && rawCount === undefined && !topReject) return "";
+  const rejectedCount = Object.values(event.rejectedCountsByReason ?? {}).reduce((sum, count) => sum + (count ?? 0), 0);
+  return [
+    typeof rawCount === "number" ? `raw ${rawCount}` : undefined,
+    `accepted ${acceptedCount}`,
+    rejectedCount > 0 ? `rejected ${rejectedCount}` : undefined,
+    topReject ? `top: ${topReject}` : undefined,
+    queryCount > 0 ? `via ${queryCount} queries` : undefined
+  ].filter(Boolean).join("; ");
+}
+
 function parseSourceLine(line: string): CommissionBriefSource | undefined {
   const match = line.trim().match(/^-\s+(news|x_reaction|x):\s+(\S+)(?:\s+\(([^)]+)\))?(?:\s+—\s+(.+))?$/i);
   if (!match) return undefined;
@@ -1707,7 +1730,10 @@ async function formatRuntimeEventRaw(
         event.songId ? `song: ${event.songId}` : undefined
       ].filter(Boolean).join("\n");
     case "observation_collected":
-      return `Observations collected: ${event.entryCount} entries${typeof event.topScore === "number" ? `, top score=${event.topScore}` : ""}${event.topMotifMatch ? ` (${event.topMotifMatch})` : ""}`;
+      return [
+        `Observations collected: ${event.entryCount} entries${typeof event.topScore === "number" ? `, top score=${event.topScore}` : ""}${event.topMotifMatch ? ` (${event.topMotifMatch})` : ""}`,
+        observationDiagnosticsSuffix(event)
+      ].filter(Boolean).join(" — ");
     case "artist_presence":
       return joinTelegramDetailSection(event.text, `trigger: ${event.trigger}${event.songId ? `\nsongId: ${event.songId}` : ""}`);
     case "failed_notify_ledger_append_failed":
