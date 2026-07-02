@@ -13,6 +13,7 @@ import { parseLyricsLanguagePolicy } from "./lyricsLanguagePolicy.js";
 import { getArtistIdentity, getSunoLyricsLimit } from "./runtimeConfig.js";
 import { decideDopagakiVariation } from "./creativeVariationPolicy.js";
 import { getDurationPlan, minimumBareLyricsChars, minimumBareLyricsLines } from "../suno-production/durationPlan.js";
+import { appendCreativeQualityEntry, computeDissBankHits } from "./creativeQualityLedger.js";
 
 export interface DraftLyricsInput {
   workspaceRoot: string;
@@ -269,6 +270,21 @@ async function composeLyricsDraft(input: DraftLyricsInput, title: string, briefT
     if (validation.valid) {
       const finalDraft = { ...parsed, lyrics: repaired };
       assertSafe("final", `${finalDraft.title}\n${finalDraft.lyrics}\n${finalDraft.moodHint}`);
+      const dissBankHits = computeDissBankHits(mind.artist, repaired);
+      // Telemetry only: a ledger write must never fail lyric generation.
+      await appendCreativeQualityEntry(input.workspaceRoot, {
+        songId: input.songId,
+        title: finalDraft.title,
+        createdAt: new Date().toISOString(),
+        dopagakiActive: dopagakiVariation.active,
+        dopagakiThreshold: dopagakiVariation.threshold,
+        bareLyricsChars,
+        bareLines: bareLyricsLines,
+        moodHint: finalDraft.moodHint,
+        dissBankHits,
+        dissBankHitCount: dissBankHits.length,
+        degraded: false
+      }).catch(() => undefined);
       return finalDraft;
     }
     repairNotes = validation.issues.map((issue) => `${issue.code}: ${issue.message}`).slice(0, 5);
