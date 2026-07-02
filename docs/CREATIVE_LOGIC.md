@@ -43,6 +43,22 @@ The default 80-bar nu-jazz rap DurationPlan is dense by default. Verse 1 and Ver
 - `lyricsZone` reports overflow from the submitted Suno payload, but underused/near-max status is based on bare lyrics against the box remaining after markers.
 - Dense does not mean full-song double-time. `noDoubleTimeVocal` remains true; dopagaki can still add bounded 2-4 bar bursts.
 
+## Creative Quality Ledger
+
+Each confirmed lyric draft appends one JSON line to `runtime/creative-quality-ledger.jsonl` (source of truth: `src/services/creativeQualityLedger.ts`, written from `composeLyricsDraft`). This gives a per-song record of whether the aggression/dopagaki and density intent actually landed, without any AI scoring.
+
+Fields per entry:
+
+- `songId`, `title`, `createdAt`: identity of the confirmed draft.
+- `dopagakiActive`: the real `decideDopagakiVariation` outcome for this song (not a guess).
+- `dopagakiThreshold`: the adjusted firing threshold used for this song (base rate nudged by recent-mode balancing).
+- `bareLyricsChars`, `bareLines`: density of the repaired lyric body (markers and blank lines excluded).
+- `moodHint`: the short sonic mood the draft returned.
+- `dissBankHits` / `dissBankHitCount`: which "### Shibuya Diss Material Bank" items landed in the lyrics. Matching is a deterministic, free inclusion approximation: each bank item's kanji/katakana key terms are tested as substrings of the lyric body. Workspaces without the bank section simply record `[]`.
+- `degraded`: reserved flag; confirmed drafts record `false`.
+
+Reading the 40% target: `/api/status` exposes a `creativeQuality` block with the newest 10 entries (`recent`) plus a `rolling` aggregate over the newest 20 songs (`dopagakiRate`, `averageBareChars`, `averageBareLines`, `averageDissBankHits`, `sampleSize`). `dopagakiRate` is a 0..1 ratio; the Producer Room Diagnostics view renders it as a percentage so the operator can compare the observed firing rate against the 0.4 design target. The same one-line summary (`creative: dopagaki=on/off, bare <chars>/<lines>行, diss-bank <n> hits`) is appended to the Telegram song completion card. This is observation only; the dopagaki firing rate and aggression policy themselves are unchanged.
+
 ## Untouched Contracts
 
 These policies must not change the Suno registration contract:
