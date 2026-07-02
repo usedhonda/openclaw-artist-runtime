@@ -125,6 +125,42 @@ describe("status ticker and reply simulation routes", () => {
     expect(payload).not.toContain("https://t.co/secret");
   });
 
+  it("surfaces recent creative quality records in /api/status", async () => {
+    const root = mkdtempSync(join(tmpdir(), "artist-runtime-status-creative-"));
+    await ensureArtistWorkspace(root);
+    await mkdir(join(root, "runtime"), { recursive: true });
+    const line = (songId: string, dopagakiActive: boolean, hits: number) => JSON.stringify({
+      songId,
+      title: `Song ${songId}`,
+      createdAt: "2026-07-02T04:00:00.000Z",
+      dopagakiActive,
+      dopagakiThreshold: 0.4,
+      bareLyricsChars: 1400,
+      bareLines: 58,
+      moodHint: "civic dread pulse",
+      dissBankHits: hits > 0 ? ["再開発ビルが作るビル風"] : [],
+      dissBankHitCount: hits,
+      degraded: false
+    });
+    await writeFile(
+      join(root, "runtime", "creative-quality-ledger.jsonl"),
+      `${line("s1", false, 0)}\n${line("s2", true, 1)}\n`,
+      "utf8"
+    );
+
+    const status = await buildStatusResponse({ artist: { workspaceRoot: root } });
+
+    expect(status.creativeQuality?.recent).toHaveLength(2);
+    expect(status.creativeQuality?.recent[0]).toMatchObject({
+      songId: "s2",
+      dopagakiActive: true,
+      bareLyricsChars: 1400,
+      bareLines: 58,
+      dissBankHitCount: 1
+    });
+    expect(status.creativeQuality?.recent[1]).toMatchObject({ songId: "s1", dopagakiActive: false, dissBankHitCount: 0 });
+  });
+
   it("reads persisted config overrides into /api/status", async () => {
     const root = mkdtempSync(join(tmpdir(), "artist-runtime-status-config-"));
     await ensureArtistWorkspace(root);

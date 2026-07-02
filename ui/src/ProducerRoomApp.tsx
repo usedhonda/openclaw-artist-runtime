@@ -80,6 +80,18 @@ type StatusResponse = {
       until?: string;
     };
   };
+  creativeQuality?: {
+    recent: Array<{
+      songId: string;
+      title: string;
+      createdAt: string;
+      dopagakiActive: boolean;
+      bareLyricsChars: number;
+      bareLines: number;
+      dissBankHitCount: number;
+      degraded: boolean;
+    }>;
+  };
 };
 
 type ConfigResponse = ConfigEditorSource & {
@@ -761,6 +773,7 @@ export function SettingsView(props: {
 export function DiagnosticsView(props: { locale?: ProducerRoomLocale; status?: StatusResponse | null }) {
   const locale = props.locale ?? "en";
   const diagnostics = props.status?.observationDiagnostics;
+  const creativeQuality = props.status?.creativeQuality;
   return (
     <section className="single-column">
       <article className="panel">
@@ -788,6 +801,23 @@ export function DiagnosticsView(props: { locale?: ProducerRoomLocale; status?: S
           </div>
         ) : (
           <div className="item muted">No X search diagnostics yet.</div>
+        )}
+      </article>
+      <article className="panel">
+        <div className="section-title">Creative quality</div>
+        {creativeQuality && creativeQuality.recent.length > 0 ? (
+          <div className="list">
+            {creativeQuality.recent.map((song, index) => (
+              <div className="item" key={`${song.songId}-${index}`}>
+                <strong>{song.title || song.songId}</strong>
+                <div className="muted">
+                  dopagaki {song.dopagakiActive ? "on" : "off"} · bare {song.bareLyricsChars}/{song.bareLines} · diss-bank {song.dissBankHitCount} hits{song.degraded ? " · degraded" : ""}
+                </div>
+              </div>
+            ))}
+          </div>
+        ) : (
+          <div className="item muted">No creative quality records yet.</div>
         )}
       </article>
     </section>

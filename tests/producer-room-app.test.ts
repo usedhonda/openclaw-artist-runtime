@@ -882,3 +882,39 @@ describe("legacy console run-cycle feedback", () => {
     expect(feedback.message).toBe("サイクルを実行しました");
   });
 });
+
+describe("ProducerRoomApp diagnostics creative quality card", () => {
+  it("renders recent creative quality records", () => {
+    const html = renderToStaticMarkup(
+      React.createElement(DiagnosticsView, {
+        status: {
+          creativeQuality: {
+            recent: [
+              {
+                songId: "s1",
+                title: "Neon Ledger",
+                createdAt: "2026-07-02T04:00:00.000Z",
+                dopagakiActive: true,
+                bareLyricsChars: 2080,
+                bareLines: 58,
+                dissBankHitCount: 5,
+                degraded: false
+              }
+            ]
+          }
+        }
+      } as never)
+    );
+
+    expect(html).toContain("Creative quality");
+    expect(html).toContain("Neon Ledger");
+    expect(html).toContain("dopagaki on");
+    expect(html).toContain("diss-bank 5 hits");
+  });
+
+  it("shows an empty state when there are no creative quality records", () => {
+    const html = renderToStaticMarkup(React.createElement(DiagnosticsView, { status: {} } as never));
+    expect(html).toContain("Creative quality");
+    expect(html).toContain("No creative quality records yet.");
+  });
+});

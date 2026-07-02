@@ -49,6 +49,7 @@ import { getTelegramOwnerUserIds } from "../services/telegramAuth.js";
 import type { TelegramClient } from "../services/telegramClient.js";
 import { TelegramNotifier } from "../services/telegramNotifier.js";
 import { readXObservationDiagnostics } from "../services/xObservationDiagnostics.js";
+import { readCreativeQualityLedger } from "../services/creativeQualityLedger.js";
 import { integerFromPayloadOrQuery, isLocalRoutePayload, optionalInteger, payloadInteger, payloadRecord, queryValueFromPayload } from "./payloadHelpers.js";
 import { serializeRuntimeEventForSse } from "./runtimeEventStream.js";
 import type {
@@ -1280,13 +1281,26 @@ export async function buildStatusResponse(config?: Partial<ArtistRuntimeConfig>)
     buildDistributionSummary(mergedConfig, platforms),
     buildAwaitingSunoTakeUrlReady(mergedConfig.artist.workspaceRoot)
   ]);
-  const [recentDistributionEvents, platformStats, runtimeEventsLedger, telegramInbound, observationDiagnostics] = await Promise.all([
+  const [recentDistributionEvents, platformStats, runtimeEventsLedger, telegramInbound, observationDiagnostics, creativeQualityEntries] = await Promise.all([
     readDistributionEvents(mergedConfig.artist.workspaceRoot, 20),
     buildPlatformStats(mergedConfig.artist.workspaceRoot),
     readRuntimeEvents(mergedConfig.artist.workspaceRoot, 20),
     readReceiveHealth(mergedConfig.artist.workspaceRoot),
-    readXObservationDiagnostics(mergedConfig.artist.workspaceRoot)
+    readXObservationDiagnostics(mergedConfig.artist.workspaceRoot),
+    readCreativeQualityLedger(mergedConfig.artist.workspaceRoot, 20)
   ]);
+  const creativeQuality = {
+    recent: creativeQualityEntries.slice(0, 10).map((entry) => ({
+      songId: entry.songId,
+      title: entry.title,
+      createdAt: entry.createdAt,
+      dopagakiActive: entry.dopagakiActive,
+      bareLyricsChars: entry.bareLyricsChars,
+      bareLines: entry.bareLines,
+      dissBankHitCount: entry.dissBankHitCount,
+      degraded: entry.degraded
+    }))
+  };
   const setupReadiness = await buildSetupReadiness(mergedConfig, autopilotStatus, sunoWorker, platforms, workspaceStatus);
   const effectiveDryRunMap = buildEffectiveDryRunMap(mergedConfig);
   const statusSunoBudget = {
@@ -1319,6 +1333,7 @@ export async function buildStatusResponse(config?: Partial<ArtistRuntimeConfig>)
       ledger: birdLedger
     },
     observationDiagnostics,
+    creativeQuality,
     distribution: {
       detected: distributionDetection.detected
     },

@@ -1190,6 +1190,18 @@ export interface StatusResponse {
       until?: string;
     };
   };
+  creativeQuality?: {
+    recent: Array<{
+      songId: string;
+      title: string;
+      createdAt: string;
+      dopagakiActive: boolean;
+      bareLyricsChars: number;
+      bareLines: number;
+      dissBankHitCount: number;
+      degraded: boolean;
+    }>;
+  };
   distribution?: {
     detected: {
       unitedMasters?: { url?: string; detectedAt?: string; lastCheckedAt?: string };

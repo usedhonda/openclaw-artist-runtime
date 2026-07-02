@@ -16,6 +16,7 @@ import { join } from "node:path";
 import { buildCascadeTrace } from "./cascadeTrace.js";
 import { appendFailedNotification, isCriticalNotificationEvent } from "./failedNotifyLedger.js";
 import { readLatestPromptPackMetadata } from "./sunoPromptPackFiles.js";
+import { readLatestCreativeQualityEntry } from "./creativeQualityLedger.js";
 import { composeDraftBoxNextAction, formatDraftBoxNextActionSection } from "./draftBoxNextAction.js";
 import { emitDraftBoxProactiveNoticeIfNeeded } from "./draftBoxProactiveNotice.js";
 import {
@@ -933,6 +934,15 @@ function formatLyricsCheck(metadata: Record<string, unknown> | undefined): strin
   ].filter((line): line is string => Boolean(line));
 }
 
+async function formatCreativeQualityLine(workspaceRoot: string | undefined, songId: string): Promise<string[]> {
+  if (!workspaceRoot) return [];
+  const entry = await readLatestCreativeQualityEntry(workspaceRoot, songId).catch(() => undefined);
+  if (!entry) return [];
+  return [
+    `creative: dopagaki=${entry.dopagakiActive ? "on" : "off"}, bare ${entry.bareLyricsChars}/${entry.bareLines}行, diss-bank ${entry.dissBankHitCount} hits`
+  ];
+}
+
 async function formatSongResultCard(
   event: Extract<RuntimeEvent, { type: "song_take_completed" | "suno_take_url_ready" }>,
   options: Pick<TelegramNotifierOptions, "workspaceRoot">,
@@ -982,6 +992,7 @@ async function formatSongResultCard(
     "4. 揺らぎ: ドパガキ/高速展開/英日比率は prompt pack と artist 設定に従う",
     "",
     ...formatLyricsCheck(metadata),
+    ...(await formatCreativeQualityLine(options.workspaceRoot, event.songId)),
     "",
     ...formatObservationMetadata(args.observationSummary),
     event.type === "suno_take_url_ready" ? "「採用して音源取得」でアーカイブし、音源ファイル取得を予約する。取れなくてもこのURLは有効。" : "完成しました。採用/破棄は後からで結構です。",

@@ -4,6 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { RuntimeEventBus } from "../src/services/runtimeEventBus";
 import { formatRuntimeEvent, TelegramNotifier } from "../src/services/telegramNotifier";
+import { appendCreativeQualityEntry } from "../src/services/creativeQualityLedger";
 
 function jsonResponse(body: unknown): Response {
   return {
@@ -131,6 +132,32 @@ describe("TelegramNotifier", () => {
       "非公開、御大のみ",
       ...songCompletionButtonEffects
     ].join("\n"));
+  });
+
+  it("adds a creative quality line to the song completion card when a ledger entry exists", async () => {
+    const root = mkdtempSync(join(tmpdir(), "artist-runtime-telegram-creative-"));
+    await appendCreativeQualityEntry(root, {
+      songId: "song-004",
+      title: "Song 004",
+      createdAt: "2026-07-02T04:00:00.000Z",
+      dopagakiActive: true,
+      dopagakiThreshold: 0.4,
+      bareLyricsChars: 2080,
+      bareLines: 58,
+      moodHint: "civic dread pulse",
+      dissBankHits: ["再開発ビルが作るビル風"],
+      dissBankHitCount: 5,
+      degraded: false
+    });
+
+    const text = await formatRuntimeEvent({
+      type: "song_take_completed",
+      songId: "song-004",
+      urls: ["https://suno.com/song/a"],
+      timestamp: 1
+    }, { workspaceRoot: root });
+
+    expect(text).toContain("creative: dopagaki=on, bare 2080/58行, diss-bank 5 hits");
   });
 
   it("formats a completed take without selectedTakeId", async () => {
