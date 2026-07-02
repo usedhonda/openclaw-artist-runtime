@@ -41,6 +41,19 @@ export interface TelegramNotifierOptions {
   producerDigest?: ProducerDigestMode;
 }
 
+// Events pushed to the signal-only Producer Room. Some event types are deliberately NOT
+// here — do not "revive" them by adding them without revisiting the decision below:
+// - distribution_change_detected: excluded by the signal-only policy (commit 1c7b8a0
+//   "enforce signal-only producer room"). tests/telegram-distribution-apply-callback-e2e.test.ts
+//   asserts it stays out of Telegram and mints no apply buttons. Its formatter, callback
+//   actions, and attachDistributionButtons helper exist but are intentionally unwired.
+// - take_select_low_score: a dead event type. Nothing emits it (the take-selection stage
+//   emits take_select_pending / take_selection_stalled / song_take_completed instead, and
+//   tests/autopilot-take-select-stage.test.ts asserts it is never emitted), so adding it
+//   here would be a no-op.
+// producer_decision_reminder is delivered directly by callbackPollingWatchdog (its own
+// sendMessage), not through this gate, so it is absent here by design — adding it would
+// double-send.
 const TELEGRAM_SIGNAL_EVENT_TYPES: ReadonlySet<RuntimeEvent["type"]> = new Set([
   "song_spawn_proposed",
   "prompt_pack_ready",
@@ -626,6 +639,10 @@ export class TelegramNotifier {
     });
   }
 
+  // Intentionally unwired: take_select_low_score is a dead event type (nothing emits it; see
+  // the note on TELEGRAM_SIGNAL_EVENT_TYPES). Kept rather than deleted because the type still
+  // participates in the RuntimeEvent union and its exhaustive switches — removal would cascade
+  // across runtimeEventBus and the formatter/callback maps with no behavioral benefit.
   private async attachTakeSelectButtons(event: Extract<RuntimeEvent, { type: "take_select_low_score" }>, messageId: number): Promise<void> {
     if (!isInlineButtonsEnabled() || !this.options.workspaceRoot || typeof this.options.chatId !== "number") {
       return;
