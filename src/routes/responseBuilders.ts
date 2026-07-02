@@ -856,8 +856,8 @@ function diagnosticSource(env: NodeJS.ProcessEnv, key: string): RuntimeDiagnosti
   return envValue(env, key) ? "env" : "default";
 }
 
-function buildRuntimeDiagnostics(env: NodeJS.ProcessEnv = process.env): RuntimeDiagnostics {
-  const newsRssUrls = getNewsRssUrls(env);
+function buildRuntimeDiagnostics(config?: Pick<ArtistRuntimeConfig, "observation">, env: NodeJS.ProcessEnv = process.env): RuntimeDiagnostics {
+  const newsRssUrls = getNewsRssUrls(config, env);
   const ownerUserIds = getTelegramOwnerUserIds(env);
   const tokenConfigured = Boolean(envValue(env, "TELEGRAM_BOT_TOKEN"));
   const ownerUserIdsConfigured = ownerUserIds.size > 0;
@@ -985,7 +985,7 @@ export async function buildConfigResponse(config?: Partial<ArtistRuntimeConfig>)
       ...resolved.dashboard,
       baseUrl: dashboardBaseUrl
     },
-    diagnostics: buildRuntimeDiagnostics(),
+    diagnostics: buildRuntimeDiagnostics(resolved),
     fieldMeta: buildConfigFieldMeta(resolved)
   };
 }

@@ -313,7 +313,14 @@ export function getSunoLyricsLimit(env: NodeJS.ProcessEnv = process.env): number
   return effectiveLyricsBoxLimit({}, env);
 }
 
-export function getNewsRssUrls(env: NodeJS.ProcessEnv = process.env): string[] {
+export function getNewsRssUrls(
+  config?: Pick<ArtistRuntimeConfig, "observation">,
+  env: NodeJS.ProcessEnv = process.env
+): string[] {
+  const configured = config?.observation?.newsRssUrls;
+  if (Array.isArray(configured) && configured.length > 0) {
+    return configured.map((value) => value.trim()).filter(Boolean);
+  }
   const raw = env.OPENCLAW_NEWS_RSS_URLS;
   if (!raw) return [];
   return raw.split(",").map((value) => value.trim()).filter(Boolean);

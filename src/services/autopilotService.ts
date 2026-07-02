@@ -1096,7 +1096,8 @@ export class ArtistAutopilotService {
       : resolvedConfig;
     const artistMind = await readArtistMind(input.workspaceRoot);
     const newsObservation = await collectNewsObservations(input.workspaceRoot, {
-      personaText: `${artistMind.artist}\n${artistMind.socialVoice}`
+      personaText: `${artistMind.artist}\n${artistMind.socialVoice}`,
+      config
     }).catch((error) => {
       const reason = error instanceof Error ? error.message : String(error);
       emitRuntimeEvent({ type: "error", source: "news_observation", reason, timestamp: Date.now() });

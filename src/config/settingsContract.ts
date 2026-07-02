@@ -77,6 +77,7 @@ export const settingContract = [
   { path: "commission.enabled", kind: "runtimeEffective" },
   { path: "songSpawn.enabled", kind: "runtimeEffective" },
   { path: "songSpawn.minIntervalHours", kind: "runtimeEffective" },
+  { path: "observation.newsRssUrls", kind: "runtimeEffective" },
   { path: "aiReview.provider", kind: "runtimeEffective" },
   { path: "ui.locale", kind: "runtimeEffective" },
   { path: "safety.auditLog", kind: "runtimeEffective" },

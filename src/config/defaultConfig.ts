@@ -93,6 +93,9 @@ export const defaultArtistRuntimeConfig: ArtistRuntimeConfig = {
     enabled: false,
     minIntervalHours: 24
   },
+  observation: {
+    newsRssUrls: []
+  },
   aiReview: {
     provider: "mock"
   },

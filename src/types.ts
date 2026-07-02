@@ -198,6 +198,10 @@ export interface SongSpawnConfig {
   minIntervalHours: number;
 }
 
+export interface ObservationConfig {
+  newsRssUrls?: string[];
+}
+
 export interface TelegramUser {
   id: number;
   username?: string;
@@ -424,6 +428,7 @@ export interface ArtistRuntimeConfig {
   artistPulse: ArtistPulseConfig;
   commission: CommissionConfig;
   songSpawn: SongSpawnConfig;
+  observation: ObservationConfig;
   aiReview: AiReviewConfig;
   ui: UiConfig;
   safety: SafetyConfig;

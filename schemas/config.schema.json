@@ -403,6 +403,22 @@
         "enabled": false,
         "minIntervalHours": 24
       }
+    },
+    "observation": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "newsRssUrls": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "default": []
+        }
+      },
+      "default": {
+        "newsRssUrls": []
+      }
     }
   },
   "$defs": {

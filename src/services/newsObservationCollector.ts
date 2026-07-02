@@ -12,6 +12,7 @@
 import { mkdir, readFile, stat, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import type { Page } from "playwright";
+import type { ArtistRuntimeConfig } from "../types.js";
 import { secretLikePattern } from "./personaMigrator.js";
 import { guardedFetchText } from "./ssrfGuard.js";
 import { getNewsRssUrls, isNewsArticleResolverEnabled, isNewsBrowserResolverEnabled } from "./runtimeConfig.js";
@@ -54,6 +55,7 @@ export interface NewsObservationContext {
   now?: Date;
   fetcher?: (url: string) => Promise<string>;
   articleResolver?: NewsArticleResolver;
+  config?: Pick<ArtistRuntimeConfig, "observation">;
 }
 
 export interface NewsObservationResult {
@@ -79,8 +81,8 @@ function newsCachePath(root: string, now = new Date()): string {
   return join(root, "observations", `news-${jstDate(now)}.md`);
 }
 
-function rssUrlsFromEnv(): string[] {
-  return getNewsRssUrls().slice(0, maxFeedsPerRun);
+function operatorRssUrls(config?: Pick<ArtistRuntimeConfig, "observation">): string[] {
+  return getNewsRssUrls(config).slice(0, maxFeedsPerRun);
 }
 
 function googleNewsSearchRssUrl(query: string): string {
@@ -97,10 +99,10 @@ export function buildMotifNewsSearchUrls(motifs: PersonaMotifBundle, limit = 5):
   return [googleNewsSearchRssUrl(keywords.join(" OR "))];
 }
 
-function newsRssUrlsForRun(motifs: PersonaMotifBundle): string[] {
-  const envUrls = rssUrlsFromEnv();
+function newsRssUrlsForRun(motifs: PersonaMotifBundle, config?: Pick<ArtistRuntimeConfig, "observation">): string[] {
+  const operatorUrls = operatorRssUrls(config);
   const motifUrls = buildMotifNewsSearchUrls(motifs);
-  const urls = motifUrls.length > 0 ? [...buildTopicalNewsRssUrls(), ...envUrls, ...motifUrls] : envUrls;
+  const urls = motifUrls.length > 0 ? [...buildTopicalNewsRssUrls(), ...operatorUrls, ...motifUrls] : operatorUrls;
   return [...new Set(urls)].slice(0, maxFeedsPerRun);
 }
 
@@ -635,7 +637,7 @@ export async function collectNewsObservations(
 ): Promise<NewsObservationResult> {
   const now = context.now ?? new Date();
   const motifs = extractPersonaMotifs(context.personaText);
-  const urls = newsRssUrlsForRun(motifs);
+  const urls = newsRssUrlsForRun(motifs, context.config);
   const path = newsCachePath(root, now);
   if (urls.length === 0) {
     return { status: "skipped", path, entries: [], reason: "news_motifs_unavailable_and_OPENCLAW_NEWS_RSS_URLS_unset" };
