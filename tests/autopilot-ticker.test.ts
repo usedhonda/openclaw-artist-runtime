@@ -8,9 +8,11 @@ import {
   getLastTickAt,
   getAutopilotTicker,
   resetAutopilotTickerForTest,
+  resolveAutopilotTickConfig,
   type AutopilotTickOutcome
 } from "../src/services/autopilotTicker.js";
 import { ArtistAutopilotService } from "../src/services/autopilotService.js";
+import { patchResolvedConfig } from "../src/services/runtimeConfig.js";
 import { getRuntimeEventBus, type RuntimeEvent } from "../src/services/runtimeEventBus.js";
 import { autopilotHeartbeatPath } from "../src/services/supervisorHealth.js";
 
@@ -337,5 +339,65 @@ describe("AutopilotTicker", () => {
     expect(result.outcome).toBe("ran");
     expect(runCycle).toHaveBeenCalledTimes(2);
     expect(events.some((event) => event.type === "error" && event.source === "autopilot_ticker_stall")).toBe(true);
+  });
+});
+
+describe("AutopilotTicker config resolution (fail-closed)", () => {
+  beforeEach(() => {
+    resetAutopilotTickerForTest();
+    getRuntimeEventBus().clearForTest();
+  });
+
+  afterEach(() => {
+    resetAutopilotTickerForTest();
+    getRuntimeEventBus().clearForTest();
+    delete process.env.OPENCLAW_LOCAL_WORKSPACE;
+    vi.restoreAllMocks();
+  });
+
+  it("resolves the on-disk playwright driver instead of the default mock driver", async () => {
+    const root = mkdtempSync(join(tmpdir(), "autopilot-ticker-cfg-"));
+    await patchResolvedConfig(root, {
+      artist: { workspaceRoot: root },
+      music: { suno: { driver: "playwright" } },
+      autopilot: { dryRun: false }
+    });
+
+    const resolved = await resolveAutopilotTickConfig({ artist: { workspaceRoot: root } });
+
+    expect(resolved.music.suno.driver).toBe("playwright");
+    expect(resolved.autopilot.dryRun).toBe(false);
+  });
+
+  it("reads disk overrides for the default workspace when no in-memory config is supplied", async () => {
+    const root = mkdtempSync(join(tmpdir(), "autopilot-ticker-cfg-default-"));
+    await patchResolvedConfig(root, {
+      artist: { workspaceRoot: root },
+      music: { suno: { driver: "playwright" } },
+      autopilot: { dryRun: false }
+    });
+    process.env.OPENCLAW_LOCAL_WORKSPACE = root;
+
+    const resolved = await resolveAutopilotTickConfig(undefined);
+
+    expect(resolved.music.suno.driver).toBe("playwright");
+    expect(resolved.autopilot.dryRun).toBe(false);
+  });
+
+  it("fails closed and does not run a cycle when the runtime config cannot be read", async () => {
+    const root = makeWorkspace({ stage: "idle" });
+    writeFileSync(join(root, "runtime", "config-overrides.json"), "{ not valid json", "utf8");
+    const runCycle = vi.spyOn(ArtistAutopilotService.prototype, "runCycle");
+    const events: RuntimeEvent[] = [];
+    const unsubscribe = getRuntimeEventBus().subscribe((event) => events.push(event));
+
+    const ticker = new AutopilotTicker({ getConfig: () => ({ artist: { workspaceRoot: root } }) });
+    const result = await ticker.runNow();
+
+    expect(result.outcome).toBe("error");
+    expect(runCycle).not.toHaveBeenCalled();
+    expect(result.state.blockedReason).toContain("config_unresolved_fail_closed");
+    expect(events.some((event) => event.type === "error" && event.source === "autopilot_config_unresolved")).toBe(true);
+    unsubscribe();
   });
 });

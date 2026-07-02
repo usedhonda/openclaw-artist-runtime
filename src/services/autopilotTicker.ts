@@ -1,8 +1,8 @@
 import { applyConfigDefaults } from "../config/schema.js";
 import type { AutopilotRunState, ArtistRuntimeConfig } from "../types.js";
-import { ArtistAutopilotService, readAutopilotRunState, PRODUCER_REVIEW_SUSPENDED_AT, isDegradedLyricsBoxReason } from "./autopilotService.js";
+import { ArtistAutopilotService, readAutopilotRunState, writeAutopilotRunState, PRODUCER_REVIEW_SUSPENDED_AT, isDegradedLyricsBoxReason } from "./autopilotService.js";
 import { emitRuntimeEvent } from "./runtimeEventBus.js";
-import { getAutopilotFastChainMs, getAutopilotImportPollMs, getAutopilotTickStallMs } from "./runtimeConfig.js";
+import { getAutopilotFastChainMs, getAutopilotImportPollMs, getAutopilotTickStallMs, resolveDefaultWorkspaceRoot, resolveRuntimeConfig } from "./runtimeConfig.js";
 import { writeAutopilotHeartbeat } from "./supervisorHealth.js";
 
 type PartialDeep<T> = {
@@ -106,6 +106,18 @@ function logHeartbeatFailure(context: string, error: unknown): void {
   console.error(`[autopilot-ticker] ${context} failed: ${reason}`);
 }
 
+// A cycle must resolve its config from the on-disk runtime overrides, never from an
+// in-memory default. Passing the (possibly undefined/partial) in-memory config as the
+// payload means the disk overrides for the target workspace are always read and the
+// caller's explicit fields still win. Without this, a missing in-memory config silently
+// produced the pure default config (driver "mock", dryRun true) and a live song was
+// completed with mock data (2026-07-02 spawn_385428 incident).
+export async function resolveAutopilotTickConfig(
+  baseConfig?: PartialDeep<ArtistRuntimeConfig>
+): Promise<ArtistRuntimeConfig> {
+  return resolveRuntimeConfig(baseConfig as Partial<ArtistRuntimeConfig> | undefined);
+}
+
 export class AutopilotTicker {
   constructor(private readonly options: AutopilotTickerOptions = {}) {}
 
@@ -158,7 +170,14 @@ export class AutopilotTicker {
 
   async runNow(configOverride?: PartialDeep<ArtistRuntimeConfig>, manualSeed?: { hint: string }): Promise<AutopilotManualRunResult> {
     const baseConfig = configOverride ?? this.options.getConfig?.();
-    const resolved = applyConfigDefaults(baseConfig);
+    let resolved: ArtistRuntimeConfig;
+    try {
+      resolved = await resolveAutopilotTickConfig(baseConfig);
+    } catch (error) {
+      // Fail closed: if the on-disk runtime config cannot be read, skip the cycle and
+      // record a blockedReason instead of running against the default (mock) config.
+      return this.failClosedOnUnresolvedConfig(baseConfig, error);
+    }
     const workspaceRoot = resolved.artist.workspaceRoot;
     await writeAutopilotHeartbeat(workspaceRoot, {
       lastTickAttempt: new Date().toISOString()
@@ -222,6 +241,31 @@ export class AutopilotTicker {
       running = false;
       runningStartedAt = undefined;
     }
+  }
+
+  private async failClosedOnUnresolvedConfig(
+    baseConfig: PartialDeep<ArtistRuntimeConfig> | undefined,
+    error: unknown
+  ): Promise<AutopilotManualRunResult> {
+    const reason = error instanceof Error ? error.message : String(error);
+    const workspaceRoot = baseConfig?.artist?.workspaceRoot ?? resolveDefaultWorkspaceRoot();
+    emitRuntimeEvent({
+      type: "error",
+      source: "autopilot_config_unresolved",
+      reason,
+      timestamp: Date.now()
+    });
+    const current = await readAutopilotRunState(workspaceRoot).catch(() => undefined);
+    const blocked: AutopilotRunState | undefined = current
+      ? { ...current, blockedReason: `config_unresolved_fail_closed: ${reason}` }
+      : undefined;
+    if (blocked) {
+      await writeAutopilotRunState(workspaceRoot, blocked).catch((writeError) =>
+        logHeartbeatFailure("fail-closed run-state write", writeError)
+      );
+    }
+    const state = blocked ?? await readAutopilotRunState(workspaceRoot);
+    return { outcome: await this.emitWithHeartbeat(workspaceRoot, "error", state), state };
   }
 
   private resolveIntervalMs(): number {
