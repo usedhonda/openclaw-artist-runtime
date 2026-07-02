@@ -59,6 +59,27 @@ type StatusResponse = {
     title: string;
     status: string;
   };
+  observationDiagnostics?: {
+    date: string;
+    collectedAt: string;
+    attempts: Array<{
+      query?: string;
+      rawCount: number;
+      acceptedCount: number;
+      rejectedCountsByReason: Record<string, number>;
+      firstRejectionSample?: {
+        reason: string;
+        hasAuthor: boolean;
+        urlKind: "full" | "short" | "missing";
+        hasPostedAt: boolean;
+      };
+    }>;
+    emptyCache: {
+      active: boolean;
+      ttlMinutes: number;
+      until?: string;
+    };
+  };
 };
 
 type ConfigResponse = ConfigEditorSource & {
@@ -301,6 +322,13 @@ function RouteNav(props: { activeView: RoomView }) {
       <a className="producer-room-diagnostics-link" href="#diagnostics">Diagnostics</a>
     </nav>
   );
+}
+
+function topRejectReason(counts: Record<string, number> | undefined): string {
+  const top = Object.entries(counts ?? {})
+    .filter(([, count]) => count > 0)
+    .sort((a, b) => Number(b[1]) - Number(a[1]))[0];
+  return top ? `${top[0]} x${top[1]}` : "none";
 }
 
 function RoomViewPanel(props: {
@@ -730,14 +758,37 @@ export function SettingsView(props: {
   );
 }
 
-export function DiagnosticsView(props: { locale?: ProducerRoomLocale }) {
+export function DiagnosticsView(props: { locale?: ProducerRoomLocale; status?: StatusResponse | null }) {
   const locale = props.locale ?? "en";
+  const diagnostics = props.status?.observationDiagnostics;
   return (
     <section className="single-column">
       <article className="panel">
         <div className="section-title">Diagnostics</div>
         <p>{t(locale, "diagnosticsIntro")}</p>
         <div className="item muted">{t(locale, "diagnosticsNote")}</div>
+      </article>
+      <article className="panel">
+        <div className="section-title">X search diagnostics</div>
+        {diagnostics ? (
+          <div className="list">
+            <div className="item">
+              <strong>{diagnostics.date}</strong>
+              <div className="muted">
+                collected {diagnostics.collectedAt}
+                {diagnostics.emptyCache.active ? ` · empty cache ${diagnostics.emptyCache.ttlMinutes}m${diagnostics.emptyCache.until ? ` until ${diagnostics.emptyCache.until}` : ""}` : ""}
+              </div>
+            </div>
+            {diagnostics.attempts.slice(0, 5).map((attempt, index) => (
+              <div className="item" key={`${attempt.query ?? "timeline"}-${index}`}>
+                <strong>{attempt.query || "timeline"}</strong>
+                <div className="muted">raw {attempt.rawCount} -&gt; accepted {attempt.acceptedCount} · reject {topRejectReason(attempt.rejectedCountsByReason)}</div>
+              </div>
+            ))}
+          </div>
+        ) : (
+          <div className="item muted">No X search diagnostics yet.</div>
+        )}
       </article>
     </section>
   );
@@ -1192,7 +1243,7 @@ export function ProducerRoomApp() {
           onComplete={completePersonaSetup}
         />
       ) : null}
-      {activeView === "diagnostics" ? <DiagnosticsView locale={locale} /> : null}
+      {activeView === "diagnostics" ? <DiagnosticsView locale={locale} status={status} /> : null}
       <footer className="producer-room-closing-band">
         <strong>Quiet by default.</strong>
         <span>Only creative milestones, hard stops, and the next required move surface here.</span>

@@ -800,9 +800,58 @@ describe("ProducerRoomApp diagnostics", () => {
     expect(html).toContain("Diagnostics");
     expect(html).toContain("Not part of normal production decisions");
     expect(html).toContain("Internal operation buttons stay out of Producer Room");
+    expect(html).toContain("X search diagnostics");
+    expect(html).toContain("No X search diagnostics yet.");
     expect(html).not.toContain("旧 Console");
     expect(html).not.toContain("Run Cycle");
     expect(html).not.toContain("Config Editor");
+  });
+
+  it("renders X search diagnostics in the live ProducerRoomApp shell without rejected tweet content", () => {
+    const html = renderToStaticMarkup(
+      React.createElement(DiagnosticsView, {
+        status: {
+          autopilot: {
+            stage: "planning",
+            nextAction: "observe"
+          },
+          observationDiagnostics: {
+            date: "2026-07-01",
+            collectedAt: "2026-07-01T12:00:00.000Z",
+            attempts: [
+              {
+                query: "\"LUUP事故\" lang:ja since:2026-06-24",
+                rawCount: 7,
+                acceptedCount: 0,
+                rejectedCountsByReason: {
+                  short_url_only: 4,
+                  missing_author: 1
+                },
+                firstRejectionSample: {
+                  reason: "short_url_only",
+                  hasAuthor: true,
+                  urlKind: "short",
+                  hasPostedAt: true
+                }
+              }
+            ],
+            emptyCache: {
+              active: true,
+              ttlMinutes: 20,
+              until: "2026-07-01T12:20:00.000Z"
+            }
+          }
+        }
+      })
+    );
+
+    expect(html).toContain("X search diagnostics");
+    expect(html).toContain("&quot;LUUP事故&quot; lang:ja since:2026-06-24");
+    expect(html).toContain("raw 7 -&gt; accepted 0");
+    expect(html).toContain("short_url_only x4");
+    expect(html).toContain("empty cache 20m");
+    expect(html).not.toContain("https://t.co/");
+    expect(html).not.toContain("rejected tweet body");
   });
 });
 
