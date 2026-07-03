@@ -1,6 +1,6 @@
 export const producerDigestModes = ["off", "daily", "important_events", "high_touch"] as const;
 export const sunoConnectionModes = ["manual_copy", "background_browser_worker", "api_provider"] as const;
-export const sunoDriverModes = ["mock", "playwright"] as const;
+export const sunoDriverModes = ["mock", "playwright", "suno_cli"] as const;
 export const sunoSubmitModes = ["skip", "live"] as const;
 export const sunoAuthorityModes = ["prepare_only", "autofill_only", "auto_create_with_budget", "auto_create_and_select_take"] as const;
 export const dailySharingModes = ["off", "draft_only", "auto"] as const;

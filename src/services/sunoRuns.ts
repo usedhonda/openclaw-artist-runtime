@@ -3,6 +3,7 @@ import { appendFile, mkdir, readFile, readdir, stat, writeFile } from "node:fs/p
 import { dirname, join } from "node:path";
 import { applyConfigDefaults } from "../config/schema.js";
 import { BrowserWorkerSunoConnector } from "../connectors/suno/browserWorkerConnector.js";
+import { CliSunoConnector } from "../connectors/suno/cliSunoConnector.js";
 import type {
   ArtistRuntimeConfig,
   AuthorityDecision,
@@ -236,7 +237,9 @@ export async function buildSunoArtifactIndex(root: string): Promise<SunoArtifact
 
 export async function generateSunoRun(input: GenerateSunoRunInput): Promise<SunoRunRecord> {
   const config = applyRuntimeEnvOverrides(applyConfigDefaults(input.config));
-  const connector = new BrowserWorkerSunoConnector(input.workspaceRoot, { config });
+  const connector = config.music.suno.driver === "suno_cli"
+    ? new CliSunoConnector(input.workspaceRoot)
+    : new BrowserWorkerSunoConnector(input.workspaceRoot, { config });
   const workerStatus = input.workerState
     ? { state: input.workerState }
     : await connector.status().catch(() => undefined);

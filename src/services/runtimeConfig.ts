@@ -212,7 +212,7 @@ export function getProducerReminderHours(env: NodeJS.ProcessEnv = process.env): 
 export function isSunoLiveEnabled(env: NodeJS.ProcessEnv = process.env): boolean {
   const live = env.OPENCLAW_SUNO_LIVE?.trim().toLowerCase();
   const driver = env.OPENCLAW_SUNO_DRIVER?.trim().toLowerCase();
-  return live === "on" || live === "1" || live === "true" || driver === "live" || driver === "playwright";
+  return live === "on" || live === "1" || live === "true" || driver === "live" || driver === "playwright" || driver === "suno_cli";
 }
 
 export function isSunoLiveDisabled(env: NodeJS.ProcessEnv = process.env): boolean {
@@ -378,8 +378,13 @@ export function applyRuntimeEnvOverrides(config: ArtistRuntimeConfig, env: NodeJ
     next.music.suno.driver = "mock";
     next.music.suno.submitMode = "skip";
   } else if (isSunoLiveEnabled(env)) {
-    next.music.suno.connectionMode = "background_browser_worker";
-    next.music.suno.driver = "playwright";
+    // An explicit suno_cli driver env must not be clobbered to the browser lane.
+    if (env.OPENCLAW_SUNO_DRIVER?.trim().toLowerCase() === "suno_cli") {
+      next.music.suno.driver = "suno_cli";
+    } else {
+      next.music.suno.connectionMode = "background_browser_worker";
+      next.music.suno.driver = "playwright";
+    }
     next.music.suno.submitMode = "live";
   }
   const submitMode = env.OPENCLAW_SUNO_SUBMIT_MODE?.trim().toLowerCase();
