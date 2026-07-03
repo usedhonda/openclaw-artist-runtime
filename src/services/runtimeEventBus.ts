@@ -16,7 +16,7 @@ export type RuntimeEvent =
   | { type: "suno_budget_low"; songId?: string; reason: string; limit: number; used: number; timestamp: number }
   | { type: "lyrics_generation_degraded"; songId: string; reason: string; detail?: string; repairNotes?: string[]; timestamp: number }
   | { type: "suno_generate_retry"; songId: string; reason: string; retryCount: number; nextRetryAt?: string; timestamp: number }
-  | { type: "suno_take_url_ready"; songId: string; runId: string; urls: string[]; selectedTakeId?: string; timestamp: number }
+  | { type: "suno_take_url_ready"; songId: string; runId: string; urls: string[]; selectedTakeId?: string; reason?: string; timestamp: number }
   | { type: "suno_create_failed"; songId: string; reason: string; retryCount: number; timestamp: number }
   | { type: "suno_generate_failed"; songId: string; reason: string; retryCount: number; timestamp: number }
   | { type: "suno_hard_stop"; songId?: string; reason: string; timestamp: number }

@@ -173,6 +173,31 @@ The live create lane now performs the following:
 If no new song URLs appear before timeout, the driver returns
 `playwright_live_timeout`.
 
+## Take-URL delivery contract (both URLs together)
+
+Suno always produces exactly two takes per generation, and both `/song/<uuid>`
+take-page URLs are available together. The `suno_take_url_ready` Telegram
+notification must therefore carry BOTH take URLs, gathered together — it must not
+fire with a single URL while the second is (or will imminently be) available.
+
+- The expected take count is a single source of truth,
+  `PLAYWRIGHT_EXPECTED_CREATE_CARD_COUNT` (= 2), re-exported as
+  `EXPECTED_SUNO_TAKE_URLS`. The DOM create driver already only returns
+  `accepted: true` once it has captured at least that many take URLs.
+- Every `suno_take_url_ready` emission is gated on collecting that many distinct,
+  valid `https://suno.com/song/<id>` URLs (deduped by take id). While a run has
+  only one captured take URL, the song is held in `suno_running`
+  (`blockedReason: awaiting_second_suno_take_url`) and the autopilot cycle
+  re-checks it instead of notifying with one URL.
+- Bounded single-URL fallback (fail-open): if only one take URL ever materializes,
+  the run is delivered with that single URL once it has waited past
+  `OPENCLAW_SUNO_SINGLE_TAKE_FALLBACK_MINUTES` (default 5 minutes). The event then
+  carries `reason: single_take_url_fallback` so the degraded delivery is
+  auditable. Delivering one valid URL is preferred over never delivering.
+- The bounded fallback is evaluated only after the audio import-first attempt has
+  run and yielded a benign not-ready outcome, so the dry-run isolation and
+  take-attribution collision guards still fire first.
+
 ## Round 41 import and audio download
 
 After a successful Round 40 live create, the driver can now revisit the returned

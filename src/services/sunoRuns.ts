@@ -25,6 +25,7 @@ import {
 import { emitRuntimeEvent } from "./runtimeEventBus.js";
 import { SunoBrowserWorker } from "./sunoBrowserWorker.js";
 import { extractSunoTakeId } from "./takeAttributionGuard.js";
+import { collectSunoTakeUrls, EXPECTED_SUNO_TAKE_URLS } from "./sunoTakeUrls.js";
 import { getDurationPlan } from "../suno-production/durationPlan.js";
 
 export interface GenerateSunoRunInput {
@@ -349,10 +350,17 @@ export async function generateSunoRun(input: GenerateSunoRunInput): Promise<Suno
 
   await appendJsonl(getRunsPath(input.workspaceRoot, input.songId), record);
   const firstTakeUrl = createResult?.pendingTakeUrl ?? createResult?.urls.find(Boolean);
-  const acceptedWithUrl = Boolean(authorityDecision.allowed && createResult?.accepted && firstTakeUrl);
+  // Only commit straight to suno_take_url_ready when BOTH Suno takes are captured
+  // together. A single captured take stays in suno_running so the autopilot cycle can
+  // wait for the second take (or apply the bounded single-take fallback) before notifying.
+  const acceptedWithBothUrls = Boolean(
+    authorityDecision.allowed
+      && createResult?.accepted
+      && collectSunoTakeUrls(createResult.urls).length >= EXPECTED_SUNO_TAKE_URLS
+  );
   await updateSongState(input.workspaceRoot, input.songId, {
-    status: acceptedWithUrl ? "suno_take_url_ready" : authorityDecision.allowed && createResult?.accepted ? "suno_running" : "suno_prompt_pack",
-    reason: acceptedWithUrl ? "Suno take URL ready; audio rendering pending" : authorityDecision.reason,
+    status: acceptedWithBothUrls ? "suno_take_url_ready" : authorityDecision.allowed && createResult?.accepted ? "suno_running" : "suno_prompt_pack",
+    reason: acceptedWithBothUrls ? "Suno take URL ready; audio rendering pending" : authorityDecision.reason,
     selectedTakeId: firstTakeUrl ? extractSunoTakeId(firstTakeUrl) ?? firstTakeUrl : undefined,
     appendPublicLinks: createResult?.accepted ? createResult.urls : undefined,
     runCountDelta: 1

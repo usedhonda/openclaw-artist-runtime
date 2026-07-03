@@ -73,17 +73,22 @@ async function seedPromptPack(root: string, songId = "song-url"): Promise<void> 
   });
 }
 
-async function writeAcceptedRun(root: string, songId = "song-url"): Promise<void> {
+async function writeAcceptedRun(
+  root: string,
+  songId = "song-url",
+  urls: string[] = ["https://suno.com/song/take-ready"],
+  createdAt = "2026-06-16T00:00:00.000Z"
+): Promise<void> {
   await mkdir(join(root, "songs", songId, "suno"), { recursive: true });
   await writeFile(join(root, "songs", songId, "suno", "runs.jsonl"), `${JSON.stringify({
     runId: "run-ready",
     songId,
-    createdAt: "2026-06-16T00:00:00.000Z",
+    createdAt,
     mode: "background_browser_worker",
     authorityDecision: { allowed: true, reason: "allowed", policyDecision: "create" },
     status: "accepted",
     dryRun: false,
-    urls: ["https://suno.com/song/take-ready"]
+    urls
   })}\n`, "utf8");
 }
 
@@ -100,7 +105,7 @@ describe("Suno take URL ready flow", () => {
     vi.useRealTimers();
   });
 
-  it("emits suno_take_url_ready and releases the lane without waiting for import", async () => {
+  it("emits suno_take_url_ready with both take URLs and releases the lane without waiting for import", async () => {
     const root = workspace();
     await seedPromptPack(root);
     connectorStatusMock.mockResolvedValue({ state: "connected" });
@@ -108,7 +113,7 @@ describe("Suno take URL ready flow", () => {
       accepted: true,
       runId: "run-ready",
       reason: "submitted_via_create_card",
-      urls: ["https://suno.com/song/take-ready"]
+      urls: ["https://suno.com/song/take-ready-a", "https://suno.com/song/take-ready-b"]
     });
     const events: RuntimeEvent[] = [];
     const unsubscribe = getRuntimeEventBus().subscribe((event) => events.push(event));
@@ -128,11 +133,11 @@ describe("Suno take URL ready flow", () => {
     const run = await readLatestSunoRun(root, "song-url");
     expect(connectorCreateMock).toHaveBeenCalledTimes(1);
     expect(connectorImportMock).not.toHaveBeenCalled();
-    expect(run).toMatchObject({ status: "accepted", urls: ["https://suno.com/song/take-ready"] });
+    expect(run).toMatchObject({ status: "accepted", urls: ["https://suno.com/song/take-ready-a", "https://suno.com/song/take-ready-b"] });
     expect(song).toMatchObject({
       status: "suno_take_url_ready",
-      selectedTakeId: "take-ready",
-      publicLinks: ["https://suno.com/song/take-ready"]
+      selectedTakeId: "take-ready-a",
+      publicLinks: ["https://suno.com/song/take-ready-a", "https://suno.com/song/take-ready-b"]
     });
     expect(state).toMatchObject({
       stage: "idle",
@@ -141,19 +146,98 @@ describe("Suno take URL ready flow", () => {
       blockedReason: undefined,
       lastSuccessfulStage: "suno_generation"
     });
-    expect(events).toContainEqual(expect.objectContaining({
+    const urlReady = events.find((event) => event.type === "suno_take_url_ready");
+    expect(urlReady).toMatchObject({
       type: "suno_take_url_ready",
       songId: "song-url",
       runId: "run-ready",
-      urls: ["https://suno.com/song/take-ready"]
-    }));
+      urls: ["https://suno.com/song/take-ready-a", "https://suno.com/song/take-ready-b"]
+    });
+    expect((urlReady as Extract<RuntimeEvent, { type: "suno_take_url_ready" }>).reason).toBeUndefined();
   });
 
-  it("recovers a stale generation lane when an accepted Suno run already has URLs", async () => {
+  it("holds a fresh single-take-URL run in suno_running without notifying", async () => {
+    const root = workspace();
+    await seedPromptPack(root);
+    connectorStatusMock.mockResolvedValue({ state: "connected" });
+    connectorCreateMock.mockResolvedValue({
+      accepted: true,
+      runId: "run-ready",
+      reason: "submitted_via_create_card",
+      urls: ["https://suno.com/song/take-ready-a"]
+    });
+    const events: RuntimeEvent[] = [];
+    const unsubscribe = getRuntimeEventBus().subscribe((event) => events.push(event));
+
+    const state = await new ArtistAutopilotService().runCycle({
+      workspaceRoot: root,
+      config: {
+        artist: { workspaceRoot: root },
+        autopilot: { enabled: true, dryRun: false },
+        music: { suno: { driver: "playwright", submitMode: "live", authority: "auto_create_and_select_take" } },
+        telegram: { enabled: false }
+      }
+    });
+
+    unsubscribe();
+    const song = await readSongState(root, "song-url");
+    expect(song).toMatchObject({
+      status: "suno_running",
+      publicLinks: ["https://suno.com/song/take-ready-a"]
+    });
+    expect(state).toMatchObject({
+      stage: "suno_generation",
+      currentSongId: "song-url",
+      blockedReason: "awaiting_second_suno_take_url"
+    });
+    expect(events.some((event) => event.type === "suno_take_url_ready")).toBe(false);
+  });
+
+  it("delivers the single take URL with a fallback reason once the bounded window elapses", async () => {
+    const root = workspace();
+    await seedPromptPack(root);
+    await updateSongState(root, "song-url", { status: "suno_running", reason: "single take url held" });
+    // Accepted run captured only one take URL and has waited well past the fallback window.
+    await writeAcceptedRun(root, "song-url", ["https://suno.com/song/take-ready-a"], "2026-06-16T00:00:00.000Z");
+    connectorStatusMock.mockResolvedValue({ state: "generating", currentRunId: "run-ready" });
+    // Audio isn't ready yet: the import-first attempt returns no assets, so the single
+    // captured URL is delivered via the bounded fallback rather than wedging.
+    connectorImportMock.mockResolvedValue({ runId: "run-ready", urls: [], paths: [], reason: "waiting for Suno result import" });
+    const events: RuntimeEvent[] = [];
+    const unsubscribe = getRuntimeEventBus().subscribe((event) => events.push(event));
+
+    const state = await new ArtistAutopilotService().runCycle({
+      workspaceRoot: root,
+      config: {
+        artist: { workspaceRoot: root },
+        autopilot: { enabled: true, dryRun: false },
+        music: { suno: { driver: "playwright", submitMode: "live", authority: "auto_create_and_select_take" } },
+        telegram: { enabled: false }
+      }
+    });
+
+    unsubscribe();
+    expect(await readSongState(root, "song-url")).toMatchObject({
+      status: "suno_take_url_ready",
+      selectedTakeId: "take-ready-a",
+      publicLinks: ["https://suno.com/song/take-ready-a"]
+    });
+    expect(state).toMatchObject({ stage: "idle", currentSongId: undefined, paused: false });
+    const urlReady = events.find((event) => event.type === "suno_take_url_ready");
+    expect(urlReady).toMatchObject({
+      type: "suno_take_url_ready",
+      songId: "song-url",
+      runId: "run-ready",
+      urls: ["https://suno.com/song/take-ready-a"],
+      reason: "single_take_url_fallback"
+    });
+  });
+
+  it("recovers a stale generation lane when an accepted Suno run already has both URLs", async () => {
     const root = workspace();
     await seedPromptPack(root);
     await updateSongState(root, "song-url", { status: "suno_prompt_pack", reason: "stale prompt pack state" });
-    await writeAcceptedRun(root);
+    await writeAcceptedRun(root, "song-url", ["https://suno.com/song/take-ready-a", "https://suno.com/song/take-ready-b"]);
     connectorStatusMock.mockResolvedValue({ state: "generating", currentRunId: "run-ready" });
     const events: RuntimeEvent[] = [];
     const unsubscribe = getRuntimeEventBus().subscribe((event) => events.push(event));
@@ -173,8 +257,8 @@ describe("Suno take URL ready flow", () => {
     expect(connectorImportMock).not.toHaveBeenCalled();
     expect(await readSongState(root, "song-url")).toMatchObject({
       status: "suno_take_url_ready",
-      selectedTakeId: "take-ready",
-      publicLinks: ["https://suno.com/song/take-ready"]
+      selectedTakeId: "take-ready-a",
+      publicLinks: ["https://suno.com/song/take-ready-a", "https://suno.com/song/take-ready-b"]
     });
     expect(state).toMatchObject({
       stage: "idle",
@@ -183,11 +267,14 @@ describe("Suno take URL ready flow", () => {
       blockedReason: undefined,
       lastSuccessfulStage: "suno_generation"
     });
-    expect(events).toContainEqual(expect.objectContaining({
+    const urlReady = events.find((event) => event.type === "suno_take_url_ready");
+    expect(urlReady).toMatchObject({
       type: "suno_take_url_ready",
       songId: "song-url",
-      runId: "run-ready"
-    }));
+      runId: "run-ready",
+      urls: ["https://suno.com/song/take-ready-a", "https://suno.com/song/take-ready-b"]
+    });
+    expect((urlReady as Extract<RuntimeEvent, { type: "suno_take_url_ready" }>).reason).toBeUndefined();
   });
 
   it("sends URL-ready text and adoption buttons to Telegram", async () => {

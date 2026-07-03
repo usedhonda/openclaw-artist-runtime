@@ -2,7 +2,7 @@ import { readFile } from "node:fs/promises";
 import { isAbsolute, join } from "node:path";
 import { applyConfigDefaults } from "../config/schema.js";
 import { BrowserWorkerSunoConnector } from "../connectors/suno/browserWorkerConnector.js";
-import type { AutopilotRunState, AutopilotStage, AutopilotStatus, ArtistRuntimeConfig, CommissionBrief, CommissionBriefSource, ObservationSummary, SocialPublishLedgerEntry, SocialPublishResult, SongState, SpawnProposal } from "../types.js";
+import type { AutopilotRunState, AutopilotStage, AutopilotStatus, ArtistRuntimeConfig, CommissionBrief, CommissionBriefSource, ObservationSummary, SocialPublishLedgerEntry, SocialPublishResult, SongState, SpawnProposal, SunoRunRecord } from "../types.js";
 import { composeDailyVoice } from "./artistDailyVoiceComposer.js";
 import { markPulsed, shouldPulse } from "./artistPulseRateLimiter.js";
 import { AutopilotControlService } from "./autopilotControlService.js";
@@ -21,6 +21,12 @@ import { publishSocialAction } from "./socialPublishing.js";
 import { selectTake } from "./takeSelection.js";
 import { evaluateSunoTakeSelection } from "./sunoTakeSelector.js";
 import { emitRuntimeEvent } from "./runtimeEventBus.js";
+import {
+  collectSunoTakeUrls,
+  evaluateSunoTakeUrlReadiness,
+  SINGLE_TAKE_URL_FALLBACK_REASON,
+  type SunoTakeUrlReadiness
+} from "./sunoTakeUrls.js";
 import { classifySunoGenerateFailure, nextSunoRetryDecision } from "./sunoRetryHandler.js";
 import { PLAYWRIGHT_LYRICS_BOX_DEGRADED_REASON } from "./sunoPlaywrightDriver.js";
 import { collectObservations, type XObservationContext } from "./xObservationCollector.js";
@@ -145,10 +151,6 @@ function releaseAfterSunoTakeUrlReady(baseState: AutopilotRunState): AutopilotRu
     lastError: undefined,
     lastSuccessfulStage: "suno_generation"
   };
-}
-
-function firstSunoTakeUrl(urls: string[] = []): string | undefined {
-  return urls.find((url) => /^https?:\/\/(?:www\.)?suno\.com\/song\/[^/?#]+/i.test(url)) ?? urls.find(Boolean);
 }
 
 function takeIdFromSunoUrl(url: string | undefined): string | undefined {
@@ -577,6 +579,47 @@ async function importPendingSunoGeneration(
   return { imported: true };
 }
 
+// While an accepted run has only one of its two take URLs, hold delivery so the
+// suno_take_url_ready notification never fires with a single URL when the second is (or
+// will imminently be) available. This runs before the audio import-first path because a
+// suno_running song with one captured URL would otherwise try to import audio and never
+// surface the URL-ready notification. Once the bounded fallback window elapses, the single
+// URL is delivered rather than never delivering (fail-open).
+const AWAITING_SECOND_SUNO_TAKE_URL_REASON = "awaiting_second_suno_take_url";
+
+async function holdSingleSunoTakeUrl(
+  root: string,
+  existing: AutopilotRunState,
+  baseState: AutopilotRunState,
+  song: SongState
+): Promise<AutopilotRunState | undefined> {
+  if (song.status === "suno_take_url_ready") {
+    return undefined;
+  }
+  const latestRun = await readLatestSunoRun(root, song.songId).catch(() => undefined);
+  if (latestRun?.status !== "accepted") {
+    return undefined;
+  }
+  // Only the exactly-one-take-URL case is handled here. Zero URLs falls through to the
+  // audio import-first recovery, and >= expected URLs is delivered by the normal paths.
+  if (collectSunoTakeUrls(latestRun.urls).length !== 1) {
+    return undefined;
+  }
+  const readiness = evaluateSunoTakeUrlReadiness(latestRun.urls, Date.parse(latestRun.createdAt), Date.now());
+  if (!readiness.emit) {
+    return writeStageState(root, existing, {
+      ...baseState,
+      currentSongId: song.songId,
+      stage: "suno_generation",
+      blockedReason: AWAITING_SECOND_SUNO_TAKE_URL_REASON,
+      lastError: undefined,
+      lastSuccessfulStage: existing.lastSuccessfulStage,
+      cycleCount: existing.cycleCount + 1
+    });
+  }
+  return deliverSunoTakeUrlReady(root, existing, baseState, song, latestRun, readiness);
+}
+
 async function recoverAcceptedRunUrlReady(
   root: string,
   existing: AutopilotRunState,
@@ -590,10 +633,21 @@ async function recoverAcceptedRunUrlReady(
   if (latestRun?.status !== "accepted") {
     return undefined;
   }
-  const firstTakeUrl = firstSunoTakeUrl(latestRun.urls);
-  if (!firstTakeUrl) {
+  const readiness = evaluateSunoTakeUrlReadiness(latestRun.urls, Date.parse(latestRun.createdAt), Date.now());
+  if (!readiness.emit) {
     return undefined;
   }
+  return deliverSunoTakeUrlReady(root, existing, baseState, song, latestRun, readiness);
+}
+
+async function deliverSunoTakeUrlReady(
+  root: string,
+  existing: AutopilotRunState,
+  baseState: AutopilotRunState,
+  song: SongState,
+  latestRun: SunoRunRecord,
+  readiness: SunoTakeUrlReadiness
+): Promise<AutopilotRunState> {
   const collisions = await findTakeAttributionCollisions(root, song.songId, latestRun.urls);
   if (collisions.length > 0) {
     await appendTakeAttributionAudit(root, "take_attribution_collision_blocked", {
@@ -619,7 +673,7 @@ async function recoverAcceptedRunUrlReady(
       cycleCount: existing.cycleCount + 1
     });
   }
-  const selectedTakeId = takeIdFromSunoUrl(firstTakeUrl);
+  const selectedTakeId = takeIdFromSunoUrl(readiness.urls[0]);
   await updateSongState(root, song.songId, {
     status: "suno_take_url_ready",
     reason: "Suno take URL ready; recovered stale generation lane",
@@ -630,8 +684,9 @@ async function recoverAcceptedRunUrlReady(
     type: "suno_take_url_ready",
     songId: song.songId,
     runId: latestRun.runId,
-    urls: latestRun.urls,
+    urls: readiness.urls,
     selectedTakeId,
+    reason: readiness.fallback ? SINGLE_TAKE_URL_FALLBACK_REASON : undefined,
     timestamp: Date.now()
   });
   await markBuildingDraftDone(root, song.songId);
@@ -1495,16 +1550,43 @@ export class ArtistAutopilotService {
               });
             }
             if (pendingImport && !pendingImport.imported) {
+              // Respect the audio import guards (dry-run isolation, take-attribution
+              // collisions) before considering URL-ready delivery.
+              if (pendingImport.pause) {
+                return writeStageState(input.workspaceRoot, existing, {
+                  ...baseState,
+                  currentSongId: song.songId,
+                  paused: true,
+                  stage: "paused",
+                  blockedReason: pendingImport.reason,
+                  lastError: pendingImport.reason,
+                  lastSuccessfulStage: existing.lastSuccessfulStage,
+                  cycleCount: existing.cycleCount + 1
+                });
+              }
+              // Audio isn't ready yet. If the run captured only one of its two take URLs,
+              // hold (or bounded-fallback deliver) it instead of wedging on "waiting for
+              // Suno result import" so the single URL still reaches the producer.
+              const singleTakeUrlHold = await holdSingleSunoTakeUrl(input.workspaceRoot, existing, baseState, song);
+              if (singleTakeUrlHold) {
+                return singleTakeUrlHold;
+              }
               return writeStageState(input.workspaceRoot, existing, {
                 ...baseState,
                 currentSongId: song.songId,
-                paused: pendingImport.pause ? true : baseState.paused,
-                stage: pendingImport.pause ? "paused" : "suno_generation",
+                stage: "suno_generation",
                 blockedReason: pendingImport.reason,
                 lastError: pendingImport.reason,
                 lastSuccessfulStage: existing.lastSuccessfulStage,
                 cycleCount: existing.cycleCount + 1
               });
+            }
+          } else {
+            // Non-suno_running lanes (e.g. a stale prompt-pack whose run already captured a
+            // single take URL) must hold instead of regenerating and burning a new credit.
+            const singleTakeUrlHold = await holdSingleSunoTakeUrl(input.workspaceRoot, existing, baseState, song);
+            if (singleTakeUrlHold) {
+              return singleTakeUrlHold;
             }
           }
           const recoveredUrlReady = await recoverAcceptedRunUrlReady(input.workspaceRoot, existing, baseState, song);
@@ -1588,21 +1670,40 @@ export class ArtistAutopilotService {
           if (run.status === "failed" || run.status === "blocked_authority") {
             return handleSunoGenerateFailure(input.workspaceRoot, existing, baseState, song, run.error?.message ?? run.authorityDecision.reason);
           }
-          if (run.status === "accepted" && run.urls.length > 0) {
-            const selectedTakeId = run.urls[0]?.match(/https?:\/\/(?:www\.)?suno\.com\/song\/([^/?#]+)/i)?.[1] ?? run.urls[0];
-            emitRuntimeEvent({
-              type: "suno_take_url_ready",
-              songId: song.songId,
-              runId: run.runId,
-              urls: run.urls,
-              selectedTakeId,
-              timestamp: Date.now()
-            });
-            await markBuildingDraftDone(input.workspaceRoot, song.songId);
-            return writeStageState(input.workspaceRoot, existing, {
-              ...releaseAfterSunoTakeUrlReady(baseState),
-              cycleCount: existing.cycleCount + 1
-            });
+          if (run.status === "accepted") {
+            // Deliver only when BOTH take URLs are captured together. A single captured
+            // URL is held (kept in suno_running via sunoRuns) so the next cycle re-checks
+            // and fires once both are present, or falls back to the single URL after the
+            // bounded window.
+            const readiness = evaluateSunoTakeUrlReadiness(run.urls, Date.parse(run.createdAt), Date.now());
+            if (readiness.emit) {
+              const selectedTakeId = takeIdFromSunoUrl(readiness.urls[0]);
+              emitRuntimeEvent({
+                type: "suno_take_url_ready",
+                songId: song.songId,
+                runId: run.runId,
+                urls: readiness.urls,
+                selectedTakeId,
+                reason: readiness.fallback ? SINGLE_TAKE_URL_FALLBACK_REASON : undefined,
+                timestamp: Date.now()
+              });
+              await markBuildingDraftDone(input.workspaceRoot, song.songId);
+              return writeStageState(input.workspaceRoot, existing, {
+                ...releaseAfterSunoTakeUrlReady(baseState),
+                cycleCount: existing.cycleCount + 1
+              });
+            }
+            if (readiness.urls.length > 0) {
+              return writeStageState(input.workspaceRoot, existing, {
+                ...baseState,
+                currentSongId: song.songId,
+                stage: "suno_generation",
+                blockedReason: AWAITING_SECOND_SUNO_TAKE_URL_REASON,
+                lastError: undefined,
+                lastSuccessfulStage: "suno_generation",
+                cycleCount: existing.cycleCount + 1
+              });
+            }
           }
           return writeStageState(input.workspaceRoot, existing, {
             ...baseState,
