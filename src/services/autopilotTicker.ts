@@ -168,7 +168,7 @@ export class AutopilotTicker {
     return (await this.runNow(configOverride)).outcome;
   }
 
-  async runNow(configOverride?: PartialDeep<ArtistRuntimeConfig>, manualSeed?: { hint: string }): Promise<AutopilotManualRunResult> {
+  async runNow(configOverride?: PartialDeep<ArtistRuntimeConfig>, manualSeed?: { hint: string; weirdness?: number }): Promise<AutopilotManualRunResult> {
     const baseConfig = configOverride ?? this.options.getConfig?.();
     let resolved: ArtistRuntimeConfig;
     try {

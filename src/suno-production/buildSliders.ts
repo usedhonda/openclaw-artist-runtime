@@ -3,6 +3,7 @@ import type { SunoSliders } from "../types.js";
 export interface BuildSlidersInput {
   genre?: string;
   moodHint?: string;
+  weirdnessOverride?: number;
 }
 
 const presets: Record<string, SunoSliders> = {
@@ -33,7 +34,7 @@ export function buildSliders(input: BuildSlidersInput = {}): SunoSliders {
   const styleShift = /precise|tight|genre|classic/.test(mood) ? 5 : /loose|raw|fragment/.test(mood) ? -5 : 0;
   const audioShift = /reference|sample|audio/.test(mood) ? 10 : /original|new/.test(mood) ? -5 : 0;
   return {
-    weirdness: clamp(base.weirdness + weirdShift),
+    weirdness: clamp(input.weirdnessOverride ?? base.weirdness + weirdShift),
     styleInfluence: clamp(base.styleInfluence + styleShift),
     audioInfluence: clamp(base.audioInfluence + audioShift)
   };

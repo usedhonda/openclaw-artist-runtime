@@ -127,4 +127,27 @@ describe("Suno V5.5 prompt pack orchestration", () => {
     expect(ledger).toContain("lyrics-suno.md");
     expect(ledger).toContain("observations/2026-05-01.md");
   });
+
+  it("threads the manual weirdness override into prompt pack sliders", () => {
+    const baseInput = {
+      songId: "song-weird",
+      songTitle: "Weird Test",
+      artistReason: "rap observation from shibuya",
+      lyricsText: lyrics,
+      moodHint: "civic pulse",
+      artistSnapshot: "# ARTIST\nused::honda watches civic noise",
+      currentStateSnapshot: "# CURRENT\nobservational"
+    };
+
+    const defaultPack = createSunoPromptPack(baseInput);
+    expect(defaultPack.sliders.weirdness).toBe(40);
+
+    const overriddenPack = createSunoPromptPack({ ...baseInput, weirdnessOverride: 80 });
+    expect(overriddenPack.sliders.weirdness).toBe(80);
+    expect(overriddenPack.sliders.styleInfluence).toBe(defaultPack.sliders.styleInfluence);
+    expect(overriddenPack.sliders.audioInfluence).toBe(defaultPack.sliders.audioInfluence);
+
+    const clampedPack = createSunoPromptPack({ ...baseInput, weirdnessOverride: 100 });
+    expect(clampedPack.sliders.weirdness).toBe(85);
+  });
 });

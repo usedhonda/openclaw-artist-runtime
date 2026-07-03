@@ -20,4 +20,19 @@ describe("Suno V5.5 slider builder", () => {
       expect(value).toBeLessThanOrEqual(85);
     }
   });
+
+  it("replaces weirdness with the override and leaves style/audio untouched", () => {
+    const base = buildSliders({ genre: "rap" });
+    const overridden = buildSliders({ genre: "rap", weirdnessOverride: 80 });
+
+    expect(base.weirdness).toBe(40);
+    expect(overridden.weirdness).toBe(80);
+    expect(overridden.styleInfluence).toBe(base.styleInfluence);
+    expect(overridden.audioInfluence).toBe(base.audioInfluence);
+  });
+
+  it("clamps a high override into the 15-85 safe zone", () => {
+    expect(buildSliders({ genre: "rap", weirdnessOverride: 100 }).weirdness).toBe(85);
+    expect(buildSliders({ genre: "rap", weirdnessOverride: 0 }).weirdness).toBe(15);
+  });
 });

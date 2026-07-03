@@ -82,7 +82,7 @@ export interface AutopilotTickInput {
 export interface RunAutopilotCycleInput {
   workspaceRoot: string;
   config?: Partial<ArtistRuntimeConfig>;
-  manualSeed?: { hint: string };
+  manualSeed?: { hint: string; weirdness?: number };
   observationRunner?: XObservationContext["runner"];
 }
 
@@ -827,7 +827,7 @@ async function ensureLyrics(root: string, song: SongState, config?: Partial<Arti
   return readSongState(root, song.songId);
 }
 
-async function createPromptPackForSong(root: string, song: SongState, config?: Partial<ArtistRuntimeConfig>): Promise<SongState> {
+async function createPromptPackForSong(root: string, song: SongState, config?: Partial<ArtistRuntimeConfig>, weirdnessOverride?: number): Promise<SongState> {
   const readySong = await ensureLyrics(root, song, config);
   const lyricsVersion = readySong.lyricsVersion ?? 1;
   const lyricsPath = join(root, "songs", readySong.songId, "lyrics", `lyrics.v${lyricsVersion}.md`);
@@ -852,6 +852,7 @@ async function createPromptPackForSong(root: string, song: SongState, config?: P
     configSnapshot: config,
     moodHint: appendDopagakiMoodHint(moodHint.trim() || undefined, dopagakiVariation),
     styleVariationSeed: dopagakiVariation.variationSeed,
+    weirdnessOverride,
     observationPath: observationPath && observationPath !== "(runtime observation)" ? isAbsolute(observationPath) ? observationPath : join(root, observationPath) : undefined,
     aiReviewProvider: config?.aiReview?.provider
   });
@@ -1486,7 +1487,7 @@ export class ArtistAutopilotService {
         case "prompt_pack": {
           let packedSong: SongState;
           try {
-            packedSong = await createPromptPackForSong(input.workspaceRoot, song, config);
+            packedSong = await createPromptPackForSong(input.workspaceRoot, song, config, input.manualSeed?.weirdness);
           } catch (error) {
             const reason = error instanceof Error ? error.message : String(error);
             if (reason.includes("lyrics_generation_degraded")) {

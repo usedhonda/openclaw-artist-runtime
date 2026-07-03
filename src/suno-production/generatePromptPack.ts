@@ -148,7 +148,7 @@ export function createSunoPromptPack(input: CreateSunoPromptPackInput): SunoProm
     lyricsBoxLimit,
     durationPlan
   });
-  const sliders = buildSlidersV55({ genre, moodHint: input.moodHint });
+  const sliders = buildSlidersV55({ genre, moodHint: input.moodHint, weirdnessOverride: input.weirdnessOverride });
   const payload = buildPayload({ ...input, lyricsText, bpm, vocalGender }, style, exclude, yamlLyrics, sliders, lyricsBoxLimit);
   const payloadHash = hashText(JSON.stringify(payload));
   const promptHash = hashText(`${style}\n${exclude}\n${yamlLyrics}`);
@@ -245,7 +245,7 @@ export async function createSunoPromptPackWithAi(
     lyricsBoxLimit,
     durationPlan
   });
-  const sliders = buildSlidersV55({ genre, moodHint: input.moodHint });
+  const sliders = buildSlidersV55({ genre, moodHint: input.moodHint, weirdnessOverride: input.weirdnessOverride });
   const payload = buildPayload({ ...input, lyricsText, bpm, vocalGender }, styleResult.total, excludeResult.text, yamlLyrics, sliders, lyricsBoxLimit);
   const payloadHash = hashText(JSON.stringify(payload));
   const promptHash = hashText(`${styleResult.total}\n${excludeResult.text}\n${yamlLyrics}`);

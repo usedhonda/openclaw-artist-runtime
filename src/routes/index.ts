@@ -681,9 +681,14 @@ export function registerRoutes(api: unknown): void {
     handler: async (input) => {
       const payload = payloadRecord(input);
       const config = await resolveRuntimeConfig(payload.config as Partial<ArtistRuntimeConfig> | undefined);
-      const manualSeedPayload = payload.manualSeed as { hint?: unknown } | undefined;
+      const manualSeedPayload = payload.manualSeed as { hint?: unknown; weirdness?: unknown } | undefined;
       const manualSeed = typeof manualSeedPayload?.hint === "string"
-        ? { hint: manualSeedPayload.hint.trim() }
+        ? {
+            hint: manualSeedPayload.hint.trim(),
+            ...(typeof manualSeedPayload.weirdness === "number" && Number.isFinite(manualSeedPayload.weirdness)
+              ? { weirdness: manualSeedPayload.weirdness }
+              : {})
+          }
         : undefined;
       const result = await getAutopilotTicker().runNow(config, manualSeed);
       return {

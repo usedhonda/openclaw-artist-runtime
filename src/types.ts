@@ -1011,6 +1011,7 @@ export interface CreateSunoPromptPackInput {
   bpm?: number;
   vocalGender?: "male" | "female" | "neutral";
   styleVariationSeed?: string;
+  weirdnessOverride?: number;
 }
 
 export interface PersistSunoPromptPackInput extends Omit<CreateSunoPromptPackInput, "artistSnapshot" | "currentStateSnapshot"> {
