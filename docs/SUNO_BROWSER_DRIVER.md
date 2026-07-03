@@ -16,6 +16,56 @@ URLs, and can now import finished runs by downloading mp3 assets into the local
 workspace. `submitMode: "skip"` still fills the form without submission for
 credit-safe rehearsals.
 
+## `suno_cli` driver (CREATE path over authenticated HTTP)
+
+Set `music.suno.driver: "suno_cli"` to drive song creation through the external
+`suno-cli` tool instead of the browser DOM worker. The
+CLI does a real authenticated HTTP POST to Suno's generate endpoint, which
+removes the fragile DOM form-filling from the CREATE path. Take import/recovery
+is unchanged: this driver defers audio import to the existing recovery path
+(`create` already returns each clip's song URL).
+
+Required environment (all read per-create; nothing is hardcoded so the plugin
+stays distribution-safe):
+
+- `OPENCLAW_SUNO_CLI_ENTRY` — absolute path to the built `dist/src/cli.js`
+  entry. Build `suno-cli` separately (`npm run build`); its `dist/` is
+  gitignored. Unset -> fail-closed `suno_cli_not_configured` (no fake URLs).
+- `SUNO_KIT_COOKIE` (or `SUNO_KIT_COOKIE_FILE`) — the Clerk session cookie the
+  CLI derives a short-lived Bearer JWT from. Inherited into the child process
+  and never read or logged here.
+- `OPENCLAW_SUNO_CAPTCHA_TOKEN` — a fresh, single-use, short-TTL hCaptcha token.
+- `OPENCLAW_SUNO_TOKEN_PROVIDER` — the paired token-provider, which must parse
+  to a safe integer.
+
+The captcha pair is browser-minted and supplied right before each create;
+automating that mint is a later phase. Missing/invalid captcha token or
+token-provider on a live create -> fail-closed `suno_cli_captcha_missing`.
+
+The connector passes `--min-minutes-between-creates 0` and a high
+`--max-generations-per-day` so artist-runtime's own `SunoBudgetTracker` stays
+authoritative and the CLI's gate does not double-reject.
+
+Outcomes are judged by the CLI's exit code (never by string-matching stdout):
+
+| exit | reason |
+| --- | --- |
+| 0 | accepted, every `clips[].songUrl` returned |
+| 2 | `suno_cli_usage` |
+| 30 | `suno_cli_blocked_login` |
+| 32 | `suno_cli_blocked_quota` |
+| 40 | `suno_cli_schema_drift` (also unexpected/non-JSON stdout on exit 0) |
+| 50 | `suno_cli_retryable` |
+| 70 (and any other non-zero) | `suno_cli_internal` |
+
+Credential safety: the captcha token is redacted (`***`) in any diagnostic log
+and never appears in a returned reason; the cookie/JWT are never logged.
+
+Trap: suno-cli prints `Live create submit is disabled in this build` only when
+neither `--dry-run` nor `--live` is passed. It is **not** a global kill-switch.
+This driver always passes `--live` and judges by exit code; never parse that
+string to conclude live is unavailable.
+
 ## Prerequisites
 
 - Use an existing Suno account that the operator controls.
