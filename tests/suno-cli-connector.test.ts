@@ -252,11 +252,148 @@ describe("CliSunoConnector.status", () => {
 });
 
 describe("CliSunoConnector.importResults", () => {
-  it("defers with a benign not-ready outcome (no URLs)", async () => {
-    const connector = new CliSunoConnector(".", { env: baseEnv() });
-    const result = await connector.importResults({ runId: "run-cli-1", urls: ["https://suno.com/song/aaa"] });
+  it("shells download with runId target, --out and --data-dir under the workspace", async () => {
+    const runner = vi.fn(async () => ({
+      stdout: JSON.stringify({
+        ok: true,
+        status: "downloaded",
+        runId: "run-cli-1",
+        downloadedFiles: ["/ws/artist/runtime/suno/cli/downloads/aaa.mp3"],
+        clips: [{ clipId: "aaa", songUrl: "https://suno.com/song/aaa" }]
+      }),
+      stderr: "",
+      exitCode: 0
+    }));
+    const connector = new CliSunoConnector("/ws/artist", { env: baseEnv(), runner });
+
+    await connector.importResults({ runId: "run-cli-1", urls: [] });
+
+    const [entry, args] = runner.mock.calls[0];
+    expect(entry).toBe(ENTRY);
+    expect(args).toEqual([
+      "download",
+      "run-cli-1",
+      "--out",
+      "/ws/artist/runtime/suno/cli/downloads",
+      "--data-dir",
+      "/ws/artist/runtime/suno/cli"
+    ]);
+  });
+
+  it("maps download exit 0 to urls + resultRefs (paths) populated", async () => {
+    const runner = runnerReturning({
+      stdout: JSON.stringify({
+        ok: true,
+        status: "downloaded",
+        runId: "run-server-9",
+        downloadedFiles: [
+          "/ws/artist/runtime/suno/cli/downloads/aaa.mp3",
+          "/ws/artist/runtime/suno/cli/downloads/bbb.mp3"
+        ],
+        clips: [
+          { clipId: "aaa", songUrl: "https://suno.com/song/aaa" },
+          { clipId: "bbb", songUrl: "https://suno.com/song/bbb" }
+        ]
+      }),
+      stderr: "",
+      exitCode: 0
+    });
+    const connector = new CliSunoConnector("/ws/artist", { env: baseEnv(), runner });
+
+    const result = await connector.importResults({ runId: "run-cli-1", urls: [] });
+
+    expect(result.accepted).toBe(true);
+    expect(result.urls).toEqual(["https://suno.com/song/aaa", "https://suno.com/song/bbb"]);
+    expect(result.paths).toEqual([
+      "/ws/artist/runtime/suno/cli/downloads/aaa.mp3",
+      "/ws/artist/runtime/suno/cli/downloads/bbb.mp3"
+    ]);
+    expect(result.runId).toBe("run-server-9");
+    expect(result.reason).toBe("suno_cli_downloaded");
+    expect(typeof result.importedAt).toBe("string");
+  });
+
+  it("maps download exit 50 to a not-ready/retryable outcome (empty urls so callers retry)", async () => {
+    const runner = runnerReturning({ stdout: JSON.stringify({ ok: false, status: "retryable_unknown" }), stderr: "", exitCode: 50 });
+    const connector = new CliSunoConnector("/ws/artist", { env: baseEnv(), runner });
+
+    const result = await connector.importResults({ runId: "run-cli-1", urls: [] });
+
     expect(result.urls).toEqual([]);
+    expect(result.paths).toBeUndefined();
     expect(result.runId).toBe("run-cli-1");
-    expect(result.reason).toBe("suno_cli_import_deferred");
+    expect(result.reason).toBe("suno_cli_retryable");
+  });
+
+  const downloadFailureCases: Array<[number, string]> = [
+    [2, "suno_cli_usage"],
+    [30, "suno_cli_blocked_login"],
+    [32, "suno_cli_blocked_quota"],
+    [40, "suno_cli_schema_drift"],
+    [70, "suno_cli_internal"],
+    [99, "suno_cli_internal"]
+  ];
+
+  it.each(downloadFailureCases)("maps download exit %i to empty-urls reason %s", async (exitCode, reason) => {
+    const runner = runnerReturning({ stdout: "", stderr: "boom", exitCode });
+    const connector = new CliSunoConnector("/ws/artist", { env: baseEnv(), runner });
+
+    const result = await connector.importResults({ runId: "run-cli-1", urls: [] });
+
+    expect(result.urls).toEqual([]);
+    expect(result.reason).toBe(reason);
+  });
+
+  it("treats non-JSON stdout on exit 0 as schema drift", async () => {
+    const runner = runnerReturning({ stdout: "not json", stderr: "", exitCode: 0 });
+    const connector = new CliSunoConnector("/ws/artist", { env: baseEnv(), runner });
+
+    const result = await connector.importResults({ runId: "run-cli-1", urls: [] });
+
+    expect(result.urls).toEqual([]);
+    expect(result.reason).toBe("suno_cli_schema_drift");
+  });
+
+  it("treats exit 0 with no downloaded files as schema drift (no fake paths)", async () => {
+    const runner = runnerReturning({
+      stdout: JSON.stringify({ ok: true, status: "downloaded", runId: "run-cli-1", downloadedFiles: [], clips: [{ clipId: "aaa", songUrl: "https://suno.com/song/aaa" }] }),
+      stderr: "",
+      exitCode: 0
+    });
+    const connector = new CliSunoConnector("/ws/artist", { env: baseEnv(), runner });
+
+    const result = await connector.importResults({ runId: "run-cli-1", urls: [] });
+
+    expect(result.urls).toEqual([]);
+    expect(result.reason).toBe("suno_cli_schema_drift");
+  });
+
+  it("returns suno_cli_not_configured when the CLI entry env is unset (no runner call)", async () => {
+    const runner = vi.fn(async () => ({ stdout: "", stderr: "", exitCode: 0 }));
+    const env = baseEnv();
+    delete env.OPENCLAW_SUNO_CLI_ENTRY;
+    const connector = new CliSunoConnector("/ws/artist", { env, runner });
+
+    const result = await connector.importResults({ runId: "run-cli-1", urls: [] });
+
+    expect(result.urls).toEqual([]);
+    expect(result.reason).toBe("suno_cli_not_configured");
+    expect(runner).not.toHaveBeenCalled();
+  });
+
+  it("never leaks the cookie in download failure logs", async () => {
+    const logged: string[] = [];
+    const runner = runnerReturning({ stdout: "", stderr: "boom", exitCode: 30 });
+    const connector = new CliSunoConnector("/ws/artist", {
+      env: baseEnv(),
+      runner,
+      logger: { warn: (message) => logged.push(message) }
+    });
+
+    const result = await connector.importResults({ runId: "run-cli-1", urls: [] });
+
+    const joinedLogs = logged.join("\n");
+    expect(joinedLogs).not.toContain(COOKIE);
+    expect(JSON.stringify(result)).not.toContain(COOKIE);
   });
 });

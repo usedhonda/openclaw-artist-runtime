@@ -184,10 +184,36 @@ export class CliSunoConnector implements SunoConnector {
   }
 
   async importResults(input: { runId: string; urls: string[] }): Promise<SunoImportResult> {
-    // A1 lower-risk choice: suno-cli's create already returns clip song URLs, so
-    // this returns a benign not-ready outcome and defers audio import to the
-    // existing recovery path rather than shelling suno-cli's download command.
-    return { urls: [], runId: input.runId, reason: "suno_cli_import_deferred" };
+    const runId = input.runId;
+
+    const entry = this.entryPath();
+    if (!entry) {
+      return { urls: [], runId, reason: "suno_cli_not_configured" };
+    }
+
+    const args = this.buildDownloadArgs(runId);
+    // Cookie/JWT envs (SUNO_KIT_COOKIE / SUNO_KIT_COOKIE_FILE) flow into the child
+    // for the authenticated audio fetch; their values are never read or logged here.
+    const childEnv: NodeJS.ProcessEnv = { ...this.env };
+
+    let run: CliRunResult;
+    try {
+      run = await this.runner(entry, args, childEnv);
+    } catch {
+      this.logger.warn(`[suno-cli] download spawn error args=${redactArgs(args).join(" ")}`);
+      return { urls: [], runId, reason: "suno_cli_internal" };
+    }
+
+    if (run.exitCode === 0) {
+      return this.parseDownload(run.stdout, runId);
+    }
+
+    // Exit 50 (retryable_unknown) -> audio not ready yet. An empty urls result makes
+    // the autopilot/adoption import path retry rather than fail (matching how the
+    // browser worker signals "not ready yet"). Other non-zero codes map to their
+    // stable fail-closed reason. Never fabricate URLs. Judge by exit code only.
+    this.logger.warn(`[suno-cli] download failed exit=${run.exitCode} args=${redactArgs(args).join(" ")}`);
+    return { urls: [], runId, reason: EXIT_REASONS[run.exitCode] ?? "suno_cli_internal" };
   }
 
   private entryPath(): string | undefined {
@@ -225,6 +251,52 @@ export class CliSunoConnector implements SunoConnector {
       pendingTakeUrl: urls[0],
       dryRun: false
     };
+  }
+
+  private parseDownload(stdout: string, fallbackRunId: string): SunoImportResult {
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(stdout);
+    } catch {
+      return { urls: [], runId: fallbackRunId, reason: "suno_cli_schema_drift" };
+    }
+
+    const record = typeof parsed === "object" && parsed !== null ? (parsed as Record<string, unknown>) : {};
+    const clips = Array.isArray(record.clips) ? record.clips : [];
+    const urls = clips
+      .map((clip) => (typeof (clip as Record<string, unknown>)?.songUrl === "string" ? (clip as Record<string, unknown>).songUrl as string : undefined))
+      .filter((url): url is string => Boolean(url));
+    const paths = Array.isArray(record.downloadedFiles)
+      ? record.downloadedFiles.filter((path): path is string => typeof path === "string")
+      : [];
+
+    const runId = readText(record.runId) ?? fallbackRunId;
+    if (urls.length === 0 || paths.length === 0) {
+      return { urls: [], runId, reason: "suno_cli_schema_drift" };
+    }
+
+    return {
+      accepted: true,
+      urls,
+      paths,
+      runId,
+      importedAt: new Date().toISOString(),
+      reason: "suno_cli_downloaded"
+    };
+  }
+
+  private buildDownloadArgs(runId: string): string[] {
+    const args: string[] = ["download", runId, "--out", this.downloadDir()];
+    const dataDir = this.dataDir();
+    if (dataDir) {
+      args.push("--data-dir", dataDir);
+    }
+    return args;
+  }
+
+  private downloadDir(): string {
+    const base = !this.workspaceRoot || this.workspaceRoot === "." ? "." : this.workspaceRoot;
+    return join(base, "runtime", "suno", "cli", "downloads");
   }
 
   private buildArgs(input: SunoCreateRequest, runId: string, captchaToken: string, tokenProvider: number): string[] {
