@@ -1,7 +1,7 @@
 import { readFile } from "node:fs/promises";
 import { isAbsolute, join } from "node:path";
 import { applyConfigDefaults } from "../config/schema.js";
-import { BrowserWorkerSunoConnector } from "../connectors/suno/browserWorkerConnector.js";
+import { resolveSunoConnector } from "../connectors/suno/resolveSunoConnector.js";
 import type { AutopilotRunState, AutopilotStage, AutopilotStatus, ArtistRuntimeConfig, CommissionBrief, CommissionBriefSource, ObservationSummary, SocialPublishLedgerEntry, SocialPublishResult, SongState, SpawnProposal, SunoRunRecord } from "../types.js";
 import { composeDailyVoice } from "./artistDailyVoiceComposer.js";
 import { markPulsed, shouldPulse } from "./artistPulseRateLimiter.js";
@@ -476,7 +476,7 @@ async function importPendingSunoGeneration(
   config: ArtistRuntimeConfig,
   existing?: AutopilotRunState
 ): Promise<{ imported: true } | { imported: false; reason?: string; pause?: true } | undefined> {
-  const connector = new BrowserWorkerSunoConnector(root, { config });
+  const connector = resolveSunoConnector(root, config);
   const latestRun = await readLatestSunoRun(root, songId);
   const workerStatus = await connector.status().catch(() => undefined);
   const hasAcceptedRun = latestRun?.status === "accepted";

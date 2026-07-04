@@ -1,7 +1,7 @@
 import { appendFile, mkdir, readFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import type { ArtistRuntimeConfig, SunoImportResult } from "../types.js";
-import { BrowserWorkerSunoConnector } from "../connectors/suno/browserWorkerConnector.js";
+import { resolveSunoConnector } from "../connectors/suno/resolveSunoConnector.js";
 import { appendTakeAttributionAudit, findDryRunImportPaths, findTakeAttributionCollisions } from "./takeAttributionGuard.js";
 import { importSunoResults, readLatestSunoRun } from "./sunoRuns.js";
 import { appendFailedNotification } from "./failedNotifyLedger.js";
@@ -97,7 +97,7 @@ export async function runDownloadAfterAdoptionJob(input: AdoptionDownloadJobInpu
     return entry;
   }
 
-  const connector = new BrowserWorkerSunoConnector(input.root, { config: input.config });
+  const connector = resolveSunoConnector(input.root, input.config);
   const result: SunoImportResult = await connector.importResults({ runId, urls }).catch((error) => ({
     urls: [],
     paths: [],
