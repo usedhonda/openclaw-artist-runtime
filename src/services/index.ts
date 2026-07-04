@@ -9,6 +9,7 @@ import { getRuntimeEventBus } from "./runtimeEventBus.js";
 import { appendRuntimeEvent } from "./runtimeEventsLedger.js";
 import { getDashboardBaseUrl, isTelegramNotifierEnabled, resolveDefaultWorkspaceRoot, resolveRuntimeConfig } from "./runtimeConfig.js";
 import { SocialDistributionWorker } from "./socialDistributionWorker.js";
+import { CliSunoConnector } from "../connectors/suno/cliSunoConnector.js";
 import { SunoBrowserWorker } from "./sunoBrowserWorker.js";
 import { startFailedNotifyReplayWorker } from "./failedNotifyReplayWorker.js";
 import { rearmQueuedAdoptionDownloadJobs } from "./sunoAdoptionDownloadJob.js";
@@ -211,9 +212,22 @@ export function registerServices(api: unknown): void {
     // a child of the gateway process and dies with it). So shutdown is a no-op; only
     // explicit operator actions (connect/reconnect/handoff) change connection state.
     create: () => {
-      const worker = new SunoBrowserWorker(resolveDefaultWorkspaceRoot());
       return {
-        start: () => worker.status(),
+        // Driver-aware, still read-only. When driver=suno_cli, probe via the CLI
+        // connector (env read, no browser). Otherwise keep the historical
+        // no-config SunoBrowserWorker construction: passing config would flip
+        // shouldCheckProfileLifecycle() on for playwright and re-introduce the
+        // profile probe this boot path deliberately avoids. The gate is inlined
+        // here (not via resolveSunoConnector) precisely to preserve that
+        // no-config, no-probe construction. Config failure falls back to the
+        // browser worker (default).
+        start: async () => {
+          const config = await resolveRuntimeConfig().catch(() => undefined);
+          if (config?.music?.suno?.driver === "suno_cli") {
+            return new CliSunoConnector(resolveDefaultWorkspaceRoot()).status();
+          }
+          return new SunoBrowserWorker(resolveDefaultWorkspaceRoot()).status();
+        },
         stop: () => undefined
       };
     }

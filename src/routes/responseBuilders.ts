@@ -3,7 +3,7 @@ import { join } from "node:path";
 import { InstagramConnector } from "../connectors/social/instagramConnector.js";
 import { TikTokConnector } from "../connectors/social/tiktokConnector.js";
 import { XBirdConnector } from "../connectors/social/xBirdConnector.js";
-import { BrowserWorkerSunoConnector } from "../connectors/suno/browserWorkerConnector.js";
+import { resolveSunoConnector } from "../connectors/suno/resolveSunoConnector.js";
 import { startRuntimeEventLedgerFromEnv, startTelegramNotifierFromEnv } from "../services/index.js";
 import { collectAlerts } from "../services/alerts.js";
 import { appendAuditLog, createAuditEvent } from "../services/auditLog.js";
@@ -577,7 +577,7 @@ export async function buildPromptLedgerResponse(songId?: string, config?: Partia
 export async function buildAlertsResponse(config?: Partial<ArtistRuntimeConfig>) {
   const mergedConfig = await resolveRuntimeConfig(config);
   const platforms = await buildPlatformStatuses(mergedConfig);
-  const sunoWorker = await new BrowserWorkerSunoConnector(mergedConfig.artist.workspaceRoot, { config: mergedConfig }).status();
+  const sunoWorker = await resolveSunoConnector(mergedConfig.artist.workspaceRoot, mergedConfig).status();
   return collectAlerts(mergedConfig.artist.workspaceRoot, sunoWorker, platforms, mergedConfig);
 }
 
@@ -1191,7 +1191,7 @@ export async function buildSunoStatusResponse(config?: Partial<ArtistRuntimeConf
   const workspaceRoot = mergedConfig.artist.workspaceRoot;
   const recentSong = (await listSongStates(workspaceRoot))[0];
   const worker = withRecentSongImportOutcome(
-    await new BrowserWorkerSunoConnector(workspaceRoot, { config: mergedConfig }).status(),
+    await resolveSunoConnector(workspaceRoot, mergedConfig).status(),
     recentSong
   );
   const latestPromptPack = recentSong ? await readLatestPromptPackMetadata(workspaceRoot, recentSong.songId) : undefined;
@@ -1251,7 +1251,7 @@ export async function buildStatusResponse(config?: Partial<ArtistRuntimeConfig>)
     mergedConfig.autopilot.dryRun,
     mergedConfig.artist.workspaceRoot
   );
-  const rawSunoWorker = await new BrowserWorkerSunoConnector(mergedConfig.artist.workspaceRoot, { config: mergedConfig }).status();
+  const rawSunoWorker = await resolveSunoConnector(mergedConfig.artist.workspaceRoot, mergedConfig).status();
   const distributionWorker = await new SocialDistributionWorker().status(mergedConfig);
   const workspaceStatus = await buildWorkspaceSummaries(mergedConfig.artist.workspaceRoot);
   const sunoWorker = withRecentSongImportOutcome(rawSunoWorker, workspaceStatus.recentSong);
@@ -1371,7 +1371,7 @@ export async function buildSunoDiagnosticsExportResponse(
   const mergedConfig = await resolveRuntimeConfig(config);
   const workspaceRoot = mergedConfig.artist.workspaceRoot;
   const cutoffMs = now.getTime() - Math.min(30, Math.max(1, days)) * 24 * 60 * 60 * 1000;
-  const worker = await new BrowserWorkerSunoConnector(workspaceRoot, { config: mergedConfig }).status();
+  const worker = await resolveSunoConnector(workspaceRoot, mergedConfig).status();
   const [resetHistory, songs] = await Promise.all([
     new SunoBudgetTracker(workspaceRoot).getResetHistory(Number.MAX_SAFE_INTEGER),
     listSongStates(workspaceRoot)
