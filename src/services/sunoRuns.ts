@@ -450,7 +450,11 @@ export async function importSunoResults(input: ImportSunoResultsInput): Promise<
     appendPublicLinks: input.urls,
     lastImportOutcome
   });
-  await new SunoBrowserWorker(input.workspaceRoot).supersedeImportOutcome(lastImportOutcome);
+  // The CLI driver has no browser-worker state to supersede; only sync the
+  // browser worker's import outcome when it actually owns the lifecycle.
+  if (config.music.suno.driver !== "suno_cli") {
+    await new SunoBrowserWorker(input.workspaceRoot).supersedeImportOutcome(lastImportOutcome);
+  }
   if (input.preserveSongLifecycle) {
     emitRuntimeEvent({
       type: "suno_adoption_download_imported",
