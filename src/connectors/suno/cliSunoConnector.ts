@@ -50,6 +50,7 @@ const MAX_GENERATIONS_PER_DAY = 100000;
 const EXIT_REASONS: Record<number, string> = {
   2: "suno_cli_usage",
   30: "suno_cli_blocked_login",
+  31: "suno_cli_blocked_captcha",
   32: "suno_cli_blocked_quota",
   40: "suno_cli_schema_drift",
   50: "suno_cli_retryable",
@@ -110,10 +111,10 @@ function extractLyrics(payload: SunoCreatePayload): string | undefined {
  * suno-cli tool (an authenticated HTTP POST to Suno's generate endpoint),
  * replacing the fragile browser DOM worker for the CREATE path.
  *
- * Captcha is supplied per-create via env (fresh, single-use, short-TTL,
- * browser-minted); automating the mint is a later phase. Fail-closed: any
- * missing configuration returns accepted:false with a stable reason and never
- * fabricates URLs.
+ * Captcha is an optional escape-hatch supplied per-create via env (fresh,
+ * single-use, short-TTL, browser-minted); on a trusted session it is omitted so
+ * suno-cli drives the create with token=null. Fail-closed: dry-run and missing
+ * CLI entry return accepted:false with a stable reason and never fabricate URLs.
  */
 export class CliSunoConnector implements SunoConnector {
   private readonly env: NodeJS.ProcessEnv;
@@ -127,12 +128,20 @@ export class CliSunoConnector implements SunoConnector {
   }
 
   async status(): Promise<SunoWorkerStatus> {
-    const connected = Boolean(this.entryPath()) && this.cookieConfigured();
+    // Auth is suno-cli's internal concern (JWT env > cookie env/file > saved
+    // session.json from `suno-cli login`), and a trusted session may be authed
+    // via a session.json artist-runtime never sees. So entry-configured alone is
+    // sufficient for connected; cookie presence is reported as informational.
+    const connected = Boolean(this.entryPath());
     return {
       state: connected ? "connected" : "disconnected",
       connected,
       lastTransitionAt: new Date().toISOString(),
-      ...(connected ? {} : { sunoProfileDetail: "suno_cli entry or SUNO_KIT_COOKIE not configured" })
+      ...(connected
+        ? this.cookieConfigured()
+          ? {}
+          : { sunoProfileDetail: "suno_cli configured; no cookie env (session.json/JWT may still auth)" }
+        : { sunoProfileDetail: "suno_cli entry not configured" })
     };
   }
 
@@ -149,14 +158,10 @@ export class CliSunoConnector implements SunoConnector {
       return { accepted: false, runId, reason: "suno_cli_not_configured", urls: [], dryRun: false };
     }
 
-    const captchaToken = readText(this.env.OPENCLAW_SUNO_CAPTCHA_TOKEN);
-    const tokenProviderRaw = readText(this.env.OPENCLAW_SUNO_TOKEN_PROVIDER);
-    const tokenProvider = tokenProviderRaw !== undefined ? Number(tokenProviderRaw) : Number.NaN;
-    if (!captchaToken || !Number.isSafeInteger(tokenProvider)) {
-      return { accepted: false, runId, reason: "suno_cli_captcha_missing", urls: [], dryRun: false };
-    }
-
-    const args = this.buildArgs(input, runId, captchaToken, tokenProvider);
+    // Captcha is now an optional escape-hatch: on a trusted session suno-cli
+    // succeeds with token=null. Only supply the pair when BOTH env vars are
+    // present and valid; a half pair is treated as "not supplied".
+    const args = this.buildArgs(input, runId, this.resolveCaptcha());
     // Inherit the cookie envs (SUNO_KIT_COOKIE / SUNO_KIT_COOKIE_FILE) into the
     // child; their values are never read or logged here.
     const childEnv: NodeJS.ProcessEnv = { ...this.env };
@@ -299,7 +304,20 @@ export class CliSunoConnector implements SunoConnector {
     return join(base, "runtime", "suno", "cli", "downloads");
   }
 
-  private buildArgs(input: SunoCreateRequest, runId: string, captchaToken: string, tokenProvider: number): string[] {
+  // Resolve the optional captcha escape-hatch. Returns the pair only when BOTH
+  // OPENCLAW_SUNO_CAPTCHA_TOKEN (non-empty) and OPENCLAW_SUNO_TOKEN_PROVIDER
+  // (safe integer) are present; a half pair yields undefined (omit both flags).
+  private resolveCaptcha(): { token: string; provider: number } | undefined {
+    const token = readText(this.env.OPENCLAW_SUNO_CAPTCHA_TOKEN);
+    const providerRaw = readText(this.env.OPENCLAW_SUNO_TOKEN_PROVIDER);
+    const provider = providerRaw !== undefined ? Number(providerRaw) : Number.NaN;
+    if (!token || !Number.isSafeInteger(provider)) {
+      return undefined;
+    }
+    return { token, provider };
+  }
+
+  private buildArgs(input: SunoCreateRequest, runId: string, captcha: { token: string; provider: number } | undefined): string[] {
     const payload = input.payload ?? {};
     const args: string[] = ["create", "--live"];
 
@@ -325,8 +343,10 @@ export class CliSunoConnector implements SunoConnector {
       args.push("--exclude", exclude);
     }
 
-    args.push("--captcha-token", captchaToken);
-    args.push("--token-provider", String(tokenProvider));
+    if (captcha) {
+      args.push("--captcha-token", captcha.token);
+      args.push("--token-provider", String(captcha.provider));
+    }
     args.push("--run-id", runId);
 
     const vocal = vocalGenderFlag(payload.vocalGender);

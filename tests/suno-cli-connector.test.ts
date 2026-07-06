@@ -125,6 +125,7 @@ describe("CliSunoConnector.create", () => {
   const failureCases: Array<[number, string]> = [
     [2, "suno_cli_usage"],
     [30, "suno_cli_blocked_login"],
+    [31, "suno_cli_blocked_captcha"],
     [32, "suno_cli_blocked_quota"],
     [40, "suno_cli_schema_drift"],
     [50, "suno_cli_retryable"],
@@ -177,28 +178,82 @@ describe("CliSunoConnector.create", () => {
     expect(runner).not.toHaveBeenCalled();
   });
 
-  it("returns suno_cli_captcha_missing when the captcha token is absent", async () => {
-    const runner = vi.fn(async () => ({ stdout: "", stderr: "", exitCode: 0 }));
+  it("omits the captcha flags and proceeds (trusted-session path) when no captcha env is set", async () => {
+    const runner = vi.fn(async () => ({
+      stdout: JSON.stringify({ clips: [{ clipId: "x", songUrl: "https://suno.com/song/x" }] }),
+      stderr: "",
+      exitCode: 0
+    }));
     const env = baseEnv();
     delete env.OPENCLAW_SUNO_CAPTCHA_TOKEN;
+    delete env.OPENCLAW_SUNO_TOKEN_PROVIDER;
     const connector = new CliSunoConnector(".", { env, runner });
 
     const result = await connector.create(request());
 
-    expect(result.accepted).toBe(false);
-    expect(result.reason).toBe("suno_cli_captcha_missing");
-    expect(runner).not.toHaveBeenCalled();
+    expect(runner).toHaveBeenCalledTimes(1);
+    const [, args] = runner.mock.calls[0];
+    expect(args).not.toContain("--captcha-token");
+    expect(args).not.toContain("--token-provider");
+    expect(result.reason).not.toBe("suno_cli_captcha_missing");
+    expect(result.accepted).toBe(true);
   });
 
-  it("returns suno_cli_captcha_missing when the token provider is not a safe integer", async () => {
-    const runner = vi.fn(async () => ({ stdout: "", stderr: "", exitCode: 0 }));
+  it("includes the captcha flags (redacted token + integer provider) as an escape-hatch when both env vars are present", async () => {
+    const runner = vi.fn(async () => ({
+      stdout: JSON.stringify({ clips: [{ clipId: "x", songUrl: "https://suno.com/song/x" }] }),
+      stderr: "",
+      exitCode: 0
+    }));
+    const connector = new CliSunoConnector(".", { env: baseEnv(), runner });
+
+    await connector.create(request());
+
+    const [, args] = runner.mock.calls[0];
+    expect(args).toEqual(
+      expect.arrayContaining(["--captcha-token", CAPTCHA_TOKEN, "--token-provider", "3"])
+    );
+  });
+
+  it("omits both captcha flags when only one of the two env vars is present (no half pair)", async () => {
+    const runner = vi.fn(async () => ({
+      stdout: JSON.stringify({ clips: [{ clipId: "x", songUrl: "https://suno.com/song/x" }] }),
+      stderr: "",
+      exitCode: 0
+    }));
+
+    const tokenOnly = baseEnv();
+    delete tokenOnly.OPENCLAW_SUNO_TOKEN_PROVIDER;
+    const tokenOnlyConnector = new CliSunoConnector(".", { env: tokenOnly, runner });
+    await tokenOnlyConnector.create(request());
+    const [, tokenOnlyArgs] = runner.mock.calls[0];
+    expect(tokenOnlyArgs).not.toContain("--captcha-token");
+    expect(tokenOnlyArgs).not.toContain("--token-provider");
+
+    runner.mockClear();
+
+    const providerOnly = baseEnv();
+    delete providerOnly.OPENCLAW_SUNO_CAPTCHA_TOKEN;
+    const providerOnlyConnector = new CliSunoConnector(".", { env: providerOnly, runner });
+    await providerOnlyConnector.create(request());
+    const [, providerOnlyArgs] = runner.mock.calls[0];
+    expect(providerOnlyArgs).not.toContain("--captcha-token");
+    expect(providerOnlyArgs).not.toContain("--token-provider");
+  });
+
+  it("treats a non-integer token provider as not supplied and omits both captcha flags", async () => {
+    const runner = vi.fn(async () => ({
+      stdout: JSON.stringify({ clips: [{ clipId: "x", songUrl: "https://suno.com/song/x" }] }),
+      stderr: "",
+      exitCode: 0
+    }));
     const connector = new CliSunoConnector(".", { env: baseEnv({ OPENCLAW_SUNO_TOKEN_PROVIDER: "abc" }), runner });
 
-    const result = await connector.create(request());
+    await connector.create(request());
 
-    expect(result.accepted).toBe(false);
-    expect(result.reason).toBe("suno_cli_captcha_missing");
-    expect(runner).not.toHaveBeenCalled();
+    const [, args] = runner.mock.calls[0];
+    expect(args).not.toContain("--captcha-token");
+    expect(args).not.toContain("--token-provider");
   });
 
   it("never fires a live create under dry-run", async () => {
@@ -241,13 +296,23 @@ describe("CliSunoConnector.status", () => {
     expect(status.state).toBe("connected");
   });
 
-  it("reports disconnected when the cookie is missing", async () => {
+  it("reports connected when the entry is configured even without a cookie env (session.json may auth)", async () => {
     const env = baseEnv();
     delete env.SUNO_KIT_COOKIE;
     const connector = new CliSunoConnector(".", { env });
     const status = await connector.status();
+    expect(status.connected).toBe(true);
+    expect(status.state).toBe("connected");
+  });
+
+  it("reports disconnected when the CLI entry is not configured", async () => {
+    const env = baseEnv();
+    delete env.OPENCLAW_SUNO_CLI_ENTRY;
+    const connector = new CliSunoConnector(".", { env });
+    const status = await connector.status();
     expect(status.connected).toBe(false);
     expect(status.state).toBe("disconnected");
+    expect(status.sunoProfileDetail).toBe("suno_cli entry not configured");
   });
 });
 
@@ -328,6 +393,7 @@ describe("CliSunoConnector.importResults", () => {
   const downloadFailureCases: Array<[number, string]> = [
     [2, "suno_cli_usage"],
     [30, "suno_cli_blocked_login"],
+    [31, "suno_cli_blocked_captcha"],
     [32, "suno_cli_blocked_quota"],
     [40, "suno_cli_schema_drift"],
     [70, "suno_cli_internal"],
