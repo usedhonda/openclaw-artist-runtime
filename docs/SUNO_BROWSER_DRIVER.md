@@ -21,9 +21,10 @@ credit-safe rehearsals.
 Set `music.suno.driver: "suno_cli"` to drive song creation through the external
 `suno-cli` tool instead of the browser DOM worker. The
 CLI does a real authenticated HTTP POST to Suno's generate endpoint, which
-removes the fragile DOM form-filling from the CREATE path. Take import/recovery
-is unchanged: this driver defers audio import to the existing recovery path
-(`create` already returns each clip's song URL).
+removes the fragile DOM form-filling from the CREATE path. For import, this
+driver runs the CLI's own `download` subcommand to fetch each finished run's
+audio (`create` already returns each clip's song URL); it does not defer to the
+browser worker's recovery path.
 
 Required environment (all read per-create; nothing is hardcoded so the plugin
 stays distribution-safe):
@@ -34,13 +35,17 @@ stays distribution-safe):
 - `SUNO_KIT_COOKIE` (or `SUNO_KIT_COOKIE_FILE`) — the Clerk session cookie the
   CLI derives a short-lived Bearer JWT from. Inherited into the child process
   and never read or logged here.
-- `OPENCLAW_SUNO_CAPTCHA_TOKEN` — a fresh, single-use, short-TTL hCaptcha token.
-- `OPENCLAW_SUNO_TOKEN_PROVIDER` — the paired token-provider, which must parse
-  to a safe integer.
+- `OPENCLAW_SUNO_CAPTCHA_TOKEN` (optional) — a fresh, single-use, short-TTL
+  hCaptcha token, forwarded only when paired with a valid token-provider.
+- `OPENCLAW_SUNO_TOKEN_PROVIDER` (optional) — the paired token-provider, which
+  must parse to a safe integer.
 
 The captcha pair is browser-minted and supplied right before each create;
-automating that mint is a later phase. Missing/invalid captcha token or
-token-provider on a live create -> fail-closed `suno_cli_captcha_missing`.
+automating that mint is a later phase. The pair is optional: when both the token
+and a safe-integer token-provider are present they are forwarded to the CLI,
+otherwise both flags are omitted and the create runs without them. There is no
+`suno_cli_captcha_missing` fail-closed reason; a captcha the CLI itself rejects
+surfaces as exit 31 -> `suno_cli_blocked_captcha` (see the table below).
 
 The connector passes `--min-minutes-between-creates 0` and a high
 `--max-generations-per-day` so artist-runtime's own `SunoBudgetTracker` stays
@@ -53,6 +58,7 @@ Outcomes are judged by the CLI's exit code (never by string-matching stdout):
 | 0 | accepted, every `clips[].songUrl` returned |
 | 2 | `suno_cli_usage` |
 | 30 | `suno_cli_blocked_login` |
+| 31 | `suno_cli_blocked_captcha` |
 | 32 | `suno_cli_blocked_quota` |
 | 40 | `suno_cli_schema_drift` (also unexpected/non-JSON stdout on exit 0) |
 | 50 | `suno_cli_retryable` |
