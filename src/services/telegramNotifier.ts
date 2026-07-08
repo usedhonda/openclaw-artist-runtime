@@ -1494,6 +1494,25 @@ async function promptPackCharCountLine(workspaceRoot: string | undefined, songId
   return `style: ${style}字 / lyrics: ${lyrics}字 / title: ${title}字`;
 }
 
+// Shared template for Suno/stage "stopped, reason preserved" failure reports.
+// Emits headline + divider + song + (optional retry) + reason. The retry line is
+// present only when retryCount is provided, matching the create/generate failure
+// events; take/asset stall events omit it. Output is byte-identical to the
+// previous inline arrays.
+function stoppedFailureReport(
+  headline: string,
+  songId: string,
+  reason: string,
+  retryCount?: number
+): string {
+  const lines = [headline, "", TELEGRAM_SECTION_DIVIDER, `song: ${songId}`];
+  if (retryCount !== undefined) {
+    lines.push(`retry: ${retryCount}`);
+  }
+  lines.push(`reason: ${reason}`);
+  return lines.join("\n");
+}
+
 export async function formatRuntimeEvent(
   event: RuntimeEvent,
   options: Pick<TelegramNotifierOptions, "workspaceRoot" | "aiReviewProvider" | "dashboardBaseUrl"> = {}
@@ -1586,23 +1605,19 @@ async function formatRuntimeEventRaw(
         event.nextRetryAt ? `next: ${event.nextRetryAt}` : undefined
       ].filter(Boolean).join("\n");
     case "suno_create_failed":
-      return [
+      return stoppedFailureReport(
         "Suno create が失敗した。ここで止めて、原因を残す。",
-        "",
-        TELEGRAM_SECTION_DIVIDER,
-        `song: ${event.songId}`,
-        `retry: ${event.retryCount}`,
-        `reason: ${event.reason}`
-      ].join("\n");
+        event.songId,
+        event.reason,
+        event.retryCount
+      );
     case "suno_generate_failed":
-      return [
+      return stoppedFailureReport(
         "Suno 生成は失敗で止めた。勝手に進めない。",
-        "",
-        TELEGRAM_SECTION_DIVIDER,
-        `song: ${event.songId}`,
-        `retry: ${event.retryCount}`,
-        `reason: ${event.reason}`
-      ].join("\n");
+        event.songId,
+        event.reason,
+        event.retryCount
+      );
     case "suno_hard_stop":
       return [
         "Suno 側で hard stop。ここから先は止めている。",
@@ -1619,23 +1634,19 @@ async function formatRuntimeEventRaw(
         options
       );
     case "take_selection_stalled":
-      return [
+      return stoppedFailureReport(
         "take 選別で止まっている。勝手に決めない。",
-        "",
-        TELEGRAM_SECTION_DIVIDER,
-        `song: ${event.songId}`,
-        `reason: ${event.reason}`
-      ].join("\n");
+        event.songId,
+        event.reason
+      );
     case "take_select_low_score":
       return artistReport(event, `Take score is low: ${event.songId} best=${event.bestTakeId} score=${event.score}. ${event.reason}`, options);
     case "asset_generation_stalled":
-      return [
+      return stoppedFailureReport(
         "素材作りで止まった。曲本体は進めず、原因を残す。",
-        "",
-        TELEGRAM_SECTION_DIVIDER,
-        `song: ${event.songId}`,
-        `reason: ${event.reason}`
-      ].join("\n");
+        event.songId,
+        event.reason
+      );
     case "budget_exhausted":
       return hybridEventReport(
         event,
