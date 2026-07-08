@@ -198,6 +198,14 @@ export function isDegradedLyricsBoxReason(value?: string | null): boolean {
   return Boolean(value && value.includes(SUNO_LYRICS_BOX_DEGRADED_MARKER));
 }
 
+// suno-cli's login/captcha blocks (EXIT_REASONS 30/31 in cliSunoConnector.ts) are
+// terminal: they never self-heal on a retry, so they must skip the generic retry
+// ladder and route straight to a hard stop. The reason string arrives verbatim
+// (e.g. "suno_cli_blocked_login"); startsWith tolerates any future ":detail" suffix.
+function isCliTerminalBlockReason(reason: string): boolean {
+  return reason.startsWith("suno_cli_blocked_login") || reason.startsWith("suno_cli_blocked_captcha");
+}
+
 async function hasProducerSpawnApproval(root: string, songId: string): Promise<boolean> {
   const entries = await readCallbackActionEntries(root).catch(() => []);
   return entries.some((entry) => entry.songId === songId && entry.action === "song_spawn_inject" && entry.status === "applied");
@@ -1008,7 +1016,7 @@ async function handlePlanningStage(
   return undefined;
 }
 
-async function handleSunoGenerateFailure(
+export async function handleSunoGenerateFailure(
   root: string,
   existing: AutopilotRunState,
   baseState: AutopilotRunState,
@@ -1024,6 +1032,27 @@ async function handleSunoGenerateFailure(
     retryCount,
     timestamp: Date.now()
   });
+  if (isCliTerminalBlockReason(reason)) {
+    // Non-self-healing CLI block: hard-stop on the first failure instead of burning
+    // three retries that mislabel it as transient. Setting hardStopReason makes
+    // composeDraftBoxNextAction short-circuit to the actionable hard-stop line and
+    // the suno_hard_stop event routes login/captcha to the re-login/CAPTCHA copy.
+    emitRuntimeEvent({
+      type: "suno_hard_stop",
+      songId: song.songId,
+      reason,
+      timestamp: Date.now()
+    });
+    return writeStageState(root, existing, {
+      ...baseState,
+      currentSongId: song.songId,
+      stage: "failed_closed",
+      hardStopReason: reason,
+      blockedReason: reason,
+      lastError: reason,
+      retryCount
+    });
+  }
   if (degraded && retryCount < SUNO_LYRICS_BOX_DEGRADED_MAX_ATTEMPTS) {
     // Transient Suno UI degradation: stay un-paused and self-heal on later ticks. The
     // payload is valid for the real box; only Suno's momentary 1250 cap blocked it.

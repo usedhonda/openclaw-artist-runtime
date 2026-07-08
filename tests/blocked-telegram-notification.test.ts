@@ -164,4 +164,21 @@ describe("blocked runtime events Telegram delivery", () => {
     expect(texts.join("\n")).not.toContain("playwright_live_timeout");
     expect(texts.join("\n")).not.toContain("ECONNRESET");
   });
+
+  it("routes suno-cli login/captcha hard-stop reasons to the actionable message", async () => {
+    const fetchImpl = vi.fn().mockImplementation(() => Promise.resolve(telegramResponse({ message_id: 77, chat: { id: 123 } })));
+    const notifier = new TelegramNotifier({ token: "token", chatId: 123, fetchImpl });
+    const loginEvent: RuntimeEvent = { type: "suno_hard_stop", songId: "song-030", reason: "suno_cli_blocked_login", timestamp: 1 };
+    const captchaEvent: RuntimeEvent = { type: "suno_hard_stop", songId: "song-031", reason: "suno_cli_blocked_captcha", timestamp: 2 };
+    expect(isTelegramSilentEvent(loginEvent)).toBe(false);
+    expect(isTelegramSilentEvent(captchaEvent)).toBe(false);
+    await notifier.notify(loginEvent);
+    await notifier.notify(captchaEvent);
+
+    const texts = fetchImpl.mock.calls.map((call) => JSON.parse(String((call[1] as RequestInit).body)).text as string);
+    expect(texts[0]).toContain("Suno のログインが切れた");
+    expect(texts[0]).toContain("song-030");
+    expect(texts[1]).toContain("CAPTCHA");
+    expect(texts[1]).toContain("song-031");
+  });
 });

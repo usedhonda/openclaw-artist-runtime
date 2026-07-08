@@ -4,7 +4,8 @@ import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { ensureArtistWorkspace } from "../src/services/artistWorkspace";
 import { ensureSongState, readSongState, updateSongState, writeSongBrief } from "../src/services/artistState";
-import { ArtistAutopilotService, writeAutopilotRunState, isDegradedLyricsBoxReason } from "../src/services/autopilotService";
+import { ArtistAutopilotService, writeAutopilotRunState, isDegradedLyricsBoxReason, handleSunoGenerateFailure } from "../src/services/autopilotService";
+import type { AutopilotRunState } from "../src/types";
 import { getRuntimeEventBus, type RuntimeEvent } from "../src/services/runtimeEventBus";
 import { importSunoResults, readLatestSunoRun } from "../src/services/sunoRuns";
 
@@ -116,6 +117,37 @@ describe("autopilot Suno generate stage", () => {
     expect(state.retryCount).toBe(3);
     expect(state.blockedReason).toContain("suno_generate_failed");
     expect(events.some((event) => event.type === "suno_generate_failed")).toBe(true);
+  });
+
+  it.each([
+    "suno_cli_blocked_login",
+    "suno_cli_blocked_captcha"
+  ])("hard-stops on the first failure for CLI terminal block %s instead of retrying", async (reason) => {
+    const root = mkdtempSync(join(tmpdir(), "artist-runtime-autopilot-cli-block-"));
+    await ensureArtistWorkspace(root);
+    const song = await ensureSongState(root, "cli-block-song", "CLI Block Song");
+    const base: AutopilotRunState = {
+      runId: "cli-block-song",
+      currentSongId: "cli-block-song",
+      stage: "suno_generation",
+      paused: false,
+      retryCount: 0,
+      cycleCount: 0,
+      updatedAt: new Date().toISOString()
+    };
+    const events: RuntimeEvent[] = [];
+    const unsubscribe = getRuntimeEventBus().subscribe((event) => events.push(event));
+
+    const state = await handleSunoGenerateFailure(root, base, base, song, reason);
+
+    unsubscribe();
+    expect(state.stage).toBe("failed_closed");
+    expect(state.hardStopReason).toBe(reason);
+    expect(state.retryCount).toBe(1);
+    expect(state.paused).toBeFalsy();
+    expect(state.blockedReason).not.toContain("suno_generate_retry");
+    expect(events.some((event) => event.type === "suno_hard_stop" && event.reason === reason)).toBe(true);
+    expect(events.some((event) => event.type === "suno_generate_retry")).toBe(false);
   });
 
   it("recognizes a transient degraded lyrics-box reason regardless of stage prefix", () => {
