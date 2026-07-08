@@ -1,4 +1,4 @@
-import { PLAYWRIGHT_EXPECTED_CREATE_CARD_COUNT } from "./sunoPlaywrightDriver.js";
+import { PLAYWRIGHT_EXPECTED_CREATE_CARD_COUNT } from "./sunoTakeConstants.js";
 
 // Suno always produces exactly two takes per generation and both take-page URLs are
 // available together. The delivery contract is "both URLs together": a

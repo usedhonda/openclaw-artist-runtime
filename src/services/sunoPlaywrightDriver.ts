@@ -15,6 +15,7 @@ import { captureSunoFailure, resolveSunoFailureLogsDir } from "./sunoFailureSnap
 import { effectiveLyricsBoxLimit, isSunoCdpEnabled, sunoBrowserArgs, sunoBrowserChannel, sunoCdpEndpoint, sunoChromeExecutablePath } from "./runtimeConfig.js";
 import { checkSunoBrowserBinaryHealth, isSunoBrowserLaunchFailure, reinstallPlaywrightChromium } from "./sunoBinaryHealthCheck.js";
 import { extractLyricsBody } from "./lyricsExtraction.js";
+import { PLAYWRIGHT_EXPECTED_CREATE_CARD_COUNT } from "./sunoTakeConstants.js";
 
 export const DEFAULT_SUNO_PROFILE_PATH = ".openclaw-browser-profiles/suno";
 export const SUNO_CREATE_URL = "https://suno.com/create";
@@ -35,7 +36,7 @@ export const PLAYWRIGHT_POLL_TIMEOUT_MS = 10 * 60 * 1_000;
 // the handshake and fail as false dom_missing / timeouts.
 export const CREATE_STEP_TIMEOUT_MS = 25_000;
 export const PLAYWRIGHT_CREATE_CARD_TIMEOUT_MS = 3 * 60 * 1_000;
-export const PLAYWRIGHT_EXPECTED_CREATE_CARD_COUNT = 2;
+export { PLAYWRIGHT_EXPECTED_CREATE_CARD_COUNT };
 export const PLAYWRIGHT_CREATE_CARD_REASON = "submitted_via_create_card";
 export const PLAYWRIGHT_CREATE_SNAPSHOT_RECOVERY_REASON = "submitted_via_timeout_snapshot_recovery";
 export const PLAYWRIGHT_CREATE_TIMEOUT_REASON = "playwright_create_timeout";
