@@ -210,7 +210,8 @@
                 "type": "string",
                 "enum": [
                   "mock",
-                  "playwright"
+                  "playwright",
+                  "suno_cli"
                 ],
                 "default": "mock",
                 "description": "Suno browser driver selection. 'mock' keeps dry-run-safe skeleton behavior. 'playwright' is reserved for operator machines that install playwright separately."
