@@ -607,6 +607,20 @@ export function registerRoutes(api: unknown): void {
             config.music.suno.monthlyCreditLimit
           );
         }
+        const isBrowserWorkerAction =
+          (segments.length === 1 && (segments[0] === "connect" || segments[0] === "reconnect")) ||
+          (segments.length === 2 && segments[0] === "handoff" && segments[1] === "complete");
+        if (isBrowserWorkerAction && config.music.suno.driver === "suno_cli") {
+          // suno_cli has no browser worker to connect/reconnect/hand off to; constructing
+          // one here would touch meaningless browser state. Return a diagnostic no-op
+          // instead of instantiating SunoBrowserWorker.
+          return {
+            error: "suno_cli_driver_no_browser_handoff",
+            driver: config.music.suno.driver,
+            method,
+            requestPath: payloadRequestPath(payload, "/plugins/artist-runtime/api/suno")
+          };
+        }
         if (segments.length === 1 && segments[0] === "connect") {
           return new SunoBrowserWorker(config.artist.workspaceRoot, { config }).connect();
         }
