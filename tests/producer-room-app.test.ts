@@ -1,7 +1,7 @@
 import React from "../ui/node_modules/react/index.js";
 import { renderToStaticMarkup } from "../ui/node_modules/react-dom/server.node.js";
 import { describe, expect, it } from "vitest";
-import { runCycleFeedback } from "../ui/src/App";
+import { runCycleFeedback } from "../ui/src/runCycleFeedback";
 import { DiagnosticsView, RoomHeader, SettingsView, SongsView, roomSummaryWithDecisions } from "../ui/src/ProducerRoomApp";
 import { SetupView } from "../ui/src/components/SetupView";
 import { SongLifecycleTimelineCard } from "../ui/src/components/SongLifecycleTimelineCard";
