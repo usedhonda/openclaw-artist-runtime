@@ -31,7 +31,10 @@ export const defaultArtistRuntimeConfig: ArtistRuntimeConfig = {
       dailyCreditLimit: 60,
       monthlyCreditLimit: 0,
       monthlyGenerationBudget: 50,
-      maxGenerationsPerDay: 4,
+      // Derived from the credit budget so the count gate never contradicts it:
+      // dailyCreditLimit (60, this file) / DEFAULT_SUNO_LIVE_CREATE_CREDIT_COST
+      // (10, src/services/sunoBudget.ts:7) = 6 creates/day.
+      maxGenerationsPerDay: 6,
       minMinutesBetweenCreates: 20,
       stopOnLoginChallenge: true,
       stopOnCaptcha: true,
