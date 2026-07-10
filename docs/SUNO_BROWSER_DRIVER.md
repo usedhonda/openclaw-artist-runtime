@@ -67,6 +67,33 @@ Outcomes are judged by the CLI's exit code (never by string-matching stdout):
 Credential safety: the captcha token is redacted (`***`) in any diagnostic log
 and never appears in a returned reason; the cookie/JWT are never logged.
 
+### Optional CDP attach for the captcha mint (`OPENCLAW_SUNO_USE_CDP`)
+
+By default the captcha mint spawns suno-cli's own isolated automation profile.
+Under the same explicit opt-in the old playwright driver used
+(`OPENCLAW_SUNO_USE_CDP=on`), the connector instead sets `SUNO_KIT_CDP_ENDPOINT`
+in the child env so suno-cli's mint attaches over CDP to an already-open,
+already-authenticated browser instead of launching a fresh one:
+
+- `OPENCLAW_SUNO_USE_CDP` — `on`/`1`/`true` enables CDP attach; anything else
+  (including unset) leaves it off.
+- `OPENCLAW_SUNO_CDP_ENDPOINT` — the loopback CDP endpoint to attach to.
+  Defaults to `http://127.0.0.1:9222` when enabled without an explicit value.
+
+When the flag is off or unset, `SUNO_KIT_CDP_ENDPOINT` is explicitly stripped
+from the child env even if the parent process happens to have it set, so an
+inherited value can never silently change behavior. This mirrors
+`isSunoCdpEnabled()`/`sunoCdpEndpoint()` in `runtimeConfig.ts`, the same helpers
+the retired-for-now playwright driver's CDP path uses (`sunoPlaywrightDriver.ts`).
+
+Motivation: a freshly spawned, automation-flagged profile is more likely to
+trigger hCaptcha's risk scoring, and a GUI-session-detached parent process
+(e.g. the gateway supervisor) may spawn a browser window that never becomes
+visible on the operator's screen even with `headless: false` — CDP-attaching
+to a browser the operator already has open sidesteps both problems. This has
+not yet been verified against a live create; treat it as available-but-unproven
+until an operator confirms an end-to-end run with the flag on.
+
 Trap: suno-cli prints `Live create submit is disabled in this build` only when
 neither `--dry-run` nor `--live` is passed. It is **not** a global kill-switch.
 This driver always passes `--live` and judges by exit code; never parse that

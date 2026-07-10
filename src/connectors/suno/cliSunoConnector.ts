@@ -8,6 +8,7 @@ import type {
   SunoWorkerStatus
 } from "../../types.js";
 import type { SunoConnector } from "./SunoConnector.js";
+import { isSunoCdpEnabled, sunoCdpEndpoint } from "../../services/runtimeConfig.js";
 
 /**
  * Result of a single suno-cli invocation. The connector judges outcomes by
@@ -165,6 +166,16 @@ export class CliSunoConnector implements SunoConnector {
     // Inherit the cookie envs (SUNO_KIT_COOKIE / SUNO_KIT_COOKIE_FILE) into the
     // child; their values are never read or logged here.
     const childEnv: NodeJS.ProcessEnv = { ...this.env };
+    // suno-cli's captcha mint can attach to an existing browser over CDP instead of
+    // spawning its own profile (avoids the bot-detection/window-visibility issues a
+    // fresh automation profile has). Only wire this under the same explicit opt-in
+    // the old playwright driver used (OPENCLAW_SUNO_USE_CDP); otherwise strip the
+    // var so an inherited value never leaks through and silently changes behavior.
+    if (isSunoCdpEnabled(this.env)) {
+      childEnv.SUNO_KIT_CDP_ENDPOINT = sunoCdpEndpoint(this.env);
+    } else {
+      delete childEnv.SUNO_KIT_CDP_ENDPOINT;
+    }
 
     let run: CliRunResult;
     try {

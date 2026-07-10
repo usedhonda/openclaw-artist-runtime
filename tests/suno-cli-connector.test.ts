@@ -288,6 +288,58 @@ describe("CliSunoConnector.create", () => {
   });
 });
 
+describe("CliSunoConnector.create — CDP endpoint (OPENCLAW_SUNO_USE_CDP opt-in)", () => {
+  function runnerCapturingEnv(): { runner: CliRunner; envAt: (call: number) => NodeJS.ProcessEnv } {
+    const calls: NodeJS.ProcessEnv[] = [];
+    const runner: CliRunner = vi.fn(async (_entry, _args, env) => {
+      calls.push(env);
+      return { stdout: JSON.stringify({ clips: [{ clipId: "x", songUrl: "https://suno.com/song/x" }] }), stderr: "", exitCode: 0 };
+    });
+    return { runner, envAt: (call: number) => calls[call] };
+  }
+
+  it("sets SUNO_KIT_CDP_ENDPOINT from OPENCLAW_SUNO_CDP_ENDPOINT when CDP is explicitly enabled", async () => {
+    const { runner, envAt } = runnerCapturingEnv();
+    const env = baseEnv({ OPENCLAW_SUNO_USE_CDP: "on", OPENCLAW_SUNO_CDP_ENDPOINT: "http://127.0.0.1:9333" });
+    const connector = new CliSunoConnector(".", { env, runner });
+
+    await connector.create(request());
+
+    expect(envAt(0).SUNO_KIT_CDP_ENDPOINT).toBe("http://127.0.0.1:9333");
+  });
+
+  it("defaults SUNO_KIT_CDP_ENDPOINT to http://127.0.0.1:9222 when CDP is enabled without an explicit endpoint", async () => {
+    const { runner, envAt } = runnerCapturingEnv();
+    const env = baseEnv({ OPENCLAW_SUNO_USE_CDP: "on" });
+    delete env.OPENCLAW_SUNO_CDP_ENDPOINT;
+    const connector = new CliSunoConnector(".", { env, runner });
+
+    await connector.create(request());
+
+    expect(envAt(0).SUNO_KIT_CDP_ENDPOINT).toBe("http://127.0.0.1:9222");
+  });
+
+  it("never passes SUNO_KIT_CDP_ENDPOINT when CDP is off/unset, even if inherited from the parent env (preserves profile-spawn)", async () => {
+    const { runner, envAt } = runnerCapturingEnv();
+    const env = baseEnv({
+      // Simulate an inherited value from the parent process env that must not leak
+      // through to the child when the opt-in flag is off.
+      SUNO_KIT_CDP_ENDPOINT: "http://127.0.0.1:9222"
+    });
+    const connector = new CliSunoConnector(".", { env, runner });
+
+    await connector.create(request());
+
+    expect(envAt(0).SUNO_KIT_CDP_ENDPOINT).toBeUndefined();
+
+    // Also verify explicit "off" strips it.
+    const offEnv = baseEnv({ OPENCLAW_SUNO_USE_CDP: "off", SUNO_KIT_CDP_ENDPOINT: "http://127.0.0.1:9222" });
+    const offConnector = new CliSunoConnector(".", { env: offEnv, runner });
+    await offConnector.create(request());
+    expect(envAt(1).SUNO_KIT_CDP_ENDPOINT).toBeUndefined();
+  });
+});
+
 describe("CliSunoConnector.status", () => {
   it("reports connected when entry and cookie are configured", async () => {
     const connector = new CliSunoConnector(".", { env: baseEnv() });
