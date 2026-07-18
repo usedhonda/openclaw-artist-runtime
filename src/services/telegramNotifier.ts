@@ -66,7 +66,8 @@ const TELEGRAM_SIGNAL_EVENT_TYPES: ReadonlySet<RuntimeEvent["type"]> = new Set([
   "artist_proactive_notice",
   "take_selection_stalled",
   "asset_generation_stalled",
-  "suno_generate_failed"
+  "suno_generate_failed",
+  "suno_human_assist_requested"
 ]);
 
 const HARD_STOP_REASON_PATTERNS: Array<{ category: string; pattern: RegExp; message: string }> = [
@@ -1626,6 +1627,16 @@ async function formatRuntimeEventRaw(
         event.songId ? `song: ${event.songId}` : undefined,
         `reason: ${event.reason}`
       ].filter(Boolean).join("\n");
+    case "suno_human_assist_requested":
+      return [
+        `captcha が出た。Mac の Suno で「Create」ボタンを押して。曲: ${event.title}`,
+        "",
+        TELEGRAM_SECTION_DIVIDER,
+        `song: ${event.songId}`,
+        `title: ${event.title}`,
+        `待機: 最大 ${event.timeoutMinutes} 分。押せば自動で続きに進む。`,
+        "注: captcha は自動で解かない。ブラウザは開いたまま前面に出してある。"
+      ].join("\n");
     case "take_select_pending":
       return hybridEventReport(
         event,

@@ -20,6 +20,7 @@ export type RuntimeEvent =
   | { type: "suno_create_failed"; songId: string; reason: string; retryCount: number; timestamp: number }
   | { type: "suno_generate_failed"; songId: string; reason: string; retryCount: number; timestamp: number }
   | { type: "suno_hard_stop"; songId?: string; reason: string; timestamp: number }
+  | { type: "suno_human_assist_requested"; songId: string; title: string; timeoutMinutes: number; timestamp: number }
   | { type: "take_select_pending"; songId: string; reason: string; timestamp: number }
   | { type: "take_selection_stalled"; songId: string; reason: string; timestamp: number }
   | { type: "take_select_low_score"; songId: string; bestTakeId: string; score: number; reason: string; timestamp: number }
