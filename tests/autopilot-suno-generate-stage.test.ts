@@ -180,6 +180,37 @@ describe("autopilot Suno generate stage", () => {
     expect(events.some((event) => event.type === "suno_generate_retry")).toBe(true);
   });
 
+  it("returns the song to generation (not a hard stop) when the human-assist create window times out", async () => {
+    // A captcha human-assist timeout means the producer never pressed Create in time.
+    // The autopilot must not hard-stop or pause: it re-attempts on a later cycle so the
+    // producer is re-prompted once per cycle, and retryCount resets so it never trips the
+    // 3-strike pause.
+    const root = mkdtempSync(join(tmpdir(), "artist-runtime-autopilot-human-assist-timeout-"));
+    await ensureArtistWorkspace(root);
+    const song = await ensureSongState(root, "human-assist-song", "Human Assist Song");
+    const base: AutopilotRunState = {
+      runId: "human-assist-song",
+      currentSongId: "human-assist-song",
+      stage: "suno_generation",
+      paused: false,
+      retryCount: 2,
+      cycleCount: 0,
+      updatedAt: new Date().toISOString()
+    };
+    const events: RuntimeEvent[] = [];
+    const unsubscribe = getRuntimeEventBus().subscribe((event) => events.push(event));
+
+    const state = await handleSunoGenerateFailure(root, base, base, song, "suno_human_assist_timeout");
+
+    unsubscribe();
+    expect(state.stage).toBe("suno_generation");
+    expect(state.paused).toBeFalsy();
+    expect(state.hardStopReason).toBeFalsy();
+    expect(state.retryCount).toBe(0);
+    expect(events.some((event) => event.type === "suno_hard_stop")).toBe(false);
+    expect(events.some((event) => event.type === "suno_generate_retry" && event.reason === "suno_human_assist_timeout")).toBe(true);
+  });
+
   it("recognizes a transient degraded lyrics-box reason regardless of stage prefix", () => {
     // The driver surfaces suno_lyrics_box_degraded; the autopilot must treat it as a
     // retryable self-heal (not a hard truncation / pause) wherever the marker appears.

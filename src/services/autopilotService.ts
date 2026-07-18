@@ -28,6 +28,7 @@ import {
   type SunoTakeUrlReadiness
 } from "./sunoTakeUrls.js";
 import { classifySunoGenerateFailure, nextSunoRetryDecision } from "./sunoRetryHandler.js";
+import { HUMAN_ASSIST_TIMEOUT_REASON } from "./sunoHumanAssist.js";
 import { PLAYWRIGHT_LYRICS_BOX_DEGRADED_REASON } from "./sunoPlaywrightDriver.js";
 import { collectObservations, type XObservationContext } from "./xObservationCollector.js";
 import { collectNewsObservations } from "./newsObservationCollector.js";
@@ -1063,6 +1064,32 @@ export async function handleSunoGenerateFailure(
       blockedReason: reason,
       lastError: reason,
       retryCount
+    });
+  }
+  if (reason === HUMAN_ASSIST_TIMEOUT_REASON) {
+    // The producer did not press Create within the human-assist window. This is NOT a
+    // hard stop: the browser was already closed by the state machine, so return the song
+    // to the generation pipeline to re-attempt on a later cycle (throttled by the daily
+    // generation limit / min-interval gate). retryCount resets to 0 so the timeout never
+    // accumulates toward the 3-strike pause and the producer keeps getting one manual-Create
+    // alert per cycle (the alert fires once per attempt inside the connector).
+    emitRuntimeEvent({
+      type: "suno_generate_retry",
+      songId: song.songId,
+      reason,
+      retryCount: 0,
+      timestamp: Date.now()
+    });
+    return writeStageState(root, existing, {
+      ...baseState,
+      currentSongId: song.songId,
+      stage: "suno_generation",
+      paused: false,
+      blockedReason: `suno_generate_retry:${reason}`,
+      lastError: reason,
+      lastRunAt: new Date().toISOString(),
+      retryCount: 0,
+      cycleCount: existing.cycleCount + 1
     });
   }
   if (degraded && retryCount < SUNO_LYRICS_BOX_DEGRADED_MAX_ATTEMPTS) {
