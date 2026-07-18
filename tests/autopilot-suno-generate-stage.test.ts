@@ -150,6 +150,36 @@ describe("autopilot Suno generate stage", () => {
     expect(events.some((event) => event.type === "suno_generate_retry")).toBe(false);
   });
 
+  it("does not hard-stop on suno_cli_schema_drift so the captcha 422 fix is load-bearing", async () => {
+    // Before the suno-kit fix, a tokenless captcha-gated 422 came back as exit 40 ->
+    // suno_cli_schema_drift, which falls through to the retry ladder here (never a
+    // hard stop) and loops forever. This guards the classification boundary: only the
+    // blocked_captcha reason hard-stops; schema_drift must stay a retry, so the CLI
+    // MUST promote the captcha 422 to exit 31 for the hard stop to fire.
+    const root = mkdtempSync(join(tmpdir(), "artist-runtime-autopilot-schema-drift-"));
+    await ensureArtistWorkspace(root);
+    const song = await ensureSongState(root, "schema-drift-song", "Schema Drift Song");
+    const base: AutopilotRunState = {
+      runId: "schema-drift-song",
+      currentSongId: "schema-drift-song",
+      stage: "suno_generation",
+      paused: false,
+      retryCount: 0,
+      cycleCount: 0,
+      updatedAt: new Date().toISOString()
+    };
+    const events: RuntimeEvent[] = [];
+    const unsubscribe = getRuntimeEventBus().subscribe((event) => events.push(event));
+
+    const state = await handleSunoGenerateFailure(root, base, base, song, "suno_cli_schema_drift");
+
+    unsubscribe();
+    expect(state.stage).not.toBe("failed_closed");
+    expect(state.hardStopReason).toBeFalsy();
+    expect(events.some((event) => event.type === "suno_hard_stop")).toBe(false);
+    expect(events.some((event) => event.type === "suno_generate_retry")).toBe(true);
+  });
+
   it("recognizes a transient degraded lyrics-box reason regardless of stage prefix", () => {
     // The driver surfaces suno_lyrics_box_degraded; the autopilot must treat it as a
     // retryable self-heal (not a hard truncation / pause) wherever the marker appears.
