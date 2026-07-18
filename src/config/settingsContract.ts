@@ -27,6 +27,8 @@ export const settingContract = [
   { path: "music.suno.connectionMode", kind: "runtimeEffective" },
   { path: "music.suno.driver", kind: "runtimeEffective" },
   { path: "music.suno.submitMode", kind: "runtimeEffective" },
+  { path: "music.suno.captchaFallback", kind: "runtimeEffective" },
+  { path: "music.suno.humanAssistTimeoutMinutes", kind: "runtimeEffective" },
   { path: "music.suno.authority", kind: "runtimeEffective" },
   { path: "music.suno.dailyCreditLimit", kind: "runtimeEffective" },
   { path: "music.suno.monthlyCreditLimit", kind: "runtimeEffective" },

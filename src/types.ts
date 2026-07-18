@@ -2,6 +2,7 @@ export const producerDigestModes = ["off", "daily", "important_events", "high_to
 export const sunoConnectionModes = ["manual_copy", "background_browser_worker", "api_provider"] as const;
 export const sunoDriverModes = ["mock", "playwright", "suno_cli"] as const;
 export const sunoSubmitModes = ["skip", "live"] as const;
+export const sunoCaptchaFallbackModes = ["off", "human_click"] as const;
 export const sunoAuthorityModes = ["prepare_only", "autofill_only", "auto_create_with_budget", "auto_create_and_select_take"] as const;
 export const dailySharingModes = ["off", "draft_only", "auto"] as const;
 export const officialReleaseModes = ["manual_approval", "auto_with_release_policy"] as const;
@@ -49,6 +50,7 @@ export type ProducerDigestMode = (typeof producerDigestModes)[number];
 export type SunoConnectionMode = (typeof sunoConnectionModes)[number];
 export type SunoDriverMode = (typeof sunoDriverModes)[number];
 export type SunoSubmitMode = (typeof sunoSubmitModes)[number];
+export type SunoCaptchaFallbackMode = (typeof sunoCaptchaFallbackModes)[number];
 export type SunoAuthority = (typeof sunoAuthorityModes)[number];
 export type DailySharingMode = (typeof dailySharingModes)[number];
 export type OfficialReleaseMode = (typeof officialReleaseModes)[number];
@@ -103,6 +105,19 @@ export interface SunoMusicConfig {
   connectionMode: SunoConnectionMode;
   driver: SunoDriverMode;
   submitMode: SunoSubmitMode;
+  /**
+   * Behavior when a live create is blocked by a captcha challenge. "off" keeps the
+   * fail-closed hard stop. "human_click" opens the CDP browser, auto-fills the form,
+   * tries a machine submit, and on a captcha challenge hands off to the producer to
+   * press Create manually (the challenge is closed, never solved). Opt-in only; it
+   * does not weaken stopOnCaptcha (captcha is never auto-solved or bypassed).
+   */
+  captchaFallback: SunoCaptchaFallbackMode;
+  /**
+   * Minutes to keep the human-assist browser window open awaiting a manual Create
+   * click before giving up and returning the song to the pipeline for a later retry.
+   */
+  humanAssistTimeoutMinutes: number;
   authority: SunoAuthority;
   dailyCreditLimit: number;
   monthlyCreditLimit: number;

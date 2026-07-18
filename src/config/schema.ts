@@ -8,6 +8,7 @@ import {
   platformAuthStatuses,
   producerDigestModes,
   sunoAuthorityModes,
+  sunoCaptchaFallbackModes,
   sunoConnectionModes,
   sunoDriverModes,
   sunoSubmitModes,
@@ -265,6 +266,8 @@ export function validateConfig(config: unknown): ValidationResult<ArtistRuntimeC
               "connectionMode",
               "driver",
               "submitMode",
+              "captchaFallback",
+              "humanAssistTimeoutMinutes",
               "authority",
               "dailyCreditLimit",
               "monthlyCreditLimit",
@@ -289,6 +292,12 @@ export function validateConfig(config: unknown): ValidationResult<ArtistRuntimeC
           }
           if ("submitMode" in config.music.suno) {
             validateEnum("config.music.suno.submitMode", config.music.suno.submitMode, sunoSubmitModes, errors);
+          }
+          if ("captchaFallback" in config.music.suno) {
+            validateEnum("config.music.suno.captchaFallback", config.music.suno.captchaFallback, sunoCaptchaFallbackModes, errors);
+          }
+          if ("humanAssistTimeoutMinutes" in config.music.suno && !isIntegerInRange(config.music.suno.humanAssistTimeoutMinutes, 1, 240)) {
+            errors.push("config.music.suno.humanAssistTimeoutMinutes must be an integer between 1 and 240");
           }
           if ("authority" in config.music.suno) {
             validateEnum("config.music.suno.authority", config.music.suno.authority, sunoAuthorityModes, errors);

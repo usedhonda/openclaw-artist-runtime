@@ -225,6 +225,22 @@
                 "default": "skip",
                 "description": "Suno create submit mode. 'skip' fills the create form but never clicks Create, so credit consumption stays at zero. 'live' clicks Create when dry-run is off, the live worker is configured, and Suno budget gates allow it."
               },
+              "captchaFallback": {
+                "type": "string",
+                "enum": [
+                  "off",
+                  "human_click"
+                ],
+                "default": "off",
+                "description": "What to do when a live create is blocked by a captcha challenge. 'off' keeps the fail-closed hard stop. 'human_click' opens the CDP browser, auto-fills the form, tries a machine submit, and on a captcha challenge closes the challenge (never solves it) and asks the producer to press Create manually. Opt-in; does not weaken stopOnCaptcha."
+              },
+              "humanAssistTimeoutMinutes": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 240,
+                "default": 60,
+                "description": "Minutes to keep the human-assist browser window open awaiting a manual Create click before giving up and returning the song to the pipeline for a later retry."
+              },
               "authority": {
                 "type": "string",
                 "enum": [
@@ -723,6 +739,14 @@
     "music.suno.submitMode": {
       "label": "Suno submit mode",
       "help": "Keep 'skip' to fill the Suno form without clicking Create. 'live' clicks Create only when dry-run is off and budget gates allow it."
+    },
+    "music.suno.captchaFallback": {
+      "label": "Captcha fallback",
+      "help": "When a live create hits a captcha, 'off' hard-stops. 'human_click' opens the browser, auto-fills the form, and asks you to press Create manually (the captcha is closed, never solved)."
+    },
+    "music.suno.humanAssistTimeoutMinutes": {
+      "label": "Human-assist wait (minutes)",
+      "help": "How long the human-assist browser window stays open awaiting your manual Create click before it gives up and retries on a later cycle."
     },
     "music.suno.authority": {
       "label": "Suno authority",
