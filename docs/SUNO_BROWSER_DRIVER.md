@@ -97,6 +97,67 @@ neither `--dry-run` nor `--live` is passed. It is **not** a global kill-switch.
 This driver always passes `--live` and judges by exit code; never parse that
 string to conclude live is unavailable.
 
+## Captcha human-assist fallback (`captchaFallback: "human_click"`)
+
+Suno now requires a captcha token for generate, so a tokenless `suno-cli create`
+fails closed as `blocked_captcha` (exit 31). An automated browser click is often
+met with an unsolvable hCaptcha, but a **human physical click on Suno's Create
+button passes captcha-free**. The human-assist fallback turns that observation
+into a bounded, opt-in flow.
+
+Enable it only alongside the CLI driver:
+
+```json
+{
+  "music": {
+    "suno": {
+      "driver": "suno_cli",
+      "submitMode": "live",
+      "captchaFallback": "human_click",
+      "humanAssistTimeoutMinutes": 60
+    }
+  }
+}
+```
+
+It also requires the CDP browser to be reachable: run
+`scripts/start-chrome-cdp.sh` (Chrome for Testing + the dedicated `suno`
+profile on `http://127.0.0.1:9222`) and set `OPENCLAW_SUNO_USE_CDP=1`.
+
+Flow when a live create returns `suno_cli_blocked_captcha`:
+
+1. attach to the CDP Chrome, open `suno.com/create`, and auto-fill the form from
+   the saved `suno-payload.json` (lyrics/style/title/exclude);
+2. try a **machine** Create click. If Suno accepts it (new `/song/<id>` cards
+   appear) the run continues through the normal record/import pipeline with **zero
+   human involvement**;
+3. if an hCaptcha challenge appears, **close the challenge overlay** (Escape only
+   — it is never solved or bypassed), keep the filled form, bring the window to
+   the front, and send one Telegram alert asking the producer to press Create on
+   the Mac (with the song title). State is `awaiting_human_create`;
+4. when the producer presses Create and new `/song/<id>` cards appear, the run is
+   recorded as accepted and flows into the usual import/notify pipeline;
+5. if no manual click lands within `humanAssistTimeoutMinutes` (default 60), the
+   browser reference is released and the song returns to the generation pipeline
+   for a later retry. This is **not** a hard stop: the producer is re-prompted at
+   most once per cycle (the alert fires once per attempt), throttled by the daily
+   generation limit and min-interval gate.
+
+Safety invariants:
+
+- `stopOnCaptcha` stays enforced (`true`). The fallback never auto-solves or
+  bypasses a captcha; the only captcha action is closing the challenge overlay.
+- The fallback is opt-in. With `captchaFallback: "off"` (the default) a
+  `blocked_captcha` keeps the existing fail-closed hard stop.
+- The two-take delivery contract is unchanged: a run is accepted only once both
+  `/song/<id>` take URLs are captured (`EXPECTED_SUNO_TAKE_URLS` = 2).
+
+Architecture: the tested contract is the driver-agnostic state machine
+(`src/services/sunoHumanAssist.ts`) plus the connector decorator
+(`src/connectors/suno/humanAssistSunoConnector.ts`). The live DOM automation
+(`src/services/cdpHumanAssistDriver.ts`) is the operator-machine path; its Suno
+selectors are validated at the next live create, not in unit tests.
+
 ## Prerequisites
 
 - Use an existing Suno account that the operator controls.
