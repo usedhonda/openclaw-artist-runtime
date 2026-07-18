@@ -546,6 +546,18 @@ async function importPendingSunoGeneration(
   }
 
   const result = await connector.importResults({ runId, urls });
+  if (result.unmatchedUrls && result.unmatchedUrls.length > 0) {
+    // Downloads unrelated to this run were excluded from import. Silent warning
+    // event only (never a hard stop / Telegram push) so the audit trail records
+    // the drop without notifying the operator.
+    emitRuntimeEvent({
+      type: "error",
+      source: "suno_take_reconcile",
+      reason: `unmatched_download:${result.unmatchedUrls.length}`,
+      songId,
+      timestamp: Date.now()
+    });
+  }
   if (result.urls.length === 0) {
     return { imported: false, reason: result.reason ?? "waiting for Suno result import" };
   }

@@ -918,6 +918,13 @@ export interface SunoImportResult {
   importedAt?: string;
   reason?: string;
   dryRun?: boolean;
+  /**
+   * Take URLs the download CLI emitted that do NOT belong to the requested run
+   * (e.g. unrelated files accumulated in the downloads directory). These are
+   * excluded from `urls`/`paths`; callers may surface a warning but must never
+   * import them.
+   */
+  unmatchedUrls?: string[];
 }
 
 export interface SunoImportedAssetMetadata {

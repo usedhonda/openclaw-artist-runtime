@@ -514,4 +514,73 @@ describe("CliSunoConnector.importResults", () => {
     expect(joinedLogs).not.toContain(COOKIE);
     expect(JSON.stringify(result)).not.toContain(COOKIE);
   });
+
+  it("imports only the run's takes when the CLI returns unrelated downloads", async () => {
+    // The external download CLI swept every mp3 accumulated in the downloads
+    // directory (20 clips across past runs). Only the two clips that belong to
+    // the requested run must be imported; the rest are excluded and reported.
+    const runUuidA = "6f370e58-a529-4e71-9304-3414a56c2f1f";
+    const runUuidB = "8e6e4e78-295b-4ed7-bcc2-7f2e480c3e20";
+    const strayUuids = Array.from({ length: 18 }, (_, i) => `stray-${i.toString().padStart(2, "0")}`);
+    const allUuids = [runUuidB, runUuidA, ...strayUuids];
+    const logged: string[] = [];
+    const runner = runnerReturning({
+      stdout: JSON.stringify({
+        ok: true,
+        status: "downloaded",
+        runId: "run-server-9",
+        downloadedFiles: allUuids.map((u) => `/ws/artist/runtime/suno/cli/downloads/${u}.mp3`),
+        clips: allUuids.map((u) => ({ clipId: u, songUrl: `https://suno.com/song/${u}` }))
+      }),
+      stderr: "",
+      exitCode: 0
+    });
+    const connector = new CliSunoConnector("/ws/artist", {
+      env: baseEnv(),
+      runner,
+      logger: { warn: (message) => logged.push(message) }
+    });
+
+    const result = await connector.importResults({
+      runId: "run-cli-1",
+      urls: [`https://suno.com/song/${runUuidA}`, `https://suno.com/song/${runUuidB}`]
+    });
+
+    expect(result.urls).toEqual([
+      `https://suno.com/song/${runUuidB}`,
+      `https://suno.com/song/${runUuidA}`
+    ]);
+    expect(result.paths).toEqual([
+      `/ws/artist/runtime/suno/cli/downloads/${runUuidB}.mp3`,
+      `/ws/artist/runtime/suno/cli/downloads/${runUuidA}.mp3`
+    ]);
+    expect(result.reason).toBe("suno_cli_downloaded");
+    expect(result.unmatchedUrls).toHaveLength(18);
+    expect(logged.join("\n")).toContain("unmatched_download");
+  });
+
+  it("imports nothing when no CLI clip matches the run's expected URLs", async () => {
+    const runner = runnerReturning({
+      stdout: JSON.stringify({
+        ok: true,
+        status: "downloaded",
+        runId: "run-server-9",
+        downloadedFiles: ["/ws/artist/runtime/suno/cli/downloads/aaa.mp3"],
+        clips: [{ clipId: "aaa", songUrl: "https://suno.com/song/aaa" }]
+      }),
+      stderr: "",
+      exitCode: 0
+    });
+    const connector = new CliSunoConnector("/ws/artist", { env: baseEnv(), runner });
+
+    const result = await connector.importResults({
+      runId: "run-cli-1",
+      urls: ["https://suno.com/song/does-not-match"]
+    });
+
+    expect(result.urls).toEqual([]);
+    expect(result.paths).toBeUndefined();
+    expect(result.reason).toBe("suno_cli_no_run_take");
+    expect(result.unmatchedUrls).toEqual(["https://suno.com/song/aaa"]);
+  });
 });

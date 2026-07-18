@@ -90,6 +90,18 @@ function readSlider(value: unknown): number | undefined {
   return typeof value === "number" && Number.isFinite(value) ? value : undefined;
 }
 
+// Clip identity for run reconciliation. A Suno take URL and its downloaded audio
+// file share the same clip UUID: `https://suno.com/song/<uuid>` <-> `<uuid>.mp3`.
+function sunoUrlSlug(url: string): string | undefined {
+  return url.match(/https?:\/\/(?:www\.)?suno\.com\/song\/([^/?#]+)/i)?.[1];
+}
+
+function downloadFileSlug(path: string): string | undefined {
+  const base = path.split(/[\\/]/).pop() ?? "";
+  const slug = base.replace(/\.[^.]+$/, "");
+  return slug ? slug : undefined;
+}
+
 function vocalGenderFlag(value: unknown): "m" | "f" | undefined {
   const normalized = typeof value === "string" ? value.trim().toLowerCase() : "";
   if (normalized === "male" || normalized === "m") {
@@ -221,7 +233,7 @@ export class CliSunoConnector implements SunoConnector {
     }
 
     if (run.exitCode === 0) {
-      return this.parseDownload(run.stdout, runId);
+      return this.parseDownload(run.stdout, runId, input.urls);
     }
 
     // Exit 50 (retryable_unknown) -> audio not ready yet. An empty urls result makes
@@ -269,7 +281,7 @@ export class CliSunoConnector implements SunoConnector {
     };
   }
 
-  private parseDownload(stdout: string, fallbackRunId: string): SunoImportResult {
+  private parseDownload(stdout: string, fallbackRunId: string, expectedUrls: string[]): SunoImportResult {
     let parsed: unknown;
     try {
       parsed = JSON.parse(stdout);
@@ -291,13 +303,54 @@ export class CliSunoConnector implements SunoConnector {
       return { urls: [], runId, reason: "suno_cli_schema_drift" };
     }
 
+    // Restrict imported takes to the run's known clip URLs. The external download
+    // CLI can emit every audio file accumulated in the downloads directory across
+    // past runs; without this guard a single run imports unrelated takes and
+    // notifies their URLs. When no expected URLs are supplied (no run identity to
+    // reconcile against), preserve the raw CLI output.
+    const expectedSlugs = new Set(
+      expectedUrls.map(sunoUrlSlug).filter((slug): slug is string => Boolean(slug))
+    );
+    if (expectedSlugs.size === 0) {
+      return {
+        accepted: true,
+        urls,
+        paths,
+        runId,
+        importedAt: new Date().toISOString(),
+        reason: "suno_cli_downloaded"
+      };
+    }
+
+    const matchedUrls = urls.filter((url) => {
+      const slug = sunoUrlSlug(url);
+      return slug !== undefined && expectedSlugs.has(slug);
+    });
+    const matchedPaths = paths.filter((path) => {
+      const slug = downloadFileSlug(path);
+      return slug !== undefined && expectedSlugs.has(slug);
+    });
+    const unmatchedUrls = urls.filter((url) => {
+      const slug = sunoUrlSlug(url);
+      return slug === undefined || !expectedSlugs.has(slug);
+    });
+    if (unmatchedUrls.length > 0) {
+      this.logger.warn(
+        `[suno-cli] unmatched_download run=${runId} dropped=${unmatchedUrls.length} kept=${matchedUrls.length}`
+      );
+    }
+    if (matchedUrls.length === 0 || matchedPaths.length === 0) {
+      return { urls: [], runId, reason: "suno_cli_no_run_take", unmatchedUrls };
+    }
+
     return {
       accepted: true,
-      urls,
-      paths,
+      urls: matchedUrls,
+      paths: matchedPaths,
       runId,
       importedAt: new Date().toISOString(),
-      reason: "suno_cli_downloaded"
+      reason: "suno_cli_downloaded",
+      unmatchedUrls: unmatchedUrls.length > 0 ? unmatchedUrls : undefined
     };
   }
 
