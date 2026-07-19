@@ -4,6 +4,7 @@ import { ErrorToastStack } from "./ErrorToast";
 import { AwaitingDecisionPanel, groupAwaitingDecisions, type AwaitingDecision } from "./components/AwaitingDecisionPanel";
 import { SongDetailCard } from "./components/SongDetailCard";
 import { SpawnProposalQueuePanel, type SpawnProposalQueueItem } from "./components/SpawnProposalQueuePanel";
+import { SunoHumanAssistCard } from "./components/SunoHumanAssistCard";
 import { SetupView, type PersonaAiSuggestion } from "./components/SetupView";
 import { useHashRoute } from "./hooks/useHashRoute";
 import { resolveProducerRoomLocale, t, type ProducerRoomLocale } from "./i18n";
@@ -366,6 +367,7 @@ function RoomViewPanel(props: {
   return (
     <section className="single-column producer-room-grid">
       <RoomHeader locale={props.locale} summary={roomSummaryWithDecisions(props.summary, props.awaitingDecisions, props.locale)} onResume={props.onResume} resumeBusy={props.busy === "resume"} />
+      <SunoHumanAssistCard locale={props.locale} />
       {props.persona?.setup.needsSetup ? (
         <article className="panel">
           <div className="warning-banner">

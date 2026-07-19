@@ -162,7 +162,10 @@ const catalog = {
     setupAiBusy: "Drafting",
     setupFieldWeak: "thin",
     setupFieldMissing: "missing",
-    setupFieldFilled: "filled"
+    setupFieldFilled: "filled",
+    sunoHumanAssistTitle: "Suno needs your Create click",
+    sunoHumanAssistBody: "Press Create in the open browser window for “{title}”.",
+    sunoHumanAssistRemaining: "{minutes} min left"
   },
   ja: {
     roomCurrentState: "Current Room State",
@@ -315,7 +318,10 @@ const catalog = {
     setupAiBusy: "作成中",
     setupFieldWeak: "薄い",
     setupFieldMissing: "未入力",
-    setupFieldFilled: "入力済み"
+    setupFieldFilled: "入力済み",
+    sunoHumanAssistTitle: "Suno の Create 待ちです",
+    sunoHumanAssistBody: "開いているブラウザウィンドウで「{title}」の Create を押してください。",
+    sunoHumanAssistRemaining: "残り {minutes} 分"
   }
 } as const;
 
