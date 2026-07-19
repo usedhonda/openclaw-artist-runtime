@@ -1,6 +1,6 @@
 import type { Page } from "playwright";
 import type { SunoCreatePayload } from "../types.js";
-import { isSunoCdpEnabled, sunoCdpEndpoint } from "./runtimeConfig.js";
+import { SunoBrowserService, sunoBrowserService } from "./sunoBrowserService.js";
 import { SUNO_CREATE_URL } from "./sunoPlaywrightDriver.js";
 import type {
   HumanAssistBrowserDriver,
@@ -9,12 +9,13 @@ import type {
 } from "./sunoHumanAssist.js";
 
 /**
- * Best-effort CDP-attached implementation of HumanAssistBrowserDriver for the
- * captcha human-assist fallback on the operator machine.
+ * Best-effort implementation of HumanAssistBrowserDriver for the captcha human-assist
+ * fallback on the operator machine.
  *
- * It ATTACHES to the already-running CDP Chrome (scripts/start-chrome-cdp.sh) so it
- * reuses the logged-in Suno profile, auto-fills the create form, and tries a machine
- * Create click. If a captcha challenge appears, it closes the challenge overlay
+ * It obtains the logged-in Suno browser from the plugin-owned SunoBrowserService (which
+ * launches the persistent `suno` profile, or attaches to a legacy CDP Chrome), auto-fills
+ * the create form, and tries a machine Create click. If a captcha challenge appears, it
+ * closes the challenge overlay
  * (Escape only -- it never solves or bypasses it) and polls for the producer's manual
  * Create click. Suno is contacted only here; this module is deliberately NOT unit
  * tested against a live DOM (selectors are validated on the real machine at the next
@@ -51,21 +52,20 @@ function extractLyrics(payload: SunoCreatePayload): string | undefined {
 
 export interface CdpHumanAssistDriverInput {
   payload: SunoCreatePayload;
+  service?: SunoBrowserService;
 }
 
 export class CdpHumanAssistDriver implements HumanAssistBrowserDriver {
   private page: Page | undefined;
   private baselineSongUrls = new Set<string>();
+  private readonly service: SunoBrowserService;
 
-  constructor(private readonly input: CdpHumanAssistDriverInput) {}
+  constructor(private readonly input: CdpHumanAssistDriverInput) {
+    this.service = input.service ?? sunoBrowserService;
+  }
 
   async openAndFill(): Promise<void> {
-    if (!isSunoCdpEnabled()) {
-      throw new Error("cdp_not_enabled: set OPENCLAW_SUNO_USE_CDP=1 and start scripts/start-chrome-cdp.sh");
-    }
-    const { chromium } = await import("playwright");
-    const browser = await chromium.connectOverCDP(sunoCdpEndpoint());
-    const context = browser.contexts()[0] ?? (await browser.newContext());
+    const { context } = await this.service.ensureRunning();
     const existing = context.pages().find((page) => {
       try {
         return page.url().includes("suno.com");
@@ -147,9 +147,11 @@ export class CdpHumanAssistDriver implements HumanAssistBrowserDriver {
   }
 
   async close(): Promise<void> {
-    // CDP-attached: leave the operator's Chrome and logged-in profile running; only
-    // drop our reference so a later attempt reconnects cleanly.
+    // Drop our page reference and release the SunoBrowserService hold. The service
+    // idle-closes the plugin-launched browser once the last holder releases (a legacy
+    // CDP attach is left running); a later attempt re-acquires cleanly.
     this.page = undefined;
+    await this.service.release();
   }
 
   private requirePage(): Page {
