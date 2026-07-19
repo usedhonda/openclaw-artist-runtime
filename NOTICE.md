@@ -25,6 +25,23 @@ instructions) is relicensed by its copyright holder under MIT for this package.
 Keep the `usedhonda` copyright attribution when redistributing the copied
 knowledge files or embedded prompt instructions.
 
+## Vendored suno-cli
+
+This package vendors a built copy of the `suno-cli` tool from the `suno-kit`
+project by usedhonda under `vendor/suno-cli/`. It is the Suno create/download CLI
+the runtime shells out to; bundling it removes the need for an operator to install
+and absolute-path a separate checkout.
+
+- Copyright: Copyright (c) 2026 usedhonda
+- License: MIT
+- Source: https://github.com/usedhonda/suno-kit (directory: `suno-cli`)
+- Bundled material: compiled `dist/src/**` plus `package.json`, `LICENSE`, and
+  `README.md`. The vendored source commit is recorded in
+  `vendor/suno-cli/VENDOR_COMMIT`.
+- Re-sync: run `scripts/sync-suno-cli-vendor.sh` against a local suno-kit checkout
+  (see `PUBLISHING.md`). Keep the `usedhonda` copyright and the bundled `LICENSE`
+  when redistributing.
+
 ## Third-Party Notices
 
 The runtime dependencies below are used by this package when installed by an

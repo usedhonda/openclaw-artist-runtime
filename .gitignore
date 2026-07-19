@@ -1,6 +1,9 @@
 node_modules/
 dist/
 ui/dist/
+# The vendored suno-cli dist is a committed distributable, not build output.
+!vendor/suno-cli/dist/
+!vendor/suno-cli/dist/**
 coverage/
 .env
 .DS_Store
