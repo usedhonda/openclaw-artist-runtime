@@ -219,9 +219,16 @@ export function isSunoLiveDisabled(env: NodeJS.ProcessEnv = process.env): boolea
   return env.OPENCLAW_SUNO_LIVE?.trim().toLowerCase() === "off" || env.OPENCLAW_SUNO_DRIVER?.trim().toLowerCase() === "mock";
 }
 
-// Structural view of the browser overrides so any resolved/partial config (or none)
-// can drive the accessors below without over-constraining callers.
-export type SunoBrowserConfigView = { music?: { suno?: { browser?: SunoBrowserConfig } } };
+// Structural view of the suno browser/cli overrides so any resolved/partial config (or
+// none) can drive the accessors below without over-constraining callers.
+export type SunoBrowserConfigView = { music?: { suno?: { browser?: SunoBrowserConfig; cliEntry?: string } } };
+
+// suno-cli entry precedence: explicit config music.suno.cliEntry wins, then the legacy
+// OPENCLAW_SUNO_CLI_ENTRY env var. The vendored fallback is resolved by the connector
+// (which knows its own install location); undefined here lets that fallback take over.
+export function sunoCliEntry(config?: SunoBrowserConfigView, env: NodeJS.ProcessEnv = process.env): string | undefined {
+  return browserConfigText(config?.music?.suno?.cliEntry) || browserConfigText(env.OPENCLAW_SUNO_CLI_ENTRY);
+}
 
 function browserConfigText(value: unknown): string | undefined {
   return typeof value === "string" && value.trim() ? value.trim() : undefined;

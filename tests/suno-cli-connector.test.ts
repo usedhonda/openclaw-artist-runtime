@@ -164,11 +164,11 @@ describe("CliSunoConnector.create", () => {
     expect(result.reason).toBe("suno_cli_schema_drift");
   });
 
-  it("returns suno_cli_not_configured when the CLI entry env is unset (no runner call, no fake URLs)", async () => {
+  it("returns suno_cli_not_configured when neither config/env nor a vendored entry resolve", async () => {
     const runner = vi.fn(async () => ({ stdout: "", stderr: "", exitCode: 0 }));
     const env = baseEnv();
     delete env.OPENCLAW_SUNO_CLI_ENTRY;
-    const connector = new CliSunoConnector(".", { env, runner });
+    const connector = new CliSunoConnector(".", { env, runner, vendorEntry: () => undefined });
 
     const result = await connector.create(request());
 
@@ -378,14 +378,82 @@ describe("CliSunoConnector.status", () => {
     expect(status.state).toBe("connected");
   });
 
-  it("reports disconnected when the CLI entry is not configured", async () => {
+  it("reports disconnected when neither config/env nor a vendored entry resolve", async () => {
     const env = baseEnv();
     delete env.OPENCLAW_SUNO_CLI_ENTRY;
-    const connector = new CliSunoConnector(".", { env });
+    const connector = new CliSunoConnector(".", { env, vendorEntry: () => undefined });
     const status = await connector.status();
     expect(status.connected).toBe(false);
     expect(status.state).toBe("disconnected");
     expect(status.sunoProfileDetail).toBe("suno_cli entry not configured");
+  });
+
+  it("reports connected via the vendored entry when config/env are unset", async () => {
+    const env = baseEnv();
+    delete env.OPENCLAW_SUNO_CLI_ENTRY;
+    const connector = new CliSunoConnector(".", { env, vendorEntry: () => "/pkg/vendor/suno-cli/dist/src/cli.js" });
+    const status = await connector.status();
+    expect(status.connected).toBe(true);
+    expect(status.state).toBe("connected");
+  });
+});
+
+describe("CliSunoConnector entry resolution order (config > env > vendor)", () => {
+  function entryCapturingRunner(): { runner: CliRunner; entryAt: (call: number) => string } {
+    const entries: string[] = [];
+    const runner: CliRunner = vi.fn(async (entry) => {
+      entries.push(entry);
+      return { stdout: JSON.stringify({ clips: [{ clipId: "x", songUrl: "https://suno.com/song/x" }] }), stderr: "", exitCode: 0 };
+    });
+    return { runner, entryAt: (call: number) => entries[call] };
+  }
+
+  it("prefers config music.suno.cliEntry over env and vendor", async () => {
+    const { runner, entryAt } = entryCapturingRunner();
+    const env = baseEnv({ OPENCLAW_SUNO_CLI_ENTRY: "/env/cli.js" });
+    const connector = new CliSunoConnector(".", {
+      env,
+      runner,
+      config: { music: { suno: { cliEntry: "/cfg/cli.js" } } },
+      vendorEntry: () => "/vendor/cli.js"
+    });
+
+    await connector.create(request());
+
+    expect(entryAt(0)).toBe("/cfg/cli.js");
+  });
+
+  it("falls back to env when config cliEntry is unset", async () => {
+    const { runner, entryAt } = entryCapturingRunner();
+    const env = baseEnv({ OPENCLAW_SUNO_CLI_ENTRY: "/env/cli.js" });
+    const connector = new CliSunoConnector(".", { env, runner, vendorEntry: () => "/vendor/cli.js" });
+
+    await connector.create(request());
+
+    expect(entryAt(0)).toBe("/env/cli.js");
+  });
+
+  it("falls back to the vendored entry when config and env are unset", async () => {
+    const { runner, entryAt } = entryCapturingRunner();
+    const env = baseEnv();
+    delete env.OPENCLAW_SUNO_CLI_ENTRY;
+    const connector = new CliSunoConnector(".", { env, runner, vendorEntry: () => "/vendor/cli.js" });
+
+    await connector.create(request());
+
+    expect(entryAt(0)).toBe("/vendor/cli.js");
+  });
+
+  it("resolves the real bundled vendor entry by default (file exists in the package)", async () => {
+    const { runner, entryAt } = entryCapturingRunner();
+    const env = baseEnv();
+    delete env.OPENCLAW_SUNO_CLI_ENTRY;
+    // No vendorEntry override: exercise the real resolver against the committed file.
+    const connector = new CliSunoConnector(".", { env, runner });
+
+    await connector.create(request());
+
+    expect(entryAt(0)).toMatch(/vendor\/suno-cli\/dist\/src\/cli\.js$/);
   });
 });
 
@@ -507,11 +575,11 @@ describe("CliSunoConnector.importResults", () => {
     expect(result.reason).toBe("suno_cli_schema_drift");
   });
 
-  it("returns suno_cli_not_configured when the CLI entry env is unset (no runner call)", async () => {
+  it("returns suno_cli_not_configured when neither config/env nor a vendored entry resolve (no runner call)", async () => {
     const runner = vi.fn(async () => ({ stdout: "", stderr: "", exitCode: 0 }));
     const env = baseEnv();
     delete env.OPENCLAW_SUNO_CLI_ENTRY;
-    const connector = new CliSunoConnector("/ws/artist", { env, runner });
+    const connector = new CliSunoConnector("/ws/artist", { env, runner, vendorEntry: () => undefined });
 
     const result = await connector.importResults({ runId: "run-cli-1", urls: [] });
 

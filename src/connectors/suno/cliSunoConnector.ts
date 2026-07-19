@@ -1,5 +1,7 @@
 import { execFile } from "node:child_process";
+import { existsSync } from "node:fs";
 import { join } from "node:path";
+import { fileURLToPath } from "node:url";
 import type {
   SunoCreatePayload,
   SunoCreateRequest,
@@ -9,7 +11,19 @@ import type {
 } from "../../types.js";
 import type { SunoConnector } from "./SunoConnector.js";
 import { SunoBrowserService, sunoBrowserService } from "../../services/sunoBrowserService.js";
-import type { SunoBrowserConfigView } from "../../services/runtimeConfig.js";
+import { sunoCliEntry, type SunoBrowserConfigView } from "../../services/runtimeConfig.js";
+
+// The bundled suno-cli entry, resolved relative to this module so it works in both the
+// source (src/connectors/suno) and compiled/npm-packed (dist/connectors/suno) layouts,
+// which share the same depth to the package root that holds vendor/.
+function resolveVendorSunoCliEntry(): string | undefined {
+  try {
+    const candidate = fileURLToPath(new URL("../../../vendor/suno-cli/dist/src/cli.js", import.meta.url));
+    return existsSync(candidate) ? candidate : undefined;
+  } catch {
+    return undefined;
+  }
+}
 
 /**
  * Result of a single suno-cli invocation. The connector judges outcomes by
@@ -42,6 +56,9 @@ export interface CliSunoConnectorOptions {
   logger?: CliSunoConnectorLogger;
   browserService?: Pick<SunoBrowserService, "getCdpEndpoint">;
   config?: SunoBrowserConfigView;
+  // Override the bundled vendor entry resolver (tests inject a fixed path or undefined
+  // to exercise the resolution order without depending on the real vendored file).
+  vendorEntry?: () => string | undefined;
 }
 
 // suno-cli's own per-day/min-interval budget gate must never double-reject:
@@ -138,6 +155,7 @@ export class CliSunoConnector implements SunoConnector {
   private readonly logger: CliSunoConnectorLogger;
   private readonly browserService: Pick<SunoBrowserService, "getCdpEndpoint">;
   private readonly config?: SunoBrowserConfigView;
+  private readonly vendorEntry: () => string | undefined;
 
   constructor(private readonly workspaceRoot = ".", options: CliSunoConnectorOptions = {}) {
     this.env = options.env ?? process.env;
@@ -145,6 +163,7 @@ export class CliSunoConnector implements SunoConnector {
     this.logger = options.logger ?? { warn: (message: string) => console.warn(message) };
     this.browserService = options.browserService ?? sunoBrowserService;
     this.config = options.config;
+    this.vendorEntry = options.vendorEntry ?? resolveVendorSunoCliEntry;
   }
 
   async status(): Promise<SunoWorkerStatus> {
@@ -253,8 +272,11 @@ export class CliSunoConnector implements SunoConnector {
     return { urls: [], runId, reason: EXIT_REASONS[run.exitCode] ?? "suno_cli_internal" };
   }
 
+  // Resolution order: explicit config music.suno.cliEntry, then legacy
+  // OPENCLAW_SUNO_CLI_ENTRY, then the bundled vendor/suno-cli copy. Undefined only when
+  // none resolve (config/env unset and the vendored entry is absent) -> fail-closed.
   private entryPath(): string | undefined {
-    return readText(this.env.OPENCLAW_SUNO_CLI_ENTRY);
+    return sunoCliEntry(this.config, this.env) ?? this.vendorEntry();
   }
 
   private cookieConfigured(): boolean {
