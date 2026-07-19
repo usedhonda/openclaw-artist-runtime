@@ -12,8 +12,8 @@ import type {
 import type { SunoBrowserDriver, SunoBrowserDriverProbe } from "./sunoBrowserWorker.js";
 import type { BrowserContext, Locator, Page } from "playwright";
 import { captureSunoFailure, resolveSunoFailureLogsDir } from "./sunoFailureSnapshot.js";
-import { effectiveLyricsBoxLimit, isSunoCdpEnabled, sunoBrowserArgs, sunoBrowserChannel, sunoCdpEndpoint, sunoChromeExecutablePath } from "./runtimeConfig.js";
-import { checkSunoBrowserBinaryHealth, isSunoBrowserLaunchFailure, reinstallPlaywrightChromium } from "./sunoBinaryHealthCheck.js";
+import { effectiveLyricsBoxLimit, isSunoCdpEnabled, sunoCdpEndpoint } from "./runtimeConfig.js";
+import { launchSunoPersistentContext } from "./sunoBrowserLaunch.js";
 import { extractLyricsBody } from "./lyricsExtraction.js";
 import { PLAYWRIGHT_EXPECTED_CREATE_CARD_COUNT } from "./sunoTakeConstants.js";
 
@@ -363,42 +363,7 @@ export class PlaywrightSunoDriver implements SunoBrowserDriver {
       };
     }
 
-    const { chromium } = await import("playwright-extra");
-    const stealth = (await import("puppeteer-extra-plugin-stealth")).default;
-    chromium.use(stealth());
-    await mkdir(this.profilePath, { recursive: true });
-    const executablePath = sunoChromeExecutablePath();
-    const channel = executablePath ? undefined : sunoBrowserChannel();
-    const usesBundledChromium = !executablePath && !channel;
-    const launchOptions = {
-      headless: false,
-      ...(executablePath ? { executablePath } : {}),
-      ...(channel ? { channel } : {}),
-      args: sunoBrowserArgs(),
-      ignoreDefaultArgs: ["--enable-automation"]
-    };
-    if (usesBundledChromium) {
-      const health = await checkSunoBrowserBinaryHealth().catch((error) => ({
-        ok: false,
-        detail: `playwright_chromium_health_check_failed: ${this.errorMessage(error)}`,
-        checkedAt: new Date().toISOString()
-      }));
-      if (!health.ok) {
-        console.warn(`[artist-runtime] ${health.detail ?? "playwright_chromium_binary_unhealthy"}; reinstalling Chromium`);
-        await reinstallPlaywrightChromium("playwright_chromium_health_check_failed");
-      }
-    }
-    let context: BrowserContext;
-    try {
-      context = await chromium.launchPersistentContext(this.profilePath, launchOptions);
-    } catch (error) {
-      if (!usesBundledChromium || !isSunoBrowserLaunchFailure(error)) {
-        throw error;
-      }
-      console.warn(`[artist-runtime] playwright Chromium launch failed; reinstalling and retrying once: ${this.errorMessage(error)}`);
-      await reinstallPlaywrightChromium("playwright_chromium_launch_failed");
-      context = await chromium.launchPersistentContext(this.profilePath, launchOptions);
-    }
+    const context = await launchSunoPersistentContext(this.profilePath);
     const preferredPage = await this.resolvePreferredSunoPage(context);
     return {
       context,
