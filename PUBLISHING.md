@@ -26,6 +26,38 @@ Before publishing:
 - Use `docs/CONNECTOR_AUTH.md` as the operator-facing source of truth for setup,
   refresh, and connector health checks.
 
+## Vendored suno-cli
+
+The Suno create/download CLI is vendored under `vendor/suno-cli/` (compiled
+`dist/src/**`, plus `package.json`, `LICENSE`, `README.md`, and a `VENDOR_COMMIT`
+provenance stamp). It ships in the package and backs the connector's entry
+auto-resolution (`music.suno.cliEntry` config > `OPENCLAW_SUNO_CLI_ENTRY` env >
+vendored copy), so operators do not need a separate checkout or an absolute path.
+
+Re-sync whenever suno-kit's CLI changes:
+
+```bash
+# Default source: ../../docs/suno-kit/suno-cli (override via arg or SUNO_CLI_SRC)
+scripts/sync-suno-cli-vendor.sh
+# or point at an explicit checkout:
+scripts/sync-suno-cli-vendor.sh /path/to/suno-kit/suno-cli
+```
+
+The script builds the CLI (`npm run build`), refuses to vendor a build missing the
+`token_validation_failed` (blocked_captcha 422) classification, copies the built
+`dist/src` and metadata into `vendor/suno-cli/`, and records the source commit in
+`vendor/suno-cli/VENDOR_COMMIT`. Verify and commit the result:
+
+```bash
+grep -rq token_validation_failed vendor/suno-cli/dist/src && echo ok
+npm run typecheck && npm test
+git add vendor/suno-cli && git commit -m "chore(vendor): re-sync suno-cli"
+```
+
+The vendored `dist/` is intentionally exempt from the global `dist/` gitignore rule
+(see `.gitignore`), so it is committed as a distributable rather than treated as
+build output.
+
 ## Local verification
 
 ```bash
