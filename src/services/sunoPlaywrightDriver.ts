@@ -14,6 +14,7 @@ import type { BrowserContext, Locator, Page } from "playwright";
 import { captureSunoFailure, resolveSunoFailureLogsDir } from "./sunoFailureSnapshot.js";
 import { effectiveLyricsBoxLimit, isSunoCdpEnabled, sunoCdpEndpoint } from "./runtimeConfig.js";
 import { launchSunoPersistentContext } from "./sunoBrowserLaunch.js";
+import { isSunoConnected, isSunoLoginRequired } from "./sunoLoginDetection.js";
 import { extractLyricsBody } from "./lyricsExtraction.js";
 import { PLAYWRIGHT_EXPECTED_CREATE_CARD_COUNT } from "./sunoTakeConstants.js";
 
@@ -401,53 +402,11 @@ export class PlaywrightSunoDriver implements SunoBrowserDriver {
   }
 
   private async isLoginRequired(page: Page, currentUrl: string): Promise<boolean> {
-    if (/(sign[-_ ]?in|login|auth)/i.test(currentUrl)) {
-      return true;
-    }
-
-    const loginSelectors = [
-      "input[type='password']",
-      "input[name='password']",
-      "form[action*='login']",
-      "form[action*='sign']"
-    ];
-    for (const selector of loginSelectors) {
-      if (
-        await page
-          .locator(selector)
-          .count()
-          .catch(() => 0)
-      ) {
-        return true;
-      }
-    }
-
-    return false;
+    return isSunoLoginRequired(page, currentUrl);
   }
 
   private async isConnected(page: Page, currentUrl: string): Promise<boolean> {
-    if (/^https:\/\/suno\.com\/(create|library|me|explore|$)/.test(currentUrl)) {
-      return true;
-    }
-
-    const connectedSelectors = [
-      "[data-testid*='avatar']",
-      "[aria-label*='Account']",
-      "a[href='/create']",
-      "a[href='/library']"
-    ];
-    for (const selector of connectedSelectors) {
-      if (
-        await page
-          .locator(selector)
-          .count()
-          .catch(() => 0)
-      ) {
-        return true;
-      }
-    }
-
-    return false;
+    return isSunoConnected(page, currentUrl);
   }
 
   private readPayloadText(value: unknown): string | undefined {
