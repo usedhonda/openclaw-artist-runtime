@@ -1,6 +1,7 @@
 import type { Page } from "playwright";
 import type { SunoCreatePayload } from "../types.js";
 import { SunoBrowserService, sunoBrowserService } from "./sunoBrowserService.js";
+import type { SunoBrowserConfigView } from "./runtimeConfig.js";
 import { SUNO_CREATE_URL } from "./sunoPlaywrightDriver.js";
 import type {
   HumanAssistBrowserDriver,
@@ -53,6 +54,7 @@ function extractLyrics(payload: SunoCreatePayload): string | undefined {
 export interface CdpHumanAssistDriverInput {
   payload: SunoCreatePayload;
   service?: SunoBrowserService;
+  config?: SunoBrowserConfigView;
 }
 
 export class CdpHumanAssistDriver implements HumanAssistBrowserDriver {
@@ -65,7 +67,7 @@ export class CdpHumanAssistDriver implements HumanAssistBrowserDriver {
   }
 
   async openAndFill(): Promise<void> {
-    const { context } = await this.service.ensureRunning();
+    const { context } = await this.service.ensureRunning(this.input.config);
     const existing = context.pages().find((page) => {
       try {
         return page.url().includes("suno.com");

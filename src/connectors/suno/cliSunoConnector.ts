@@ -9,6 +9,7 @@ import type {
 } from "../../types.js";
 import type { SunoConnector } from "./SunoConnector.js";
 import { SunoBrowserService, sunoBrowserService } from "../../services/sunoBrowserService.js";
+import type { SunoBrowserConfigView } from "../../services/runtimeConfig.js";
 
 /**
  * Result of a single suno-cli invocation. The connector judges outcomes by
@@ -40,6 +41,7 @@ export interface CliSunoConnectorOptions {
   runner?: CliRunner;
   logger?: CliSunoConnectorLogger;
   browserService?: Pick<SunoBrowserService, "getCdpEndpoint">;
+  config?: SunoBrowserConfigView;
 }
 
 // suno-cli's own per-day/min-interval budget gate must never double-reject:
@@ -135,12 +137,14 @@ export class CliSunoConnector implements SunoConnector {
   private readonly runner: CliRunner;
   private readonly logger: CliSunoConnectorLogger;
   private readonly browserService: Pick<SunoBrowserService, "getCdpEndpoint">;
+  private readonly config?: SunoBrowserConfigView;
 
   constructor(private readonly workspaceRoot = ".", options: CliSunoConnectorOptions = {}) {
     this.env = options.env ?? process.env;
     this.runner = options.runner ?? defaultRunner;
     this.logger = options.logger ?? { warn: (message: string) => console.warn(message) };
     this.browserService = options.browserService ?? sunoBrowserService;
+    this.config = options.config;
   }
 
   async status(): Promise<SunoWorkerStatus> {
@@ -187,7 +191,7 @@ export class CliSunoConnector implements SunoConnector {
     // running (or a legacy CDP attach); getCdpEndpoint never launches a window, so a
     // create/status never opens a browser just to mint. Strip any inherited value when
     // no endpoint is available so it cannot leak through and silently change behavior.
-    const mintEndpoint = this.browserService.getCdpEndpoint(this.env);
+    const mintEndpoint = this.browserService.getCdpEndpoint(this.config, this.env);
     if (mintEndpoint) {
       childEnv.SUNO_KIT_CDP_ENDPOINT = mintEndpoint;
     } else {

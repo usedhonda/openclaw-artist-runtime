@@ -154,6 +154,36 @@ describe("SunoBrowserService", () => {
     expect(context.close).toHaveBeenCalledTimes(1);
   });
 
+  it("attaches over CDP when config sets music.suno.browser.cdpEndpoint (no legacy env)", async () => {
+    const context = makeContext();
+    connectOverCDPMock.mockResolvedValue({ contexts: () => [context], newContext: vi.fn(async () => context) });
+    const service = new SunoBrowserService();
+    const config = { music: { suno: { browser: { cdpEndpoint: "http://127.0.0.1:7777" } } } };
+
+    const handle = await service.ensureRunning(config);
+
+    expect(handle.cdpEndpoint).toBe("http://127.0.0.1:7777");
+    expect(connectOverCDPMock).toHaveBeenCalledWith("http://127.0.0.1:7777");
+    expect(launchPersistentContextMock).not.toHaveBeenCalled();
+    expect(service.getCdpEndpoint(config)).toBe("http://127.0.0.1:7777");
+    await service.release();
+    expect(context.close).not.toHaveBeenCalled();
+  });
+
+  it("launches on the config profileDir over the env profile dir", async () => {
+    const envProfile = await profileWithPort("40010");
+    const configProfile = await profileWithPort("40011");
+    process.env.OPENCLAW_SUNO_CHROME_PROFILE_DEST = envProfile;
+    const context = makeContext();
+    launchPersistentContextMock.mockResolvedValue(context);
+    const service = new SunoBrowserService();
+
+    const handle = await service.ensureRunning({ music: { suno: { browser: { profileDir: configProfile } } } });
+
+    expect(launchPersistentContextMock.mock.calls[0][0]).toBe(configProfile);
+    expect(handle.cdpEndpoint).toBe("http://127.0.0.1:40011");
+  });
+
   it("attaches over CDP and never launches or closes under the legacy env override", async () => {
     process.env.OPENCLAW_SUNO_USE_CDP = "on";
     process.env.OPENCLAW_SUNO_CDP_ENDPOINT = "http://127.0.0.1:9333";

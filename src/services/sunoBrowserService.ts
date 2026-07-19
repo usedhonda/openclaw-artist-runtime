@@ -2,7 +2,7 @@ import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 import type { BrowserContext } from "playwright";
 import { launchSunoPersistentContext } from "./sunoBrowserLaunch.js";
-import { isSunoCdpEnabled, sunoCdpEndpoint, sunoChromeProfileDest } from "./runtimeConfig.js";
+import { isSunoCdpEnabled, sunoCdpEndpoint, sunoChromeProfileDest, type SunoBrowserConfigView } from "./runtimeConfig.js";
 
 const DEVTOOLS_PORT_POLL_INTERVAL_MS = 200;
 const DEVTOOLS_PORT_POLL_TIMEOUT_MS = 5_000;
@@ -49,9 +49,9 @@ export class SunoBrowserService {
   private startInFlight: Promise<RunningBrowser> | undefined;
   private refCount = 0;
 
-  async ensureRunning(env: NodeJS.ProcessEnv = process.env): Promise<SunoBrowserHandle> {
+  async ensureRunning(config?: SunoBrowserConfigView, env: NodeJS.ProcessEnv = process.env): Promise<SunoBrowserHandle> {
     if (!this.running && !this.startInFlight) {
-      this.startInFlight = this.launch(env).finally(() => {
+      this.startInFlight = this.launch(config, env).finally(() => {
         this.startInFlight = undefined;
       });
     }
@@ -67,9 +67,9 @@ export class SunoBrowserService {
    * bridge, which must never spawn a window on boot or on a status query — only reuse a
    * browser the human-assist/create flow already brought up (or the legacy attach).
    */
-  getCdpEndpoint(env: NodeJS.ProcessEnv = process.env): string | undefined {
-    if (isSunoCdpEnabled(env)) {
-      return sunoCdpEndpoint(env);
+  getCdpEndpoint(config?: SunoBrowserConfigView, env: NodeJS.ProcessEnv = process.env): string | undefined {
+    if (isSunoCdpEnabled(config, env)) {
+      return sunoCdpEndpoint(config, env);
     }
     return this.running?.cdpEndpoint;
   }
@@ -90,17 +90,18 @@ export class SunoBrowserService {
     await running.context.close().catch(() => undefined);
   }
 
-  private async launch(env: NodeJS.ProcessEnv): Promise<RunningBrowser> {
-    if (isSunoCdpEnabled(env)) {
-      const endpoint = sunoCdpEndpoint(env);
+  private async launch(config: SunoBrowserConfigView | undefined, env: NodeJS.ProcessEnv): Promise<RunningBrowser> {
+    if (isSunoCdpEnabled(config, env)) {
+      const endpoint = sunoCdpEndpoint(config, env);
       const { chromium } = await import("playwright");
       const browser = await chromium.connectOverCDP(endpoint);
       const context = browser.contexts()[0] ?? (await browser.newContext());
       return { cdpEndpoint: endpoint, context, attached: true };
     }
-    const profilePath = sunoChromeProfileDest(env);
+    const profilePath = sunoChromeProfileDest(config, env);
     const context = await launchSunoPersistentContext(profilePath, {
-      extraArgs: ["--remote-debugging-port=0"]
+      extraArgs: ["--remote-debugging-port=0"],
+      config
     });
     const cdpEndpoint = await this.resolveCdpEndpoint(profilePath, context);
     return { cdpEndpoint, context, attached: false };

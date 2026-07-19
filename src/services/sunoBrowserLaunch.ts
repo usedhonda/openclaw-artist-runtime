@@ -1,6 +1,6 @@
 import { mkdir } from "node:fs/promises";
 import type { BrowserContext } from "playwright";
-import { sunoBrowserArgs, sunoBrowserChannel, sunoChromeExecutablePath } from "./runtimeConfig.js";
+import { sunoBrowserArgs, sunoBrowserChannel, sunoChromeExecutablePath, type SunoBrowserConfigView } from "./runtimeConfig.js";
 import { checkSunoBrowserBinaryHealth, isSunoBrowserLaunchFailure, reinstallPlaywrightChromium } from "./sunoBinaryHealthCheck.js";
 
 function errorMessage(error: unknown): string {
@@ -16,14 +16,14 @@ function errorMessage(error: unknown): string {
  */
 export async function launchSunoPersistentContext(
   profilePath: string,
-  options: { extraArgs?: string[] } = {}
+  options: { extraArgs?: string[]; config?: SunoBrowserConfigView } = {}
 ): Promise<BrowserContext> {
   const { chromium } = await import("playwright-extra");
   const stealth = (await import("puppeteer-extra-plugin-stealth")).default;
   chromium.use(stealth());
   await mkdir(profilePath, { recursive: true });
-  const executablePath = sunoChromeExecutablePath();
-  const channel = executablePath ? undefined : sunoBrowserChannel();
+  const executablePath = sunoChromeExecutablePath(options.config);
+  const channel = executablePath ? undefined : sunoBrowserChannel(options.config);
   const usesBundledChromium = !executablePath && !channel;
   const launchOptions = {
     headless: false,

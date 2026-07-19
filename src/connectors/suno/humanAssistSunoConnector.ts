@@ -127,7 +127,7 @@ export function createHumanAssistSunoConnector(
   const timeoutMinutes = config?.music?.suno?.humanAssistTimeoutMinutes ?? 60;
   return new HumanAssistSunoConnector(inner, {
     timeoutMs: timeoutMinutes * 60_000,
-    driverFactory: ({ payload }) => new CdpHumanAssistDriver({ payload }),
+    driverFactory: ({ payload }) => new CdpHumanAssistDriver({ payload, config }),
     notifier: createHumanAssistNotifier(timeoutMinutes)
   });
 }

@@ -16,7 +16,7 @@ export function resolveSunoConnector(
   config?: Partial<ArtistRuntimeConfig>
 ): SunoConnector {
   if (config?.music?.suno?.driver === "suno_cli") {
-    const cli = new CliSunoConnector(workspaceRoot);
+    const cli = new CliSunoConnector(workspaceRoot, { config });
     // Opt-in captcha human-assist: on a captcha-blocked live create, hand off to the
     // producer for a manual Create click instead of hard-stopping. The captcha is never
     // auto-solved -- the fallback only closes the challenge and waits for a human click.

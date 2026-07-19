@@ -3,7 +3,7 @@ import { dirname, join } from "node:path";
 import { defaultArtistRuntimeConfig } from "../config/defaultConfig.js";
 import { migrateConfig } from "../config/migrations.js";
 import { applyConfigDefaults, validateConfig } from "../config/schema.js";
-import type { ArtistIdentity, ArtistRuntimeConfig } from "../types.js";
+import type { ArtistIdentity, ArtistRuntimeConfig, SunoBrowserConfig } from "../types.js";
 import { readArtistPersonaSummary } from "./personaFileBuilder.js";
 import { writeDerivedIdentityProjection } from "./personaIdentityProjection.js";
 import { parseVoiceFingerprint } from "./voiceFingerprintParser.js";
@@ -219,24 +219,43 @@ export function isSunoLiveDisabled(env: NodeJS.ProcessEnv = process.env): boolea
   return env.OPENCLAW_SUNO_LIVE?.trim().toLowerCase() === "off" || env.OPENCLAW_SUNO_DRIVER?.trim().toLowerCase() === "mock";
 }
 
-export function isSunoCdpEnabled(env: NodeJS.ProcessEnv = process.env): boolean {
+// Structural view of the browser overrides so any resolved/partial config (or none)
+// can drive the accessors below without over-constraining callers.
+export type SunoBrowserConfigView = { music?: { suno?: { browser?: SunoBrowserConfig } } };
+
+function browserConfigText(value: unknown): string | undefined {
+  return typeof value === "string" && value.trim() ? value.trim() : undefined;
+}
+
+// Precedence for every browser accessor: an explicit music.suno.browser.* value wins,
+// then the legacy OPENCLAW_SUNO_* env var (kept as a backward-compatible fallback),
+// then the hardcoded default.
+export function isSunoCdpEnabled(config?: SunoBrowserConfigView, env: NodeJS.ProcessEnv = process.env): boolean {
+  // A configured cdpEndpoint means "attach to this Chrome over CDP"; otherwise fall back
+  // to the legacy OPENCLAW_SUNO_USE_CDP opt-in.
+  if (browserConfigText(config?.music?.suno?.browser?.cdpEndpoint)) {
+    return true;
+  }
   const value = env.OPENCLAW_SUNO_USE_CDP?.trim().toLowerCase();
   return value === "on" || value === "1" || value === "true";
 }
 
-export function sunoCdpEndpoint(env: NodeJS.ProcessEnv = process.env): string {
-  return env.OPENCLAW_SUNO_CDP_ENDPOINT?.trim() || "http://127.0.0.1:9222";
+export function sunoCdpEndpoint(config?: SunoBrowserConfigView, env: NodeJS.ProcessEnv = process.env): string {
+  return browserConfigText(config?.music?.suno?.browser?.cdpEndpoint) || env.OPENCLAW_SUNO_CDP_ENDPOINT?.trim() || "http://127.0.0.1:9222";
 }
 
-export function sunoChromeProfileDest(env: NodeJS.ProcessEnv = process.env): string {
-  return env.OPENCLAW_SUNO_CHROME_PROFILE_DEST?.trim() || ".openclaw-browser-profiles/suno";
+export function sunoChromeProfileDest(config?: SunoBrowserConfigView, env: NodeJS.ProcessEnv = process.env): string {
+  return browserConfigText(config?.music?.suno?.browser?.profileDir) || env.OPENCLAW_SUNO_CHROME_PROFILE_DEST?.trim() || ".openclaw-browser-profiles/suno";
 }
 
-export function sunoChromeExecutablePath(env: NodeJS.ProcessEnv = process.env): string | undefined {
-  return env.OPENCLAW_SUNO_CHROME_EXECUTABLE?.trim() || undefined;
+export function sunoChromeExecutablePath(config?: SunoBrowserConfigView, env: NodeJS.ProcessEnv = process.env): string | undefined {
+  return browserConfigText(config?.music?.suno?.browser?.executablePath) || env.OPENCLAW_SUNO_CHROME_EXECUTABLE?.trim() || undefined;
 }
 
-export function sunoBrowserChannel(env: NodeJS.ProcessEnv = process.env): "chrome" | undefined {
+export function sunoBrowserChannel(config?: SunoBrowserConfigView, env: NodeJS.ProcessEnv = process.env): "chrome" | undefined {
+  if (config?.music?.suno?.browser?.channel === "chrome") {
+    return "chrome";
+  }
   return env.OPENCLAW_SUNO_BROWSER_CHANNEL?.trim().toLowerCase() === "chrome" ? "chrome" : undefined;
 }
 
