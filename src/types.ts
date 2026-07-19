@@ -128,6 +128,22 @@ export interface SunoMusicConfig {
   stopOnCaptcha: boolean;
   stopOnPaymentPrompt: boolean;
   promptLogging: "full";
+  /**
+   * Optional operator overrides for the plugin-owned Suno browser. Each field takes
+   * precedence over its legacy env var (OPENCLAW_SUNO_CHROME_PROFILE_DEST /
+   * OPENCLAW_SUNO_CHROME_EXECUTABLE / OPENCLAW_SUNO_BROWSER_CHANNEL /
+   * OPENCLAW_SUNO_CDP_ENDPOINT), which stays as a backward-compatible fallback. Setting
+   * cdpEndpoint makes SunoBrowserService attach to that already-running Chrome instead
+   * of launching (the advanced/emergency escape hatch).
+   */
+  browser?: SunoBrowserConfig;
+}
+
+export interface SunoBrowserConfig {
+  profileDir?: string;
+  executablePath?: string;
+  channel?: "chrome";
+  cdpEndpoint?: string;
 }
 
 export interface MusicConfig {

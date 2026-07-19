@@ -299,6 +299,32 @@
                   "full"
                 ],
                 "default": "full"
+              },
+              "browser": {
+                "type": "object",
+                "additionalProperties": false,
+                "description": "Optional operator overrides for the plugin-owned Suno browser. Each field wins over its legacy env var, which stays as a backward-compatible fallback.",
+                "properties": {
+                  "profileDir": {
+                    "type": "string",
+                    "description": "Persistent Chromium profile directory for the logged-in Suno session. Overrides OPENCLAW_SUNO_CHROME_PROFILE_DEST; blank falls back to the env var or the default .openclaw-browser-profiles/suno."
+                  },
+                  "executablePath": {
+                    "type": "string",
+                    "description": "Absolute path to a Chrome/Chromium binary to launch instead of the bundled Playwright Chromium. Overrides OPENCLAW_SUNO_CHROME_EXECUTABLE."
+                  },
+                  "channel": {
+                    "type": "string",
+                    "enum": [
+                      "chrome"
+                    ],
+                    "description": "Launch the installed Chrome channel instead of the bundled Chromium. Overrides OPENCLAW_SUNO_BROWSER_CHANNEL."
+                  },
+                  "cdpEndpoint": {
+                    "type": "string",
+                    "description": "Attach to an already-running Chrome over CDP at this endpoint instead of launching a browser (advanced/emergency). Overrides OPENCLAW_SUNO_CDP_ENDPOINT and, when set, enables CDP attach."
+                  }
+                }
               }
             }
           }
@@ -771,6 +797,22 @@
     "music.suno.minMinutesBetweenCreates": {
       "label": "Minutes between creates",
       "help": "Cooldown between real Suno Create clicks."
+    },
+    "music.suno.browser.profileDir": {
+      "label": "Suno browser profile dir",
+      "help": "Persistent Chromium profile for the logged-in Suno session. A saved value overrides OPENCLAW_SUNO_CHROME_PROFILE_DEST; leave blank to use the env var or the default profile."
+    },
+    "music.suno.browser.executablePath": {
+      "label": "Suno Chrome executable",
+      "help": "Absolute path to a Chrome/Chromium binary to launch instead of the bundled Chromium. A saved value overrides OPENCLAW_SUNO_CHROME_EXECUTABLE."
+    },
+    "music.suno.browser.channel": {
+      "label": "Suno browser channel",
+      "help": "Set to 'chrome' to launch the installed Chrome channel instead of the bundled Chromium. A saved value overrides OPENCLAW_SUNO_BROWSER_CHANNEL."
+    },
+    "music.suno.browser.cdpEndpoint": {
+      "label": "Suno CDP attach endpoint",
+      "help": "Advanced: attach to an already-running Chrome over CDP at this endpoint instead of launching a browser. A saved value overrides OPENCLAW_SUNO_CDP_ENDPOINT and enables CDP attach."
     },
     "distribution.enabled": {
       "label": "Social distribution",

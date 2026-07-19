@@ -277,7 +277,8 @@ export function validateConfig(config: unknown): ValidationResult<ArtistRuntimeC
               "stopOnLoginChallenge",
               "stopOnCaptcha",
               "stopOnPaymentPrompt",
-              "promptLogging"
+              "promptLogging",
+              "browser"
             ],
             errors
           );
@@ -328,6 +329,30 @@ export function validateConfig(config: unknown): ValidationResult<ArtistRuntimeC
           }
           if ("promptLogging" in config.music.suno) {
             validateEnum("config.music.suno.promptLogging", config.music.suno.promptLogging, ["full"], errors);
+          }
+          if ("browser" in config.music.suno) {
+            if (!isRecord(config.music.suno.browser)) {
+              errors.push("config.music.suno.browser must be an object");
+            } else {
+              validateKnownKeys(
+                "config.music.suno.browser",
+                config.music.suno.browser,
+                ["profileDir", "executablePath", "channel", "cdpEndpoint"],
+                errors
+              );
+              if ("profileDir" in config.music.suno.browser && typeof config.music.suno.browser.profileDir !== "string") {
+                errors.push("config.music.suno.browser.profileDir must be a string");
+              }
+              if ("executablePath" in config.music.suno.browser && typeof config.music.suno.browser.executablePath !== "string") {
+                errors.push("config.music.suno.browser.executablePath must be a string");
+              }
+              if ("channel" in config.music.suno.browser) {
+                validateEnum("config.music.suno.browser.channel", config.music.suno.browser.channel, ["chrome"], errors);
+              }
+              if ("cdpEndpoint" in config.music.suno.browser && typeof config.music.suno.browser.cdpEndpoint !== "string") {
+                errors.push("config.music.suno.browser.cdpEndpoint must be a string");
+              }
+            }
           }
         }
       }

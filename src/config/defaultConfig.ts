@@ -41,7 +41,11 @@ export const defaultArtistRuntimeConfig: ArtistRuntimeConfig = {
       stopOnLoginChallenge: true,
       stopOnCaptcha: true,
       stopOnPaymentPrompt: true,
-      promptLogging: "full"
+      promptLogging: "full",
+      // Empty by default so every browser field resolves through the accessor's
+      // explicit-config > env > hardcoded-default precedence; baking values here would
+      // shadow the OPENCLAW_SUNO_* env fallbacks.
+      browser: {}
     }
   },
   distribution: {
