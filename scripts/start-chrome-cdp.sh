@@ -1,6 +1,11 @@
 #!/bin/bash
 set -euo pipefail
 
+# OPTIONAL/LEGACY (diagnostics / emergency only): the plugin now owns the Suno
+# browser via SunoBrowserService with an ephemeral CDP port, so this fixed-9222
+# Chrome launch is not part of the normal flow. Use it only to drive the advanced
+# CDP-attach override (music.suno.browser.cdpEndpoint or OPENCLAW_SUNO_USE_CDP).
+
 cdp_host="127.0.0.1"
 cdp_port="9222"
 cdp_endpoint="http://${cdp_host}:${cdp_port}/json/version"

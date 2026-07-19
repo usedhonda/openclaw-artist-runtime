@@ -205,18 +205,17 @@ its own repository license, while the copied knowledge files and embedded
 lyrics/style prompt instructions retain their `sunomanual` attribution and
 MIT attribution notice in `NOTICE.md`.
 
-For distribution installs that use the live Suno browser worker, bring your own
-local Chrome session and attach through Chrome DevTools Protocol (CDP) on the
-loopback interface:
+For live Suno use, the plugin owns the browser: the Producer Console **Connect
+Suno** action opens the persistent `suno` profile for you to log in, and the
+runtime launches it as needed for creates and the captcha human-assist fallback.
+No manual Chrome launch is required for the normal flow.
 
-```bash
-bash scripts/start-chrome-cdp.sh
-```
-
-The helper starts Chrome with CDP on port `9222`. Keep CDP bound to
-`127.0.0.1`; an open debugging port is a local attack surface that can control
-the browser. Run this Chrome only when Suno work is needed, close it when the
-worker is idle, and avoid running untrusted local apps while the port is open.
+Advanced/emergency only: to attach to an already-running Chrome instead of
+launching, set `music.suno.browser.cdpEndpoint` (or the legacy
+`OPENCLAW_SUNO_USE_CDP=on` + `OPENCLAW_SUNO_CDP_ENDPOINT` env). The legacy helper
+`scripts/start-chrome-cdp.sh` starts such a Chrome with CDP on port `9222`. Keep
+CDP bound to `127.0.0.1`; an open debugging port is a local attack surface that
+can control the browser. Run that Chrome only when needed and close it when idle.
 
 Before any live Suno use, run the doctor from the package root:
 

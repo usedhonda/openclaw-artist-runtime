@@ -29,9 +29,11 @@ browser worker's recovery path.
 Required environment (all read per-create; nothing is hardcoded so the plugin
 stays distribution-safe):
 
-- `OPENCLAW_SUNO_CLI_ENTRY` — absolute path to the built `dist/src/cli.js`
-  entry. Build `suno-cli` separately (`npm run build`); its `dist/` is
-  gitignored. Unset -> fail-closed `suno_cli_not_configured` (no fake URLs).
+- suno-cli entry — resolved in order: `music.suno.cliEntry` (config) ->
+  `OPENCLAW_SUNO_CLI_ENTRY` (legacy env) -> the bundled `vendor/suno-cli/dist/src/cli.js`
+  (shipped in the package; re-sync via `scripts/sync-suno-cli-vendor.sh`). Only when
+  none resolve does it fail closed as `suno_cli_not_configured` (no fake URLs), so a
+  default install needs no absolute path.
 - `SUNO_KIT_COOKIE` (or `SUNO_KIT_COOKIE_FILE`) — the Clerk session cookie the
   CLI derives a short-lived Bearer JWT from. Inherited into the child process
   and never read or logged here.
@@ -67,30 +69,24 @@ Outcomes are judged by the CLI's exit code (never by string-matching stdout):
 Credential safety: the captcha token is redacted (`***`) in any diagnostic log
 and never appears in a returned reason; the cookie/JWT are never logged.
 
-### Dormant CDP plumbing for explicit captcha diagnostics (`OPENCLAW_SUNO_USE_CDP`)
+### CDP endpoint for the suno-cli captcha mint
 
-Normal `suno-cli create --live` never invokes browser captcha minting. Since
-suno-kit `1dde8ea`, it submits null captcha fields when no explicit token pair is
-provided and fails closed as `blocked_captcha` (exit 31) if Suno requires one;
-there is no automatic browser fallback. Artist Runtime currently invokes only
-this normal live path.
+The plugin owns the Suno browser lifecycle via `SunoBrowserService`, which
+launches the persistent `suno` profile with an ephemeral CDP port (no manual
+Chrome, no fixed 9222). When the captcha mint needs a browser, the connector
+sources the CDP endpoint from `SunoBrowserService.getCdpEndpoint()`:
 
-Suno-cli still provides `create --mint-check` as an explicit no-submit browser
-diagnostic, but Artist Runtime does not invoke that command. The connector keeps
-the following CDP environment wiring as dormant plumbing for a future explicit
-diagnostic surface:
+- if the plugin already has a browser running (the human-assist/connect flow
+  opened one), its ephemeral endpoint is used;
+- if `music.suno.browser.cdpEndpoint` (config) or the legacy
+  `OPENCLAW_SUNO_USE_CDP` + `OPENCLAW_SUNO_CDP_ENDPOINT` env is set, that attach
+  endpoint is used (advanced/emergency override, default `http://127.0.0.1:9222`);
+- otherwise no endpoint is available and `SUNO_KIT_CDP_ENDPOINT` is stripped from
+  the child env, so a create/status never launches a browser just to mint.
 
-- `OPENCLAW_SUNO_USE_CDP` — `on`/`1`/`true` enables CDP attach; anything else
-  (including unset) leaves it off.
-- `OPENCLAW_SUNO_CDP_ENDPOINT` — the loopback CDP endpoint to attach to.
-  Defaults to `http://127.0.0.1:9222` when enabled without an explicit value.
-
-When the flag is off or unset, `SUNO_KIT_CDP_ENDPOINT` is explicitly stripped
-from the child env even if the parent process happens to have it set. When it is
-on, the variable is passed but remains unused by Artist Runtime's normal live
-create because that path does not construct a browser minter. This mirrors
-`isSunoCdpEnabled()`/`sunoCdpEndpoint()` in `runtimeConfig.ts`, the same helpers
-the retired-for-now playwright driver's CDP path uses (`sunoPlaywrightDriver.ts`).
+`getCdpEndpoint()` never launches a browser, preserving the boot/status read-only
+invariant. This mirrors `isSunoCdpEnabled()`/`sunoCdpEndpoint()` in
+`runtimeConfig.ts`, which now take config-first precedence with env fallback.
 
 Trap: suno-cli prints `Live create submit is disabled in this build` only when
 neither `--dry-run` nor `--live` is passed. It is **not** a global kill-switch.
@@ -120,13 +116,14 @@ Enable it only alongside the CLI driver:
 }
 ```
 
-It also requires the CDP browser to be reachable: run
-`scripts/start-chrome-cdp.sh` (Chrome for Testing + the dedicated `suno`
-profile on `http://127.0.0.1:9222`) and set `OPENCLAW_SUNO_USE_CDP=1`.
+No manual browser setup is required: the plugin's `SunoBrowserService` launches
+the persistent `suno` profile itself when the fallback runs. The legacy
+`scripts/start-chrome-cdp.sh` + `OPENCLAW_SUNO_USE_CDP=1` path remains only as an
+advanced/emergency override (see the CDP endpoint section above).
 
 Flow when a live create returns `suno_cli_blocked_captcha`:
 
-1. attach to the CDP Chrome, open `suno.com/create`, and auto-fill the form from
+1. open the plugin-owned browser at `suno.com/create` and auto-fill the form from
    the saved `suno-payload.json` (lyrics/style/title/exclude);
 2. try a **machine** Create click. If Suno accepts it (new `/song/<id>` cards
    appear) the run continues through the normal record/import pipeline with **zero

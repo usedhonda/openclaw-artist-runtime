@@ -3,6 +3,10 @@ set -euo pipefail
 
 # Manual operator action only.
 # Do not run from CI, unattended agents, or autopilot.
+#
+# OPTIONAL/LEGACY: the plugin now opens the Suno browser itself on Producer Console
+# Connect (SunoBrowserService), so first-time login normally happens there. This
+# script remains as an optional manual login path (diagnostics / headless recovery).
 
 ROOT_DIR="$(cd "$(dirname "$0")/.." && pwd)"
 PROFILE_PATH="${1:-$ROOT_DIR/.openclaw-browser-profiles/suno}"

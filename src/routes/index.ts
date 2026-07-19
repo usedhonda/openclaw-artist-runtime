@@ -614,10 +614,10 @@ export function registerRoutes(api: unknown): void {
           return new SunoBrowserWorker(config.artist.workspaceRoot, { config }).reconnect();
         }
         if (segments.length === 2 && segments[0] === "handoff" && segments[1] === "complete") {
-          // Plan v10.33 Phase 4.5: 御大が `scripts/openclaw-suno-login.mjs` で artist 専用
-          // user data dir に sign in した後、 worker state を "connected" に確定するための
-          // 手動 signal endpoint。 driver.probe() は発火しない (御大の手動操作で sign in
-          // 完了が保証される)。
+          // Confirms the operator finished login and pins worker state to "connected".
+          // For the suno_cli lane the browser was opened by connect via SunoBrowserService,
+          // so this also releases that held operator session; the legacy
+          // scripts/openclaw-suno-login.mjs path still works as an optional manual login.
           return new SunoBrowserWorker(config.artist.workspaceRoot, { config }).completeManualLoginHandoff();
         }
         if (segments.length === 2 && segments[0] === "generate") {

@@ -3,6 +3,22 @@
 ## [Unreleased]
 
 ### Added
+- Distribution-grade Suno browser + captcha human-assist. The plugin now owns the
+  Suno browser lifecycle via a new `SunoBrowserService` (launches the single
+  persistent `suno` profile with an ephemeral `--remote-debugging-port=0` derived
+  from `DevToolsActivePort`), so there is no manual `start-chrome-cdp.sh`, fixed
+  9222 port, or `OPENCLAW_SUNO_USE_CDP` opt-in required for the `human_click`
+  fallback. Browser knobs are promoted to config `music.suno.browser.{profileDir,
+  executablePath, channel, cdpEndpoint}` with the `OPENCLAW_SUNO_*` env vars kept
+  as backward-compatible fallbacks; setting `cdpEndpoint` attaches to an existing
+  Chrome instead of launching. The suno-cli tool is vendored under
+  `vendor/suno-cli/` and its entry auto-resolves (`music.suno.cliEntry` config >
+  `OPENCLAW_SUNO_CLI_ENTRY` env > bundled vendor), removing the absolute-path
+  requirement; re-sync with `scripts/sync-suno-cli-vendor.sh`. Producer Console
+  connect/reconnect/handoff now work for the `suno_cli` driver (the browser opens
+  for operator login and releases on handoff), and the Room shows a human-assist
+  "press Create" card. Boot/status stay read-only (no browser launch). New npm
+  dependencies: none.
 - P2c consolidates Suno budget controls around credit budgeting. The legacy
   `suno.dailyBudget` / `OPENCLAW_SUNO_DAILY_BUDGET` generation-count gate is
   ignored; daily create count is controlled by `music.suno.maxGenerationsPerDay`

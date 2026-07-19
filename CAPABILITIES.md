@@ -22,6 +22,10 @@ This document is part of the marketplace disclosure. Keep it accurate.
 
 - `artistAutopilotService` — runs production cycles.
 - `sunoBrowserWorker` — manages Suno browser profile and generation runs.
+- `SunoBrowserService` — plugin-owned Suno browser lifecycle: launches the single
+  persistent profile with an ephemeral CDP port for the Console connect flow, the
+  captcha human-assist fallback, and the vendored suno-cli captcha mint. Never
+  launches at boot or on a status read.
 - `socialDistributionWorker` — converts selected takes into platform-specific posts.
 
 ## HTTP routes

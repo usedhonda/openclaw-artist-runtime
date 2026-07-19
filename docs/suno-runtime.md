@@ -45,13 +45,22 @@ be needed if Suno forces login, CAPTCHA, account checks, or policy prompts.
 
 ## Optional Escape Hatches
 
-`OPENCLAW_SUNO_CHROME_EXECUTABLE` may point at a custom Chrome-compatible
-executable for operator-controlled recovery. It is not auto-detected and should
-remain unset for normal installs.
+The plugin owns the Suno browser lifecycle: `SunoBrowserService` launches the
+persistent `.openclaw-browser-profiles/suno` profile itself (with an ephemeral
+`--remote-debugging-port=0` derived from `DevToolsActivePort`), so no manual
+Chrome launch or fixed 9222 port is required. Each knob below is a saved config
+field under `music.suno.browser.*` that wins over its legacy `OPENCLAW_SUNO_*`
+env var; the env var stays as a backward-compatible fallback.
 
-`OPENCLAW_SUNO_BROWSER_CHANNEL=chrome` is an explicit opt-in escape hatch for
-machines where the operator accepts the macOS Chrome singleton risk. It is not
-the default.
+`music.suno.browser.executablePath` (env `OPENCLAW_SUNO_CHROME_EXECUTABLE`) may
+point at a custom Chrome-compatible executable for operator-controlled recovery.
+It is not auto-detected and should remain unset for normal installs.
 
-`OPENCLAW_SUNO_USE_CDP=on` switches to Chrome DevTools Protocol attach mode for
-emergency recovery. Use it only when the persistent profile lane cannot launch.
+`music.suno.browser.channel: "chrome"` (env `OPENCLAW_SUNO_BROWSER_CHANNEL`) is
+an explicit opt-in escape hatch for machines where the operator accepts the macOS
+Chrome singleton risk. It is not the default.
+
+`music.suno.browser.cdpEndpoint` (env `OPENCLAW_SUNO_CDP_ENDPOINT` +
+`OPENCLAW_SUNO_USE_CDP=on`) is the advanced/emergency attach mode: instead of
+launching, the plugin attaches to an already-running Chrome over CDP at that
+endpoint. Use it only when the persistent profile lane cannot launch.
