@@ -8,7 +8,7 @@ import type {
   SunoWorkerStatus
 } from "../../types.js";
 import type { SunoConnector } from "./SunoConnector.js";
-import { isSunoCdpEnabled, sunoCdpEndpoint } from "../../services/runtimeConfig.js";
+import { SunoBrowserService, sunoBrowserService } from "../../services/sunoBrowserService.js";
 
 /**
  * Result of a single suno-cli invocation. The connector judges outcomes by
@@ -39,6 +39,7 @@ export interface CliSunoConnectorOptions {
   env?: NodeJS.ProcessEnv;
   runner?: CliRunner;
   logger?: CliSunoConnectorLogger;
+  browserService?: Pick<SunoBrowserService, "getCdpEndpoint">;
 }
 
 // suno-cli's own per-day/min-interval budget gate must never double-reject:
@@ -133,11 +134,13 @@ export class CliSunoConnector implements SunoConnector {
   private readonly env: NodeJS.ProcessEnv;
   private readonly runner: CliRunner;
   private readonly logger: CliSunoConnectorLogger;
+  private readonly browserService: Pick<SunoBrowserService, "getCdpEndpoint">;
 
   constructor(private readonly workspaceRoot = ".", options: CliSunoConnectorOptions = {}) {
     this.env = options.env ?? process.env;
     this.runner = options.runner ?? defaultRunner;
     this.logger = options.logger ?? { warn: (message: string) => console.warn(message) };
+    this.browserService = options.browserService ?? sunoBrowserService;
   }
 
   async status(): Promise<SunoWorkerStatus> {
@@ -180,11 +183,13 @@ export class CliSunoConnector implements SunoConnector {
     const childEnv: NodeJS.ProcessEnv = { ...this.env };
     // suno-cli's captcha mint can attach to an existing browser over CDP instead of
     // spawning its own profile (avoids the bot-detection/window-visibility issues a
-    // fresh automation profile has). Only wire this under the same explicit opt-in
-    // the old playwright driver used (OPENCLAW_SUNO_USE_CDP); otherwise strip the
-    // var so an inherited value never leaks through and silently changes behavior.
-    if (isSunoCdpEnabled(this.env)) {
-      childEnv.SUNO_KIT_CDP_ENDPOINT = sunoCdpEndpoint(this.env);
+    // fresh automation profile has). Reuse the browser SunoBrowserService already has
+    // running (or a legacy CDP attach); getCdpEndpoint never launches a window, so a
+    // create/status never opens a browser just to mint. Strip any inherited value when
+    // no endpoint is available so it cannot leak through and silently change behavior.
+    const mintEndpoint = this.browserService.getCdpEndpoint(this.env);
+    if (mintEndpoint) {
+      childEnv.SUNO_KIT_CDP_ENDPOINT = mintEndpoint;
     } else {
       delete childEnv.SUNO_KIT_CDP_ENDPOINT;
     }

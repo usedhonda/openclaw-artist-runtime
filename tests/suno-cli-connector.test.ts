@@ -338,6 +338,27 @@ describe("CliSunoConnector.create — CDP endpoint (OPENCLAW_SUNO_USE_CDP opt-in
     await offConnector.create(request());
     expect(envAt(1).SUNO_KIT_CDP_ENDPOINT).toBeUndefined();
   });
+
+  it("passes SUNO_KIT_CDP_ENDPOINT from a running SunoBrowserService with no legacy env", async () => {
+    const { runner, envAt } = runnerCapturingEnv();
+    const browserService = { getCdpEndpoint: vi.fn(() => "http://127.0.0.1:41000") };
+    const connector = new CliSunoConnector(".", { env: baseEnv(), runner, browserService });
+
+    await connector.create(request());
+
+    expect(envAt(0).SUNO_KIT_CDP_ENDPOINT).toBe("http://127.0.0.1:41000");
+  });
+
+  it("strips SUNO_KIT_CDP_ENDPOINT when SunoBrowserService has no browser running", async () => {
+    const { runner, envAt } = runnerCapturingEnv();
+    const browserService = { getCdpEndpoint: vi.fn(() => undefined) };
+    const env = baseEnv({ SUNO_KIT_CDP_ENDPOINT: "http://127.0.0.1:9222" });
+    const connector = new CliSunoConnector(".", { env, runner, browserService });
+
+    await connector.create(request());
+
+    expect(envAt(0).SUNO_KIT_CDP_ENDPOINT).toBeUndefined();
+  });
 });
 
 describe("CliSunoConnector.status", () => {
