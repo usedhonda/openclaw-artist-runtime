@@ -154,6 +154,25 @@ describe("SunoBrowserService", () => {
     expect(context.close).toHaveBeenCalledTimes(1);
   });
 
+  it("holds one operator session idempotently and closes it once (no ref leak)", async () => {
+    const profile = await profileWithPort("40020");
+    process.env.OPENCLAW_SUNO_CHROME_PROFILE_DEST = profile;
+    const context = makeContext();
+    launchPersistentContextMock.mockResolvedValue(context);
+    const service = new SunoBrowserService();
+
+    await service.openOperatorSession();
+    await service.openOperatorSession();
+    expect(launchPersistentContextMock).toHaveBeenCalledTimes(1);
+    expect(context.close).not.toHaveBeenCalled();
+
+    await service.closeOperatorSession();
+    expect(context.close).toHaveBeenCalledTimes(1);
+    // A second close is a no-op (already released).
+    await service.closeOperatorSession();
+    expect(context.close).toHaveBeenCalledTimes(1);
+  });
+
   it("attaches over CDP when config sets music.suno.browser.cdpEndpoint (no legacy env)", async () => {
     const context = makeContext();
     connectOverCDPMock.mockResolvedValue({ contexts: () => [context], newContext: vi.fn(async () => context) });

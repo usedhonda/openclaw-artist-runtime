@@ -3,7 +3,21 @@ import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Readable } from "node:stream";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
+
+// Keep the suno_cli connect route off the real browser: the probe driver is stubbed so
+// connect/reconnect resolve login state without launching Chromium.
+vi.mock("../src/services/sunoBrowserServiceDriver", () => ({
+  SunoBrowserServiceProbeDriver: class {
+    async probe() {
+      return { state: "login_required", detail: "stubbed probe" };
+    }
+    async stop() {
+      return undefined;
+    }
+  }
+}));
+
 import { registerRoutes } from "../src/routes";
 
 function createMockRequest(method: string, url: string, body?: string, headers?: Record<string, string>): IncomingMessage {
@@ -63,20 +77,30 @@ async function postConnect(driver: string, path = "connect"): Promise<unknown> {
 
 describe("Suno connect/handoff driver-awareness", () => {
   it.each(["connect", "reconnect", "handoff/complete"])(
-    "returns a diagnostic no-op for %s under the suno_cli driver without a browser worker",
+    "routes %s through the browser-service worker flow under the suno_cli driver (no diagnostic no-op)",
     async (action) => {
-      const body = await postConnect("suno_cli", action);
-      expect(body).toMatchObject({
-        error: "suno_cli_driver_no_browser_handoff",
-        driver: "suno_cli"
-      });
+      const body = (await postConnect("suno_cli", action)) as Record<string, unknown>;
+      expect(body.error).not.toBe("suno_cli_driver_no_browser_handoff");
+      // A real worker status carries a `state` field; the old diagnostic no-op did not.
+      expect(body).toHaveProperty("state");
     }
   );
+
+  it("opens the browser and reports login_required for a suno_cli connect", async () => {
+    const body = (await postConnect("suno_cli", "connect")) as Record<string, unknown>;
+    expect(body.state).toBe("login_required");
+  });
+
+  it("marks connected on a suno_cli handoff completion", async () => {
+    const body = (await postConnect("suno_cli", "handoff/complete")) as Record<string, unknown>;
+    expect(body.state).toBe("connected");
+    expect(body.connected).toBe(true);
+  });
 
   it("preserves browser-worker connect behavior for the playwright driver", async () => {
     const body = (await postConnect("playwright")) as Record<string, unknown>;
     expect(body.error).not.toBe("suno_cli_driver_no_browser_handoff");
-    // A real worker status carries a `state` field; the diagnostic no-op does not.
+    // A real worker status carries a `state` field; the diagnostic no-op did not.
     expect(body).toHaveProperty("state");
   });
 });

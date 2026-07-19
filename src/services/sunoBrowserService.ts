@@ -48,6 +48,7 @@ export class SunoBrowserService {
   private running: RunningBrowser | undefined;
   private startInFlight: Promise<RunningBrowser> | undefined;
   private refCount = 0;
+  private operatorHeld = false;
 
   async ensureRunning(config?: SunoBrowserConfigView, env: NodeJS.ProcessEnv = process.env): Promise<SunoBrowserHandle> {
     if (!this.running && !this.startInFlight) {
@@ -59,6 +60,33 @@ export class SunoBrowserService {
     this.running = running;
     this.refCount += 1;
     return { cdpEndpoint: running.cdpEndpoint, context: running.context };
+  }
+
+  /**
+   * Open (or reuse) the single headful browser for an operator login/connect session and
+   * hold it open across HTTP requests until closeOperatorSession(). Idempotent: repeated
+   * connect clicks reuse the one operator hold instead of stacking references, so the
+   * browser cannot leak from a double-connect. The Producer Console connect flow uses this
+   * so the operator logs in in the opened window; closeOperatorSession() (on handoff
+   * complete or a confirmed connected probe) closes it.
+   */
+  async openOperatorSession(config?: SunoBrowserConfigView, env: NodeJS.ProcessEnv = process.env): Promise<SunoBrowserHandle> {
+    const handle = await this.ensureRunning(config, env);
+    if (this.operatorHeld) {
+      // A session is already held; drop the extra reference this call took.
+      await this.release();
+    } else {
+      this.operatorHeld = true;
+    }
+    return handle;
+  }
+
+  async closeOperatorSession(): Promise<void> {
+    if (!this.operatorHeld) {
+      return;
+    }
+    this.operatorHeld = false;
+    await this.release();
   }
 
   /**

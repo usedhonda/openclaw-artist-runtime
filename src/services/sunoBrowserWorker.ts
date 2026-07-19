@@ -17,6 +17,8 @@ import type {
 } from "../types.js";
 import { getDurationPlan } from "../suno-production/durationPlan.js";
 import { DEFAULT_SUNO_PROFILE_PATH, PlaywrightSunoDriver } from "./sunoPlaywrightDriver.js";
+import { SunoBrowserServiceProbeDriver } from "./sunoBrowserServiceDriver.js";
+import { sunoBrowserService } from "./sunoBrowserService.js";
 import { DEFAULT_SUNO_PROFILE_STALE_DAYS, detectStaleProfile } from "./sunoProfileLifecycle.js";
 import { isSunoLiveDisabled, isSunoLiveEnabled, sunoChromeProfileDest } from "./runtimeConfig.js";
 
@@ -52,6 +54,9 @@ interface SunoBrowserWorkerOptions {
   driverMode?: SunoDriverMode;
   profilePath?: string;
   submitMode?: SunoSubmitMode;
+  // Injectable connect probe driver for the suno_cli lane (tests supply a mock so
+  // connect/reconnect never launch a real browser).
+  connectDriver?: SunoBrowserDriver;
 }
 
 function logSunoWorkerSideEffectFailure(context: string, error: unknown): void {
@@ -281,7 +286,18 @@ export class SunoBrowserWorker {
       );
     }
 
+    // suno_cli lane has no PlaywrightSunoDriver, but connect/reconnect still need to open
+    // the plugin browser for operator login and probe login state. Supply the
+    // service-backed probe driver instead of refusing with undefined.
+    if (driverMode === "suno_cli") {
+      return new SunoBrowserServiceProbeDriver(this.options.config);
+    }
+
     return undefined;
+  }
+
+  private isSunoCliLane(): boolean {
+    return (this.options.config?.music?.suno?.driver ?? this.options.driverMode) === "suno_cli";
   }
 
   private async prepareCopiedProfile(): Promise<void> {
@@ -366,14 +382,67 @@ export class SunoBrowserWorker {
   }
 
   async connect(): Promise<SunoWorkerStatus> {
+    if (this.isSunoCliLane()) {
+      return this.connectViaBrowserService("operator_login_required");
+    }
     return this.setState("disconnected", undefined, "operator_login_required");
   }
 
   async reconnect(): Promise<SunoWorkerStatus> {
+    if (this.isSunoCliLane()) {
+      return this.connectViaBrowserService("reconnect_requested");
+    }
     return this.setState("disconnected", undefined, "reconnect_requested");
   }
 
+  /**
+   * suno_cli connect/reconnect: open the plugin browser via SunoBrowserService and probe
+   * login state (reusing start()'s probe->transition path). On a confirmed connected
+   * probe the operator window is closed (session released); on login_required / a hard
+   * stop the window is kept open so the operator can log in or resolve the challenge, and
+   * completeManualLoginHandoff() (or a later connect) releases it. Any probe error also
+   * releases the session so the browser never leaks.
+   */
+  private async connectViaBrowserService(
+    requestedAction: StartOptions["requestedAction"],
+    driver: SunoBrowserDriver = this.options.connectDriver ?? new SunoBrowserServiceProbeDriver(this.options.config)
+  ): Promise<SunoWorkerStatus> {
+    let status: SunoWorkerStatus;
+    try {
+      status = await this.start({ driver, requestedAction });
+    } catch (error) {
+      await driver.stop?.().catch(() => undefined);
+      const detail = `suno_cli connect probe failed: ${error instanceof Error ? error.message : String(error)}`;
+      const current = await this.readState();
+      return this.writeState({
+        ...current,
+        state: "disconnected",
+        connected: false,
+        pendingAction: requestedAction,
+        hardStopReason: undefined,
+        loginHandoff: undefined,
+        sunoProfileDetail: detail,
+        lastTransitionAt: now()
+      });
+    }
+    // Keep the window open only while the operator still has to act on it.
+    const holdOpen =
+      status.state === "login_required" ||
+      status.state === "login_challenge" ||
+      status.state === "captcha" ||
+      status.state === "payment_prompt";
+    if (!holdOpen) {
+      await driver.stop?.().catch(() => undefined);
+    }
+    return status;
+  }
+
   async completeManualLoginHandoff(): Promise<SunoWorkerStatus> {
+    // Release any operator browser session held open by connect/reconnect. No-op for the
+    // browser lane (nothing held) and safe when the operator logged in via the script.
+    await sunoBrowserService.closeOperatorSession().catch((error) =>
+      logSunoWorkerSideEffectFailure("operator session close", error)
+    );
     const current = await this.readState();
     const nextHandoff = current.loginHandoff
       ? {
