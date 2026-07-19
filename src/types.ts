@@ -129,6 +129,13 @@ export interface SunoMusicConfig {
   stopOnPaymentPrompt: boolean;
   promptLogging: "full";
   /**
+   * Optional absolute path to a suno-cli entry (dist/src/cli.js). Takes precedence over
+   * the legacy OPENCLAW_SUNO_CLI_ENTRY env var; when neither is set the connector
+   * auto-resolves the bundled vendor/suno-cli copy, so this is only needed to point at a
+   * custom checkout.
+   */
+  cliEntry?: string;
+  /**
    * Optional operator overrides for the plugin-owned Suno browser. Each field takes
    * precedence over its legacy env var (OPENCLAW_SUNO_CHROME_PROFILE_DEST /
    * OPENCLAW_SUNO_CHROME_EXECUTABLE / OPENCLAW_SUNO_BROWSER_CHANNEL /

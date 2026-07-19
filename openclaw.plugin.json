@@ -300,6 +300,10 @@
                 ],
                 "default": "full"
               },
+              "cliEntry": {
+                "type": "string",
+                "description": "Optional absolute path to a suno-cli entry (dist/src/cli.js). Overrides OPENCLAW_SUNO_CLI_ENTRY; blank auto-resolves the bundled vendor/suno-cli copy."
+              },
               "browser": {
                 "type": "object",
                 "additionalProperties": false,
@@ -797,6 +801,10 @@
     "music.suno.minMinutesBetweenCreates": {
       "label": "Minutes between creates",
       "help": "Cooldown between real Suno Create clicks."
+    },
+    "music.suno.cliEntry": {
+      "label": "suno-cli entry path",
+      "help": "Optional absolute path to a suno-cli entry (dist/src/cli.js). A saved value overrides OPENCLAW_SUNO_CLI_ENTRY; leave blank to use the env var or the bundled vendor copy."
     },
     "music.suno.browser.profileDir": {
       "label": "Suno browser profile dir",

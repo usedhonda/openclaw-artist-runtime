@@ -224,6 +224,10 @@
               ],
               "default": "full"
             },
+            "cliEntry": {
+              "type": "string",
+              "description": "Optional absolute path to a suno-cli entry (dist/src/cli.js). Overrides OPENCLAW_SUNO_CLI_ENTRY; blank auto-resolves the bundled vendor/suno-cli copy."
+            },
             "browser": {
               "type": "object",
               "additionalProperties": false,
