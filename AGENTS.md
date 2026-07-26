@@ -70,6 +70,47 @@ Required package metadata:
 
 ---
 
+## Local vs Distribution layout contract
+
+This repo is both a distributable package and one operator's live workspace.
+Both CC and Codex must keep those two worlds separated. There are four layers:
+
+1. **Distribution surface** — the `package.json.files` allowlist only. Nothing
+   ships to ClawHub/npm unless it is on that list.
+2. **Tracked repo files** — everything under version control. These MUST be
+   public-safe: no machine-specific absolute paths (`/Users/<name>/...`,
+   `/home/<name>/...`), no credentials, no personal identity/handles. Tracked
+   files are not all distributed, but they are all published as source.
+3. **`.local/`** — gitignored, machine-specific layer for THIS Mac: the env
+   overlay `.local/openclaw-local-env.local.sh`, `.local/social-credentials.env`,
+   private runbooks, runtime state, archives, and scratch working notes.
+4. **Temporary files** — the session scratchpad, never the repo root.
+
+Operating rules:
+
+- Never carry a permanent local edit on a tracked file. If a value is unique to
+  this machine, put it in a `.local/` overlay (env seeds in
+  `.local/openclaw-local-env.local.sh`; the tracked launcher sources it early and
+  its generic `"${VAR:-default}"` fallbacks pick the seed up). The only allowed
+  tracked-file dirtiness is a genuine, in-flight, about-to-commit change — not a
+  standing machine tweak. See `docs/LOCAL_RUNTIME_OPS.md`.
+- Do not leave untracked notes, plans, or instruction files at the repo root.
+  Move working notes into `.local/` (or `.local/archive/` when finished).
+- Prefer promoting a new operator-facing knob to the manifest `configSchema`;
+  use an env var only as a fallback, and set machine-specific values via the
+  `.local/` overlay, not by editing the tracked launcher.
+- When you add a new local file, confirm `.gitignore` already covers it.
+- Codex: this is compatible with the §7.4 filesystem safety boundary. Writing to
+  `.local/` inside the work root is an allowed local layer, not a boundary breach.
+
+This contract is enforced mechanically by `npm test`
+(`tests/tracked-file-hygiene.test.ts`, which fails on machine-specific absolute
+paths in any `git ls-files` entry) and by `npm run leak-scan` (which guards the
+distribution surface). Both reuse one pattern source in
+`scripts/maintainer-leak-scan.mjs`.
+
+---
+
 ## OpenClaw-native constraints
 
 Follow OpenClaw design. Avoid unique infrastructure that will break every time OpenClaw changes.

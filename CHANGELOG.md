@@ -3,6 +3,11 @@
 ## [Unreleased]
 
 ### Added
+- Local vs Distribution layout contract in `AGENTS.md`, enforced mechanically by
+  a new `npm test` guard (`tests/tracked-file-hygiene.test.ts`) that fails on
+  machine-specific absolute paths in any tracked file. Machine-specific gateway
+  env now lives in a gitignored `.local/openclaw-local-env.local.sh` overlay
+  sourced by `scripts/openclaw-local-env.sh`; see `docs/LOCAL_RUNTIME_OPS.md`.
 - Distribution-grade Suno browser + captcha human-assist. The plugin now owns the
   Suno browser lifecycle via a new `SunoBrowserService` (launches the single
   persistent `suno` profile with an ephemeral `--remote-debugging-port=0` derived

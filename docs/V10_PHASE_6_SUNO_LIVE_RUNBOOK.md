@@ -34,7 +34,7 @@ GO 待ちの間、本ランブックを御大に提示して内容確認を取�
 実機 create に進む前に、artifact 段階で以下を全部 pass させる:
 
 ```bash
-cd /Users/usedhonda/projects/openclaw/artist-runtime
+cd "$(git rev-parse --show-toplevel)"   # repo root of the artist-runtime checkout
 
 # Phase 1-5 + v10.5 A/B/C の test 全 pass (216 files / 751 tests 想定)
 npm test -- --run

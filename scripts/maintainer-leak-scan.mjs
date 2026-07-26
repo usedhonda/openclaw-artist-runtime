@@ -23,10 +23,22 @@ export const maintainerLeakPatterns = [
   { id: "maintainer-name-jp", pattern: /ゆずる/ }
 ];
 
+// Generic machine-specific absolute paths (any operator, not just the maintainer).
+// Shared with the tracked-file hygiene guard (tests/tracked-file-hygiene.test.ts)
+// so the two-layer "local vs distribution" contract has a single pattern source.
+// A machine-specific ".local/..." leak is an absolute home path, so it is caught
+// here too; bare repo-relative ".local/" references are intentionally not flagged.
+export const machineSpecificPathPatterns = [
+  { id: "machine-home-macos", pattern: /\/Users\/[A-Za-z0-9._-]+(?:\/|\b)/ },
+  { id: "machine-home-linux", pattern: /\/home\/[A-Za-z0-9._-]+(?:\/|\b)/ }
+];
+
 const textExtensions = /\.(?:cjs|cts|html|js|json|jsx|md|mjs|mts|sh|ts|tsx|txt|ya?ml)$/i;
 
 // Pure, testable: scans the given relative `files` under `cwd` for leak patterns.
-export function scanMaintainerLeaks({ cwd = process.cwd(), files = [] } = {}) {
+// `patterns` defaults to the maintainer identity set so existing callers are
+// unchanged; the hygiene guard passes machineSpecificPathPatterns instead.
+export function scanMaintainerLeaks({ cwd = process.cwd(), files = [], patterns = maintainerLeakPatterns } = {}) {
   const findings = [];
   for (const rel of files) {
     if (!textExtensions.test(rel)) {
@@ -40,7 +52,7 @@ export function scanMaintainerLeaks({ cwd = process.cwd(), files = [] } = {}) {
     }
     const lines = contents.split(/\r?\n/);
     for (const [index, line] of lines.entries()) {
-      for (const rule of maintainerLeakPatterns) {
+      for (const rule of patterns) {
         if (rule.pattern.test(line)) {
           findings.push({ rule: rule.id, file: rel, line: index + 1, text: line.trim().slice(0, 200) });
         }
