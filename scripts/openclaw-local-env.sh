@@ -44,6 +44,17 @@ if [[ -f "${news_feeds_path}" ]]; then
   source "${news_feeds_path}"
 fi
 
+# Machine-specific overlay: any value unique to THIS Mac (Bird/X Firefox profile
+# id, a local suno-cli checkout path, legacy CDP-attach opt-in, etc.) lives in
+# .local/ so this tracked script stays generic and never goes dirty. The overlay
+# sets raw env seeds that the generic "${VAR:-default}" fallbacks below respect.
+# See docs/LOCAL_RUNTIME_OPS.md for the two-layer contract.
+local_env_overlay_path="${repo_root}/.local/openclaw-local-env.local.sh"
+if [[ -f "${local_env_overlay_path}" ]]; then
+  # shellcheck source=/dev/null
+  source "${local_env_overlay_path}"
+fi
+
 openclaw_tailscale_ip="${OPENCLAW_TAILSCALE_IP:-$(detect_tailscale_ipv4)}"
 openclaw_gateway_public_host="${OPENCLAW_GATEWAY_PUBLIC_HOST:-${openclaw_tailscale_ip:-127.0.0.1}}"
 if [[ -n "${openclaw_tailscale_ip}" ]]; then
@@ -89,11 +100,13 @@ case "${NODE_OPTIONS:-}" in
   *) export NODE_OPTIONS="${NODE_OPTIONS:+${NODE_OPTIONS} }--dns-result-order=ipv4first" ;;
 esac
 
-# Local incident guard: the repo-local gateway must use the artist Firefox
-# profile for Bird/X unless explicitly overridden by the operator.
-: "${BIRD_FIREFOX_PROFILE:=rlff0kyr.artist-x}"
-export BIRD_FIREFOX_PROFILE
-export OPENCLAW_X_FIREFOX_PROFILE="${BIRD_FIREFOX_PROFILE}"
+# Local incident guard: the repo-local gateway uses a machine-specific artist
+# Firefox profile for Bird/X. The profile id is set by the .local overlay
+# (openclaw-local-env.local.sh) so this tracked script carries no machine id.
+if [[ -n "${BIRD_FIREFOX_PROFILE:-}" ]]; then
+  export BIRD_FIREFOX_PROFILE
+  export OPENCLAW_X_FIREFOX_PROFILE="${BIRD_FIREFOX_PROFILE}"
+fi
 
 if [[ -n "${TELEGRAM_BOT_TOKEN:-}" ]]; then
   export TELEGRAM_BOT_TOKEN
@@ -113,12 +126,16 @@ if [[ -n "${OPENCLAW_SAFE_TICK_TRIGGER_TOKEN:-}" ]]; then
   export OPENCLAW_SAFE_TICK_TRIGGER_TOKEN
 fi
 
-# v10.34 Layer 1 live lane. Uses an isolated bundled Chromium profile by
-# default. System Chrome channel is opt-in only because macOS can route launched
-# tabs into the operator's visible Chrome.app singleton. CDP attach remains an
-# emergency opt-in via OPENCLAW_SUNO_USE_CDP=on.
+# v10.34 Layer 1 live lane. Standard live driver = headless suno-cli
+# (trusted-session path, vendored under vendor/suno-cli and auto-resolved by the
+# connector). OPENCLAW_SUNO_DRIVER is REQUIRED: without it the OPENCLAW_SUNO_LIVE=on
+# branch in applyRuntimeEnvOverrides clobbers the driver back to the browser
+# worker ("playwright"). Machine-specific Suno overrides (a local suno-cli
+# checkout via OPENCLAW_SUNO_CLI_ENTRY, cookie/session dirs, or the legacy
+# CDP-attach via OPENCLAW_SUNO_USE_CDP / OPENCLAW_SUNO_CDP_ENDPOINT) belong in the
+# .local overlay, not here.
 export OPENCLAW_SUNO_LIVE=on
-export OPENCLAW_SUNO_CDP_ENDPOINT="${OPENCLAW_SUNO_CDP_ENDPOINT:-http://127.0.0.1:9222}"
+export OPENCLAW_SUNO_DRIVER="${OPENCLAW_SUNO_DRIVER:-suno_cli}"
 export OPENCLAW_AUTOPILOT_DRYRUN_OVERRIDE=off
 
 # v10.28-C: dashboard base URL for Telegram body Resources section. Prefer

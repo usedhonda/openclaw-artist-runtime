@@ -20,6 +20,24 @@ worker, and the Telegram producer room all run inside this gateway process.
 The `openclaw` binary itself is **not** global; it lives at
 `.local/openclaw/bin/openclaw` and is invoked through `scripts/openclaw-local`.
 
+## Environment: tracked defaults vs machine-specific overlay
+
+`scripts/openclaw-local-env.sh` is a **tracked, generic** launcher. It must never
+carry values unique to one Mac, so it stays clean in `git status`. Anything
+specific to this machine goes in a gitignored overlay:
+
+- `.local/openclaw-local-env.local.sh` — machine-specific env **seeds** (e.g. the
+  Bird/X `BIRD_FIREFOX_PROFILE` id, a local `OPENCLAW_SUNO_CLI_ENTRY` checkout
+  path, or the legacy `OPENCLAW_SUNO_USE_CDP` attach). Sourced early by the
+  tracked script; the generic `"${VAR:-default}"` fallbacks then pick the seeds
+  up, so setting a var here overrides the tracked default without editing the
+  tracked file.
+
+The tracked script keeps only public-safe generics (repo-relative paths, dynamic
+Tailscale detection, `OPENCLAW_SUNO_DRIVER=suno_cli` for the live lane). Credentials
+still live in `.local/social-credentials.env`, not in the overlay. If you need a
+per-machine tweak, add it to the overlay — do not edit the tracked script.
+
 ## Start
 
 ```sh
