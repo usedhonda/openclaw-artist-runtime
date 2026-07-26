@@ -30,11 +30,28 @@ describe("residual kanji lyrics lint", () => {
     expect(normalizeAsciiNumbersToHiragana("3つの信号と 42 の窓")).toBe("さんつの信号と よんじゅうに の窓");
   });
 
-  it("normalizes 3+ digit numbers digit-by-digit (live spawn_cc1049 ascii_number:145 stall)", () => {
-    expect(normalizeAsciiNumbersToHiragana("145だんめのかいだん")).toBe("いちよんごだんめのかいだん");
-    expect(normalizeAsciiNumbersToHiragana("2026ねんのまち")).toBe("にぜろにろくねんのまち");
+  it("normalizes 3-4 digit numbers with positional readings (live spawn_cc1049 ascii_number:145 stall)", () => {
+    expect(normalizeAsciiNumbersToHiragana("145だんめのかいだん")).toBe("ひゃくよんじゅうごだんめのかいだん");
+    expect(normalizeAsciiNumbersToHiragana("2026ねんのまち")).toBe("にせんにじゅうろくねんのまち");
     // 1-2 digit natural readings stay intact alongside a 3-digit token
-    expect(normalizeAsciiNumbersToHiragana("12と 300")).toBe("じゅうにと さんぜろぜろ");
+    expect(normalizeAsciiNumbersToHiragana("12と 300")).toBe("じゅうにと さんびゃく");
+  });
+
+  it("reads positional numbers deterministically across the boundaries (99/100/145/1000/9999) with digit fallback above", () => {
+    expect(asciiNumberToHiragana(99)).toBe("きゅうじゅうきゅう");
+    expect(asciiNumberToHiragana(100)).toBe("ひゃく");
+    expect(asciiNumberToHiragana(145)).toBe("ひゃくよんじゅうご");
+    expect(asciiNumberToHiragana(1000)).toBe("せん");
+    expect(asciiNumberToHiragana(9999)).toBe("きゅうせんきゅうひゃくきゅうじゅうきゅう");
+    // rendaku / gemination readings
+    expect(asciiNumberToHiragana(300)).toBe("さんびゃく");
+    expect(asciiNumberToHiragana(600)).toBe("ろっぴゃく");
+    expect(asciiNumberToHiragana(800)).toBe("はっぴゃく");
+    expect(asciiNumberToHiragana(3000)).toBe("さんぜん");
+    expect(asciiNumberToHiragana(8000)).toBe("はっせん");
+    // >= 10000 falls back to digit-by-digit reading (rare, no compact reading)
+    expect(normalizeAsciiNumbersToHiragana("10000のよる")).toBe("いちぜろぜろぜろぜろのよる");
+    expect(() => asciiNumberToHiragana(10000)).toThrow(/unsupported_ascii_number/);
   });
 
   it("repairs known residual kanji for Suno registration while preserving the original lyrics source", () => {
@@ -107,7 +124,7 @@ describe("residual kanji lyrics lint", () => {
   });
 
   it("normalizes the second live spawn_cc1049 stall set (売 + 3-digit number)", () => {
-    expect(normalizeSunoRegistrationJapanese("売れるまちで 145 かぞえる")).toBe("うれるまちで いちよんご かぞえる");
+    expect(normalizeSunoRegistrationJapanese("売れるまちで 145 かぞえる")).toBe("うれるまちで ひゃくよんじゅうご かぞえる");
     expect(normalizeSunoRegistrationJapanese("たましいを売る")).toBe("たましいをうる");
   });
 });

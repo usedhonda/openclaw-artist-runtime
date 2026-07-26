@@ -19,20 +19,40 @@ export function lintJapaneseLyricsEnglishFragments(lyrics: string): LyricsLangua
 
 const DIGIT_WORDS = ["ぜろ", "いち", "に", "さん", "よん", "ご", "ろく", "なな", "はち", "きゅう"] as const;
 
-export function asciiNumberToHiragana(value: number): string {
-  if (!Number.isInteger(value) || value < 0 || value > 99) {
-    throw new Error(`unsupported_ascii_number:${value}`);
-  }
-  if (value < 10) return DIGIT_WORDS[value] ?? "";
-  if (value === 10) return "じゅう";
-  const tens = Math.floor(value / 10);
-  const ones = value % 10;
+// Positional Japanese readings with the standard sound changes (rendaku /
+// gemination) so numbers are sung the way a Japanese listener expects.
+const HUNDREDS_WORDS = ["", "ひゃく", "にひゃく", "さんびゃく", "よんひゃく", "ごひゃく", "ろっぴゃく", "ななひゃく", "はっぴゃく", "きゅうひゃく"] as const;
+const THOUSANDS_WORDS = ["", "せん", "にせん", "さんぜん", "よんせん", "ごせん", "ろくせん", "ななせん", "はっせん", "きゅうせん"] as const;
+
+function tensReading(tens: number): string {
+  if (tens === 0) return "";
   const prefix = tens === 1 ? "" : DIGIT_WORDS[tens];
-  return `${prefix}じゅう${ones === 0 ? "" : DIGIT_WORDS[ones]}`;
+  return `${prefix}じゅう`;
 }
 
-// 3+ digit numbers have no natural single reading that stays singable, so we
-// read them digit by digit (145 -> いちよんご). 0-99 keep their natural reading.
+// Deterministic positional reading for 0-9999 (145 -> ひゃくよんじゅうご). The
+// range covers years and measurements that show up in lyrics; numbers >= 10000
+// have no compact singable reading, so callers fall back to digit-by-digit.
+export function asciiNumberToHiragana(value: number): string {
+  if (!Number.isInteger(value) || value < 0 || value > 9999) {
+    throw new Error(`unsupported_ascii_number:${value}`);
+  }
+  if (value === 0) return DIGIT_WORDS[0];
+  const thousands = Math.floor(value / 1000);
+  const hundreds = Math.floor((value % 1000) / 100);
+  const tens = Math.floor((value % 100) / 10);
+  const ones = value % 10;
+  const parts = [
+    THOUSANDS_WORDS[thousands],
+    HUNDREDS_WORDS[hundreds],
+    tensReading(tens),
+    ones === 0 ? "" : DIGIT_WORDS[ones]
+  ];
+  return parts.join("");
+}
+
+// Numbers >= 10000 stay rare in lyrics and have no compact singable reading, so
+// we read them digit by digit (12345 -> いちにさんよんご) rather than throw.
 function digitsToHiragana(token: string): string {
   return token
     .split("")
@@ -47,7 +67,7 @@ export function normalizeAsciiNumbersToHiragana(lyrics: string): string {
       if (/^\s*\[[^\]]+\]\s*$/.test(line)) return line;
       return line.replace(/\d+/g, (token) => {
         const value = Number.parseInt(token, 10);
-        return value <= 99 ? asciiNumberToHiragana(value) : digitsToHiragana(token);
+        return value <= 9999 ? asciiNumberToHiragana(value) : digitsToHiragana(token);
       });
     })
     .join("\n");
