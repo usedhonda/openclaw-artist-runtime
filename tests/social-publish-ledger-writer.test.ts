@@ -12,6 +12,8 @@ import {
 } from "../src/services/socialPublishLedger";
 import type { SocialPublishLedgerEntry } from "../src/types";
 
+const FIXED_NOW = new Date("2026-04-24T00:00:00.000Z");
+
 function makeRoot(): string {
   return mkdtempSync(join(tmpdir(), "artist-runtime-social-ledger-"));
 }
@@ -39,7 +41,7 @@ describe("social publish ledger writer", () => {
   it("writes a complete JSONL ledger through the atomic path", async () => {
     const root = makeRoot();
 
-    await appendSocialPublishLedgerEntry(root, "song-001", entry("2026-04-24T00:00:00.000Z"));
+    await appendSocialPublishLedgerEntry(root, "song-001", entry("2026-04-24T00:00:00.000Z"), { now: FIXED_NOW });
 
     const ledgerPath = getSocialLedgerPath(root, "song-001");
     expect(readJsonl(ledgerPath)).toHaveLength(1);
@@ -52,7 +54,7 @@ describe("social publish ledger writer", () => {
     await mkdir(join(root, "songs", "song-001", "social"), { recursive: true });
     await writeFile(`${ledgerPath}.tmp`, "{partial", "utf8");
 
-    await appendSocialPublishLedgerEntry(root, "song-001", entry("2026-04-24T00:00:00.000Z"));
+    await appendSocialPublishLedgerEntry(root, "song-001", entry("2026-04-24T00:00:00.000Z"), { now: FIXED_NOW });
 
     expect(existsSync(`${ledgerPath}.tmp`)).toBe(false);
     expect(readJsonl(ledgerPath)[0]?.reason).toBe("dry-run blocks social publish");
@@ -73,7 +75,7 @@ describe("social publish ledger writer", () => {
   it("keeps the latest active entry readable after rotation", async () => {
     const root = makeRoot();
 
-    await appendSocialPublishLedgerEntry(root, "song-001", entry("2026-04-24T00:00:00.000Z", "latest"));
+    await appendSocialPublishLedgerEntry(root, "song-001", entry("2026-04-24T00:00:00.000Z", "latest"), { now: FIXED_NOW });
 
     await expect(readLatestSocialPublishLedgerEntry(root, "song-001")).resolves.toMatchObject({
       reason: "latest"
@@ -84,9 +86,9 @@ describe("social publish ledger writer", () => {
     const root = makeRoot();
 
     await Promise.all([
-      appendSocialPublishLedgerEntry(root, "song-001", entry("2026-04-24T00:00:00.000Z", "one")),
-      appendSocialPublishLedgerEntry(root, "song-001", entry("2026-04-24T00:00:01.000Z", "two")),
-      appendSocialPublishLedgerEntry(root, "song-001", entry("2026-04-24T00:00:02.000Z", "three"))
+      appendSocialPublishLedgerEntry(root, "song-001", entry("2026-04-24T00:00:00.000Z", "one"), { now: FIXED_NOW }),
+      appendSocialPublishLedgerEntry(root, "song-001", entry("2026-04-24T00:00:01.000Z", "two"), { now: FIXED_NOW }),
+      appendSocialPublishLedgerEntry(root, "song-001", entry("2026-04-24T00:00:02.000Z", "three"), { now: FIXED_NOW })
     ]);
 
     expect(readJsonl(getSocialLedgerPath(root, "song-001")).map((record) => record.reason)).toEqual(["one", "two", "three"]);
@@ -107,7 +109,7 @@ describe("social publish ledger writer", () => {
       }
     };
 
-    await appendSocialReplyLedgerEntry(root, "song-001", replyEntry);
+    await appendSocialReplyLedgerEntry(root, "song-001", replyEntry, { now: FIXED_NOW });
 
     expect(readJsonl(getSocialLedgerPath(root, "song-001"))[0]).toMatchObject({
       action: "reply",
