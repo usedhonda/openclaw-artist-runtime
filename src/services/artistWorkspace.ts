@@ -1,5 +1,5 @@
 import { constants } from "node:fs";
-import { access, copyFile, mkdir, readdir, readFile, stat } from "node:fs/promises";
+import { access, copyFile, mkdir, readdir, readFile, stat, writeFile } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
 import { dirname, join, relative } from "node:path";
 import { ensureCurrentStateInitialized, readManagedCurrentState } from "./currentStateProjection.js";
@@ -36,10 +36,35 @@ async function copyDirectory(sourceRoot: string, targetRoot: string, destination
   }
 }
 
+// The template ships AGENTS.md as a symlink to CLAUDE.md, but npm packs skip
+// symlinks, so distributed installs have no AGENTS.md to copy. Regenerate it
+// from CLAUDE.md (the single source of truth) when it is missing. Existing
+// AGENTS.md is left untouched; if CLAUDE.md is also absent, do nothing.
+async function ensureAgentsFromClaude(root: string, result: WorkspaceBootstrapResult): Promise<void> {
+  const agentsPath = join(root, "AGENTS.md");
+  try {
+    await access(agentsPath, constants.F_OK);
+    return;
+  } catch {
+    // AGENTS.md is missing; fall through to regenerate from CLAUDE.md.
+  }
+
+  let claudeContents: string;
+  try {
+    claudeContents = await readFile(join(root, "CLAUDE.md"), "utf8");
+  } catch {
+    return;
+  }
+
+  await writeFile(agentsPath, claudeContents);
+  result.created.push(relative(root, agentsPath));
+}
+
 export async function ensureArtistWorkspace(root: string, templateRoot = defaultTemplateRoot): Promise<WorkspaceBootstrapResult> {
   await mkdir(root, { recursive: true });
   const result: WorkspaceBootstrapResult = { created: [], skipped: [] };
   await copyDirectory(templateRoot, root, root, result);
+  await ensureAgentsFromClaude(root, result);
   await ensureCurrentStateInitialized(root);
   const config = await readResolvedConfig(root);
   const identity = await writeDerivedIdentityProjection(root, config, "workspace_bootstrap_identity_projection");
