@@ -895,14 +895,17 @@ export function correctionGuidanceFromDegraded(reason: string): string[] | undef
   if (kanji.length === 0 && numbers.length === 0) {
     return undefined;
   }
+  // Only one corrective re-draft is allowed, so the guidance must ask for every
+  // offending token to be resolved in this single rewrite (leaving one behind
+  // fails validation again and parks the song).
   const notes: string[] = [];
   if (kanji.length > 0) {
     const list = kanji.map((match) => `${match[1]}(line ${match[2]})`).join(", ");
-    notes.push(`Suno登録歌詞に残った漢字をひらがなに開くか、同じ意味の別語に置き換えてください（意味と歌いやすさは保つ）: ${list}`);
+    notes.push(`次の漢字を、この1回の書き直しですべてひらがなに開くか、同じ意味の別語に置き換えてください（1文字でも残すと不合格。意味と歌いやすさは保つ）: ${list}`);
   }
   if (numbers.length > 0) {
     const list = numbers.map((match) => `${match[1]}(line ${match[2]})`).join(", ");
-    notes.push(`数字はひらがなの読みで書いてください（例: 145 -> ひゃくよんじゅうご）: ${list}`);
+    notes.push(`次の数字を、この1回の書き直しですべてひらがなの読みで書いてください（例: 145 -> ひゃくよんじゅうご）: ${list}`);
   }
   return notes;
 }
