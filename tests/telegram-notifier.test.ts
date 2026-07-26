@@ -44,6 +44,21 @@ describe("TelegramNotifier", () => {
     vi.unstubAllEnvs();
   });
 
+  it("dedupes repeated lyrics_generation_degraded pushes for the same song+reason", async () => {
+    const fetchImpl = vi.fn().mockResolvedValue(jsonResponse({ ok: true, result: { message_id: 1, chat: { id: 123 } } }));
+    const notifier = new TelegramNotifier({ token: "token", chatId: 123, fetchImpl });
+    const base = {
+      type: "lyrics_generation_degraded" as const,
+      songId: "spawn_cc1049",
+      reason: "lyrics_generation_degraded: suno_prompt_pack_invalid",
+      detail: "styleAndFeel core exceeds canonical cap: 931/120"
+    };
+    await notifier.notify({ ...base, timestamp: 1 });
+    await notifier.notify({ ...base, timestamp: 2 });
+    await notifier.notify({ ...base, detail: "residual_kanji:鳴:line_17", timestamp: 3 });
+    expect(fetchImpl).toHaveBeenCalledTimes(2);
+  });
+
   it("stays silent on self-heal events when the flag is off", async () => {
     const fetchImpl = vi.fn().mockResolvedValue(jsonResponse({ ok: true }));
     const notifier = new TelegramNotifier({ token: "token", chatId: 123, fetchImpl });

@@ -70,4 +70,32 @@ describe("residual kanji lyrics lint", () => {
   it("normalizes the current Suno-stalling residual kanji set", () => {
     expect(normalizeSunoRegistrationJapanese("スポンサー名がならぶ\n消えるのはまちかど\n拍手のあとで")).toBe("スポンサーめいがならぶ\nきえるのはまちかど\nはくしゅのあとで");
   });
+
+  it("normalizes the newly reported stalling kanji (鳴/皮肉/広告/利上げ/偶然)", () => {
+    expect(normalizeSunoRegistrationJapanese("むねで鳴る\nそれは皮肉なひかり")).toBe("むねでなる\nそれはひにくなひかり");
+    expect(normalizeSunoRegistrationJapanese("広告のまち\n利上げのニュース\n偶然のかお")).toBe("こうこくのまち\nりあげのニュース\nぐうぜんのかお");
+  });
+
+  it("repairs 鳴る and 皮肉 in a pack so validation passes (spawn_cc1049 stall)", () => {
+    const pack = createSunoPromptPack({
+      songId: "song-cc1049-repro",
+      songTitle: "共有現実の外",
+      artistReason: "residual kanji stall repro",
+      lyricsText: "[Verse 1]\nむねで鳴る\n[Verse 2]\nそれは皮肉なひかり",
+      artistSnapshot: "# ARTIST\nused::honda",
+      currentStateSnapshot: "# CURRENT\n"
+    });
+
+    const warnings = pack.payload.languageWarnings as string[];
+    expect(warnings).not.toContain("residual_kanji:鳴:line_2");
+    expect(warnings.some((warning) => warning.startsWith("residual_kanji:皮肉"))).toBe(false);
+    expect(pack.lyricsBundle?.lyricsText).toContain("むねでなる");
+    expect(pack.lyricsBundle?.lyricsText).toContain("ひにく");
+    expect(pack.validation.valid).toBe(true);
+  });
+
+  it("keeps compounds intact by applying longer readings before component kanji (利上げ, 街角)", () => {
+    expect(normalizeSunoRegistrationJapanese("利上げだけがのこる")).toBe("りあげだけがのこる");
+    expect(normalizeSunoRegistrationJapanese("街角のノイズ")).toBe("まちかどのノイズ");
+  });
 });

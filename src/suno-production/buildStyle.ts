@@ -290,6 +290,39 @@ export function buildStyle(input: BuildStyleInput): BuildStyleResult {
   return { coreTags, performanceDirection: direction, total };
 }
 
+// The prompt-pack validator requires the first non-header content line of the
+// styleAndFeel block to stay within CANONICAL_STYLE_CORE_MAX_CHARS. The
+// deterministic buildStyle() always emits a fitted `coreTags` line first, but the
+// AI synthesis path (normalizeAiStyle) can return a long run-on first line (e.g.
+// 931 chars), which used to fail-closed and pause autopilot. This deterministic
+// repair guarantees the contract by inserting a fitted core line ahead of any
+// oversized first content line, preserving the original text as the body below it.
+export function enforceStyleCoreContract(style: string): string {
+  const lines = style.split(/\r?\n/);
+  const contentIdx = lines.findIndex((line) => {
+    const normalized = line.replace(/^[-*]\s*/, "").trim();
+    return normalized.length > 0 && !/^#\s*Style\b/i.test(normalized);
+  });
+  if (contentIdx < 0) {
+    return style;
+  }
+  const firstContent = lines[contentIdx].replace(/^[-*]\s*/, "").trim();
+  if (firstContent.length <= CANONICAL_STYLE_CORE_MAX_CHARS) {
+    return style;
+  }
+  const coreTags = fitTags(splitTags(firstContent), CANONICAL_STYLE_CORE_MAX_CHARS)
+    || trimAtPhraseBoundary(firstContent, CANONICAL_STYLE_CORE_MAX_CHARS);
+  const rebuilt = [
+    ...lines.slice(0, contentIdx),
+    coreTags,
+    lines[contentIdx],
+    ...lines.slice(contentIdx + 1)
+  ].join("\n");
+  return rebuilt.length > CANONICAL_STYLE_HARD_MAX_CHARS
+    ? trimAtPhraseBoundary(rebuilt, CANONICAL_STYLE_HARD_MAX_CHARS)
+    : rebuilt;
+}
+
 function normalizeAiStyle(raw: string): BuildStyleResult | undefined {
   const text = raw
     .replace(/```(?:text)?/gi, "")

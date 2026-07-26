@@ -144,9 +144,18 @@ const SELF_HEAL_SOURCES: ReadonlySet<string> = new Set([
   "stale_queue_cleanup"
 ]);
 const SELF_HEAL_DEDUP_WINDOW_MS = 60 * 60 * 1000;
+// A degraded-lyrics pause re-emits the same event on every /status resurface and
+// on repeated cycle attempts. The first notification always sends; identical
+// repeats (same song + same reason) collapse to at most one per day so the
+// producer is not spammed while a song stays paused.
+const LYRICS_DEGRADED_DEDUP_WINDOW_MS = 24 * 60 * 60 * 1000;
 
 function selfHealDedupKey(event: Extract<RuntimeEvent, { type: "error" }>): string {
   return `${event.source}:${event.reason}`;
+}
+
+function lyricsDegradedDedupKey(event: Extract<RuntimeEvent, { type: "lyrics_generation_degraded" }>): string {
+  return `${event.songId}:${event.detail ?? event.reason}`;
 }
 
 function formatSelfHealText(event: Extract<RuntimeEvent, { type: "error" }>): string {
@@ -182,6 +191,7 @@ export class TelegramNotifier {
   }> = [];
   private spawnFlushTimer: ReturnType<typeof setTimeout> | undefined;
   private readonly recentSelfHealNotifications = new Map<string, number>();
+  private readonly recentDegradedNotifications = new Map<string, number>();
 
   constructor(private readonly options: TelegramNotifierOptions) {
     this.client = new TelegramClient(options.token, options.fetchImpl);
@@ -241,6 +251,15 @@ export class TelegramNotifier {
     if (this.options.producerDigest === "off") return;
     if (this.options.notifyStages === false) return;
     if (!isTelegramSignalEvent(event)) return;
+    if (event.type === "lyrics_generation_degraded") {
+      const key = lyricsDegradedDedupKey(event);
+      const now = Date.now();
+      const lastSentAt = this.recentDegradedNotifications.get(key);
+      if (lastSentAt !== undefined && now - lastSentAt < LYRICS_DEGRADED_DEDUP_WINDOW_MS) {
+        return;
+      }
+      this.recentDegradedNotifications.set(key, now);
+    }
     if (event.type === "song_spawn_proposed") {
       return this.enqueueSongSpawnNotification(event);
     }

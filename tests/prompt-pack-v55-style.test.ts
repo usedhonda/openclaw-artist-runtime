@@ -4,7 +4,8 @@ import {
   CANONICAL_STYLE_HARD_MAX_CHARS,
   CANONICAL_STYLE_TARGET_MAX_CHARS,
   CANONICAL_STYLE_TARGET_MIN_CHARS,
-  buildStyle
+  buildStyle,
+  enforceStyleCoreContract
 } from "../src/suno-production/buildStyle";
 import {
   STYLE_SYNTHESIS_KNOWLEDGE_REFERENCES,
@@ -135,5 +136,51 @@ describe("Suno V5.5 style builder", () => {
     expect(result.total).toContain("overt dopamine-pop pressure");
     expect(result.total).toContain("instant bilingual chant hook");
     expect(result.total).not.toContain("light dopamine-pop pressure");
+  });
+});
+
+// Mirrors the prompt-pack validator's styleCoreLine() to assert the repaired
+// first content line satisfies the canonical core cap.
+function firstContentLine(style: string): string {
+  return style
+    .split(/\r?\n/)
+    .map((line) => line.replace(/^[-*]\s*/, "").trim())
+    .filter((line) => line && !/^#\s*Style\b/i.test(line))[0] ?? "";
+}
+
+describe("enforceStyleCoreContract", () => {
+  it("leaves a compliant style untouched (core line <= cap)", () => {
+    const core = "a".repeat(CANONICAL_STYLE_CORE_MAX_CHARS);
+    const style = `# Style\n\n${core}\n- Genre & Era: nu-jazz rap`;
+    expect(enforceStyleCoreContract(style)).toBe(style);
+    expect(firstContentLine(enforceStyleCoreContract(style)).length).toBeLessThanOrEqual(CANONICAL_STYLE_CORE_MAX_CHARS);
+  });
+
+  it("repairs a first content line one char over the cap", () => {
+    const over = Array.from({ length: 20 }, (_, i) => `tag${i}`).join(", ");
+    expect(over.length).toBeGreaterThan(CANONICAL_STYLE_CORE_MAX_CHARS);
+    const repaired = enforceStyleCoreContract(`# Style\n\n${over}`);
+    expect(firstContentLine(repaired).length).toBeLessThanOrEqual(CANONICAL_STYLE_CORE_MAX_CHARS);
+    expect(firstContentLine(repaired).length).toBeGreaterThan(0);
+    // original run-on is preserved as a following body line, not discarded
+    expect(repaired).toContain(over);
+  });
+
+  it("repairs a 931-char AI run-on first line into a fitted core line", () => {
+    const runOn = Array.from({ length: 120 }, (_, i) => `dense descriptor phrase ${i}`).join(", ");
+    expect(runOn.length).toBeGreaterThanOrEqual(900);
+    const repaired = enforceStyleCoreContract(`# Style\n\n${runOn}\n- Mix Vision: bass forward`);
+    const core = firstContentLine(repaired);
+    expect(core.length).toBeLessThanOrEqual(CANONICAL_STYLE_CORE_MAX_CHARS);
+    expect(core.length).toBeGreaterThan(0);
+    expect(repaired.length).toBeLessThanOrEqual(CANONICAL_STYLE_HARD_MAX_CHARS);
+  });
+
+  it("falls back to a phrase-boundary slice when the run-on has no comma tags", () => {
+    const runOn = "word ".repeat(300).trim();
+    const repaired = enforceStyleCoreContract(`# Style\n\n${runOn}`);
+    const core = firstContentLine(repaired);
+    expect(core.length).toBeLessThanOrEqual(CANONICAL_STYLE_CORE_MAX_CHARS);
+    expect(core.length).toBeGreaterThan(0);
   });
 });

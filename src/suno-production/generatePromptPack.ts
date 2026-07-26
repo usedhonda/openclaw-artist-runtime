@@ -12,7 +12,8 @@ import { buildSliders as buildSlidersV55 } from "./buildSliders.js";
 import {
   CANONICAL_STYLE_HARD_MAX_CHARS,
   CANONICAL_STYLE_TARGET_MAX_CHARS,
-  buildStyle as buildStyleV55
+  buildStyle as buildStyleV55,
+  enforceStyleCoreContract
 } from "./buildStyle.js";
 import { synthesizeStyle } from "./buildStyle.js";
 import { buildYaml as buildYamlV55 } from "./buildYaml.js";
@@ -106,7 +107,7 @@ export function createSunoPromptPack(input: CreateSunoPromptPackInput): SunoProm
     vocalGender,
     variationSeed: input.styleVariationSeed
   });
-  const style = styleResult.total;
+  const style = enforceStyleCoreContract(styleResult.total);
   const exclude = buildExcludeV55({
     genre,
     artistAvoid: ["generic EDM drop", "fake crowd noise"],
@@ -246,9 +247,10 @@ export async function createSunoPromptPackWithAi(
     durationPlan
   });
   const sliders = buildSlidersV55({ genre, moodHint: input.moodHint, weirdnessOverride: input.weirdnessOverride });
-  const payload = buildPayload({ ...input, lyricsText, bpm, vocalGender }, styleResult.total, excludeResult.text, yamlLyrics, sliders, lyricsBoxLimit);
+  const style = enforceStyleCoreContract(styleResult.total);
+  const payload = buildPayload({ ...input, lyricsText, bpm, vocalGender }, style, excludeResult.text, yamlLyrics, sliders, lyricsBoxLimit);
   const payloadHash = hashText(JSON.stringify(payload));
-  const promptHash = hashText(`${styleResult.total}\n${excludeResult.text}\n${yamlLyrics}`);
+  const promptHash = hashText(`${style}\n${excludeResult.text}\n${yamlLyrics}`);
   const artistSnapshotHash = hashText(input.artistSnapshot);
   const currentStateHash = hashText(input.currentStateSnapshot);
   const knowledgePackHash = hashText(input.knowledgePackVersion ?? "knowledge-pack:unknown");
@@ -262,7 +264,7 @@ export async function createSunoPromptPackWithAi(
       yamlLyrics,
       moodHint: input.moodHint
     },
-    style: styleResult.total,
+    style,
     exclude: excludeResult.text,
     yamlLyrics,
     sliders,
