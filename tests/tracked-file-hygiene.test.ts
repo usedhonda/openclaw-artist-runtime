@@ -25,6 +25,8 @@ const ALLOWLIST: Record<string, string> = {
   "tests/maintainer-leak-scan.test.ts": "leak-scan fixtures embed a sample home path on purpose",
   // Env-stub fixture uses a deliberately fake operator home path as test data.
   "tests/config-field-meta.test.ts": "fake operator home path used as env-stub test data",
+  // This guard embeds synthetic home-path strings as pattern self-check fixtures.
+  "tests/tracked-file-hygiene.test.ts": "synthetic home-path fixtures for the pattern self-check below",
   // Loop-skill working notes that quote the leak-scan patterns as documentation;
   // not a distributed, executed, or runtime surface.
   ".loop/distribution-readiness.done.json": "loop readiness note quoting leak-scan patterns",
