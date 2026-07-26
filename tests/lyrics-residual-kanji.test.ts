@@ -30,6 +30,13 @@ describe("residual kanji lyrics lint", () => {
     expect(normalizeAsciiNumbersToHiragana("3つの信号と 42 の窓")).toBe("さんつの信号と よんじゅうに の窓");
   });
 
+  it("normalizes 3+ digit numbers digit-by-digit (live spawn_cc1049 ascii_number:145 stall)", () => {
+    expect(normalizeAsciiNumbersToHiragana("145だんめのかいだん")).toBe("いちよんごだんめのかいだん");
+    expect(normalizeAsciiNumbersToHiragana("2026ねんのまち")).toBe("にぜろにろくねんのまち");
+    // 1-2 digit natural readings stay intact alongside a 3-digit token
+    expect(normalizeAsciiNumbersToHiragana("12と 300")).toBe("じゅうにと さんぜろぜろ");
+  });
+
   it("repairs known residual kanji for Suno registration while preserving the original lyrics source", () => {
     const pack = createSunoPromptPack({
       songId: "song-kanji",
@@ -97,5 +104,10 @@ describe("residual kanji lyrics lint", () => {
   it("keeps compounds intact by applying longer readings before component kanji (利上げ, 街角)", () => {
     expect(normalizeSunoRegistrationJapanese("利上げだけがのこる")).toBe("りあげだけがのこる");
     expect(normalizeSunoRegistrationJapanese("街角のノイズ")).toBe("まちかどのノイズ");
+  });
+
+  it("normalizes the second live spawn_cc1049 stall set (売 + 3-digit number)", () => {
+    expect(normalizeSunoRegistrationJapanese("売れるまちで 145 かぞえる")).toBe("うれるまちで いちよんご かぞえる");
+    expect(normalizeSunoRegistrationJapanese("たましいを売る")).toBe("たましいをうる");
   });
 });

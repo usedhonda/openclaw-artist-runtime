@@ -31,12 +31,24 @@ export function asciiNumberToHiragana(value: number): string {
   return `${prefix}じゅう${ones === 0 ? "" : DIGIT_WORDS[ones]}`;
 }
 
+// 3+ digit numbers have no natural single reading that stays singable, so we
+// read them digit by digit (145 -> いちよんご). 0-99 keep their natural reading.
+function digitsToHiragana(token: string): string {
+  return token
+    .split("")
+    .map((digit) => DIGIT_WORDS[Number.parseInt(digit, 10)] ?? "")
+    .join("");
+}
+
 export function normalizeAsciiNumbersToHiragana(lyrics: string): string {
   return lyrics
     .split(/\r?\n/)
     .map((line) => {
       if (/^\s*\[[^\]]+\]\s*$/.test(line)) return line;
-      return line.replace(/\b\d{1,2}\b/g, (token) => asciiNumberToHiragana(Number.parseInt(token, 10)));
+      return line.replace(/\d+/g, (token) => {
+        const value = Number.parseInt(token, 10);
+        return value <= 99 ? asciiNumberToHiragana(value) : digitsToHiragana(token);
+      });
     })
     .join("\n");
 }
@@ -57,6 +69,7 @@ const SUNO_KANJI_REPAIRS: Array<[string, string]> = [
   ["利上げ", "りあげ"],
   ["鳴り響", "なりひび"],
   ["鳴らす", "ならす"],
+  ["売れる", "うれる"],
   // 2 char compounds
   ["拍手", "はくしゅ"],
   ["信号", "しんごう"],
@@ -80,6 +93,9 @@ const SUNO_KANJI_REPAIRS: Array<[string, string]> = [
   ["灯り", "あかり"],
   ["鳴り", "なり"],
   ["鳴る", "なる"],
+  ["売買", "ばいばい"],
+  ["売る", "うる"],
+  ["売り", "うり"],
   // inflected / single kanji
   ["遅れる", "おくれる"],
   ["消える", "きえる"],
@@ -89,7 +105,8 @@ const SUNO_KANJI_REPAIRS: Array<[string, string]> = [
   ["窓", "まど"],
   ["名", "めい"],
   ["消", "き"],
-  ["鳴", "なる"]
+  ["鳴", "なる"],
+  ["売", "うり"]
 ];
 
 export function normalizeSunoRegistrationJapanese(lyrics: string): string {
