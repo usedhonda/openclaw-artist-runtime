@@ -20,6 +20,9 @@ export interface DraftLyricsInput {
   songId: string;
   config?: Partial<ArtistRuntimeConfig>;
   aiReviewProvider?: AiReviewProvider;
+  // Feedback from a failed prompt-pack validation (offending kanji/numbers) so a
+  // corrective re-draft can open or replace them. Seeded as repair notes.
+  correctionGuidance?: string[];
 }
 
 interface LyricsDraft {
@@ -222,7 +225,7 @@ async function composeLyricsDraft(input: DraftLyricsInput, title: string, briefT
     songId: input.songId,
     briefText
   });
-  let repairNotes: string[] = [];
+  let repairNotes: string[] = input.correctionGuidance ?? [];
   for (let attempt = 0; attempt < 3; attempt += 1) {
     const prompt = buildLyricsDraftingPrompt({
       artistMd: mind.artist,

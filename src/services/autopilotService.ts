@@ -835,21 +835,26 @@ async function currentSong(root: string, preferredSongId?: string): Promise<Song
   return songs.find((song) => !["scheduled", "published", "archived", "discarded", "failed", "take_selected", "suno_take_url_ready"].includes(song.status));
 }
 
-async function ensureLyrics(root: string, song: SongState, config?: Partial<ArtistRuntimeConfig>): Promise<SongState> {
-  if (song.status === "lyrics" || song.status === "suno_prompt_pack" || song.status === "suno_running" || song.status === "suno_take_url_ready" || song.status === "takes_imported" || song.status === "take_selected" || song.status === "social_assets" || song.status === "published") {
+async function ensureLyrics(root: string, song: SongState, config?: Partial<ArtistRuntimeConfig>, correctionGuidance?: string[]): Promise<SongState> {
+  const hasGuidance = Boolean(correctionGuidance && correctionGuidance.length > 0);
+  // Corrective re-draft must run even when lyrics already exist, so the offending
+  // kanji/numbers can be opened or replaced. Without guidance we keep the cheap
+  // early return for songs that are already past the lyrics stage.
+  if (!hasGuidance && (song.status === "lyrics" || song.status === "suno_prompt_pack" || song.status === "suno_running" || song.status === "suno_take_url_ready" || song.status === "takes_imported" || song.status === "take_selected" || song.status === "social_assets" || song.status === "published")) {
     return song;
   }
   await draftLyrics({
     workspaceRoot: root,
     songId: song.songId,
     config,
-    aiReviewProvider: config?.aiReview?.provider
+    aiReviewProvider: config?.aiReview?.provider,
+    correctionGuidance
   });
   return readSongState(root, song.songId);
 }
 
-async function createPromptPackForSong(root: string, song: SongState, config?: Partial<ArtistRuntimeConfig>, weirdnessOverride?: number): Promise<SongState> {
-  const readySong = await ensureLyrics(root, song, config);
+async function createPromptPackForSong(root: string, song: SongState, config?: Partial<ArtistRuntimeConfig>, weirdnessOverride?: number, correctionGuidance?: string[]): Promise<SongState> {
+  const readySong = await ensureLyrics(root, song, config, correctionGuidance);
   const lyricsVersion = readySong.lyricsVersion ?? 1;
   const lyricsPath = join(root, "songs", readySong.songId, "lyrics", `lyrics.v${lyricsVersion}.md`);
   const [lyricsText, briefText, moodHint] = await Promise.all([
@@ -878,6 +883,66 @@ async function createPromptPackForSong(root: string, song: SongState, config?: P
     aiReviewProvider: config?.aiReview?.provider
   });
   return readSongState(root, readySong.songId);
+}
+
+// Pull the offending kanji/number tokens out of a prompt-pack validation failure
+// so the artist can be told exactly what to open to hiragana or rewrite. Returns
+// undefined when the failure is not a lyrics-content class we can guide (style
+// cap, missing fields, lyrics-box overflow), which routes straight to parking.
+export function correctionGuidanceFromDegraded(reason: string): string[] | undefined {
+  const kanji = [...reason.matchAll(/residual_kanji:([^:]+):line_(\d+)/g)];
+  const numbers = [...reason.matchAll(/ascii_number:([^:]+):line_(\d+)/g)];
+  if (kanji.length === 0 && numbers.length === 0) {
+    return undefined;
+  }
+  const notes: string[] = [];
+  if (kanji.length > 0) {
+    const list = kanji.map((match) => `${match[1]}(line ${match[2]})`).join(", ");
+    notes.push(`Suno登録歌詞に残った漢字をひらがなに開くか、同じ意味の別語に置き換えてください（意味と歌いやすさは保つ）: ${list}`);
+  }
+  if (numbers.length > 0) {
+    const list = numbers.map((match) => `${match[1]}(line ${match[2]})`).join(", ");
+    notes.push(`数字はひらがなの読みで書いてください（例: 145 -> ひゃくよんじゅうご）: ${list}`);
+  }
+  return notes;
+}
+
+// Park a song that stays invalid after auto-repair + one corrective re-draft.
+// Instead of pausing the whole autopilot (head-of-line block), mark the song as a
+// terminal needs-operator state so the ticker advances to the next song, alert the
+// operator once, and preserve the song data for a manual retry. This is a
+// per-song fail-close; system-level hard stops (credential/captcha/payment) keep
+// pausing the whole pilot in their own stages.
+export async function parkSongForOperator(
+  root: string,
+  existing: AutopilotRunState,
+  baseState: AutopilotRunState,
+  songId: string,
+  degradedReason: string
+): Promise<AutopilotRunState> {
+  const parkedReason = `parked_needs_operator: ${degradedReason}`;
+  await updateSongState(root, songId, {
+    status: "failed",
+    degradedLyrics: true,
+    reason: parkedReason
+  });
+  emitRuntimeEvent({
+    type: "lyrics_generation_degraded",
+    songId,
+    reason: parkedReason,
+    detail: `parked_needs_operator:${songId}`,
+    repairNotes: [degradedReason],
+    timestamp: Date.now()
+  });
+  return writeStageState(root, existing, {
+    ...baseState,
+    currentSongId: undefined,
+    stage: "planning",
+    blockedReason: undefined,
+    lastError: undefined,
+    suspendedAt: undefined,
+    cycleCount: existing.cycleCount + 1
+  });
 }
 
 function firstLyricsExcerpt(value: string): string {
@@ -1558,19 +1623,26 @@ export class ArtistAutopilotService {
             packedSong = await createPromptPackForSong(input.workspaceRoot, song, config, input.manualSeed?.weirdness);
           } catch (error) {
             const reason = error instanceof Error ? error.message : String(error);
-            if (reason.includes("lyrics_generation_degraded")) {
-              return writeStageState(input.workspaceRoot, existing, {
-                ...baseState,
-                currentSongId: song.songId,
-                stage: "paused",
-                paused: true,
-                pausedReason: reason,
-                blockedReason: reason,
-                lastError: reason,
-                cycleCount: existing.cycleCount + 1
-              });
+            if (!reason.includes("lyrics_generation_degraded")) {
+              throw error;
             }
-            throw error;
+            // One corrective re-draft when the failure is a lyrics-content class we
+            // can guide (residual kanji / ascii numbers). If it still fails, or the
+            // failure is not guidable, park the song and advance instead of pausing
+            // the whole autopilot.
+            const guidance = correctionGuidanceFromDegraded(reason);
+            if (!guidance) {
+              return parkSongForOperator(input.workspaceRoot, existing, baseState, song.songId, reason);
+            }
+            try {
+              packedSong = await createPromptPackForSong(input.workspaceRoot, song, config, input.manualSeed?.weirdness, guidance);
+            } catch (retryError) {
+              const retryReason = retryError instanceof Error ? retryError.message : String(retryError);
+              if (!retryReason.includes("lyrics_generation_degraded")) {
+                throw retryError;
+              }
+              return parkSongForOperator(input.workspaceRoot, existing, baseState, song.songId, retryReason);
+            }
           }
           const draftBoxOneShot = await isBuildingDraftSong(input.workspaceRoot, packedSong.songId);
           const promptReadySuspension = config.telegram.enabled && isPreGenerationApprovalEnabled() && !draftBoxOneShot;
