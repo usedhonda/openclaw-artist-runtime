@@ -1,0 +1,46 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  LaunchAgent template for the repo-local OpenClaw gateway supervisor.
+  Placeholders (__NAME__) are filled in by scripts/openclaw-gateway-launchd.sh,
+  which resolves every machine-specific value dynamically ($HOME, the repo root,
+  and node's bin dir) so the tracked template stays path-free and public-safe.
+
+  The agent runs the supervisor DIRECTLY (not `openclaw-local-gateway start`),
+  because `start` re-detaches the supervisor with setsid and it would stop being
+  launchd's child. Run directly, the supervisor is launchd's foreground child:
+  launchd's KeepAlive re-spawns it if it dies, RunAtLoad starts it at login.
+  The supervisor keeps its own gateway-run crash/backoff loop underneath.
+-->
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>__LABEL__</string>
+  <key>ProgramArguments</key>
+  <array>
+    <string>__SUPERVISOR_PATH__</string>
+  </array>
+  <key>EnvironmentVariables</key>
+  <dict>
+    <!-- launchd hands processes a minimal PATH; node/perl/curl/ifconfig must be
+         reachable for env.sh and the gateway to run. __NODE_BIN_DIR__ is where
+         `node` was found at generate time (Homebrew arm64 or Intel). -->
+    <key>PATH</key>
+    <string>__NODE_BIN_DIR__:/usr/bin:/bin:/usr/sbin:/sbin</string>
+  </dict>
+  <key>WorkingDirectory</key>
+  <string>__REPO_ROOT__</string>
+  <key>RunAtLoad</key>
+  <true/>
+  <key>KeepAlive</key>
+  <true/>
+  <key>ThrottleInterval</key>
+  <integer>10</integer>
+  <key>ProcessType</key>
+  <string>Background</string>
+  <key>StandardOutPath</key>
+  <string>__STDOUT_PATH__</string>
+  <key>StandardErrorPath</key>
+  <string>__STDERR_PATH__</string>
+</dict>
+</plist>

@@ -94,6 +94,72 @@ If a song was paused mid-pipeline, the producer resumes it from Telegram:
 `/resume` clears the stuck reason and resets the Suno retry budget, so an
 exhausted-retry song actually re-attempts.
 
+## Auto-restart via launchd (persistent gateway)
+
+By default the gateway only runs while you keep it running. On 2026-07-20 a
+graceful stop left it down and nobody restarted it for six days, so song
+production silently stalled. To make the gateway survive login and its own
+death, register it as a per-user launchd LaunchAgent (gui domain, no sudo, no
+LaunchDaemon):
+
+```sh
+scripts/openclaw-gateway-launchd.sh install
+```
+
+`install` renders the machine-specific plist from the tracked template
+`scripts/openclaw-gateway-launchd.plist.template` into
+`~/Library/LaunchAgents/com.openclaw.artist-runtime.gateway.plist`, then loads
+and starts it. What it gives you:
+
+- **RunAtLoad** — starts at login (and boot, once you have logged in).
+- **KeepAlive** — if the supervisor process dies, launchd re-spawns it within
+  ~10s (the `ThrottleInterval`).
+- The agent runs `scripts/openclaw-local-gateway-supervisor` **directly**, not
+  `openclaw-local-gateway start`. `start` re-detaches the supervisor with
+  `setsid`, which would make it launchd's grandchild and defeat `KeepAlive`. Run
+  directly, the supervisor is launchd's foreground child, and it still runs its
+  own inner `gateway run` crash/backoff loop underneath.
+
+Machine-specific values (repo root, `$HOME`, and node's bin dir — Homebrew arm64
+vs Intel) are resolved by the generator at install time, so the tracked template
+and script carry no absolute machine paths. The real plist and the
+`.local/openclaw/logs/gateway.launchd.{out,err}.log` output are gitignored.
+
+Verify health the same way as a manual start:
+
+```sh
+scripts/openclaw-gateway-launchd.sh status   # launchd state + pid
+scripts/openclaw-local-gateway health         # ok:true, plugins, telegram
+```
+
+### Managing a launchd-run gateway
+
+Once launchd owns the process, use `launchctl` (or the wrapper below) for
+lifecycle, **not** `openclaw-local-gateway stop/start`:
+
+```sh
+scripts/openclaw-gateway-launchd.sh restart    # force restart (launchctl kickstart -k)
+scripts/openclaw-gateway-launchd.sh status     # loaded? pid? last exit code
+scripts/openclaw-gateway-launchd.sh uninstall  # stop, unload, remove the plist
+```
+
+Coexistence notes:
+
+- `openclaw-local-gateway stop` kills only the PID-file supervisor. Under
+  launchd there is no PID file, so `stop` reports "not running" while the
+  launchd-managed supervisor keeps going. To actually stop a launchd gateway,
+  run `uninstall` (or `launchctl bootout gui/$(id -u) <plist>`).
+- `openclaw-local-gateway start` while launchd is managing the gateway is
+  harmless but pointless: the supervisor's singleton lock detects the live
+  launchd supervisor (same argv) and the new one exits immediately. Use
+  `scripts/openclaw-gateway-launchd.sh restart` instead.
+- After a source rebuild (`npm run build:runtime`), restart with
+  `scripts/openclaw-gateway-launchd.sh restart` rather than the manual Stop/Start
+  sequence.
+
+To go back to fully manual operation, run `uninstall` and then use
+`scripts/openclaw-local-gateway start` as before.
+
 ## Applying a code change to the running gateway
 
 The gateway runs the compiled `dist/`. Node does **not** hot-reload, so after a
