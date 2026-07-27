@@ -4,7 +4,9 @@ import {
   SUNO_CREATE_FALLBACKS,
   SUNO_CREATE_FORM_MISSING_REASON,
   SUNO_CREATE_SELECTORS,
+  SUNO_EXPECTED_TAKE_COUNT,
   ensureSunoLyricsMode,
+  filterFreshTakeUrls,
   resolveFirstVisibleLocator,
   waitForSunoCreateFormReady
 } from "../src/services/sunoCreateForm";
@@ -79,6 +81,37 @@ describe("waitForSunoCreateFormReady", () => {
   it("rejects with DOM-missing when no form-ready selector is visible", async () => {
     const { page } = makePage({});
     await expect(waitForSunoCreateFormReady(page, 10)).rejects.toThrow(SUNO_CREATE_FORM_MISSING_REASON);
+  });
+});
+
+describe("filterFreshTakeUrls (take-attribution guard)", () => {
+  const u = (n: number) => `https://suno.com/song/${n}`;
+
+  it("returns new URLs not present in the baseline", () => {
+    const baseline = new Set([u(1), u(2)]);
+    const result = filterFreshTakeUrls([u(1), u(2), u(3), u(4)], baseline);
+    expect(result.overCount).toBe(false);
+    expect(result.urls.sort()).toEqual([u(3), u(4)].sort());
+  });
+
+  it("returns empty when nothing new appeared (still awaiting the real generation)", () => {
+    const baseline = new Set([u(1), u(2)]);
+    const result = filterFreshTakeUrls([u(1), u(2)], baseline);
+    expect(result).toEqual({ urls: [], overCount: false });
+  });
+
+  it("rejects and flags overCount when more than the expected take count appears (workspace bleed)", () => {
+    // The false-accepted bug: a captcha-blocked submit surfaced 14 unrelated workspace
+    // songs. Anything beyond the expected take count must be rejected, not accepted.
+    const bleed = Array.from({ length: 14 }, (_, i) => u(100 + i));
+    const result = filterFreshTakeUrls(bleed, new Set(), SUNO_EXPECTED_TAKE_COUNT);
+    expect(result).toEqual({ urls: [], overCount: true });
+  });
+
+  it("accepts exactly the expected take count", () => {
+    const result = filterFreshTakeUrls([u(9), u(8)], new Set(), SUNO_EXPECTED_TAKE_COUNT);
+    expect(result.overCount).toBe(false);
+    expect(result.urls).toHaveLength(SUNO_EXPECTED_TAKE_COUNT);
   });
 });
 

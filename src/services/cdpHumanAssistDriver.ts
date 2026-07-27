@@ -5,11 +5,15 @@ import type { SunoBrowserConfigView } from "./runtimeConfig.js";
 import { SUNO_CREATE_URL } from "./sunoPlaywrightDriver.js";
 import {
   SUNO_CREATE_FALLBACKS,
+  SUNO_EXPECTED_TAKE_COUNT,
   ensureSunoLyricsMode,
+  filterFreshTakeUrls,
+  readSunoCreateCardSongUrls,
   resolveFirstVisibleLocator,
   sunoStyleLocator,
   waitForSunoCreateFormReady
 } from "./sunoCreateForm.js";
+import { emitRuntimeEvent } from "./runtimeEventBus.js";
 import type {
   HumanAssistBrowserDriver,
   HumanAssistSubmitOutcome,
@@ -32,7 +36,6 @@ import type {
  * HumanAssistBrowserDriver interface.
  */
 
-const SONG_LINK = 'a[href*="/song/"]';
 const CAPTCHA_MARKERS = 'iframe[src*="hcaptcha"], iframe[title*="hCaptcha"], iframe[src*="turnstile"], [id*="hcaptcha"]';
 
 const FORM_READY_TIMEOUT_MS = 25_000;
@@ -82,7 +85,9 @@ export class CdpHumanAssistDriver implements HumanAssistBrowserDriver {
     // selectors (not just the Create button) so a single relabel does not defeat the gate.
     await waitForSunoCreateFormReady(page, FORM_READY_TIMEOUT_MS);
     this.page = page;
-    this.baselineSongUrls = new Set(await this.readSongUrls());
+    // Baseline is title-scoped so pre-existing takes of the SAME title (earlier
+    // attempts today) are excluded and only genuinely new takes count as fresh.
+    this.baselineSongUrls = new Set(await this.readTakeUrls());
 
     const payload = this.input.payload;
     const lyrics = extractLyrics(payload);
@@ -116,21 +121,24 @@ export class CdpHumanAssistDriver implements HumanAssistBrowserDriver {
     );
     await createButton.click({ timeout: CLICK_TIMEOUT_MS });
     await sleep(POST_CLICK_SETTLE_MS);
+    // Captcha is checked FIRST and, when present, the flow hands off to the human
+    // WITHOUT harvesting URLs — a captcha means the submit did not go through, so any
+    // song links on the page belong to the existing workspace, not to a new take.
     if (await this.hasCaptchaChallenge()) {
       return { kind: "captcha_challenge" };
     }
-    const fresh = await this.freshSongUrls();
+    const fresh = await this.freshTakeUrls();
     if (fresh.length > 0) {
       return { kind: "accepted", urls: fresh };
     }
-    // No captcha visible and no new song yet: give Suno a brief settle window before
+    // No captcha visible and no new take yet: give Suno a brief settle window before
     // deciding, then treat a lingering captcha as a challenge, otherwise fall back to
     // the human path (safer than declaring an error and hard-stopping).
     await sleep(POST_CLICK_SETTLE_MS);
     if (await this.hasCaptchaChallenge()) {
       return { kind: "captcha_challenge" };
     }
-    const settled = await this.freshSongUrls();
+    const settled = await this.freshTakeUrls();
     if (settled.length > 0) {
       return { kind: "accepted", urls: settled };
     }
@@ -151,7 +159,10 @@ export class CdpHumanAssistDriver implements HumanAssistBrowserDriver {
   async waitForHumanSubmit(timeoutMs: number): Promise<HumanAssistWaitOutcome> {
     const deadline = Date.now() + timeoutMs;
     while (Date.now() < deadline) {
-      const fresh = await this.freshSongUrls().catch(() => [] as string[]);
+      // Only a NEW title-scoped take (the producer's manual Create actually starting a
+      // generation) counts as success. Workspace bleed / over-count is rejected inside
+      // freshTakeUrls, so this never accepts unrelated existing songs.
+      const fresh = await this.freshTakeUrls().catch(() => [] as string[]);
       if (fresh.length > 0) {
         return { kind: "accepted", urls: fresh };
       }
@@ -196,21 +207,34 @@ export class CdpHumanAssistDriver implements HumanAssistBrowserDriver {
     return count > 0;
   }
 
-  private async readSongUrls(): Promise<string[]> {
-    const page = this.page;
-    if (!page) return [];
-    return page
-      .locator(SONG_LINK)
-      .evaluateAll((anchors) =>
-        (anchors as HTMLAnchorElement[])
-          .map((anchor) => anchor.href)
-          .filter((href) => /\/song\/[0-9a-f-]{16,}/i.test(href))
-      )
-      .catch(() => [] as string[]);
+  private expectedTitle(): string {
+    return readText(this.input.payload.songName) ?? "";
   }
 
-  private async freshSongUrls(): Promise<string[]> {
-    const urls = await this.readSongUrls();
-    return urls.filter((url) => !this.baselineSongUrls.has(url));
+  private async readTakeUrls(): Promise<string[]> {
+    const page = this.page;
+    if (!page) return [];
+    // Title-scoped create-card detection (shared with the Playwright lane). An empty
+    // title yields [] so an untitled create never mis-attributes workspace songs.
+    return readSunoCreateCardSongUrls(page, this.expectedTitle());
+  }
+
+  /**
+   * New title-scoped takes since baseline, capped at the expected take count. When more
+   * than the expected number appear (scope leak / workspace bleed), the batch is
+   * rejected and a warning event is emitted — never returned as a fake success.
+   */
+  private async freshTakeUrls(): Promise<string[]> {
+    const current = await this.readTakeUrls();
+    const { urls, overCount } = filterFreshTakeUrls(current, this.baselineSongUrls, SUNO_EXPECTED_TAKE_COUNT);
+    if (overCount) {
+      emitRuntimeEvent({
+        type: "error",
+        source: "suno_human_assist",
+        reason: `take_urls_over_expected: ${current.length} title-scoped urls for "${this.expectedTitle()}" exceed expected ${SUNO_EXPECTED_TAKE_COUNT}; rejecting as scope leak`,
+        timestamp: Date.now()
+      });
+    }
+    return urls;
   }
 }

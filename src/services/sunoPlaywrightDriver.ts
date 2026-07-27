@@ -20,7 +20,9 @@ import { PLAYWRIGHT_EXPECTED_CREATE_CARD_COUNT } from "./sunoTakeConstants.js";
 import {
   SUNO_CREATE_FORM_READY_SELECTORS,
   SUNO_CREATE_SELECTORS,
-  SUNO_STYLE_SELECTOR
+  SUNO_STYLE_SELECTOR,
+  readSunoCreateCardSongUrls,
+  readSunoPlayControlSongUrls
 } from "./sunoCreateForm.js";
 
 export const DEFAULT_SUNO_PROFILE_PATH = ".openclaw-browser-profiles/suno";
@@ -725,48 +727,12 @@ export class PlaywrightSunoDriver implements SunoBrowserDriver {
     // id (cdn2.suno.ai/image[_large]_<uuid>.jpeg). Title-scope via the play button and
     // derive the song URL from that id. Create-page-only; no library navigation, so the
     // Plan v10.42 take-attribution fail-closed contract is preserved.
-    const readUrls = (selector: string) => page.locator(selector).evaluateAll((controls) => {
-      const urls = new Set<string>();
-      for (const control of controls) {
-        let current: Element | null = control;
-        let img: Element | null = null;
-        for (let depth = 0; current && depth < 10; depth += 1) {
-          img = current.querySelector("img[src*='suno.ai/image'], img[data-src*='suno.ai/image']");
-          if (img) {
-            break;
-          }
-          current = current.parentElement;
-        }
-        const source = img?.getAttribute("data-src") ?? img?.getAttribute("src") ?? "";
-        const match = source.match(
-          /image(?:_large)?_([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})/i
-        );
-        if (match) {
-          urls.add(`https://suno.com/song/${match[1]}`);
-        }
-      }
-      return Array.from(urls);
-    });
-
+    // Single-sourced in sunoCreateForm: the unscoped baseline reads every play control,
+    // the title path is fail-closed and scopes to the created title.
     if (!expectedTitle) {
-      return readUrls(`[aria-label^="Play "]`);
+      return readSunoPlayControlSongUrls(page, `[aria-label^="Play "]`);
     }
-
-    const escapedTitle = this.escapeAttributeValue(expectedTitle);
-    const titleScopedSelectors = [
-      `[aria-label="Play ${escapedTitle}"], [aria-label^="Play ${escapedTitle} "]`,
-      `button[aria-label="Play ${escapedTitle}"]`,
-      `button[aria-label^="Play ${escapedTitle} "]`,
-      `[aria-label="Play ${escapedTitle}"]`,
-      `[aria-label^="Play ${escapedTitle} "]`
-    ];
-    const urls = new Set<string>();
-    for (const selector of titleScopedSelectors) {
-      for (const url of await readUrls(selector)) {
-        urls.add(url);
-      }
-    }
-    return Array.from(urls);
+    return readSunoCreateCardSongUrls(page, expectedTitle);
   }
 
   private async recoverGeneratedSongUrlsFromCurrentPage(
@@ -827,10 +793,6 @@ export class PlaywrightSunoDriver implements SunoBrowserDriver {
       urls.add(`https://suno.com/song/${match[1]}`);
     }
     return Array.from(urls);
-  }
-
-  private escapeAttributeValue(value: string): string {
-    return value.replace(/\\/g, "\\\\").replace(/"/g, '\\"');
   }
 
   private async pollCreateCards(

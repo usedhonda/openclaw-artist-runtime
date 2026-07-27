@@ -1,4 +1,5 @@
 import type { Locator, Page } from "playwright";
+import { PLAYWRIGHT_EXPECTED_CREATE_CARD_COUNT } from "./sunoTakeConstants.js";
 
 /**
  * Single source of truth for suno.com/create form selectors and the small DOM
@@ -172,4 +173,100 @@ export async function ensureSunoLyricsMode(page: Page, timeoutMs: number): Promi
 /** Style textarea locator using the shared fallback list (one joined selector). */
 export function sunoStyleLocator(page: Page): Locator {
   return page.locator(SUNO_STYLE_SELECTOR);
+}
+
+/** Suno always renders exactly this many take cards per generation. */
+export { PLAYWRIGHT_EXPECTED_CREATE_CARD_COUNT as SUNO_EXPECTED_TAKE_COUNT };
+
+export function escapeSunoAttributeValue(value: string): string {
+  return value.replace(/\\/g, "\\\\").replace(/"/g, '\\"');
+}
+
+/**
+ * Read the create-page song URLs for a finished take, SCOPED to the created song's
+ * title. Suno's create workspace surfaces a finished take as a title-scoped play
+ * control (`aria-label="Play <title>"` / `"Play <title> from start"`) whose nearby
+ * thumbnail image URL (`cdn2.suno.ai/image[_large]_<uuid>.jpeg`) carries the song id.
+ *
+ * Title scoping is a fail-closed guardrail: an unscoped `a[href*="/song/"]` scrape
+ * harvests the whole workspace sidebar and mis-attributes unrelated existing songs as
+ * this create's takes (the false-accepted bug on the human-assist lane). An empty
+ * title returns [] rather than every song on the page.
+ */
+export function readSunoPlayControlSongUrls(page: Page, selector: string): Promise<string[]> {
+  return page
+    .locator(selector)
+    .evaluateAll((controls) => {
+      const urls = new Set<string>();
+      for (const control of controls) {
+        let current: Element | null = control;
+        let img: Element | null = null;
+        for (let depth = 0; current && depth < 10; depth += 1) {
+          img = current.querySelector("img[src*='suno.ai/image'], img[data-src*='suno.ai/image']");
+          if (img) {
+            break;
+          }
+          current = current.parentElement;
+        }
+        const source = img?.getAttribute("data-src") ?? img?.getAttribute("src") ?? "";
+        const match = source.match(
+          /image(?:_large)?_([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})/i
+        );
+        if (match) {
+          urls.add(`https://suno.com/song/${match[1]}`);
+        }
+      }
+      return Array.from(urls);
+    })
+    .catch(() => [] as string[]);
+}
+
+export async function readSunoCreateCardSongUrls(page: Page, expectedTitle: string): Promise<string[]> {
+  const title = expectedTitle.trim();
+  if (!title) {
+    return [];
+  }
+  const escapedTitle = escapeSunoAttributeValue(title);
+  const titleScopedSelectors = [
+    `[aria-label="Play ${escapedTitle}"], [aria-label^="Play ${escapedTitle} "]`,
+    `button[aria-label="Play ${escapedTitle}"]`,
+    `button[aria-label^="Play ${escapedTitle} "]`,
+    `[aria-label="Play ${escapedTitle}"]`,
+    `[aria-label^="Play ${escapedTitle} "]`
+  ];
+  const urls = new Set<string>();
+  for (const selector of titleScopedSelectors) {
+    for (const url of await readSunoPlayControlSongUrls(page, selector)) {
+      urls.add(url);
+    }
+  }
+  return Array.from(urls);
+}
+
+export interface FreshTakeUrlResult {
+  /** Newly-appeared take URLs for this create, capped at the expected take count. */
+  urls: string[];
+  /**
+   * True when the number of new title-scoped URLs exceeds the expected take count —
+   * a signal the scope leaked (workspace bleed). The caller must NOT treat this as a
+   * successful create; it should reject the batch and surface a warning.
+   */
+  overCount: boolean;
+}
+
+/**
+ * Pure guard for take-URL acceptance. Removes the pre-create baseline, then fails
+ * closed when more than the expected number of takes appear (scope leak / bleed).
+ * A create is only "accepted" when 1..expected fresh title-scoped URLs are present.
+ */
+export function filterFreshTakeUrls(
+  currentUrls: readonly string[],
+  baselineUrls: ReadonlySet<string>,
+  expectedCount: number = PLAYWRIGHT_EXPECTED_CREATE_CARD_COUNT
+): FreshTakeUrlResult {
+  const fresh = Array.from(new Set(currentUrls.filter((url) => !baselineUrls.has(url))));
+  if (fresh.length > expectedCount) {
+    return { urls: [], overCount: true };
+  }
+  return { urls: fresh, overCount: false };
 }

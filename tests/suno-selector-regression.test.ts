@@ -273,9 +273,10 @@ describe("Suno create selector regression fixture", () => {
 
     // Take detection is now title-scoped to the create-page play control and derives the
     // song id from the thumbnail image URL — create-page-only (no library navigation),
-    // preserving the Plan v10.42 fail-closed contract.
-    expect(driverSource).toContain('[aria-label="Play ');
-    expect(driverSource).toContain("image(?:_large)?_");
-    expect(driverSource).not.toContain('[data-testid="clip-row"][data-clip-status="complete"]');
+    // preserving the Plan v10.42 fail-closed contract. The reader is single-sourced in
+    // sunoCreateForm, so assert against the combined live source.
+    expect(liveSource).toContain('[aria-label="Play ');
+    expect(liveSource).toContain("image(?:_large)?_");
+    expect(liveSource).not.toContain('[data-testid="clip-row"][data-clip-status="complete"]');
   });
 });
