@@ -9,7 +9,7 @@ import {
   waitForSunoCreateFormReady
 } from "../src/services/sunoCreateForm";
 
-type SelectorState = { visible: boolean; onClick?: () => void };
+type SelectorState = { visible: boolean; onClick?: () => void; attrs?: Record<string, string> };
 
 /**
  * Minimal Playwright Page fake: each selector maps to a state. waitFor({visible})
@@ -23,6 +23,7 @@ function makePage(states: Record<string, SelectorState>): { page: Page; clicks: 
     const locator = {
       first: () => locator,
       isVisible: async () => state.visible,
+      getAttribute: async (name: string) => state.attrs?.[name] ?? null,
       waitFor: async (_opts: { state: "visible"; timeout: number }) => {
         if (!state.visible) {
           throw new Error(`not visible: ${selector}`);
@@ -82,28 +83,41 @@ describe("waitForSunoCreateFormReady", () => {
 });
 
 describe("ensureSunoLyricsMode", () => {
-  it("returns the lyrics textarea directly when already visible (custom mode)", async () => {
+  it("returns the contenteditable lyrics editor directly when already visible", async () => {
     const { page, clicks } = makePage({
-      [SUNO_CREATE_SELECTORS.lyricsTextarea]: { visible: true }
+      [SUNO_CREATE_SELECTORS.lyricsEditor]: { visible: true }
     });
     const locator = await ensureSunoLyricsMode(page, 50);
     expect(await locator.isVisible()).toBe(true);
     expect(clicks).toHaveLength(0);
   });
 
-  it("clicks 'Add your own lyrics' to mount the textarea when in Simple mode", async () => {
-    const lyricsState: SelectorState = { visible: false };
+  it("selects the Advanced tab to reveal the lyrics editor when it is hidden", async () => {
+    const editorState: SelectorState = { visible: false };
     const { page, clicks } = makePage({
-      [SUNO_CREATE_SELECTORS.lyricsTextarea]: lyricsState,
-      [SUNO_CREATE_SELECTORS.addLyricsButton]: {
+      [SUNO_CREATE_SELECTORS.lyricsEditor]: editorState,
+      [SUNO_CREATE_SELECTORS.advancedTab]: {
         visible: true,
+        attrs: { "aria-selected": "false" },
         onClick: () => {
-          lyricsState.visible = true;
+          editorState.visible = true;
         }
       }
     });
     const locator = await ensureSunoLyricsMode(page, 50);
-    expect(clicks).toContain(SUNO_CREATE_SELECTORS.addLyricsButton);
+    expect(clicks).toContain(SUNO_CREATE_SELECTORS.advancedTab);
+    expect(await locator.isVisible()).toBe(true);
+  });
+
+  it("does not re-click the Advanced tab when it is already selected", async () => {
+    // Advanced already selected but editor still resolving: must not toggle it off.
+    const { page, clicks } = makePage({
+      [SUNO_CREATE_SELECTORS.lyricsEditor]: { visible: false },
+      [`[role="textbox"][aria-label="Lyrics editor"]`]: { visible: true },
+      [SUNO_CREATE_SELECTORS.advancedTab]: { visible: true, attrs: { "aria-selected": "true" } }
+    });
+    const locator = await ensureSunoLyricsMode(page, 50);
+    expect(clicks).toHaveLength(0);
     expect(await locator.isVisible()).toBe(true);
   });
 });

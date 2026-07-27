@@ -19,7 +19,15 @@ import type { Locator, Page } from "playwright";
 
 export const SUNO_CREATE_SELECTORS = {
   createButton: 'button[aria-label="Create song"]',
+  // Suno v5.5 replaced the plain lyrics <textarea data-testid="lyrics-textarea"> with a
+  // rich contenteditable editor (role=textbox, aria-label="Lyrics editor"). The old
+  // textarea no longer exists; the visible "Cowriter prompt" textarea is the AI co-writer
+  // chat, NOT the lyrics body, so it must never be targeted for lyrics.
+  lyricsEditor: 'div[role="textbox"][aria-label="Lyrics editor"]',
   lyricsTextarea: 'textarea[data-testid="lyrics-textarea"]',
+  // The lyrics editor lives in the "Advanced" create tab. Selecting it reveals the editor
+  // (the older "Add your own lyrics" custom-mode toggle is gone from v5.5).
+  advancedTab: 'button[role="tab"][aria-label="Advanced"]',
   addLyricsButton: 'button[aria-label="Add your own lyrics"]',
   stylesWrapper: '[data-testid="create-form-styles-wrapper"]',
   titleInput: 'input[placeholder="Song Title (Optional)"]:visible',
@@ -38,16 +46,20 @@ export const SUNO_CREATE_FALLBACKS = {
     'button[aria-label^="Create"]',
     'button:has-text("Create")'
   ],
-  lyricsTextarea: [
-    SUNO_CREATE_SELECTORS.lyricsTextarea,
-    'textarea[placeholder*="lyrics"]',
-    'textarea[placeholder*="歌詞"]'
+  // Lyrics body input. v5.5 contenteditable editor first, legacy textarea last.
+  lyricsEditor: [
+    SUNO_CREATE_SELECTORS.lyricsEditor,
+    '[role="textbox"][aria-label="Lyrics editor"]',
+    '[contenteditable="true"].lyrics-editor-content',
+    '[role="textbox"][aria-label*="Lyric" i]',
+    SUNO_CREATE_SELECTORS.lyricsTextarea
   ],
-  addLyricsButton: [
+  // Reveal the lyrics editor. v5.5 Advanced tab first, legacy custom-mode toggle last.
+  advancedTab: [
+    SUNO_CREATE_SELECTORS.advancedTab,
+    '[role="tab"][aria-label="Advanced"]',
     SUNO_CREATE_SELECTORS.addLyricsButton,
-    'button:has-text("Add your own lyrics")',
-    'button[aria-label*="own lyrics"]',
-    'button:has-text("Custom")'
+    'button:has-text("Add your own lyrics")'
   ],
   style: [
     '[data-testid="create-form-styles-wrapper"] textarea',
@@ -65,6 +77,8 @@ export const SUNO_CREATE_FALLBACKS = {
  * past the Clerk `__clerk_handshake` skeleton. Used by both lanes' form-ready gate.
  */
 export const SUNO_CREATE_FORM_READY_SELECTORS: readonly string[] = [
+  SUNO_CREATE_SELECTORS.lyricsEditor,
+  SUNO_CREATE_SELECTORS.advancedTab,
   SUNO_CREATE_SELECTORS.lyricsTextarea,
   SUNO_CREATE_SELECTORS.addLyricsButton,
   SUNO_CREATE_SELECTORS.stylesWrapper,
@@ -128,25 +142,31 @@ export async function waitForSunoCreateFormReady(page: Page, timeoutMs: number):
 }
 
 /**
- * Ensure the lyrics textarea is present before any lyrics fill. If it is not
- * visible, the page is in "Simple" mode: click "Add your own lyrics" (custom
- * mode) to mount the textarea. Returns the resolved, visible lyrics textarea.
+ * Ensure the lyrics editor is present before any lyrics fill and return it.
+ *
+ * The v5.5 lyrics editor lives in the "Advanced" create tab. If the editor is not
+ * already visible, select the Advanced tab (older builds: click "Add your own
+ * lyrics") to reveal it, then resolve the editor. The resolved locator is the
+ * contenteditable lyrics body — never the "Cowriter prompt" co-writer chat box.
  */
 export async function ensureSunoLyricsMode(page: Page, timeoutMs: number): Promise<Locator> {
-  const textarea = page.locator(SUNO_CREATE_SELECTORS.lyricsTextarea).first();
-  if (await textarea.isVisible().catch(() => false)) {
-    return textarea;
+  const editor = page.locator(SUNO_CREATE_SELECTORS.lyricsEditor).first();
+  if (await editor.isVisible().catch(() => false)) {
+    return editor;
   }
-  const toggle = await resolveFirstVisibleLocator(
+  const advancedTab = await resolveFirstVisibleLocator(
     page,
-    SUNO_CREATE_FALLBACKS.addLyricsButton,
+    SUNO_CREATE_FALLBACKS.advancedTab,
     timeoutMs,
-    "add-your-own-lyrics toggle"
+    "Advanced create tab"
   ).catch(() => undefined);
-  if (toggle) {
-    await toggle.click().catch(() => undefined);
+  if (advancedTab) {
+    const alreadySelected = (await advancedTab.getAttribute("aria-selected").catch(() => null)) === "true";
+    if (!alreadySelected) {
+      await advancedTab.click().catch(() => undefined);
+    }
   }
-  return resolveFirstVisibleLocator(page, SUNO_CREATE_FALLBACKS.lyricsTextarea, timeoutMs, "lyrics textarea");
+  return resolveFirstVisibleLocator(page, SUNO_CREATE_FALLBACKS.lyricsEditor, timeoutMs, "lyrics editor");
 }
 
 /** Style textarea locator using the shared fallback list (one joined selector). */
