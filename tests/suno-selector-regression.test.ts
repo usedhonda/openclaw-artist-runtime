@@ -4,6 +4,9 @@ import { describe, expect, it } from "vitest";
 
 const FIXTURE_PATH = join(process.cwd(), "tests", "fixtures", "suno-create-page.html");
 const DRIVER_PATH = join(process.cwd(), "src", "services", "sunoPlaywrightDriver.ts");
+// Shared single source of truth for create-form selectors, used by both the
+// Playwright and human-assist lanes. Some selectors moved here from the driver.
+const SHARED_SELECTORS_PATH = join(process.cwd(), "src", "services", "sunoCreateForm.ts");
 
 const TITLE_SELECTOR = 'input[placeholder="Song Title (Optional)"]:visible';
 const LYRICS_SELECTOR = 'textarea[data-testid="lyrics-textarea"]';
@@ -245,19 +248,27 @@ describe("Suno create selector regression fixture", () => {
     );
   });
 
-  it("pins the fixture selectors to the current Playwright driver source", () => {
+  it("pins the fixture selectors to the current Playwright driver and shared selector source", () => {
+    // Selectors are now single-sourced in sunoCreateForm.ts and consumed by the
+    // driver, so a fixture selector is "live" if it appears in either file.
     const driverSource = readFileSync(DRIVER_PATH, "utf8");
+    const liveSource = driverSource + "\n" + readFileSync(SHARED_SELECTORS_PATH, "utf8");
 
     for (const selector of [
       TITLE_SELECTOR,
       LYRICS_SELECTOR,
       LYRICS_TOGGLE_SELECTOR,
-      STYLE_SELECTOR,
       EXCLUDE_SELECTOR,
       INSTRUMENTAL_SELECTOR,
       CREATE_BUTTON_SELECTOR
     ]) {
-      expect(driverSource).toContain(selector);
+      expect(liveSource).toContain(selector);
+    }
+
+    // STYLE_SELECTOR is single-sourced as a comma-joined constant built from an array,
+    // so assert each fragment appears verbatim rather than the runtime-joined whole.
+    for (const fragment of STYLE_SELECTOR.split(", ")) {
+      expect(liveSource).toContain(fragment);
     }
 
     // Take detection is now title-scoped to the create-page play control and derives the

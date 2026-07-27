@@ -1,8 +1,15 @@
-import type { Page } from "playwright";
+import type { Locator, Page } from "playwright";
 import type { SunoCreatePayload } from "../types.js";
 import { SunoBrowserService, sunoBrowserService } from "./sunoBrowserService.js";
 import type { SunoBrowserConfigView } from "./runtimeConfig.js";
 import { SUNO_CREATE_URL } from "./sunoPlaywrightDriver.js";
+import {
+  SUNO_CREATE_FALLBACKS,
+  ensureSunoLyricsMode,
+  resolveFirstVisibleLocator,
+  sunoStyleLocator,
+  waitForSunoCreateFormReady
+} from "./sunoCreateForm.js";
 import type {
   HumanAssistBrowserDriver,
   HumanAssistSubmitOutcome,
@@ -25,12 +32,6 @@ import type {
  * HumanAssistBrowserDriver interface.
  */
 
-const CREATE_BUTTON = 'button[aria-label="Create song"]';
-const LYRICS_TEXTAREA = 'textarea[data-testid="lyrics-textarea"]';
-const STYLE_TEXTAREA =
-  '[data-testid="create-form-styles-wrapper"] textarea, textarea[placeholder="Describe the sound you want"], textarea[placeholder*="sound you want"]';
-const TITLE_INPUT = 'input[placeholder="Song Title (Optional)"]:visible';
-const EXCLUDE_INPUT = 'input[placeholder="Exclude styles"]';
 const SONG_LINK = 'a[href*="/song/"]';
 const CAPTCHA_MARKERS = 'iframe[src*="hcaptcha"], iframe[title*="hCaptcha"], iframe[src*="turnstile"], [id*="hcaptcha"]';
 
@@ -77,32 +78,43 @@ export class CdpHumanAssistDriver implements HumanAssistBrowserDriver {
     });
     const page = existing ?? (await context.newPage());
     await page.goto(SUNO_CREATE_URL, { waitUntil: "domcontentloaded", timeout: FORM_READY_TIMEOUT_MS });
-    await page.locator(CREATE_BUTTON).first().waitFor({ state: "visible", timeout: FORM_READY_TIMEOUT_MS });
+    // Wait for the form to render past the Clerk handshake using any-of form-ready
+    // selectors (not just the Create button) so a single relabel does not defeat the gate.
+    await waitForSunoCreateFormReady(page, FORM_READY_TIMEOUT_MS);
     this.page = page;
     this.baselineSongUrls = new Set(await this.readSongUrls());
 
     const payload = this.input.payload;
     const lyrics = extractLyrics(payload);
     if (lyrics && !payload.instrumental) {
-      await this.fill(LYRICS_TEXTAREA, lyrics);
+      // The create page opens in "Simple" mode with no lyrics textarea. Switch to
+      // custom mode first, otherwise the fill waits forever on an unmounted element.
+      const lyricsField = await ensureSunoLyricsMode(page, FORM_READY_TIMEOUT_MS);
+      await lyricsField.fill(lyrics, { timeout: FORM_READY_TIMEOUT_MS });
     }
     const style = readText(payload.styleAndFeel);
     if (style) {
-      await this.fill(STYLE_TEXTAREA, style);
+      await sunoStyleLocator(page).first().fill(style, { timeout: FORM_READY_TIMEOUT_MS });
     }
     const title = readText(payload.songName);
     if (title) {
-      await this.fill(TITLE_INPUT, title);
+      await this.fillCandidates(SUNO_CREATE_FALLBACKS.titleInput, "title", title);
     }
     const exclude = readText(payload.excludeStyles);
     if (exclude) {
-      await this.fill(EXCLUDE_INPUT, exclude);
+      await this.fillCandidates(SUNO_CREATE_FALLBACKS.excludeInput, "exclude styles", exclude);
     }
   }
 
   async attemptMachineSubmit(): Promise<HumanAssistSubmitOutcome> {
     const page = this.requirePage();
-    await page.locator(CREATE_BUTTON).first().click({ timeout: CLICK_TIMEOUT_MS });
+    const createButton = await resolveFirstVisibleLocator(
+      page,
+      SUNO_CREATE_FALLBACKS.createButton,
+      CLICK_TIMEOUT_MS,
+      "Create song button"
+    );
+    await createButton.click({ timeout: CLICK_TIMEOUT_MS });
     await sleep(POST_CLICK_SETTLE_MS);
     if (await this.hasCaptchaChallenge()) {
       return { kind: "captcha_challenge" };
@@ -163,8 +175,17 @@ export class CdpHumanAssistDriver implements HumanAssistBrowserDriver {
     return this.page;
   }
 
-  private async fill(selector: string, value: string): Promise<void> {
-    const field = this.requirePage().locator(selector).first();
+  private async fillCandidates(
+    candidates: readonly string[],
+    fieldName: string,
+    value: string
+  ): Promise<void> {
+    const field: Locator = await resolveFirstVisibleLocator(
+      this.requirePage(),
+      candidates,
+      FORM_READY_TIMEOUT_MS,
+      fieldName
+    );
     await field.fill(value, { timeout: FORM_READY_TIMEOUT_MS });
   }
 

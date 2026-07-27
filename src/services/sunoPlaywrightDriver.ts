@@ -17,6 +17,11 @@ import { launchSunoPersistentContext } from "./sunoBrowserLaunch.js";
 import { isSunoConnected, isSunoLoginRequired } from "./sunoLoginDetection.js";
 import { extractLyricsBody } from "./lyricsExtraction.js";
 import { PLAYWRIGHT_EXPECTED_CREATE_CARD_COUNT } from "./sunoTakeConstants.js";
+import {
+  SUNO_CREATE_FORM_READY_SELECTORS,
+  SUNO_CREATE_SELECTORS,
+  SUNO_STYLE_SELECTOR
+} from "./sunoCreateForm.js";
 
 export const DEFAULT_SUNO_PROFILE_PATH = ".openclaw-browser-profiles/suno";
 export const SUNO_CREATE_URL = "https://suno.com/create";
@@ -627,12 +632,7 @@ export class PlaywrightSunoDriver implements SunoBrowserDriver {
   // Wait for the create form to actually render before touching any field, using a resilient
   // set of selectors so a single relabeled element does not defeat the guard.
   private async waitForCreateFormReady(page: Page): Promise<void> {
-    const selectors = [
-      'textarea[data-testid="lyrics-textarea"]',
-      'button[aria-label="Add your own lyrics"]',
-      '[data-testid="create-form-styles-wrapper"]',
-      'button[aria-label="Create song"]'
-    ];
+    const selectors = SUNO_CREATE_FORM_READY_SELECTORS;
     const first = page.locator(selectors[0]).first() as unknown as {
       waitFor?: (options: { state: "visible"; timeout: number }) => Promise<void>;
     };
@@ -657,14 +657,14 @@ export class PlaywrightSunoDriver implements SunoBrowserDriver {
   }
 
   private async ensureLyricsMode(page: Page): Promise<void> {
-    const textarea = page.locator('textarea[data-testid="lyrics-textarea"]');
+    const textarea = page.locator(SUNO_CREATE_SELECTORS.lyricsTextarea);
     try {
       await textarea.first().waitFor({ state: "visible", timeout: CREATE_STEP_TIMEOUT_MS });
       return;
     } catch {
       // Suno's React mount can lag after domcontentloaded; fall through only if the toggle is usable.
     }
-    const button = page.locator('button[aria-label="Add your own lyrics"]');
+    const button = page.locator(SUNO_CREATE_SELECTORS.addLyricsButton);
     if (
       await button
         .first()
@@ -676,9 +676,7 @@ export class PlaywrightSunoDriver implements SunoBrowserDriver {
   }
 
   private styleLocator(page: Page) {
-    return page.locator(
-      '[data-testid="create-form-styles-wrapper"] textarea, textarea[placeholder="Describe the sound you want"], textarea[placeholder*="クラシック音楽"], textarea[placeholder*="バイキングメタル"], textarea[placeholder*="sound you want"]'
-    );
+    return page.locator(SUNO_STYLE_SELECTOR);
   }
 
   private async pollForGeneratedSongs(
