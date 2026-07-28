@@ -116,8 +116,10 @@ describe("blocked runtime events Telegram delivery", () => {
       timestamp: 1
     };
     const text = await formatRuntimeEvent(lyricsEvent);
-    expect(text).toContain("歌詞生成で止まった");
-    expect(text).toContain("provider fallback response");
+    expect(text).toContain("歌詞の仕上げでつまずいた");
+    // The raw internal reason must be summarized, not pasted verbatim.
+    expect(text).not.toContain("provider fallback response");
+    expect(text).toContain("歌詞AIにつながらなかった");
     expect(text).not.toContain("Lyrics generation degraded:");
     expect(text).toContain("歌詞を作り直す");
     expect(text).toContain("破棄");
