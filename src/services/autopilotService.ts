@@ -162,6 +162,37 @@ export function shouldEmitOperationalEpisode(existing: AutopilotRunState, marker
   return existing.blockedReason !== marker && existing.lastError !== marker;
 }
 
+// The same-runId idempotency guard legitimately fires only when a song's status maps to
+// a stage already recorded as lastSuccessfulStage without advancing — which in practice
+// means the run state and the song status have drifted out of sync (e.g. a status
+// rollback). That is exactly the "silent stall" shape (2026-07-28 spawn_cc1049 sat 26h
+// emitting only ran/safe_recovery), so when the guard holds with no action, surface a
+// visible reason instead of staying silent. Emitting on every 20-min tick would be spam,
+// so collapse to at most one event per calendar day per song+stage. This is a Telegram-
+// silent "error"-type event (source not in /suno/ nor SELF_HEAL_SOURCES): it lands in the
+// runtime-events ledger / Console but does not ping the producer.
+const idempotentHoldEmittedOnDay = new Map<string, string>();
+
+export function emitIdempotentHoldOncePerDay(songId: string | undefined, stage: AutopilotStage, now = new Date()): void {
+  const key = `${songId ?? "?"}|${stage}`;
+  const day = now.toISOString().slice(0, 10);
+  if (idempotentHoldEmittedOnDay.get(key) === day) {
+    return;
+  }
+  idempotentHoldEmittedOnDay.set(key, day);
+  emitRuntimeEvent({
+    type: "error",
+    source: "autopilot_idempotent_hold",
+    reason: `stage_${stage}_held_no_action:song_status_maps_to_already_successful_stage_possible_rollback`,
+    songId,
+    timestamp: now.getTime()
+  });
+}
+
+export function resetIdempotentHoldDedupForTest(): void {
+  idempotentHoldEmittedOnDay.clear();
+}
+
 const DEFAULT_SUNO_IMPORT_STALL_MS = 20 * 60 * 1000;
 const SUNO_IMPORT_NO_URLS_REASON = "playwright_import_no_urls";
 const SUNO_IMPORT_NO_URLS_BLOCKED_REASON = `suno_generate_retry:${SUNO_IMPORT_NO_URLS_REASON}`;
@@ -1556,13 +1587,28 @@ export class ArtistAutopilotService {
     }
 
     const hasUnresolvedBlock = Boolean(stateBeforeStage.blockedReason || stateBeforeStage.lastError);
-    if (
+    const guardWouldHold =
       existing.runId === runId
       && existing.lastSuccessfulStage === stage
       && stage !== "planning"
-      && !hasUnresolvedBlock
-    ) {
-      return writeStageState(input.workspaceRoot, existing, baseState);
+      && !hasUnresolvedBlock;
+    if (guardWouldHold) {
+      // A song rolled back to suno_prompt_pack after a failed/superseded Suno create is
+      // genuinely pre-create again: stageFromSong maps it to suno_generation, which equals
+      // the stale lastSuccessfulStage, so the same-runId idempotency guard used to hold
+      // every tick and the create never fired (2026-07-28 spawn_cc1049 sat 26h emitting
+      // only ran/safe_recovery). A failed latest run is the signal that a create was
+      // attempted and did not land, so re-drive it. A lane with no run yet (or a non-failed
+      // latest run) keeps the idempotent hold — the downstream create path already protects
+      // credit for an accepted run. Either way, surface the hold instead of staying silent.
+      const latestRunForStall = song?.status === "suno_prompt_pack"
+        ? await readLatestSunoRun(input.workspaceRoot, song.songId).catch(() => undefined)
+        : undefined;
+      const needsCreateRedrive = latestRunForStall?.status === "failed";
+      if (!needsCreateRedrive) {
+        emitIdempotentHoldOncePerDay(song?.songId ?? existing.currentSongId, stage);
+        return writeStageState(input.workspaceRoot, existing, baseState);
+      }
     }
 
     try {
