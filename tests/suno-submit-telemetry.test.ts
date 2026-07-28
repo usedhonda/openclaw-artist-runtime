@@ -12,13 +12,16 @@ import type { SunoLyricsSubmitTelemetry, SunoRunRecord } from "../src/types";
 
 describe("Suno submit telemetry ledger", () => {
   it("carries lyrics submit telemetry into imported runs and records generated duration for status export", async () => {
-    const durationPlan = getDurationPlan();
+    // Pin the tempo band so the duration-delta assertion is independent of the
+    // mechanical band default; sunoRuns resolves the delta against this band.
+    const durationPlan = getDurationPlan("mid");
     const root = mkdtempSync(join(tmpdir(), "artist-runtime-suno-submit-telemetry-"));
     await ensureArtistWorkspace(root);
     const song = await createSongIdea({
       workspaceRoot: root,
       title: "Telemetry Road",
-      artistReason: "measure the box"
+      artistReason: "measure the box",
+      tempoBand: "mid"
     });
     const runId = "run-telemetry";
     const telemetry: SunoLyricsSubmitTelemetry = {
