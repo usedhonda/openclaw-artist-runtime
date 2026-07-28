@@ -12,6 +12,7 @@ import { SocialDistributionWorker } from "./socialDistributionWorker.js";
 import { CliSunoConnector } from "../connectors/suno/cliSunoConnector.js";
 import { SunoBrowserWorker } from "./sunoBrowserWorker.js";
 import { startFailedNotifyReplayWorker } from "./failedNotifyReplayWorker.js";
+import { startProducerDigestWorker } from "./producerDigestWorker.js";
 import { rearmQueuedAdoptionDownloadJobs } from "./sunoAdoptionDownloadJob.js";
 import { getTelegramOwnerUserIds } from "./telegramAuth.js";
 import { TelegramNotifier } from "./telegramNotifier.js";
@@ -21,6 +22,7 @@ let runtimeEventLedgerUnsubscriber: (() => void) | null = null;
 let stopCallbackWatchdog: (() => void) | null = null;
 let stopAutopilotTicker: (() => void) | null = null;
 let stopFailedNotifyReplayWorker: (() => void) | null = null;
+let stopProducerDigestWorker: (() => void) | null = null;
 let resolvedConfigCache: ArtistRuntimeConfig | null = null;
 
 const SILENCE_RECOVERY_WINDOW_MS = 10 * 60 * 1000;
@@ -36,6 +38,11 @@ function logSideEffectFailure(context: string, error: unknown): void {
 
 function failedNotifyReplayEnabled(env: NodeJS.ProcessEnv): boolean {
   const value = env.OPENCLAW_FAILED_NOTIFY_REPLAY_ENABLED?.trim().toLowerCase();
+  return value !== "0" && value !== "off" && value !== "false";
+}
+
+function producerDigestEnabled(env: NodeJS.ProcessEnv): boolean {
+  const value = env.OPENCLAW_PRODUCER_DIGEST_ENABLED?.trim().toLowerCase();
   return value !== "0" && value !== "off" && value !== "false";
 }
 
@@ -144,6 +151,18 @@ export async function startTelegramNotifierFromEnv(env: NodeJS.ProcessEnv = proc
       maxAgeMs: positiveHoursFromEnvMs(env, "OPENCLAW_FAILED_NOTIFY_REPLAY_MAX_AGE_HOURS", 6)
     });
   }
+  // The producer digest is the routine daily "here is what moved" message. It is a
+  // scheduled once-a-day send, not an event reaction, so it runs as its own worker
+  // rather than through the event-driven notifier. Only start it when the operator
+  // actually selected the daily digest; other modes get no daily summary.
+  if (!stopProducerDigestWorker && config.autopilot.producerDigest === "daily" && producerDigestEnabled(env)) {
+    stopProducerDigestWorker = startProducerDigestWorker({
+      root: config.artist.workspaceRoot,
+      token,
+      chatIds: ownerIds,
+      mode: config.autopilot.producerDigest
+    });
+  }
   const primaryChatId = Number(ownerIds[0]);
   void rearmQueuedAdoptionDownloadJobs({
     root: config.artist.workspaceRoot,
@@ -164,6 +183,8 @@ export function stopTelegramNotifierSubscriptions(): void {
   telegramNotifierUnsubscribers = [];
   stopFailedNotifyReplayWorker?.();
   stopFailedNotifyReplayWorker = null;
+  stopProducerDigestWorker?.();
+  stopProducerDigestWorker = null;
 }
 
 export function startRuntimeEventLedgerFromEnv(env: NodeJS.ProcessEnv = process.env): { started: number; reason?: string } {

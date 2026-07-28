@@ -26,6 +26,9 @@ function env(workspaceRoot: string, extra: Record<string, string | undefined> = 
     OPENCLAW_LOCAL_WORKSPACE: workspaceRoot,
     TELEGRAM_BOT_TOKEN: "mock-token",
     TELEGRAM_OWNER_USER_IDS: "123",
+    // These tests exercise event-driven notifier forwarding only; keep the
+    // separate scheduled daily-digest worker out of the fetch surface.
+    OPENCLAW_PRODUCER_DIGEST_ENABLED: "off",
     ...extra
   } as NodeJS.ProcessEnv;
 }
