@@ -59,6 +59,19 @@ describe("prompt-pack corrective regen + skip-and-advance parking", () => {
     ).toBeUndefined();
   });
 
+  it("switches to a blanket all-hiragana rewrite when many tokens remain", () => {
+    const tokens = ["数字", "逃", "鳴", "値", "送電", "見下", "札", "灯", "影", "街"];
+    const reason = `lyrics_generation_degraded: suno_prompt_pack_invalid: ${tokens
+      .map((token, index) => `residual_kanji:${token}:line_${index + 1}`)
+      .join("; ")}`;
+    const guided = correctionGuidanceFromDegraded(reason);
+    expect(guided).toBeDefined();
+    expect(guided!).toHaveLength(1);
+    // A blanket instruction, not a per-token enumeration.
+    expect(guided![0]).toContain("全文をひらがなで書き直す");
+    expect(guided![0]).not.toContain("(line 1)");
+  });
+
   it("parks an unrepairable song as a terminal needs-operator state, alerts once, and clears the current song", async () => {
     const root = workspace();
     await ensureArtistWorkspace(root);

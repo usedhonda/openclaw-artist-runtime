@@ -920,11 +920,23 @@ async function createPromptPackForSong(root: string, song: SongState, config?: P
 // so the artist can be told exactly what to open to hiragana or rewrite. Returns
 // undefined when the failure is not a lyrics-content class we can guide (style
 // cap, missing fields, lyrics-box overflow), which routes straight to parking.
+// Above this many offending tokens, enumerating each one is fragile: only one
+// corrective re-draft is allowed, and the model missing a single token in a long
+// list re-fails validation and parks the song. Dense fast-band lyrics regularly
+// cross this, so switch to a blanket all-hiragana rewrite instead of a per-token
+// list. Expanding the deterministic kana dictionary is deliberately not the fix.
+const BLANKET_HIRAGANA_REWRITE_THRESHOLD = 8;
+
 export function correctionGuidanceFromDegraded(reason: string): string[] | undefined {
   const kanji = [...reason.matchAll(/residual_kanji:([^:]+):line_(\d+)/g)];
   const numbers = [...reason.matchAll(/ascii_number:([^:]+):line_(\d+)/g)];
   if (kanji.length === 0 && numbers.length === 0) {
     return undefined;
+  }
+  if (kanji.length + numbers.length >= BLANKET_HIRAGANA_REWRITE_THRESHOLD) {
+    return [
+      "この曲の Suno 登録用歌詞本文には漢字や数字が多く残っている。個別に直すのではなく、歌詞本文（セクションタグ内の各行）を、漢字を一切使わず、数字もひらがなの読みにして、全文をひらがなで書き直すこと（カタカナと英語はそのまま、意味・行数・歌いやすさは保つ。1文字でも漢字が残ると不合格）。"
+    ];
   }
   // Only one corrective re-draft is allowed, so the guidance must ask for every
   // offending token to be resolved in this single rewrite (leaving one behind
