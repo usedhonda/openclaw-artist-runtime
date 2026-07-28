@@ -13,9 +13,9 @@ export interface DurationPlanSection {
   finalPayoff?: boolean;
 }
 
-export type TempoBand = "slow" | "mid" | "up" | "dopagaki";
+export type TempoBand = "slow" | "mid" | "up" | "dopagaki" | "super";
 
-export const TEMPO_BANDS: readonly TempoBand[] = ["slow", "mid", "up", "dopagaki"];
+export const TEMPO_BANDS: readonly TempoBand[] = ["slow", "mid", "up", "dopagaki", "super"];
 
 export interface DurationPlan {
   version: "duration_plan_v1";
@@ -203,15 +203,17 @@ const DOPAGAKI_PLAN: DurationPlan = {
   version: "duration_plan_v1",
   templateId: "dopagaki_fast_rap_v1",
   tempoBand: "dopagaki",
-  targetSeconds: SHARED_TARGET_SECONDS,
-  minSeconds: SHARED_MIN_SECONDS,
-  maxSeconds: SHARED_MAX_SECONDS,
+  // Fast songs read as shorter, so the fast bands target a tighter runtime than
+  // the ~195s mid/up bands while staying inside the shared 150-240s window.
+  targetSeconds: 180,
+  minSeconds: 165,
+  maxSeconds: 195,
   acceptableMinSeconds: SHARED_ACCEPTABLE_MIN_SECONDS,
   acceptableMaxSeconds: SHARED_ACCEPTABLE_MAX_SECONDS,
   bpm: {
     target: 148,
     min: 138,
-    max: 160,
+    max: 158,
     noDoubleTimeVocal: false
   },
   form: SHARED_FORM,
@@ -241,11 +243,56 @@ const DOPAGAKI_PLAN: DurationPlan = {
   ]
 };
 
+// super: hyper-fast "chou-haya" variation above dopagaki. ~166 BPM, 116 bars,
+// tighter ~170s runtime, double-time delivery allowed.
+const SUPER_PLAN: DurationPlan = {
+  version: "duration_plan_v1",
+  templateId: "super_hyper_fast_rap_v1",
+  tempoBand: "super",
+  targetSeconds: 170,
+  minSeconds: 155,
+  maxSeconds: 185,
+  acceptableMinSeconds: SHARED_ACCEPTABLE_MIN_SECONDS,
+  acceptableMaxSeconds: SHARED_ACCEPTABLE_MAX_SECONDS,
+  bpm: {
+    target: 166,
+    min: 158,
+    max: 182,
+    noDoubleTimeVocal: false
+  },
+  form: SHARED_FORM,
+  totalPlannedBars: 116,
+  chorusPolicy: SHARED_CHORUS_POLICY,
+  sectionPlan: [
+    mk("intro", "Intro", 4, 1, "0-1 line", "4 bars, instant hard scene, no runway",
+      "0-1 line; drop the scene at full speed with no runway."),
+    mk("verse1", "Verse 1", 32, 20, "20-21 lines", "32 bars, hyper-dense rap phrasing, internal rhymes, double-time allowed",
+      "20-21 lines; hyper-dense internal rhymes at full speed; double-time delivery allowed across the bars."),
+    mk("prehook1", "Pre-Hook", 4, 3, "3-4 lines", "4 bars, sharp rising tension, tight turn",
+      "3-4 lines; snap tension up into the hook with a tight turn."),
+    mk("hook1", "Hook", 8, 4, "4 lines", "8 bars, full hook, clipped chant, repeatable",
+      "4 lines; full hook with a clipped, chantable, repeatable phrase."),
+    mk("verse2", "Verse 2", 32, 20, "20-21 lines", "32 bars, hyper-dense rap phrasing, internal rhymes, double-time allowed",
+      "20-21 lines; extend the image at full speed; double-time delivery allowed across the bars."),
+    mk("prehook2", "Pre-Hook 2", 4, 3, "3-4 lines", "4 bars, sharp rising tension, answer verse",
+      "3-4 lines; answer Verse 2 and snap into the repeated hook."),
+    mk("hook2", "Hook 2", 8, 4, "4 lines", "8 bars, full hook, repeat same text",
+      "Repeat the Hook text physically, not just an instruction to repeat.", { repeatOf: "hook1" }),
+    mk("bridge", "Bridge", 8, 3, "3-5 lines", "8 bars, drop density, perspective shift",
+      "3-5 lines; drop the density, change viewpoint, and reload for the final hook."),
+    mk("finalhook", "Final Hook", 12, 5, "5-6 lines", "12 bars, full final hook, payoff line",
+      "Repeat the Hook text again and add one payoff line that resolves the image.", { repeatOf: "hook1", finalPayoff: true }),
+    mk("outro", "Outro", 4, 1, "0-1 line", "4 bars, hard stop landing, clean cut",
+      "0-1 line; cut clean and do not open a new idea.")
+  ]
+};
+
 const PLANS_BY_BAND: Record<TempoBand, DurationPlan> = {
   slow: SLOW_PLAN,
   mid: MID_PLAN,
   up: UP_PLAN,
-  dopagaki: DOPAGAKI_PLAN
+  dopagaki: DOPAGAKI_PLAN,
+  super: SUPER_PLAN
 };
 
 export function getDurationPlan(band: TempoBand = "mid"): DurationPlan {
@@ -262,7 +309,7 @@ export function getDurationPlanByTemplateId(templateId: string | undefined): Dur
 // callers can fall back to the default mid template.
 export function resolveTempoBand(source: string | undefined): TempoBand | undefined {
   if (!source) return undefined;
-  const match = source.match(/tempo\s*band\s*:\s*(slow|mid|up|dopagaki)\b/i);
+  const match = source.match(/tempo\s*band\s*:\s*(slow|mid|up|dopagaki|super)\b/i);
   const band = match?.[1]?.toLowerCase() as TempoBand | undefined;
   return band && TEMPO_BANDS.includes(band) ? band : undefined;
 }
