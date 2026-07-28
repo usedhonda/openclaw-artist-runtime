@@ -12,7 +12,7 @@ import { buildLyricsDraftingPrompt, readLyricsKnowledgeDigest } from "./lyricsDr
 import { parseLyricsLanguagePolicy } from "./lyricsLanguagePolicy.js";
 import { getArtistIdentity, getSunoLyricsLimit } from "./runtimeConfig.js";
 import { decideDopagakiVariation } from "./creativeVariationPolicy.js";
-import { getDurationPlan, minimumBareLyricsChars, minimumBareLyricsLines, resolveTempoBand } from "../suno-production/durationPlan.js";
+import { getDurationPlan, minimumBareLyricsChars, minimumBareLyricsLines, resolveTempoBandFromBrief } from "../suno-production/durationPlan.js";
 import { appendCreativeQualityEntry, computeDissBankHits } from "./creativeQualityLedger.js";
 
 export interface DraftLyricsInput {
@@ -127,7 +127,7 @@ function mockStructuredDraft(title: string, briefText: string): string {
   // to clear the selected plan's floor without ballooning the lyric body past
   // the Suno box budget. mid/slow bands already clear their floor from the base
   // draft, so this loop leaves them untouched.
-  const draftPlan = getDurationPlan(resolveTempoBand(briefText));
+  const draftPlan = getDurationPlan(resolveTempoBandFromBrief(briefText));
   const padTargets = [
     { lines: verseOneLines, cap: 21 },
     { lines: verseTwoLines, cap: 21 },
@@ -136,7 +136,9 @@ function mockStructuredDraft(title: string, briefText: string): string {
   ];
   const fixedLines = 1 + hookLines.length * 2 + Math.min(bridgeLines.length, 3) + (hookLines.length + 1) + 1;
   const countedPadded = () => padTargets.reduce((sum, target) => sum + Math.min(target.lines.length, target.cap), 0);
-  const targetLines = minimumBareLyricsLines(draftPlan);
+  // Small margin so the padded draft still clears the floor if repair drops a
+  // content-dependent line (e.g. an intro line it treats as a list marker).
+  const targetLines = minimumBareLyricsLines(draftPlan) + 3;
   for (let index = 0; fixedLines + countedPadded() < targetLines && index < 400; index += 1) {
     const target = padTargets[index % padTargets.length];
     if (target.lines.length < target.cap) {
@@ -241,7 +243,7 @@ async function composeLyricsDraft(input: DraftLyricsInput, title: string, briefT
   const languagePolicy = parseLyricsLanguagePolicy(mind.artist);
   const lyricsBoxLimit = getSunoLyricsLimit();
   const lyricBodyLimit = lyricBodyLimitForSunoBox(lyricsBoxLimit);
-  const durationPlan = getDurationPlan(resolveTempoBand(briefText));
+  const durationPlan = getDurationPlan(resolveTempoBandFromBrief(briefText));
   const minimumBareChars = minimumBareLyricsChars(durationPlan);
   const minimumBareLines = minimumBareLyricsLines(durationPlan);
   const dopagakiVariation = decideDopagakiVariation({

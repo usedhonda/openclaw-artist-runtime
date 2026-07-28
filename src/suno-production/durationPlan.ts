@@ -267,6 +267,39 @@ export function resolveTempoBand(source: string | undefined): TempoBand | undefi
   return band && TEMPO_BANDS.includes(band) ? band : undefined;
 }
 
+// Maps a raw BPM to the band whose target tempo is nearest, so briefs that carry
+// only a numeric "Tempo: NNN BPM" line still select a structural template
+// instead of silently defaulting to the mid (108) plan.
+export function bandForBpm(bpm: number | undefined): TempoBand | undefined {
+  if (bpm === undefined || !Number.isFinite(bpm)) return undefined;
+  let best: TempoBand = "mid";
+  let bestDistance = Infinity;
+  for (const band of TEMPO_BANDS) {
+    const distance = Math.abs(getDurationPlan(band).bpm.target - bpm);
+    if (distance < bestDistance) {
+      bestDistance = distance;
+      best = band;
+    }
+  }
+  return best;
+}
+
+// Resolves the band for a song brief: an explicit "Tempo band:" marker wins,
+// otherwise a numeric "Tempo: NNN BPM" line is mapped to the nearest band.
+// Returns undefined only when the brief declares neither, letting callers fall
+// back to the default mid template.
+export function resolveTempoBandFromBrief(briefText: string | undefined): TempoBand | undefined {
+  const explicit = resolveTempoBand(briefText);
+  if (explicit) return explicit;
+  if (!briefText) return undefined;
+  const tempoLine = briefText.match(/^-\s*Tempo:\s*(.+)$/mi)?.[1];
+  if (!tempoLine || /artist\s+decides/i.test(tempoLine)) return undefined;
+  const bpmMatch = tempoLine.match(/\b(\d{2,3})\b/);
+  if (!bpmMatch) return undefined;
+  const bpm = Number(bpmMatch[1]);
+  return bpm >= 40 && bpm <= 220 ? bandForBpm(bpm) : undefined;
+}
+
 export function minimumBareLyricsChars(plan: DurationPlan = getDurationPlan()): number {
   return Math.round(plan.totalPlannedBars * 15);
 }

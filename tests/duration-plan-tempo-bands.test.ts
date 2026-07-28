@@ -5,11 +5,13 @@ import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import {
   TEMPO_BANDS,
+  bandForBpm,
   getDurationPlan,
   getDurationPlanByTemplateId,
   minimumBareLyricsChars,
   minimumBareLyricsLines,
   resolveTempoBand,
+  resolveTempoBandFromBrief,
   type TempoBand
 } from "../src/suno-production/durationPlan";
 import { createSunoPromptPack } from "../src/suno-production/generatePromptPack";
@@ -82,6 +84,26 @@ describe("duration plan tempo bands", () => {
     expect(resolveTempoBand("no band here")).toBeUndefined();
     expect(resolveTempoBand("- Tempo band: nonsense")).toBeUndefined();
     expect(resolveTempoBand(undefined)).toBeUndefined();
+  });
+
+  it("maps a raw BPM to the nearest band", () => {
+    expect(bandForBpm(92)).toBe("slow");
+    expect(bandForBpm(108)).toBe("mid");
+    expect(bandForBpm(126)).toBe("up");
+    expect(bandForBpm(148)).toBe("dopagaki");
+    expect(bandForBpm(142)).toBe("dopagaki");
+    expect(bandForBpm(120)).toBe("up");
+    expect(bandForBpm(undefined)).toBeUndefined();
+  });
+
+  it("resolves a brief band from an explicit marker or a numeric tempo line", () => {
+    // Explicit marker wins over any numeric tempo line.
+    expect(resolveTempoBandFromBrief("- Tempo: 148 BPM\n- Tempo band: slow")).toBe("slow");
+    // Live autopilot briefs carry only a numeric BPM; it maps to the nearest band.
+    expect(resolveTempoBandFromBrief("## Direction\n- Tempo: 142 BPM\n- Duration: 2:48\n")).toBe("dopagaki");
+    expect(resolveTempoBandFromBrief("- Tempo: 108 BPM")).toBe("mid");
+    expect(resolveTempoBandFromBrief("- Tempo: artist decides")).toBeUndefined();
+    expect(resolveTempoBandFromBrief("no tempo at all")).toBeUndefined();
   });
 
   it("resolves a plan by template id and falls back to mid for unknown ids", () => {
