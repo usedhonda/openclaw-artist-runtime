@@ -1,16 +1,19 @@
 import type { AiReviewProvider } from "../types.js";
 import {
   appendFailedNotifyAgedOutRecord,
+  appendFailedNotifyExhaustedRecord,
+  appendFailedNotifyNotDeliverableRecord,
   appendFailedNotifyReplayRecord,
   appendFailedNotifySyntheticSkipRecord,
   appendFailedNotifyTerminalSkipRecord,
+  countReplayFailures,
   type FailedNotifyEntry,
   isCriticalNotificationEvent,
   isSyntheticTakeNotification,
   readFailedNotifyEntries,
   terminalReplaySongStatus
 } from "./failedNotifyLedger.js";
-import { TelegramNotifier, type TelegramNotifierOptions } from "./telegramNotifier.js";
+import { TelegramNotifier, type TelegramNotifierOptions, type TelegramNotifyOutcome } from "./telegramNotifier.js";
 import { emitRuntimeEvent, type RuntimeEvent } from "./runtimeEventBus.js";
 
 export interface FailedNotifyReplayWorkerOptions {
@@ -31,6 +34,8 @@ export interface FailedNotifyReplayResult {
   agedOut: number;
   terminalSkipped: number;
   syntheticSkipped: number;
+  notDeliverable: number;
+  exhausted: number;
   skipped: number;
   deliveryIds: string[];
 }
@@ -38,6 +43,9 @@ export interface FailedNotifyReplayResult {
 const DEFAULT_REPLAY_INTERVAL_MS = 60 * 1000;
 const DEFAULT_REPLAY_LIMIT = 10;
 const DEFAULT_REPLAY_MAX_AGE_MS = 6 * 60 * 60 * 1000;
+// Cap the number of failed replay attempts so an undeliverable notification is
+// retired instead of retrying forever.
+const MAX_REPLAY_ATTEMPTS = 5;
 
 function latestByNotifyId(entries: FailedNotifyEntry[]): FailedNotifyEntry[] {
   const latest = new Map<string, FailedNotifyEntry>();
@@ -77,8 +85,8 @@ function isAgedOut(entry: FailedNotifyEntry, now: Date, maxAgeMs: number): boole
   return Number.isFinite(failedAtMs) && now.getTime() - failedAtMs > maxAgeMs;
 }
 
-async function notifyEntry(options: FailedNotifyReplayWorkerOptions, entry: FailedNotifyEntry): Promise<void> {
-  await new TelegramNotifier({
+async function notifyEntry(options: FailedNotifyReplayWorkerOptions, entry: FailedNotifyEntry): Promise<TelegramNotifyOutcome> {
+  return new TelegramNotifier({
     token: options.token,
     chatId: entry.chatId,
     workspaceRoot: options.root,
@@ -100,6 +108,8 @@ export async function replayFailedNotificationsOnce(options: FailedNotifyReplayW
     agedOut: 0,
     terminalSkipped: 0,
     syntheticSkipped: 0,
+    notDeliverable: 0,
+    exhausted: 0,
     skipped: 0,
     deliveryIds: []
   };
@@ -139,12 +149,28 @@ export async function replayFailedNotificationsOnce(options: FailedNotifyReplayW
     }
     result.attempted += 1;
     try {
-      await notifyEntry(options, entry);
-      await appendFailedNotifyReplayRecord(options.root, entry, { ok: true });
-      result.replayed += 1;
+      const outcome = await notifyEntry(options, entry);
+      if (outcome === "delivered") {
+        // Only a confirmed send retires the entry as replayed.
+        await appendFailedNotifyReplayRecord(options.root, entry, { ok: true });
+        result.replayed += 1;
+      } else {
+        // The notifier intentionally did not send (dedup / digest off / non-signal):
+        // retire it honestly as not-deliverable rather than a false "replayed".
+        await appendFailedNotifyNotDeliverableRecord(options.root, entry, { now });
+        result.notDeliverable += 1;
+      }
     } catch (error) {
-      await appendFailedNotifyReplayRecord(options.root, entry, { ok: false, error });
-      result.failed += 1;
+      const attempts = countReplayFailures(entries, entry.notifyId) + 1;
+      if (attempts >= MAX_REPLAY_ATTEMPTS) {
+        // Retire after the retry cap so an undeliverable notification stops looping.
+        await appendFailedNotifyExhaustedRecord(options.root, entry, { attempts, now });
+        result.exhausted += 1;
+      } else {
+        // Keep it failed (still a candidate) so it retries once delivery is possible.
+        await appendFailedNotifyReplayRecord(options.root, entry, { ok: false, error });
+        result.failed += 1;
+      }
     }
   }
   result.skipped = Math.max(0, latestByNotifyId(entries)

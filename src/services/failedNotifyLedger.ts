@@ -279,3 +279,42 @@ export async function appendFailedNotifySyntheticSkipRecord(
   };
   return appendFailedNotifyEntry(root, entry);
 }
+
+// The notifier intentionally did not send this event on replay (dedup / digest
+// off / non-signal). Retire it — retrying will not deliver it — but record it
+// honestly as not-deliverable rather than a confirmed delivery.
+export async function appendFailedNotifyNotDeliverableRecord(
+  root: string,
+  source: FailedNotifyEntry,
+  input: { now?: Date } = {}
+): Promise<FailedNotifyEntry> {
+  const entry: FailedNotifyEntry = {
+    ...source,
+    status: "aged_out",
+    replayedAt: (input.now ?? new Date()).toISOString(),
+    replayError: "failed_notify_replay_not_deliverable"
+  };
+  return appendFailedNotifyEntry(root, entry);
+}
+
+// Replay kept failing to deliver up to the attempt cap; retire it so it stops
+// retrying forever while recording that it was never confirmed delivered.
+export async function appendFailedNotifyExhaustedRecord(
+  root: string,
+  source: FailedNotifyEntry,
+  input: { attempts: number; now?: Date }
+): Promise<FailedNotifyEntry> {
+  const entry: FailedNotifyEntry = {
+    ...source,
+    status: "aged_out",
+    replayedAt: (input.now ?? new Date()).toISOString(),
+    replayError: `failed_notify_replay_exhausted:${input.attempts}`
+  };
+  return appendFailedNotifyEntry(root, entry);
+}
+
+// Count how many times replay has already failed to deliver this notification,
+// so the worker can cap retries.
+export function countReplayFailures(entries: FailedNotifyEntry[], notifyId: string): number {
+  return entries.filter((entry) => entry.notifyId === notifyId && entry.status === "replay_failed").length;
+}

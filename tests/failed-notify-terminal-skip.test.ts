@@ -37,6 +37,17 @@ function realTakeCompletedEvent(songId: string): Extract<RuntimeEvent, { type: "
   };
 }
 
+// Critical event that the notifier intentionally does not send (non-signal).
+function generateRetryEvent(songId: string): Extract<RuntimeEvent, { type: "suno_generate_retry" }> {
+  return { type: "suno_generate_retry", songId, reason: "transient", retryCount: 1, timestamp: 1785000000000 };
+}
+
+function timeoutError(): Error {
+  const error = new Error("fetch failed");
+  (error as { cause?: unknown }).cause = { code: "ETIMEDOUT", message: "timeout" };
+  return error;
+}
+
 function telegramOk(): Response {
   return {
     ok: true,
@@ -154,6 +165,73 @@ describe("failed-notify replay terminal-song skip", () => {
       timeoutMinutes: 60,
       timestamp: 1785000000000
     })).toBe(true);
+  });
+
+  it("retires a critical-but-non-signal event as not-deliverable, never a false replayed", async () => {
+    const root = await mkdtemp(join(tmpdir(), "artist-runtime-not-deliverable-"));
+    await ensureArtistWorkspace(root);
+    await ensureSongState(root, "song-live", "Live Song");
+    await updateSongState(root, "song-live", { status: "take_selected" });
+
+    const failed = await appendFailedNotification(root, {
+      event: generateRetryEvent("song-live"),
+      chatId: 123,
+      error: new Error("fetch failed"),
+      attempts: 1
+    });
+    if (!failed) throw new Error("failed entry not created");
+
+    const fetchImpl = vi.fn().mockResolvedValue(telegramOk());
+    // The notifier skips this event (non-signal) so nothing is sent; it must be
+    // retired honestly rather than marked as a confirmed delivery.
+    await expect(replayFailedNotificationsOnce({ root, token: "token", fetchImpl })).resolves.toMatchObject({
+      attempted: 1,
+      replayed: 0,
+      notDeliverable: 1
+    });
+    expect(fetchImpl).not.toHaveBeenCalled();
+    expect(await latestFailedNotifyEntry(root, failed.notifyId)).toMatchObject({
+      status: "aged_out",
+      replayError: "failed_notify_replay_not_deliverable"
+    });
+    await expect(listUnreplayedFailedNotifications(root)).resolves.toHaveLength(0);
+  });
+
+  it("retires after the retry cap when delivery keeps failing", async () => {
+    process.env.OPENCLAW_TELEGRAM_RETRY_MAX = "1";
+    process.env.OPENCLAW_TELEGRAM_RETRY_BASE_MS = "1";
+    const root = await mkdtemp(join(tmpdir(), "artist-runtime-replay-exhausted-"));
+    await ensureArtistWorkspace(root);
+    await ensureSongState(root, "song-live", "Live Song");
+    await updateSongState(root, "song-live", { status: "take_selected" });
+
+    const failed = await appendFailedNotification(root, {
+      event: realTakeCompletedEvent("song-live"),
+      chatId: 123,
+      error: new Error("fetch failed"),
+      attempts: 1
+    });
+    if (!failed) throw new Error("failed entry not created");
+
+    const fetchImpl = vi.fn().mockRejectedValue(timeoutError());
+    // The first four failing ticks keep it retryable as replay_failed.
+    for (let tick = 0; tick < 4; tick += 1) {
+      await replayFailedNotificationsOnce({ root, token: "token", fetchImpl });
+    }
+    expect(await latestFailedNotifyEntry(root, failed.notifyId)).toMatchObject({ status: "replay_failed" });
+    await expect(listUnreplayedFailedNotifications(root)).resolves.toHaveLength(1);
+
+    // The fifth failure hits the cap and retires it (never a false replayed).
+    await expect(replayFailedNotificationsOnce({ root, token: "token", fetchImpl })).resolves.toMatchObject({
+      exhausted: 1,
+      replayed: 0
+    });
+    const retired = await latestFailedNotifyEntry(root, failed.notifyId);
+    expect(retired?.status).toBe("aged_out");
+    expect(retired?.replayError).toContain("failed_notify_replay_exhausted");
+    await expect(listUnreplayedFailedNotifications(root)).resolves.toHaveLength(0);
+    delete process.env.OPENCLAW_TELEGRAM_RETRY_MAX;
+    delete process.env.OPENCLAW_TELEGRAM_RETRY_BASE_MS;
   });
 
   it("terminalReplaySongStatus resolves terminal status and ignores active/missing songs", async () => {

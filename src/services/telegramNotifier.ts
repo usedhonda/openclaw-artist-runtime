@@ -182,6 +182,10 @@ function logNotifySideEffectFailure(context: string, error: unknown): void {
   console.error(`[telegram-notify] ${context} failed: ${reason}`);
 }
 
+// "delivered" = a Telegram message was actually sent (or accepted into the spawn
+// pipeline); "skipped" = intentionally not sent (dedup / digest off / non-signal).
+export type TelegramNotifyOutcome = "delivered" | "skipped";
+
 export class TelegramNotifier {
   private readonly client: TelegramClient;
   private spawnBuffer: Array<{
@@ -232,36 +236,43 @@ export class TelegramNotifier {
     return unsubscribe;
   }
 
-  async notify(event: RuntimeEvent): Promise<void> {
+  // Returns "delivered" when a Telegram message was actually sent (or accepted
+  // into the spawn-notification pipeline), and "skipped" when the event was
+  // intentionally not sent (dedup, digest off, notify-stages off, non-signal
+  // event). A send failure still throws. The failed-notify replay worker uses
+  // this so it only marks an entry "replayed" on a confirmed delivery, instead
+  // of treating a silent skip as success.
+  async notify(event: RuntimeEvent): Promise<TelegramNotifyOutcome> {
     if (event.type === "error" && SELF_HEAL_SOURCES.has(event.source) && isSelfHealNotifyEnabled()) {
       const key = selfHealDedupKey(event);
       const now = Date.now();
       const lastSentAt = this.recentSelfHealNotifications.get(key);
       if (lastSentAt !== undefined && now - lastSentAt < SELF_HEAL_DEDUP_WINDOW_MS) {
-        return;
+        return "skipped";
       }
       this.recentSelfHealNotifications.set(key, now);
       await this.client.sendMessage(this.options.chatId, formatSelfHealText(event));
-      return;
+      return "delivered";
     }
     if (isActionableSunoHardStop(event)) {
       await this.client.sendMessage(this.options.chatId, formatActionableHardStopText(event));
-      return;
+      return "delivered";
     }
-    if (this.options.producerDigest === "off") return;
-    if (this.options.notifyStages === false) return;
-    if (!isTelegramSignalEvent(event)) return;
+    if (this.options.producerDigest === "off") return "skipped";
+    if (this.options.notifyStages === false) return "skipped";
+    if (!isTelegramSignalEvent(event)) return "skipped";
     if (event.type === "lyrics_generation_degraded") {
       const key = lyricsDegradedDedupKey(event);
       const now = Date.now();
       const lastSentAt = this.recentDegradedNotifications.get(key);
       if (lastSentAt !== undefined && now - lastSentAt < LYRICS_DEGRADED_DEDUP_WINDOW_MS) {
-        return;
+        return "skipped";
       }
       this.recentDegradedNotifications.set(key, now);
     }
     if (event.type === "song_spawn_proposed") {
-      return this.enqueueSongSpawnNotification(event);
+      await this.enqueueSongSpawnNotification(event);
+      return "delivered";
     }
     const text = await formatRuntimeEvent(event, {
       workspaceRoot: this.options.workspaceRoot,
@@ -284,6 +295,7 @@ export class TelegramNotifier {
     if (event.type === "planning_skeleton_incomplete") {
       await this.attachPlanningSkeletonButtons(event, sent.message_id, text);
     }
+    return "delivered";
   }
 
   private async attachSongCompletionButtons(event: Extract<RuntimeEvent, { type: "song_take_completed" }>, messageId: number): Promise<void> {
