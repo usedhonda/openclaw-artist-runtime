@@ -13,10 +13,10 @@ describe("summarizeStopReason", () => {
   });
 
   it("never leaks internal identifiers for unknown reasons", () => {
-    const summary = summarizeStopReason("weird_edge residual_kanji:逃:line_20 /Users/x/secret/path deadbeefdeadbeef00");
+    const summary = summarizeStopReason("weird_edge residual_kanji:逃:line_20 /srv/secret/path deadbeefdeadbeef00");
     expect(summary).not.toMatch(/residual_kanji/);
     expect(summary).not.toMatch(/line_\d+/);
-    expect(summary).not.toMatch(/\/Users\//);
+    expect(summary).not.toMatch(/\/srv\//);
     expect(summary).not.toMatch(/deadbeefdeadbeef/);
   });
 
