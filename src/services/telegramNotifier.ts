@@ -12,6 +12,7 @@ import { isUnsafeCommandVoiceTopForTest } from "./commandVoiceWrapper.js";
 import { composePlanningSkeletonVoice } from "./planningSkeletonVoiceComposer.js";
 import { buttonVoiceLabels } from "./buttonVoiceLabels.js";
 import { summarizeLyricsDegradedReason } from "./lyricsDegradedSummary.js";
+import { summarizeStopReason } from "./producerStopReason.js";
 import { access, readdir, readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { buildCascadeTrace } from "./cascadeTrace.js";
@@ -1540,9 +1541,10 @@ function stoppedFailureReport(
 ): string {
   const lines = [headline, "", TELEGRAM_SECTION_DIVIDER, `song: ${songId}`];
   if (retryCount !== undefined) {
-    lines.push(`retry: ${retryCount}`);
+    lines.push(`再試行: ${retryCount}回`);
   }
-  lines.push(`reason: ${reason}`);
+  lines.push(`理由: ${summarizeStopReason(reason)}`);
+  lines.push("次: /status で現在地を確認。詳しい記録は Producer Console に残してある。");
   return lines.join("\n");
 }
 
@@ -1584,7 +1586,7 @@ async function formatRuntimeEventRaw(
         "",
         TELEGRAM_SECTION_DIVIDER,
         event.runId ? `run: ${event.runId}` : undefined,
-        `reason: ${event.reason}`,
+        `理由: ${summarizeStopReason(event.reason)}`,
         "🔗 試聴:",
         formatTelegramUrlList(event.urls)
       ].filter((line): line is string => Boolean(line)).join("\n");
@@ -1833,8 +1835,8 @@ async function formatRuntimeEventRaw(
           "曲作りの開始に失敗した。止めて原因を残した。",
           "",
           TELEGRAM_SECTION_DIVIDER,
-          `reason: ${event.reason}`,
-          "次: /status で現在地を確認。"
+          `理由: ${summarizeStopReason(event.reason)}`,
+          "次: /status で現在地を確認。詳しい記録は Producer Console に残してある。"
         ].join("\n");
       }
       if (event.source === "telegram_resume_run_now") {
@@ -1843,8 +1845,8 @@ async function formatRuntimeEventRaw(
           "",
           TELEGRAM_SECTION_DIVIDER,
           event.songId ? `song: ${event.songId}` : undefined,
-          `reason: ${event.reason}`,
-          "次: /status で現在地を確認。"
+          `理由: ${summarizeStopReason(event.reason)}`,
+          "次: /status で現在地を確認。詳しい記録は Producer Console に残してある。"
         ].filter(Boolean).join("\n");
       }
       return `Runtime error: ${event.source} ${event.reason}${event.songId ? ` (${event.songId})` : ""}`;

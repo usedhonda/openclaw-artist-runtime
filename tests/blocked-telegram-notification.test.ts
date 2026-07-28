@@ -77,7 +77,9 @@ describe("blocked runtime events Telegram delivery", () => {
     expect(markupCalls).toHaveLength(0);
     const text = JSON.parse(String((sendCalls[0][1] as RequestInit).body)).text as string;
     expect(text).toContain("Suno 生成は失敗で止めた");
-    expect(text).toContain("playwright_live_timeout");
+    // The internal token must be summarized to plain JA, not dumped verbatim.
+    expect(text).not.toContain("playwright_live_timeout");
+    expect(text).toContain("時間切れ");
     expect(text).not.toContain("ボタンで選ぶ");
   });
 
