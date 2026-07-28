@@ -335,16 +335,27 @@ export function bandForBpm(bpm: number | undefined): TempoBand | undefined {
 // otherwise a numeric "Tempo: NNN BPM" line is mapped to the nearest band.
 // Returns undefined only when the brief declares neither, letting callers fall
 // back to the default mid template.
+// Fast-centric default applied when a brief leaves tempo to the artist. Producer
+// direction: the everyday song is fast, so an "artist decides" tempo resolves to
+// a fast band rather than the neutral mid plan. Explicit band markers and numeric
+// BPMs still win over this default.
+export const DEFAULT_ARTIST_DECIDES_BAND: TempoBand = "up";
+
 export function resolveTempoBandFromBrief(briefText: string | undefined): TempoBand | undefined {
   const explicit = resolveTempoBand(briefText);
   if (explicit) return explicit;
   if (!briefText) return undefined;
   const tempoLine = briefText.match(/^-\s*Tempo:\s*(.+)$/mi)?.[1];
-  if (!tempoLine || /artist\s+decides/i.test(tempoLine)) return undefined;
+  // No tempo line at all stays neutral (mid fallback); only a present-but-
+  // deferred tempo triggers the fast default.
+  if (!tempoLine) return undefined;
   const bpmMatch = tempoLine.match(/\b(\d{2,3})\b/);
-  if (!bpmMatch) return undefined;
-  const bpm = Number(bpmMatch[1]);
-  return bpm >= 40 && bpm <= 220 ? bandForBpm(bpm) : undefined;
+  if (bpmMatch && !/artist\s+decides/i.test(tempoLine)) {
+    const bpm = Number(bpmMatch[1]);
+    if (bpm >= 40 && bpm <= 220) return bandForBpm(bpm);
+  }
+  // Tempo present but left to the artist ("artist decides") → fast-centric default.
+  return DEFAULT_ARTIST_DECIDES_BAND;
 }
 
 export function minimumBareLyricsChars(plan: DurationPlan = getDurationPlan()): number {

@@ -4,6 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import {
+  DEFAULT_ARTIST_DECIDES_BAND,
   TEMPO_BANDS,
   bandForBpm,
   getDurationPlan,
@@ -112,8 +113,21 @@ describe("duration plan tempo bands", () => {
     // Live autopilot briefs carry only a numeric BPM; it maps to the nearest band.
     expect(resolveTempoBandFromBrief("## Direction\n- Tempo: 142 BPM\n- Duration: 2:48\n")).toBe("dopagaki");
     expect(resolveTempoBandFromBrief("- Tempo: 108 BPM")).toBe("mid");
-    expect(resolveTempoBandFromBrief("- Tempo: artist decides")).toBeUndefined();
+    // A brief with no tempo line stays neutral (mid fallback via undefined).
     expect(resolveTempoBandFromBrief("no tempo at all")).toBeUndefined();
+    expect(resolveTempoBandFromBrief("")).toBeUndefined();
+  });
+
+  it("applies the fast-centric default when a brief leaves tempo to the artist", () => {
+    // Live spawn/commission briefs write "artist decides"; that must resolve to a
+    // fast band rather than silently defaulting to mid.
+    expect(resolveTempoBandFromBrief("- Tempo: artist decides")).toBe(DEFAULT_ARTIST_DECIDES_BAND);
+    expect(resolveTempoBandFromBrief("- Tempo: artist decides, medium-high pulse")).toBe(DEFAULT_ARTIST_DECIDES_BAND);
+    expect(DEFAULT_ARTIST_DECIDES_BAND).toBe("up");
+    // Explicit choices still win over the fast default.
+    expect(resolveTempoBandFromBrief("- Tempo band: mid\n- Tempo: artist decides")).toBe("mid");
+    expect(resolveTempoBandFromBrief("- Tempo: 88 BPM")).toBe("slow");
+    expect(resolveTempoBandFromBrief("- Tempo: 166 BPM")).toBe("super");
   });
 
   it("resolves a plan by template id and falls back to mid for unknown ids", () => {
