@@ -11,6 +11,7 @@ import { secretLikePattern } from "./personaMigrator.js";
 import { isUnsafeCommandVoiceTopForTest } from "./commandVoiceWrapper.js";
 import { composePlanningSkeletonVoice } from "./planningSkeletonVoiceComposer.js";
 import { buttonVoiceLabels } from "./buttonVoiceLabels.js";
+import { summarizeLyricsDegradedReason } from "./lyricsDegradedSummary.js";
 import { access, readdir, readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { buildCascadeTrace } from "./cascadeTrace.js";
@@ -1615,15 +1616,20 @@ async function formatRuntimeEventRaw(
         [`songId: ${event.songId ?? "(none)"}`, `used: ${event.used}`, `limit: ${event.limit}`, `reason: ${event.reason}`].join("\n"),
         options
       );
-    case "lyrics_generation_degraded":
+    case "lyrics_generation_degraded": {
+      const parked = `${event.detail ?? ""} ${event.reason}`.includes("parked_needs_operator");
       return [
-        "歌詞生成で止まった。理由を残して、ここで止める。",
+        parked
+          ? "歌詞を作り直しても直らなくて、この曲は一旦保留にした。"
+          : "歌詞の仕上げでつまずいた。直せる範囲は試したけど残った。",
         "",
         TELEGRAM_SECTION_DIVIDER,
         `song: ${event.songId}`,
-        `reason: ${event.detail ?? event.reason}`,
-        "next: 「歌詞を作り直す」か「破棄」を選んで。"
+        `内容: ${summarizeLyricsDegradedReason(event.reason, event.detail)}`,
+        "次: 「歌詞を作り直す」か「破棄」を選んで。",
+        "細かい内訳は Producer Console に残してある。"
       ].join("\n");
+    }
     case "suno_generate_retry":
       return [
         /(?:timeout|not_ready|not_connected|disconnected)/i.test(event.reason)
