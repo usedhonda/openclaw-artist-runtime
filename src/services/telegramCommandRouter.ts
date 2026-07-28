@@ -21,7 +21,7 @@ import { wrapCommandVoice, type CommandVoiceKind } from "./commandVoiceWrapper.j
 import { composeProducerStatus } from "./producerStatusComposer.js";
 import { isProposalConfirmationAction, listPendingCallbackActionSummaries, markPendingCallbacksForSongResolved, readCallbackActionEntries, resolveCallbackAction, type CallbackActionEntry } from "./callbackActionRegistry.js";
 import { emitRuntimeEvent } from "./runtimeEventBus.js";
-import { appendFailedNotifyReplayRecord, latestFailedNotifyEntry, listUnreplayedFailedNotifications } from "./failedNotifyLedger.js";
+import { appendFailedNotifyReplayRecord, appendFailedNotifyTerminalSkipRecord, latestFailedNotifyEntry, listUnreplayedFailedNotifications, terminalReplaySongStatus } from "./failedNotifyLedger.js";
 import { resurfaceDegradedLyrics } from "./degradedLyricsResurfaceService.js";
 import { resurfacePromptPackReady } from "./promptPackResurfaceService.js";
 import { stampInbound } from "./receiveHealthService.js";
@@ -1242,9 +1242,19 @@ export async function routeTelegramCommand(input: TelegramRouteInput): Promise<T
       return { kind: "replay", responseText: await voiceCommand("ack", "再送が必要な通知はありません。", input, "no failed notifications"), shouldStoreFreeText: false };
     }
     let replayed = 0;
+    let terminalSkipped = 0;
     for (const summary of pending) {
       const entry = await latestFailedNotifyEntry(input.workspaceRoot, summary.notifyId);
       if (!entry || entry.status === "replayed") {
+        continue;
+      }
+      // Do not re-emit a notification whose song is already terminal — that is exactly the
+      // song-018 zombie (an archived song's stale take-completed notice re-surfacing on every
+      // replay). Retire it as aged_out so it stops being a candidate.
+      const terminalStatus = await terminalReplaySongStatus(input.workspaceRoot, entry.songId);
+      if (terminalStatus) {
+        await appendFailedNotifyTerminalSkipRecord(input.workspaceRoot, entry, { songStatus: terminalStatus });
+        terminalSkipped += 1;
         continue;
       }
       try {
@@ -1255,7 +1265,10 @@ export async function routeTelegramCommand(input: TelegramRouteInput): Promise<T
         await appendFailedNotifyReplayRecord(input.workspaceRoot, entry, { ok: false, error });
       }
     }
-    return { kind: "replay", responseText: await voiceCommand("ack", `届かなかった通知を ${replayed} 件再送した。`, input, "failed notifications replayed"), shouldStoreFreeText: false };
+    const replayNote = terminalSkipped > 0
+      ? `届かなかった通知を ${replayed} 件再送した。完了済みの曲の通知 ${terminalSkipped} 件は再送せず終了扱いにした。`
+      : `届かなかった通知を ${replayed} 件再送した。`;
+    return { kind: "replay", responseText: await voiceCommand("ack", replayNote, input, "failed notifications replayed"), shouldStoreFreeText: false };
   }
 
   if (command.startsWith("/")) {

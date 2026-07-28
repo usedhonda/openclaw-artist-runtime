@@ -2,9 +2,11 @@ import type { AiReviewProvider } from "../types.js";
 import {
   appendFailedNotifyAgedOutRecord,
   appendFailedNotifyReplayRecord,
+  appendFailedNotifyTerminalSkipRecord,
   type FailedNotifyEntry,
   isCriticalNotificationEvent,
-  readFailedNotifyEntries
+  readFailedNotifyEntries,
+  terminalReplaySongStatus
 } from "./failedNotifyLedger.js";
 import { TelegramNotifier, type TelegramNotifierOptions } from "./telegramNotifier.js";
 import { emitRuntimeEvent, type RuntimeEvent } from "./runtimeEventBus.js";
@@ -25,6 +27,7 @@ export interface FailedNotifyReplayResult {
   replayed: number;
   failed: number;
   agedOut: number;
+  terminalSkipped: number;
   skipped: number;
   deliveryIds: string[];
 }
@@ -92,12 +95,21 @@ export async function replayFailedNotificationsOnce(options: FailedNotifyReplayW
     replayed: 0,
     failed: 0,
     agedOut: 0,
+    terminalSkipped: 0,
     skipped: 0,
     deliveryIds: []
   };
   for (const entry of candidates) {
     const deliveryId = deliveryIdFor(entry);
     result.deliveryIds.push(deliveryId);
+    // Retire notifications whose song is already terminal instead of re-delivering a stale
+    // notice every tick (song-018 zombie). Marked aged_out so it drops out of candidates.
+    const terminalStatus = await terminalReplaySongStatus(options.root, entry.songId);
+    if (terminalStatus) {
+      await appendFailedNotifyTerminalSkipRecord(options.root, entry, { songStatus: terminalStatus, now });
+      result.terminalSkipped += 1;
+      continue;
+    }
     if (isAgedOut(entry, now, maxAgeMs)) {
       emitRuntimeEvent({
         type: "failed_notify_aged_out",

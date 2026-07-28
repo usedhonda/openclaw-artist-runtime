@@ -1,6 +1,7 @@
 import { createHash } from "node:crypto";
 import { appendFile, mkdir, readFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
+import { readSongState } from "./artistState.js";
 import { secretLikePattern } from "./personaMigrator.js";
 import type { RuntimeEvent } from "./runtimeEventBus.js";
 
@@ -201,6 +202,41 @@ export async function appendFailedNotifyAgedOutRecord(
     status: "aged_out",
     replayedAt: (input.now ?? new Date()).toISOString(),
     replayError: `failed_notify_replay_aged_out:${input.maxAgeMs}ms`
+  };
+  return appendFailedNotifyEntry(root, entry);
+}
+
+// A song that reached a terminal state (published/archived/discarded/failed) will never
+// need its old notifications re-delivered. Replaying them re-surfaces stale take-completed
+// notices forever (2026 song-018 zombie: an archived song's failed notify kept being
+// re-emitted on every replay tick). Retire such entries as aged_out — reusing that terminal
+// status means both the auto worker and the /replay command exclude them from future
+// candidates — with a reason that records which terminal status stopped the replay.
+export const TERMINAL_REPLAY_SONG_STATUSES: ReadonlySet<string> = new Set([
+  "published",
+  "archived",
+  "discarded",
+  "failed"
+]);
+
+export async function terminalReplaySongStatus(root: string, songId?: string): Promise<string | undefined> {
+  if (!songId) {
+    return undefined;
+  }
+  const song = await readSongState(root, songId).catch(() => undefined);
+  return song && TERMINAL_REPLAY_SONG_STATUSES.has(song.status) ? song.status : undefined;
+}
+
+export async function appendFailedNotifyTerminalSkipRecord(
+  root: string,
+  source: FailedNotifyEntry,
+  input: { songStatus: string; now?: Date }
+): Promise<FailedNotifyEntry> {
+  const entry: FailedNotifyEntry = {
+    ...source,
+    status: "aged_out",
+    replayedAt: (input.now ?? new Date()).toISOString(),
+    replayError: `failed_notify_replay_terminal_song:${input.songStatus}`
   };
   return appendFailedNotifyEntry(root, entry);
 }
