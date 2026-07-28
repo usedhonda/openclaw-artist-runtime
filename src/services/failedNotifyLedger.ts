@@ -244,3 +244,38 @@ export async function appendFailedNotifyTerminalSkipRecord(
   };
   return appendFailedNotifyEntry(root, entry);
 }
+
+// Real Suno take ids are UUIDs. A take notification carrying a non-UUID id (the
+// "take-1" placeholder song-018 held while stuck) or only "/song/take-N"
+// placeholder urls is a synthetic/degenerate event that must never be
+// re-delivered. Retiring it stops the resurface zombie during the window before
+// the song reaches a terminal status (which the terminal-status skip covers).
+const REAL_SUNO_TAKE_ID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+const SYNTHETIC_TAKE_EVENTS: ReadonlySet<RuntimeEvent["type"]> = new Set(["song_take_completed", "suno_take_url_ready"]);
+
+export function isSyntheticTakeNotification(event: RuntimeEvent): boolean {
+  if (!SYNTHETIC_TAKE_EVENTS.has(event.type)) {
+    return false;
+  }
+  const takeId = (event as { selectedTakeId?: string }).selectedTakeId;
+  if (typeof takeId === "string" && takeId.length > 0 && !REAL_SUNO_TAKE_ID.test(takeId)) {
+    return true;
+  }
+  const urls = (event as { urls?: unknown }).urls;
+  return Array.isArray(urls) && urls.length > 0 && urls.every((url) => typeof url === "string" && /\/song\/take-\d+\b/.test(url));
+}
+
+export async function appendFailedNotifySyntheticSkipRecord(
+  root: string,
+  source: FailedNotifyEntry,
+  input: { now?: Date } = {}
+): Promise<FailedNotifyEntry> {
+  const takeId = (source.eventPayload as { selectedTakeId?: string }).selectedTakeId ?? "unknown";
+  const entry: FailedNotifyEntry = {
+    ...source,
+    status: "aged_out",
+    replayedAt: (input.now ?? new Date()).toISOString(),
+    replayError: `failed_notify_replay_synthetic_take:${takeId}`
+  };
+  return appendFailedNotifyEntry(root, entry);
+}

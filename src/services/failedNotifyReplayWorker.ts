@@ -2,9 +2,11 @@ import type { AiReviewProvider } from "../types.js";
 import {
   appendFailedNotifyAgedOutRecord,
   appendFailedNotifyReplayRecord,
+  appendFailedNotifySyntheticSkipRecord,
   appendFailedNotifyTerminalSkipRecord,
   type FailedNotifyEntry,
   isCriticalNotificationEvent,
+  isSyntheticTakeNotification,
   readFailedNotifyEntries,
   terminalReplaySongStatus
 } from "./failedNotifyLedger.js";
@@ -28,6 +30,7 @@ export interface FailedNotifyReplayResult {
   failed: number;
   agedOut: number;
   terminalSkipped: number;
+  syntheticSkipped: number;
   skipped: number;
   deliveryIds: string[];
 }
@@ -96,12 +99,22 @@ export async function replayFailedNotificationsOnce(options: FailedNotifyReplayW
     failed: 0,
     agedOut: 0,
     terminalSkipped: 0,
+    syntheticSkipped: 0,
     skipped: 0,
     deliveryIds: []
   };
   for (const entry of candidates) {
     const deliveryId = deliveryIdFor(entry);
     result.deliveryIds.push(deliveryId);
+    // Retire take notifications carrying a synthetic placeholder take (non-UUID id
+    // like "take-1") regardless of song status: these are degenerate events that
+    // resurface forever on every replay tick before the song reaches terminal
+    // (song-018 zombie). Marked aged_out so they drop out of candidates.
+    if (isSyntheticTakeNotification(entry.eventPayload as RuntimeEvent)) {
+      await appendFailedNotifySyntheticSkipRecord(options.root, entry, { now });
+      result.syntheticSkipped += 1;
+      continue;
+    }
     // Retire notifications whose song is already terminal instead of re-delivering a stale
     // notice every tick (song-018 zombie). Marked aged_out so it drops out of candidates.
     const terminalStatus = await terminalReplaySongStatus(options.root, entry.songId);
