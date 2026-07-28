@@ -1,7 +1,7 @@
 import { mkdtemp, readFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { ensureArtistWorkspace } from "../src/services/artistWorkspace.js";
 import { appendRuntimeEvent } from "../src/services/runtimeEventsLedger.js";
 import { writeAutopilotRunState } from "../src/services/autopilotService.js";
@@ -18,6 +18,18 @@ function telegramOk(): Response {
     json: async () => ({ ok: true, result: { message_id: 7, chat: { id: 123 }, text: "ok" } })
   } as Response;
 }
+
+// Models the intermittent api.telegram.org connect timeout this Mac hits
+// (UND_ERR_CONNECT_TIMEOUT / ETIMEDOUT): fetch throws before any HTTP response.
+function transientNetworkError(): Error {
+  const error = new Error("fetch failed");
+  (error as { cause?: unknown }).cause = { code: "ETIMEDOUT" };
+  return error;
+}
+
+afterEach(() => {
+  vi.unstubAllEnvs();
+});
 
 // Built from local components so the local-calendar-day key is deterministic
 // regardless of the machine timezone the test runs in.
@@ -121,5 +133,50 @@ describe("producer daily digest", () => {
     expect(text).toContain("完成したテイク: 2 曲");
     expect(text).toContain("ブロッカー/要対応: 1 件");
     expect(text).toContain("待ち: waiting for Suno result import");
+  });
+
+  it("does not abandon the day when a send fails: no marker is written, so the next tick retries and only then dedups", async () => {
+    const root = await mkdtemp(join(tmpdir(), "artist-runtime-digest-retry-"));
+    await ensureArtistWorkspace(root);
+    // Fail fast without backoff sleeps; the intermittent Telegram outage is what we model.
+    vi.stubEnv("OPENCLAW_TELEGRAM_RETRY_MAX", "1");
+    const markerFile = join(root, "runtime", "producer-digest-last-sent.txt");
+    const fetchImpl = vi
+      .fn()
+      .mockRejectedValueOnce(transientNetworkError())
+      .mockResolvedValue(telegramOk());
+
+    // First tick: the send throws. The day is NOT abandoned — no marker is written,
+    // so a later tick can retry.
+    await expect(
+      sendProducerDigestOnce({ root, token: "token", chatIds: [123], mode: "daily", fetchImpl, now: NOW })
+    ).rejects.toThrow();
+    await expect(readFile(markerFile, "utf8")).rejects.toThrow();
+    expect(fetchImpl).toHaveBeenCalledTimes(1);
+
+    // Next tick, same day, network recovered: delivers and records the marker.
+    const recovered = await sendProducerDigestOnce({
+      root,
+      token: "token",
+      chatIds: [123],
+      mode: "daily",
+      fetchImpl,
+      now: SAME_DAY_LATER
+    });
+    expect(recovered).toMatchObject({ delivered: true, dateKey: "2026-07-27" });
+    expect(fetchImpl).toHaveBeenCalledTimes(2);
+    expect((await readFile(markerFile, "utf8")).trim()).toBe("2026-07-27");
+
+    // Once delivered, further same-day ticks dedup — exactly one digest per day.
+    const dedup = await sendProducerDigestOnce({
+      root,
+      token: "token",
+      chatIds: [123],
+      mode: "daily",
+      fetchImpl,
+      now: SAME_DAY_LATER
+    });
+    expect(dedup).toMatchObject({ delivered: false, skipped: "dedup" });
+    expect(fetchImpl).toHaveBeenCalledTimes(2);
   });
 });
