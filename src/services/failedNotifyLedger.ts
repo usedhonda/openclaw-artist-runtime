@@ -45,6 +45,10 @@ const CRITICAL_NOTIFY_EVENTS: ReadonlySet<RuntimeEvent["type"]> = new Set([
   "suno_generate_retry",
   "suno_generate_failed",
   "suno_hard_stop",
+  // A captcha human-assist alert must reach the producer even if Telegram is mid-connect
+  // when it fires (boot race lost the 2026-07-28 spawn_cc1049 alert): make it replay-critical
+  // so the worker re-delivers it until it lands (or the terminal-song skip retires it).
+  "suno_human_assist_requested",
   "take_selection_stalled",
   "asset_generation_stalled",
   "producer_decision_reminder",

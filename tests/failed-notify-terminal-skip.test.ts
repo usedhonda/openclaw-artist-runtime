@@ -6,6 +6,7 @@ import { ensureArtistWorkspace } from "../src/services/artistWorkspace.js";
 import { ensureSongState, updateSongState } from "../src/services/artistState.js";
 import {
   appendFailedNotification,
+  isCriticalNotificationEvent,
   latestFailedNotifyEntry,
   listUnreplayedFailedNotifications,
   terminalReplaySongStatus
@@ -98,6 +99,16 @@ describe("failed-notify replay terminal-song skip", () => {
     });
     expect(fetchImpl).toHaveBeenCalled();
     expect(await latestFailedNotifyEntry(root, failed.notifyId)).toMatchObject({ status: "replayed" });
+  });
+
+  it("treats a captcha human-assist alert as replay-critical so a boot-race failure survives", () => {
+    expect(isCriticalNotificationEvent({
+      type: "suno_human_assist_requested",
+      songId: "song-live",
+      title: "Route 145",
+      timeoutMinutes: 60,
+      timestamp: 1785000000000
+    })).toBe(true);
   });
 
   it("terminalReplaySongStatus resolves terminal status and ignores active/missing songs", async () => {

@@ -14,12 +14,16 @@ import {
 } from "../../services/sunoHumanAssist.js";
 import { emitRuntimeEvent } from "../../services/runtimeEventBus.js";
 import { CdpHumanAssistDriver } from "../../services/cdpHumanAssistDriver.js";
+import { findTakeAttributionCollisions } from "../../services/takeAttributionGuard.js";
 import type { SunoConnector } from "./SunoConnector.js";
 
 // The CLI connector reason for a captcha-blocked create (EXIT_REASONS[31]). Only this
 // reason triggers the human-assist fallback; every other failure keeps its own routing.
 export const CLI_BLOCKED_CAPTCHA_REASON = "suno_cli_blocked_captcha";
 export const HUMAN_ASSIST_CREATED_REASON = "suno_human_assist_created";
+// Every harvested take URL was already attributed to another song — a DOM harvest
+// cross-card mis-map, not a real create. Surfaced as a non-accepted (retry-able) reason.
+export const HUMAN_ASSIST_CROSS_SONG_REJECTED_REASON = "suno_human_assist_cross_song_rejected";
 
 export interface HumanAssistDriverInput {
   payload: SunoCreatePayload;
@@ -31,6 +35,11 @@ export interface HumanAssistConnectorDeps {
   timeoutMs: number;
   driverFactory: (input: HumanAssistDriverInput) => HumanAssistBrowserDriver;
   notifier: HumanAssistNotifier;
+  // Given the harvested take URLs, return only those NOT already attributed to another
+  // song. When omitted, all harvested URLs pass through (used by tests without workspace
+  // state). The production wiring backs this with findTakeAttributionCollisions so a
+  // cross-song DOM leak never becomes an accepted run.
+  filterCrossSongTakeUrls?: (songId: string, urls: string[]) => Promise<string[]>;
 }
 
 function readText(value: unknown): string | undefined {
@@ -83,12 +92,32 @@ export class HumanAssistSunoConnector implements SunoConnector {
     });
 
     if (outcome.status === "accepted") {
+      const harvested = outcome.urls ?? [];
+      const cleanUrls = this.deps.filterCrossSongTakeUrls
+        ? await this.deps.filterCrossSongTakeUrls(songId, harvested)
+        : harvested;
+      // A DOM harvest can title-scope to the created song yet walk to a neighbouring
+      // card's thumbnail, yielding another song's take id (2026-07-28 spawn_cc1049
+      // grabbed Crossing Selloff's take 81132230). If EVERY harvested URL belongs to
+      // another song, this was not a real create: reject as non-accepted so no
+      // misattributed run is recorded and the downstream attribution guard never has to
+      // hard-stop the lane — the autopilot retries for a genuine take.
+      if (harvested.length > 0 && cleanUrls.length === 0) {
+        emitRuntimeEvent({
+          type: "error",
+          source: "suno_human_assist",
+          reason: `cross_song_take_rejected: ${harvested.join(", ")}`,
+          songId,
+          timestamp: Date.now()
+        });
+        return { accepted: false, runId: result.runId, reason: HUMAN_ASSIST_CROSS_SONG_REJECTED_REASON, urls: [] };
+      }
       return {
         accepted: true,
         runId: result.runId,
         reason: HUMAN_ASSIST_CREATED_REASON,
-        urls: outcome.urls,
-        pendingTakeUrl: outcome.urls.find(Boolean)
+        urls: cleanUrls,
+        pendingTakeUrl: cleanUrls.find(Boolean)
       };
     }
     if (outcome.status === "timeout") {
@@ -125,9 +154,21 @@ export function createHumanAssistSunoConnector(
   config?: Partial<ArtistRuntimeConfig>
 ): HumanAssistSunoConnector {
   const timeoutMinutes = config?.music?.suno?.humanAssistTimeoutMinutes ?? 60;
+  const workspaceRoot = config?.artist?.workspaceRoot;
   return new HumanAssistSunoConnector(inner, {
     timeoutMs: timeoutMinutes * 60_000,
     driverFactory: ({ payload }) => new CdpHumanAssistDriver({ payload, config }),
-    notifier: createHumanAssistNotifier(timeoutMinutes)
+    notifier: createHumanAssistNotifier(timeoutMinutes),
+    filterCrossSongTakeUrls: async (songId, urls) => {
+      if (!workspaceRoot || urls.length === 0) {
+        return urls;
+      }
+      const collisions = await findTakeAttributionCollisions(workspaceRoot, songId, urls).catch(() => []);
+      if (collisions.length === 0) {
+        return urls;
+      }
+      const colliding = new Set(collisions.map((collision) => collision.url));
+      return urls.filter((url) => !colliding.has(url));
+    }
   });
 }

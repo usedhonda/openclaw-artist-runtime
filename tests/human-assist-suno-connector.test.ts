@@ -3,7 +3,8 @@ import {
   HumanAssistSunoConnector,
   createHumanAssistNotifier,
   CLI_BLOCKED_CAPTCHA_REASON,
-  HUMAN_ASSIST_CREATED_REASON
+  HUMAN_ASSIST_CREATED_REASON,
+  HUMAN_ASSIST_CROSS_SONG_REJECTED_REASON
 } from "../src/connectors/suno/humanAssistSunoConnector";
 import { HUMAN_ASSIST_TIMEOUT_REASON, type HumanAssistBrowserDriver } from "../src/services/sunoHumanAssist";
 import { getRuntimeEventBus, type RuntimeEvent } from "../src/services/runtimeEventBus";
@@ -129,6 +130,50 @@ describe("HumanAssistSunoConnector", () => {
     expect(result.accepted).toBe(false);
     expect(result.reason).toBe(HUMAN_ASSIST_TIMEOUT_REASON);
     expect(result.urls).toEqual([]);
+  });
+
+  it("rejects (does not accept) when every harvested take URL belongs to another song", async () => {
+    const { connector } = innerReturning({ accepted: false, runId: "run-1", reason: CLI_BLOCKED_CAPTCHA_REASON, urls: [] });
+    const events: RuntimeEvent[] = [];
+    const unsubscribe = getRuntimeEventBus().subscribe((event) => events.push(event));
+    // Both harvested URLs collide with another song -> filter returns [].
+    const decorated = new HumanAssistSunoConnector(connector, {
+      timeoutMs: 1000,
+      driverFactory: () => stubDriver("machine_accepted"),
+      notifier: notifierSpy,
+      filterCrossSongTakeUrls: async () => []
+    });
+
+    const result = await decorated.create(request);
+    unsubscribe();
+
+    expect(result.accepted).toBe(false);
+    expect(result.reason).toBe(HUMAN_ASSIST_CROSS_SONG_REJECTED_REASON);
+    expect(result.urls).toEqual([]);
+    expect(events).toContainEqual(expect.objectContaining({
+      type: "error",
+      source: "suno_human_assist",
+      reason: expect.stringContaining("cross_song_take_rejected")
+    }));
+  });
+
+  it("accepts only the non-cross-song harvested URLs when the leak is partial", async () => {
+    const { connector } = innerReturning({ accepted: false, runId: "run-1", reason: CLI_BLOCKED_CAPTCHA_REASON, urls: [] });
+    const genuine = "https://suno.com/song/aaaaaaaaaaaaaaaa";
+    const decorated = new HumanAssistSunoConnector(connector, {
+      timeoutMs: 1000,
+      driverFactory: () => stubDriver("machine_accepted"),
+      notifier: notifierSpy,
+      // Drop the second (cross-song) URL, keep the genuine one.
+      filterCrossSongTakeUrls: async (_songId, urls) => urls.filter((url) => url === genuine)
+    });
+
+    const result = await decorated.create(request);
+
+    expect(result.accepted).toBe(true);
+    expect(result.reason).toBe(HUMAN_ASSIST_CREATED_REASON);
+    expect(result.urls).toEqual([genuine]);
+    expect(result.pendingTakeUrl).toBe(genuine);
   });
 });
 
