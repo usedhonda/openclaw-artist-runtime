@@ -1,3 +1,5 @@
+import type { TempoBand } from "./suno-production/durationPlan.js";
+
 export const producerDigestModes = ["off", "daily", "important_events", "high_touch"] as const;
 export const sunoConnectionModes = ["manual_copy", "background_browser_worker", "api_provider"] as const;
 export const sunoDriverModes = ["mock", "playwright", "suno_cli"] as const;
@@ -1054,6 +1056,7 @@ export interface CreateSunoPromptPackInput {
   knowledgePackVersion?: string;
   moodHint?: string;
   bpm?: number;
+  tempoBand?: TempoBand;
   vocalGender?: "male" | "female" | "neutral";
   styleVariationSeed?: string;
   weirdnessOverride?: number;
