@@ -26,7 +26,7 @@ import { emitRuntimeEvent } from "./runtimeEventBus.js";
 import { SunoBrowserWorker } from "./sunoBrowserWorker.js";
 import { extractSunoTakeId } from "./takeAttributionGuard.js";
 import { collectSunoTakeUrls, EXPECTED_SUNO_TAKE_URLS } from "./sunoTakeUrls.js";
-import { getDurationPlan } from "../suno-production/durationPlan.js";
+import { getDurationPlan, resolveTempoBandFromBrief } from "../suno-production/durationPlan.js";
 
 export interface GenerateSunoRunInput {
   workspaceRoot: string;
@@ -383,7 +383,10 @@ export async function importSunoResults(input: ImportSunoResultsInput): Promise<
     .catch(() => undefined);
   const previousTelemetry = previousRun?.lyricsTelemetry;
   const durationSec = generatedDurationSec(input.metadata);
-  const durationPlan = getDurationPlan();
+  // Compare against the song's own tempo-band target, since fast bands target a
+  // shorter runtime than the default mid plan.
+  const briefText = await readFile(join(input.workspaceRoot, "songs", input.songId, "brief.md"), "utf8").catch(() => "");
+  const durationPlan = getDurationPlan(resolveTempoBandFromBrief(briefText));
   const durationDeltaSec = durationSec === undefined ? undefined : durationSec - durationPlan.targetSeconds;
   const resultsDir = join(input.workspaceRoot, "songs", input.songId, "suno");
   const latestResultsPath = join(resultsDir, "latest-results.json");

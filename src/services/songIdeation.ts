@@ -170,9 +170,11 @@ export interface CreateSongIdeaInput {
   observationPath?: string;
 }
 
-// Choose the song's tempo band. An explicit band wins; otherwise the existing
-// dopagaki variation decision drives the fast band so a high-stimulus song is no
-// longer forced to 108 BPM. Non-dopagaki songs stay on the default mid template.
+// Choose the song's tempo band. An explicit band wins. Per producer direction
+// the center of gravity is fast: the everyday song sits on a fast band, so the
+// mechanical default is "up" with the dopagaki variation lifting it to the
+// high-speed "dopagaki" band. Slower bands (mid/slow) and the hyper-fast "super"
+// band are occasional changes the artist selects explicitly.
 function chooseTempoBand(input: CreateSongIdeaInput, songId: string, briefText: string): TempoBand {
   if (input.tempoBand) {
     return input.tempoBand;
@@ -182,7 +184,7 @@ function chooseTempoBand(input: CreateSongIdeaInput, songId: string, briefText: 
     observationText: input.observationText,
     briefText
   });
-  return decision.active ? "dopagaki" : "mid";
+  return decision.active ? "dopagaki" : "up";
 }
 
 export async function createSongIdea(input: CreateSongIdeaInput): Promise<SongIdeaResult> {

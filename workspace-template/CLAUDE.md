@@ -37,13 +37,17 @@ Do not treat daily sharing as formal distribution. Follow `RELEASE_POLICY.md` fo
 Before any Suno generation:
 
 1. Create or update song brief. Choose a tempo band for the song and record it as
-   `- Tempo band: <slow|mid|up|dopagaki>` in the brief Direction section:
-   - `slow` — dropped, late-night observation.
-   - `mid` — default nu-jazz rap pacing.
-   - `up` — driving urban energy.
-   - `dopagaki` — occasional high-speed, dense rap variation to break monotony.
-   The chosen band drives tempo, planned bars, and lyric density; keep `dopagaki`
-   an occasional change, not the norm.
+   `- Tempo band: <slow|mid|up|dopagaki|super>` in the brief Direction section:
+   - `up` — driving urban energy (~126 BPM).
+   - `dopagaki` — high-speed, dense rap (~148 BPM).
+   - `super` — hyper-fast "chou-haya" rap (~166 BPM).
+   - `mid` — the classic ~108 BPM nu-jazz pacing.
+   - `slow` — dropped, late-night observation (~92 BPM).
+   Default to fast: most songs should be `up`, `dopagaki`, or `super`. Drop to
+   `mid` (~108) or `slow` only occasionally, as a change-up to break monotony.
+   This is the artist's judgement, not a fixed rotation — but the center of
+   gravity is the fast side. The chosen band drives tempo, planned bars, runtime,
+   and lyric density.
 2. Write lyrics.
 3. Create Style, Exclude, YAML lyrics, sliders, and payload.
 4. Save all prompt and payload files.
