@@ -4,7 +4,8 @@ import type { ArtistRuntimeConfig, ObservationSummary, SongIdeaResult } from "..
 import { ensureSongState, readArtistMind, updateSongState, writeSongBrief } from "./artistState.js";
 import { ensureArtistWorkspace } from "./artistWorkspace.js";
 import { appendPromptLedger, createPromptLedgerEntry, getSongPromptLedgerPath } from "./promptLedger.js";
-import { AGGRESSIVE_ARTIST_MOOD } from "./creativeVariationPolicy.js";
+import { AGGRESSIVE_ARTIST_MOOD, decideDopagakiVariation } from "./creativeVariationPolicy.js";
+import type { TempoBand } from "../suno-production/durationPlan.js";
 
 function titleCase(value: string): string {
   return value
@@ -123,7 +124,7 @@ export function extractObservationSummary(observationText?: string, motivation?:
   };
 }
 
-function buildBrief(title: string, theme: string, artistReason: string, observationText?: string, observationPath?: string): string {
+function buildBrief(title: string, theme: string, artistReason: string, tempoBand: TempoBand, observationText?: string, observationPath?: string): string {
   const lines = [
     `# Brief for ${title}`,
     "",
@@ -136,6 +137,7 @@ function buildBrief(title: string, theme: string, artistReason: string, observat
     `- Core theme: ${theme}`,
     `- Artist reason: ${artistReason}`,
     `- Mood: ${AGGRESSIVE_ARTIST_MOOD}`,
+    `- Tempo band: ${tempoBand}`,
     "- Keep the images concrete and the chorus short"
   ];
   const observation = excerpt(observationText);
@@ -163,8 +165,24 @@ export interface CreateSongIdeaInput {
   title?: string;
   artistReason?: string;
   theme?: string;
+  tempoBand?: TempoBand;
   observationText?: string;
   observationPath?: string;
+}
+
+// Choose the song's tempo band. An explicit band wins; otherwise the existing
+// dopagaki variation decision drives the fast band so a high-stimulus song is no
+// longer forced to 108 BPM. Non-dopagaki songs stay on the default mid template.
+function chooseTempoBand(input: CreateSongIdeaInput, songId: string, briefText: string): TempoBand {
+  if (input.tempoBand) {
+    return input.tempoBand;
+  }
+  const decision = decideDopagakiVariation({
+    songId,
+    observationText: input.observationText,
+    briefText
+  });
+  return decision.active ? "dopagaki" : "mid";
 }
 
 export async function createSongIdea(input: CreateSongIdeaInput): Promise<SongIdeaResult> {
@@ -175,7 +193,8 @@ export async function createSongIdea(input: CreateSongIdeaInput): Promise<SongId
   const title = input.title?.trim() || buildTitle(theme, sequence);
   const songId = `song-${String(sequence).padStart(3, "0")}`;
   const artistReason = artistReasonVoice(theme, input.artistReason ?? `caught on ${theme}`);
-  const briefText = buildBrief(title, theme, artistReason, input.observationText, input.observationPath);
+  const tempoBand = chooseTempoBand(input, songId, `${theme}\n${artistReason}`);
+  const briefText = buildBrief(title, theme, artistReason, tempoBand, input.observationText, input.observationPath);
   const observationSummary = extractObservationSummary(input.observationText, artistReason);
   const observationInputRef = input.observationText?.trim() ? observationRef(input.workspaceRoot, input.observationPath) : undefined;
   const inputRefs = ["ARTIST.md", "artist/CURRENT_STATE.md", observationInputRef].filter(Boolean) as string[];

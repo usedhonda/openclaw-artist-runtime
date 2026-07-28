@@ -1,7 +1,10 @@
 import { KNOWLEDGE_BUNDLE, type KnowledgeFile } from "../suno-production/knowledge-bundle.js";
 import {
   formatDurationPlanForPrompt,
-  getDurationPlan
+  getDurationPlan,
+  minimumBareLyricsChars,
+  minimumBareLyricsLines,
+  type DurationPlan
 } from "../suno-production/durationPlan.js";
 import type { LyricsLanguagePolicy } from "./lyricsLanguagePolicy.js";
 import {
@@ -54,6 +57,7 @@ export interface BuildLyricsPromptInput {
   artistName?: string;
   languagePolicy?: LyricsLanguagePolicy;
   dopagakiVariation?: DopagakiVariationDecision;
+  durationPlan?: DurationPlan;
 }
 
 function truncate(value: string, max = 8000): string {
@@ -109,7 +113,9 @@ export async function readLyricsKnowledgeDigest(): Promise<string> {
 export function buildLyricsDraftingPrompt(input: BuildLyricsPromptInput): string {
   const lyricsBoxLimit = input.lyricsBoxLimit ?? 4800;
   const lyricBodyLimit = input.lyricBodyLimit ?? Math.max(200, Math.min(3400, lyricsBoxLimit - 900));
-  const durationPlan = getDurationPlan();
+  const durationPlan = input.durationPlan ?? getDurationPlan();
+  const minBareChars = minimumBareLyricsChars(durationPlan);
+  const minBareLines = minimumBareLyricsLines(durationPlan);
   const artistName = input.artistName?.trim() || "the configured artist";
   const languagePolicy = input.languagePolicy;
   const sourceDigest = sourceDigestFromBrief(input.briefText);
@@ -138,7 +144,7 @@ export function buildLyricsDraftingPrompt(input: BuildLyricsPromptInput): string
     "Every section tag must include an annotation after the section name. Do not place commands outside tags. Do not name existing artists or songs. Do not reuse title kanji directly in hook or refrain lines; convert any title phrase used inside lyrics to hiragana.",
     `Suno lyrics box limit: ${lyricsBoxLimit} characters total, including YAML META, marker lines, section tags, lyrics, and blank lines.`,
     `Length budget: total lyric body (joined section lines + tag overhead, before YAML META) must stay within ${lyricBodyLimit} characters. Do not exceed this budget; leave room for the YAML META layer. A short, complete lyric is better than text that Suno silently truncates.`,
-    "Minimum useful density: avoid tiny drafts. For the default 80-bar DurationPlan, stay above the enforced 1200-character / 52-line bare-lyrics floor and target 2800-3400 lyric-body characters when the Suno box allows it; rap/trap/drill should not come back as a sparse sketch.",
+    `Minimum useful density: avoid tiny drafts. For this ${durationPlan.totalPlannedBars}-bar DurationPlan, stay above the enforced ${minBareChars}-character / ${minBareLines}-line bare-lyrics floor and target 2800-3400 lyric-body characters when the Suno box allows it; rap/trap/drill should not come back as a sparse sketch.`,
     "",
     "DurationPlan SoT (overrides any older source text that asks for compact section cues or shorter forms):",
     formatDurationPlanForPrompt(durationPlan),

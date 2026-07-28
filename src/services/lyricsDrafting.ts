@@ -12,7 +12,7 @@ import { buildLyricsDraftingPrompt, readLyricsKnowledgeDigest } from "./lyricsDr
 import { parseLyricsLanguagePolicy } from "./lyricsLanguagePolicy.js";
 import { getArtistIdentity, getSunoLyricsLimit } from "./runtimeConfig.js";
 import { decideDopagakiVariation } from "./creativeVariationPolicy.js";
-import { getDurationPlan, minimumBareLyricsChars, minimumBareLyricsLines } from "../suno-production/durationPlan.js";
+import { getDurationPlan, minimumBareLyricsChars, minimumBareLyricsLines, resolveTempoBand } from "../suno-production/durationPlan.js";
 import { appendCreativeQualityEntry, computeDissBankHits } from "./creativeQualityLedger.js";
 
 export interface DraftLyricsInput {
@@ -120,6 +120,29 @@ function mockStructuredDraft(title: string, briefText: string): string {
     "こわれたまちでもまだうたう",
     "はくしゅのあとでほこりがたつ"
   ];
+  // Dense bands (e.g. dopagaki) raise the DurationPlan line floor above the base
+  // mock size. repairLineCount caps each section post-repair (verse max 21,
+  // hook / pre-hook max 6 because "Pre-Hook" matches the hook bound, bridge 3,
+  // intro/outro 1), so pad only the verses and pre-hooks up to their real caps
+  // to clear the selected plan's floor without ballooning the lyric body past
+  // the Suno box budget. mid/slow bands already clear their floor from the base
+  // draft, so this loop leaves them untouched.
+  const draftPlan = getDurationPlan(resolveTempoBand(briefText));
+  const padTargets = [
+    { lines: verseOneLines, cap: 21 },
+    { lines: verseTwoLines, cap: 21 },
+    { lines: prehookOneLines, cap: 6 },
+    { lines: prehookTwoLines, cap: 6 }
+  ];
+  const fixedLines = 1 + hookLines.length * 2 + Math.min(bridgeLines.length, 3) + (hookLines.length + 1) + 1;
+  const countedPadded = () => padTargets.reduce((sum, target) => sum + Math.min(target.lines.length, target.cap), 0);
+  const targetLines = minimumBareLyricsLines(draftPlan);
+  for (let index = 0; fixedLines + countedPadded() < targetLines && index < 400; index += 1) {
+    const target = padTargets[index % padTargets.length];
+    if (target.lines.length < target.cap) {
+      target.lines.push(`よるのノイズがまだきえないから${index}`);
+    }
+  }
   return [
     "{",
     `  "title": ${safeTitle},`,
@@ -218,9 +241,9 @@ async function composeLyricsDraft(input: DraftLyricsInput, title: string, briefT
   const languagePolicy = parseLyricsLanguagePolicy(mind.artist);
   const lyricsBoxLimit = getSunoLyricsLimit();
   const lyricBodyLimit = lyricBodyLimitForSunoBox(lyricsBoxLimit);
-  const durationPlan = getDurationPlan();
-  const minimumBareChars = minimumBareLyricsChars();
-  const minimumBareLines = minimumBareLyricsLines();
+  const durationPlan = getDurationPlan(resolveTempoBand(briefText));
+  const minimumBareChars = minimumBareLyricsChars(durationPlan);
+  const minimumBareLines = minimumBareLyricsLines(durationPlan);
   const dopagakiVariation = decideDopagakiVariation({
     songId: input.songId,
     briefText
@@ -238,7 +261,8 @@ async function composeLyricsDraft(input: DraftLyricsInput, title: string, briefT
       lyricBodyLimit,
       artistName: identity.artistName,
       languagePolicy,
-      dopagakiVariation
+      dopagakiVariation,
+      durationPlan
     });
     assertSafe("input", prompt);
     const raw = provider === "mock" ? mockStructuredDraft(title, briefText) : await callAiProvider(prompt, { provider });

@@ -6,7 +6,7 @@ import {
   CANONICAL_STYLE_HARD_MAX_CHARS,
   CANONICAL_STYLE_TARGET_MAX_CHARS
 } from "../suno-production/buildStyle.js";
-import { getDurationPlan } from "../suno-production/durationPlan.js";
+import { getDurationPlanByTemplateId } from "../suno-production/durationPlan.js";
 
 function sunoLyricsBoxLimit(): number {
   return getSunoLyricsLimit();
@@ -38,7 +38,8 @@ function validateDurationPlanStructure(payloadYaml: string, warnings: string[]):
   if (!payloadYaml.includes("duration_plan:") && !payloadYaml.includes("LYRICS START")) {
     return;
   }
-  const plan = getDurationPlan();
+  const templateId = payloadYaml.match(/^\s*template:\s*(\S+)\s*$/m)?.[1];
+  const plan = getDurationPlanByTemplateId(templateId);
   const lyrics = extractLyricsBody(payloadYaml);
   const labels = headerLabels(lyrics);
   const sectionCount = labels.length;

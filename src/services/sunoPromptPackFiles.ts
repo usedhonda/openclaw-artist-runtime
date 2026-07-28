@@ -6,6 +6,7 @@ import { ensureArtistWorkspace, readArtistSnapshots } from "./artistWorkspace.js
 import { readSongState, updateSongState } from "./artistState.js";
 import { appendPromptLedger, createPromptLedgerEntry, getSongPromptLedgerPath } from "./promptLedger.js";
 import { createSunoPromptPack, createSunoPromptPackWithAi } from "../suno-production/generatePromptPack.js";
+import { resolveTempoBand } from "../suno-production/durationPlan.js";
 import { extractObservationSummary } from "./songIdeation.js";
 import { emitRuntimeEvent } from "./runtimeEventBus.js";
 
@@ -138,6 +139,7 @@ export async function createAndPersistSunoPromptPack(input: PersistSunoPromptPac
   const promptPackInput = {
     ...input,
     bpm: input.bpm ?? parseBpmFromBriefTempo(readBriefTempo(briefText)),
+    tempoBand: input.tempoBand ?? resolveTempoBand(briefText),
     artistSnapshot: input.artistSnapshot || artistSnapshot,
     currentStateSnapshot: input.currentStateSnapshot || currentStateSnapshot
   };

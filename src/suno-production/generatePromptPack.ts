@@ -92,7 +92,7 @@ export function createSunoPromptPack(input: CreateSunoPromptPackInput): SunoProm
   const originalLyricsText = repairCommandLeak(input.lyricsText).trim();
   const lyricsText = normalizeSunoRegistrationJapanese(originalLyricsText);
   const genre = `${input.artistReason} ${input.moodHint ?? ""}`;
-  const durationPlan = getDurationPlan();
+  const durationPlan = getDurationPlan(input.tempoBand);
   const bpm = input.bpm ?? durationPlan.bpm.target;
   const vocalGender = input.vocalGender ?? artistDefaultVocalGender(input.artistSnapshot);
   const languagePolicy = parseLyricsLanguagePolicy(input.artistSnapshot);
@@ -132,7 +132,9 @@ export function createSunoPromptPack(input: CreateSunoPromptPackInput): SunoProm
       rules: [
         "keep doubles restrained and intelligible",
         "let consonants stay forward over bass movement",
-        "no double-time vocal; leave breath between lines"
+        durationPlan.bpm.noDoubleTimeVocal
+          ? "no double-time vocal; leave breath between lines"
+          : "double-time bursts allowed on the densest verse and hook bars; keep consonants intelligible"
       ]
     },
     production_notes: [
@@ -190,7 +192,7 @@ export async function createSunoPromptPackWithAi(
   const originalLyricsText = repairCommandLeak(input.lyricsText).trim();
   const lyricsText = normalizeSunoRegistrationJapanese(originalLyricsText);
   const genre = `${input.artistReason} ${input.moodHint ?? ""}`;
-  const durationPlan = getDurationPlan();
+  const durationPlan = getDurationPlan(input.tempoBand);
   const bpm = input.bpm ?? durationPlan.bpm.target;
   const vocalGender = input.vocalGender ?? artistDefaultVocalGender(input.artistSnapshot);
   const languagePolicy = parseLyricsLanguagePolicy(input.artistSnapshot);
@@ -229,7 +231,9 @@ export async function createSunoPromptPackWithAi(
       rules: [
         "keep doubles restrained and intelligible",
         "let consonants stay forward over bass movement",
-        "no double-time vocal; leave breath between lines"
+        durationPlan.bpm.noDoubleTimeVocal
+          ? "no double-time vocal; leave breath between lines"
+          : "double-time bursts allowed on the densest verse and hook bars; keep consonants intelligible"
       ]
     },
     production_notes: [
