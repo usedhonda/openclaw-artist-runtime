@@ -1616,7 +1616,15 @@ export class ArtistAutopilotService {
       const latestRunForStall = song?.status === "suno_prompt_pack"
         ? await readLatestSunoRun(input.workspaceRoot, song.songId).catch(() => undefined)
         : undefined;
-      const needsCreateRedrive = latestRunForStall?.status === "failed";
+      // A pre-prompt-pack song (idea/brief/lyrics -> stage prompt_pack) cannot legitimately own
+      // a lastSuccessfulStage="prompt_pack": that value is stale carryover from a previous song's
+      // run, because runId is reused across songs when a new song takes over as currentSong. The
+      // same-runId guard then held every tick and the pack was never built (2026-07-29 spawn_44e162
+      // sat 2h+ at status=brief emitting only idempotent_hold/safe_recovery). The prompt_pack stage
+      // is idempotent and spends no Suno credit, so re-drive it instead of holding.
+      const stalePromptPackCarryover =
+        stage === "prompt_pack" && song !== undefined && isPrePromptSongWithoutApprovalGate(song);
+      const needsCreateRedrive = latestRunForStall?.status === "failed" || stalePromptPackCarryover;
       if (!needsCreateRedrive) {
         emitIdempotentHoldOncePerDay(song?.songId ?? existing.currentSongId, stage);
         return writeStageState(input.workspaceRoot, existing, baseState);

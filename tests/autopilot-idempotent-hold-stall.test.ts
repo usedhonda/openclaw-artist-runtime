@@ -3,7 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { beforeEach, describe, expect, it } from "vitest";
 import { ensureArtistWorkspace } from "../src/services/artistWorkspace.js";
-import { ensureSongState, readSongState, updateSongState } from "../src/services/artistState.js";
+import { ensureSongState, readSongState, updateSongState, writeSongBrief } from "../src/services/artistState.js";
 import {
   ArtistAutopilotService,
   emitIdempotentHoldOncePerDay,
@@ -84,6 +84,49 @@ describe("autopilot idempotent-hold stall recovery", () => {
     // fix the create path runs; with the mock driver it imports takes and advances.
     expect(next.stage).toBe("take_selection");
     expect(await readSongState(root, "stall-song")).toMatchObject({ status: "takes_imported" });
+  }, 30_000);
+
+  // Reproduces the 2026-07-29 spawn_44e162 silent stall: a fresh producer-commissioned song sat
+  // at status=brief while the run state carried a previous song's runId and
+  // lastSuccessfulStage=prompt_pack. stageFromSong maps brief -> prompt_pack, so the same-runId
+  // guard held every tick and the pack was never built (only idempotent_hold/safe_recovery). A
+  // pre-prompt-pack song cannot own a completed prompt_pack, so the fix re-drives the (idempotent,
+  // credit-free) prompt_pack stage instead of holding.
+  it("self-heals a pre-prompt-pack song wedged by a stale cross-song lastSuccessfulStage=prompt_pack", async () => {
+    const root = mkdtempSync(join(tmpdir(), "artist-runtime-carryover-stall-"));
+    await ensureArtistWorkspace(root);
+    await ensureSongState(root, "carry-song", "Carry Song");
+    await writeSongBrief(root, "carry-song", "# Brief\n\n- Mood: cold");
+    await updateSongState(root, "carry-song", { status: "brief" });
+    await writeAutopilotRunState(root, {
+      // runId + lastSuccessfulStage carried over from a previous song's prompt_pack success.
+      runId: "carry-run",
+      currentSongId: "carry-song",
+      stage: "prompt_pack",
+      paused: false,
+      retryCount: 0,
+      cycleCount: 0,
+      updatedAt: new Date().toISOString(),
+      lastRunAt: new Date().toISOString(),
+      lastSuccessfulStage: "prompt_pack"
+      // No blockedReason / lastError: exactly the wedged shape.
+    });
+
+    const service = new ArtistAutopilotService();
+    const { events, unsubscribe } = subscribeIdempotentHolds();
+    try {
+      const next = await service.runCycle({
+        workspaceRoot: root,
+        config: { autopilot: { enabled: true, dryRun: true }, telegram: { enabled: false } }
+      });
+      // Before the fix this returned stage "prompt_pack" untouched (guard held) and emitted an
+      // idempotent-hold. After the fix the prompt_pack stage runs and advances to suno_generation.
+      expect(next.stage).toBe("suno_generation");
+      expect(await readSongState(root, "carry-song")).toMatchObject({ status: "suno_prompt_pack" });
+      expect(events).toHaveLength(0);
+    } finally {
+      unsubscribe();
+    }
   }, 30_000);
 
   // When the guard legitimately holds (song status maps to an already-successful stage that
