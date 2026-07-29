@@ -7,7 +7,7 @@ function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
 }
 
-// Resolve the stealth-augmented chromium launcher, preferring rebrowser-playwright.
+// Resolve the rebrowser-preferred chromium launcher for the Suno profile.
 //
 // A fixed non-zero --remote-debugging-port keeps navigator.webdriver=false, but that
 // alone does not pass Cloudflare Turnstile on suno.com/create: stock Playwright's CDP
@@ -16,14 +16,22 @@ function errorMessage(error: unknown): string {
 // rebrowser-playwright patches that leak (REBROWSER_PATCHES_RUNTIME_FIX_MODE=addBinding);
 // it is an OPTIONAL dependency, so when it is not installed we fall back to the stock
 // playwright-extra launcher and the plugin still runs (with the pre-fix detection risk).
-// puppeteer-extra-plugin-stealth is layered on top of whichever launcher we resolve.
-async function resolveStealthChromium(): Promise<{ use: (plugin: unknown) => void; launchPersistentContext: (...args: unknown[]) => Promise<BrowserContext> }> {
+//
+// We deliberately DO NOT layer puppeteer-extra-plugin-stealth here. Stealth's evasions inject
+// through `Page.addScriptToEvaluateOnNewDocument` and isolated worlds, which collide with
+// rebrowser-patches' addBinding Runtime fix and crash every create with
+// `cannot get world (Page.createIsolatedWorld / addScriptToEvaluateOnNewDocument): session
+// closed` — reproduced live 2026-07-30 on clean, unlocked profiles. The vendored suno-cli
+// captcha path (vendor/suno-cli/dist/src/browser/captcha.js `loadPlaywright`) runs
+// rebrowser-playwright ALONE under the same addBinding mode and passes Turnstile, so
+// rebrowser's own CDP patches — not stealth — are the load-bearing evasion.
+async function resolveSunoChromium(): Promise<{ launchPersistentContext: (...args: unknown[]) => Promise<BrowserContext> }> {
   if (!process.env.REBROWSER_PATCHES_RUNTIME_FIX_MODE) {
     process.env.REBROWSER_PATCHES_RUNTIME_FIX_MODE = "addBinding";
   }
   const playwrightExtra = (await import("playwright-extra")) as {
-    chromium: { use: (plugin: unknown) => void; launchPersistentContext: (...args: unknown[]) => Promise<BrowserContext> };
-    addExtra?: (launcher: unknown) => { use: (plugin: unknown) => void; launchPersistentContext: (...args: unknown[]) => Promise<BrowserContext> };
+    chromium: { launchPersistentContext: (...args: unknown[]) => Promise<BrowserContext> };
+    addExtra?: (launcher: unknown) => { launchPersistentContext: (...args: unknown[]) => Promise<BrowserContext> };
   };
   let chromium = playwrightExtra.chromium;
   try {
@@ -40,8 +48,6 @@ async function resolveStealthChromium(): Promise<{ use: (plugin: unknown) => voi
   } catch {
     // rebrowser-playwright is not installed; keep the stock playwright-extra launcher.
   }
-  const stealth = (await import("puppeteer-extra-plugin-stealth")).default;
-  chromium.use(stealth());
   return chromium;
 }
 
@@ -58,7 +64,7 @@ export async function launchSunoPersistentContext(
   profilePath: string,
   options: { extraArgs?: string[]; config?: SunoBrowserConfigView } = {}
 ): Promise<BrowserContext> {
-  const chromium = await resolveStealthChromium();
+  const chromium = await resolveSunoChromium();
   await mkdir(profilePath, { recursive: true });
   const executablePath = sunoChromeExecutablePath(options.config);
   const channel = executablePath ? undefined : sunoBrowserChannel(options.config);

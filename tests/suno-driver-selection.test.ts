@@ -130,7 +130,7 @@ describe("Suno driver selection", () => {
       args: ["--disable-blink-features=AutomationControlled", "--password-store=basic"],
       ignoreDefaultArgs: ["--enable-automation"]
     });
-    expect(chromiumMock.use).toHaveBeenCalledWith(stealthResult);
+    expect(chromiumMock.use).not.toHaveBeenCalled();
     expect(spawnMock).not.toHaveBeenCalled();
     expect(globalThis.fetch).not.toHaveBeenCalled();
   });

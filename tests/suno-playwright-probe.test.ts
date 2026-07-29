@@ -87,8 +87,8 @@ describe("PlaywrightSunoDriver probe", () => {
     const result = await driver.probe();
 
     expect(result.state).toBe("connected");
-    expect(stealthPluginMock).toHaveBeenCalledTimes(1);
-    expect(chromiumMock.use).toHaveBeenCalledWith(stealthResult);
+    expect(stealthPluginMock).not.toHaveBeenCalled();
+    expect(chromiumMock.use).not.toHaveBeenCalled();
     expect(page.goto).toHaveBeenCalledWith(SUNO_CREATE_URL, {
       waitUntil: "domcontentloaded",
       timeout: 20_000
@@ -113,7 +113,7 @@ describe("PlaywrightSunoDriver probe", () => {
       state: "login_required",
       detail: PLAYWRIGHT_DRIVER_LOGIN_REQUIRED_DETAIL
     });
-    expect(chromiumMock.use).toHaveBeenCalledWith(stealthResult);
+    expect(chromiumMock.use).not.toHaveBeenCalled();
     expect(context.close).toHaveBeenCalledTimes(1);
   });
 
@@ -126,7 +126,7 @@ describe("PlaywrightSunoDriver probe", () => {
 
     expect(result.state).toBe("disconnected");
     expect(result.detail).toContain("browser launch failed");
-    expect(chromiumMock.use).toHaveBeenCalledWith(stealthResult);
+    expect(chromiumMock.use).not.toHaveBeenCalled();
   });
 
   it("reinstalls Chromium and retries once on launch crash", async () => {
