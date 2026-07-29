@@ -1,4 +1,5 @@
 import { readFile } from "node:fs/promises";
+import { createServer } from "node:net";
 import { join } from "node:path";
 import type { BrowserContext } from "playwright";
 import { launchSunoPersistentContext } from "./sunoBrowserLaunch.js";
@@ -26,14 +27,39 @@ function sleep(ms: number): Promise<void> {
 }
 
 /**
+ * Reserve a free loopback TCP port and return its number. We bind ephemeral (:0),
+ * read the assigned port, then release it so Chromium can bind that exact port.
+ *
+ * Chromium must be launched with a FIXED, non-zero --remote-debugging-port:
+ * `--remote-debugging-port=0` makes Chromium set navigator.webdriver=true (documented
+ * behavior), which trips Cloudflare Turnstile so the invisible captcha never
+ * auto-passes. Any fixed non-zero port keeps navigator.webdriver=false (no
+ * --enable-automation is passed). Reserving avoids a hard-coded port colliding with an
+ * unrelated local process; the brief bind/close window before Chromium binds is
+ * tolerated by the fail-closed DevToolsActivePort wait in resolveCdpEndpoint.
+ */
+function reserveFreePort(): Promise<number> {
+  return new Promise((resolve, reject) => {
+    const server = createServer();
+    server.on("error", reject);
+    server.listen(0, "127.0.0.1", () => {
+      const address = server.address();
+      const port = typeof address === "object" && address ? address.port : 0;
+      server.close(() => (port > 0 ? resolve(port) : reject(new Error("suno_browser_no_free_port"))));
+    });
+  });
+}
+
+/**
  * Plugin-owned lifecycle for the single Suno browser.
  *
  * One headful persistent context (the operator's logged-in `suno` profile) is
- * launched with --remote-debugging-port=0. Chromium writes the real port to
- * <profile>/DevToolsActivePort, which we read to derive the CDP endpoint. That one
- * launch serves both the human-assist Playwright driver (via `context`) and the
- * suno-cli captcha mint (via `cdpEndpoint`), so there is no fixed 9222 port, no manual
- * start-chrome-cdp.sh, and no second profile.
+ * launched with a fixed, reserved non-zero --remote-debugging-port (see reserveFreePort;
+ * port 0 would set navigator.webdriver=true and trip Cloudflare Turnstile). Chromium
+ * writes the bound port to <profile>/DevToolsActivePort, which we read to derive the CDP
+ * endpoint and gate on browser readiness. That one launch serves both the human-assist
+ * Playwright driver (via `context`) and the suno-cli captcha mint (via `cdpEndpoint`),
+ * with no manual start-chrome-cdp.sh and no second profile.
  *
  * Reference-counted: every ensureRunning() holder must call release() exactly once; the
  * browser closes once the last holder releases (idle-close). A single in-flight launch
@@ -127,8 +153,11 @@ export class SunoBrowserService {
       return { cdpEndpoint: endpoint, context, attached: true };
     }
     const profilePath = sunoChromeProfileDest(config, env);
+    // Fixed non-zero port keeps navigator.webdriver=false (see reserveFreePort); port 0
+    // would set it true and defeat the invisible-captcha auto-pass on suno.com/create.
+    const debugPort = await reserveFreePort();
     const context = await launchSunoPersistentContext(profilePath, {
-      extraArgs: ["--remote-debugging-port=0"],
+      extraArgs: [`--remote-debugging-port=${debugPort}`],
       config
     });
     const cdpEndpoint = await this.resolveCdpEndpoint(profilePath, context);

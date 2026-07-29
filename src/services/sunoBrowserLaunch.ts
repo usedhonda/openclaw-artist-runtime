@@ -12,7 +12,8 @@ function errorMessage(error: unknown): string {
  * shared bundled-binary health check plus one reinstall-and-retry recovery. Extracted
  * verbatim from PlaywrightSunoDriver.openContext so the browser driver and the
  * plugin-owned SunoBrowserService both launch through one identical lane. extraArgs are
- * appended to the base sunoBrowserArgs (e.g. --remote-debugging-port=0 to expose CDP).
+ * appended to the base sunoBrowserArgs (e.g. a fixed non-zero --remote-debugging-port to
+ * expose CDP; port 0 must not be used as it sets navigator.webdriver=true).
  */
 export async function launchSunoPersistentContext(
   profilePath: string,

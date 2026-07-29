@@ -96,7 +96,12 @@ describe("SunoBrowserService", () => {
     expect(connectOverCDPMock).not.toHaveBeenCalled();
     const [launchedPath, launchOptions] = launchPersistentContextMock.mock.calls[0];
     expect(launchedPath).toBe(profile);
-    expect(launchOptions.args).toContain("--remote-debugging-port=0");
+    // A fixed non-zero debug port is required (port 0 sets navigator.webdriver=true and
+    // trips Cloudflare Turnstile). The exact port is reserved at launch, so assert the
+    // shape rather than a literal value.
+    const debugPortArg = (launchOptions.args as string[]).find((arg) => arg.startsWith("--remote-debugging-port="));
+    expect(debugPortArg).toMatch(/^--remote-debugging-port=\d+$/);
+    expect(debugPortArg).not.toBe("--remote-debugging-port=0");
   });
 
   it("only launches once under concurrent ensureRunning (single in-flight)", async () => {
