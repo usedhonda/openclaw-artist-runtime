@@ -160,7 +160,12 @@ export function startProducerDigestWorker(options: ProducerDigestWorkerOptions):
     if (running || stopped) return;
     running = true;
     try {
-      await sendProducerDigestOnce({ ...options, now: new Date() });
+      const result = await sendProducerDigestOnce({ ...options, now: new Date() });
+      // Log only a real send so gateway.log carries a positive delivery signal; an
+      // intentional skip (dedup / mode) stays silent to avoid per-tick noise.
+      if (result.delivered) {
+        console.log(`[producer-digest] delivered daily digest to ${options.chatIds.length} chat(s) dateKey=${result.dateKey}`);
+      }
     } catch (error) {
       const reason = error instanceof Error ? error.message : String(error);
       console.error(`[producer-digest] worker failed: ${reason}`);
