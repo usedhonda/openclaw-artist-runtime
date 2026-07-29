@@ -38,6 +38,21 @@ describe("TelegramClient retry", () => {
     expect(fetchImpl).toHaveBeenCalledTimes(3);
   });
 
+  it("retries undici connect-timeout (UND_ERR_CONNECT_TIMEOUT) instead of failing without retry", async () => {
+    process.env.OPENCLAW_TELEGRAM_RETRY_MAX = "3";
+    process.env.OPENCLAW_TELEGRAM_RETRY_BASE_MS = "1";
+    const fetchImpl = vi
+      .fn()
+      .mockRejectedValueOnce(transientError("UND_ERR_CONNECT_TIMEOUT"))
+      .mockResolvedValueOnce(jsonResponse({ ok: true, result: { message_id: 7, chat: { id: 123 }, text: "ok" } }));
+    const client = new TelegramClient("token", fetchImpl);
+
+    const result = await client.sendMessage(123, "hello");
+
+    expect(result).toMatchObject({ message_id: 7 });
+    expect(fetchImpl).toHaveBeenCalledTimes(2);
+  });
+
   it("retries 5xx and 429 but fails 4xx without retry", async () => {
     process.env.OPENCLAW_TELEGRAM_RETRY_MAX = "2";
     process.env.OPENCLAW_TELEGRAM_RETRY_BASE_MS = "1";

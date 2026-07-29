@@ -1,5 +1,6 @@
 import type { TelegramMessage, TelegramReplyMarkup, TelegramUpdate } from "../types.js";
 import { splitTelegramText } from "./telegramFormatting.js";
+import { applyTelegramOutboundIpv4Preference } from "./telegramOutboundNetwork.js";
 
 export type { TelegramCallbackQuery, TelegramChat, TelegramInlineKeyboard, TelegramInlineKeyboardButton, TelegramMessage, TelegramReplyMarkup, TelegramUpdate, TelegramUser } from "../types.js";
 
@@ -22,7 +23,13 @@ export interface TelegramAnswerCallbackQueryOptions {
 
 export type TelegramFetch = (input: string, init: RequestInit) => Promise<Response>;
 
-const TRANSIENT_ERROR_CODES = new Set(["ETIMEDOUT", "ECONNRESET", "EAI_AGAIN", "ENOTFOUND"]);
+// UND_ERR_CONNECT_TIMEOUT is undici's connect-phase timeout: the TCP connect never
+// completed (observed intermittently on this host when the resolved IPv6 route to
+// api.telegram.org is dead — curl falls back to IPv4, undici stalls the full connect
+// timeout). It carries a defined cause.code, so without listing it here isTransientFetchError
+// returned false and the send failed with no retry. It is transient: the next attempt
+// commonly connects (often over IPv4), so classify it as retryable.
+const TRANSIENT_ERROR_CODES = new Set(["ETIMEDOUT", "ECONNRESET", "EAI_AGAIN", "ENOTFOUND", "UND_ERR_CONNECT_TIMEOUT"]);
 
 function positiveIntegerFromEnv(name: string, fallback: number): number {
   const parsed = Number.parseInt(process.env[name] ?? "", 10);
@@ -96,6 +103,10 @@ export class TelegramClient {
     if (!trimmed) {
       throw new Error("telegram token is required");
     }
+    // Apply the opt-in IPv4 preference once, before any send, so a dead IPv6 route to
+    // api.telegram.org does not stall the connect. No-op unless OPENCLAW_TELEGRAM_FORCE_IPV4
+    // is set; idempotent across every TelegramClient instance.
+    applyTelegramOutboundIpv4Preference();
     this.baseUrl = `https://api.telegram.org/bot${trimmed}`;
   }
 
