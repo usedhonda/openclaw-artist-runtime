@@ -1,3 +1,4 @@
+import { join } from "node:path";
 import type {
   ArtistRuntimeConfig,
   SunoCreatePayload,
@@ -155,9 +156,13 @@ export function createHumanAssistSunoConnector(
 ): HumanAssistSunoConnector {
   const timeoutMinutes = config?.music?.suno?.humanAssistTimeoutMinutes ?? 60;
   const workspaceRoot = config?.artist?.workspaceRoot;
+  // The suno-cli session.json (Clerk cookie -> JWT) lives under the workspace runtime dir
+  // and authenticates the network-primary feed harvest. Omitted when no workspace root is
+  // known, in which case the driver stays DOM-only.
+  const sessionFile = workspaceRoot ? join(workspaceRoot, "runtime", "suno", "cli", "session.json") : undefined;
   return new HumanAssistSunoConnector(inner, {
     timeoutMs: timeoutMinutes * 60_000,
-    driverFactory: ({ payload }) => new CdpHumanAssistDriver({ payload, config }),
+    driverFactory: ({ payload }) => new CdpHumanAssistDriver({ payload, config, sessionFile }),
     notifier: createHumanAssistNotifier(timeoutMinutes),
     filterCrossSongTakeUrls: async (songId, urls) => {
       if (!workspaceRoot || urls.length === 0) {

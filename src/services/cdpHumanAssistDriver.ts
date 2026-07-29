@@ -13,6 +13,7 @@ import {
   sunoStyleLocator,
   waitForSunoCreateFormReady
 } from "./sunoCreateForm.js";
+import { fetchSunoFeedClips, selectFreshFeedTakeUrls } from "./sunoFeedHarvest.js";
 import { emitRuntimeEvent } from "./runtimeEventBus.js";
 import type {
   HumanAssistBrowserDriver,
@@ -42,6 +43,10 @@ const FORM_READY_TIMEOUT_MS = 25_000;
 const CLICK_TIMEOUT_MS = 25_000;
 const POST_CLICK_SETTLE_MS = 6_000;
 const POLL_INTERVAL_MS = 3_000;
+// The feed reflects a fresh generate a few seconds after submit (observed ~9s on-device),
+// so give it a short bounded poll before falling back to the DOM harvest.
+const FEED_RECONCILE_ATTEMPTS = 5;
+const FEED_RECONCILE_INTERVAL_MS = 3_000;
 
 function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
@@ -59,11 +64,18 @@ export interface CdpHumanAssistDriverInput {
   payload: SunoCreatePayload;
   service?: SunoBrowserService;
   config?: SunoBrowserConfigView;
+  // Path to the suno-cli session.json used to mint the Clerk JWT for the network-primary
+  // feed harvest. When omitted (tests, or no workspace root), harvest stays DOM-only.
+  sessionFile?: string;
 }
 
 export class CdpHumanAssistDriver implements HumanAssistBrowserDriver {
   private page: Page | undefined;
   private baselineSongUrls = new Set<string>();
+  // Feed clip ids present before submit, so only genuinely new clips count as this
+  // create's takes during network-primary reconciliation.
+  private baselineFeedIds = new Set<string>();
+  private submitAtMs = 0;
   private readonly service: SunoBrowserService;
 
   constructor(private readonly input: CdpHumanAssistDriverInput) {
@@ -88,6 +100,9 @@ export class CdpHumanAssistDriver implements HumanAssistBrowserDriver {
     // Baseline is title-scoped so pre-existing takes of the SAME title (earlier
     // attempts today) are excluded and only genuinely new takes count as fresh.
     this.baselineSongUrls = new Set(await this.readTakeUrls());
+    // Feed baseline (best-effort): every clip id that already exists in the account, so
+    // the network-primary reconciliation never adopts a pre-existing clip as this take.
+    this.baselineFeedIds = await this.readFeedClipIds();
 
     const payload = this.input.payload;
     const lyrics = extractLyrics(payload);
@@ -119,6 +134,9 @@ export class CdpHumanAssistDriver implements HumanAssistBrowserDriver {
       CLICK_TIMEOUT_MS,
       "Create song button"
     );
+    // Record the submit instant BEFORE the click so feed reconciliation can filter clips
+    // to those created at/after this create fired.
+    this.submitAtMs = Date.now();
     await createButton.click({ timeout: CLICK_TIMEOUT_MS });
     await sleep(POST_CLICK_SETTLE_MS);
     // Captcha is checked FIRST and, when present, the flow hands off to the human
@@ -129,7 +147,7 @@ export class CdpHumanAssistDriver implements HumanAssistBrowserDriver {
     }
     const fresh = await this.freshTakeUrls();
     if (fresh.length > 0) {
-      return { kind: "accepted", urls: fresh };
+      return { kind: "accepted", urls: await this.reconcileTakesFromFeed(fresh) };
     }
     // No captcha visible and no new take yet: give Suno a brief settle window before
     // deciding, then treat a lingering captcha as a challenge, otherwise fall back to
@@ -140,7 +158,7 @@ export class CdpHumanAssistDriver implements HumanAssistBrowserDriver {
     }
     const settled = await this.freshTakeUrls();
     if (settled.length > 0) {
-      return { kind: "accepted", urls: settled };
+      return { kind: "accepted", urls: await this.reconcileTakesFromFeed(settled) };
     }
     return { kind: "captcha_challenge" };
   }
@@ -164,7 +182,7 @@ export class CdpHumanAssistDriver implements HumanAssistBrowserDriver {
       // freshTakeUrls, so this never accepts unrelated existing songs.
       const fresh = await this.freshTakeUrls().catch(() => [] as string[]);
       if (fresh.length > 0) {
-        return { kind: "accepted", urls: fresh };
+        return { kind: "accepted", urls: await this.reconcileTakesFromFeed(fresh) };
       }
       await sleep(POLL_INTERVAL_MS);
     }
@@ -236,5 +254,68 @@ export class CdpHumanAssistDriver implements HumanAssistBrowserDriver {
       });
     }
     return urls;
+  }
+
+  /**
+   * Every clip id already in the account feed, captured before submit. Best-effort: an
+   * empty set (no sessionFile, or the feed is unavailable) simply means the network
+   * reconciliation relies on the created-at floor and title scope alone, then the DOM
+   * fallback.
+   */
+  private async readFeedClipIds(): Promise<Set<string>> {
+    const sessionFile = this.input.sessionFile;
+    if (!sessionFile) {
+      return new Set();
+    }
+    const clips = await fetchSunoFeedClips({ sessionFile }).catch(() => []);
+    const ids = new Set<string>();
+    for (const clip of clips) {
+      const id = typeof clip.id === "string" && clip.id.trim() ? clip.id.trim() : undefined;
+      if (id) {
+        ids.add(id);
+      }
+    }
+    return ids;
+  }
+
+  /**
+   * Network-primary take reconciliation. Once the DOM signals a fresh take appeared (fast
+   * "generation started" signal), poll the authenticated feed for the clips this create
+   * actually produced — exact title, created at/after submit, not in the pre-submit
+   * baseline. Feed URLs are authoritative and immune to the create-page cross-card bleed;
+   * the DOM-harvested URLs are used only when the feed yields nothing (unavailable, or an
+   * over-count anomaly).
+   */
+  private async reconcileTakesFromFeed(domUrls: string[]): Promise<string[]> {
+    const sessionFile = this.input.sessionFile;
+    if (!sessionFile) {
+      return domUrls;
+    }
+    for (let attempt = 0; attempt < FEED_RECONCILE_ATTEMPTS; attempt += 1) {
+      const clips = await fetchSunoFeedClips({ sessionFile }).catch(() => []);
+      const { urls, overCount } = selectFreshFeedTakeUrls({
+        clips,
+        title: this.expectedTitle(),
+        sinceMs: this.submitAtMs,
+        baselineIds: this.baselineFeedIds,
+        expectedCount: SUNO_EXPECTED_TAKE_COUNT
+      });
+      if (urls.length > 0) {
+        console.log(`[suno-feed] harvest_used song="${this.expectedTitle()}" takes=${urls.length}`);
+        return urls;
+      }
+      if (overCount) {
+        emitRuntimeEvent({
+          type: "error",
+          source: "suno_human_assist",
+          reason: `feed_take_over_expected: fresh feed clips for "${this.expectedTitle()}" exceed expected ${SUNO_EXPECTED_TAKE_COUNT}; falling back to DOM harvest`,
+          timestamp: Date.now()
+        });
+        break;
+      }
+      await sleep(FEED_RECONCILE_INTERVAL_MS);
+    }
+    console.log(`[suno-feed] harvest_fallback_dom song="${this.expectedTitle()}" domTakes=${domUrls.length}`);
+    return domUrls;
   }
 }
