@@ -156,11 +156,17 @@ export async function startTelegramNotifierFromEnv(env: NodeJS.ProcessEnv = proc
   // rather than through the event-driven notifier. Only start it when the operator
   // actually selected the daily digest; other modes get no daily summary.
   if (!stopProducerDigestWorker && config.autopilot.producerDigest === "daily" && producerDigestEnabled(env)) {
+    // On a host with intermittent Telegram egress (UND_ERR_CONNECT_TIMEOUT), a failed
+    // send should be retried well before the next day. The interval is the retry
+    // cadence (the send itself is dedup-gated to once per local day), so it can be
+    // shortened via env to recover a missed digest within minutes on a flaky network.
+    const digestIntervalMs = positiveIntegerFromEnv(env, "OPENCLAW_PRODUCER_DIGEST_INTERVAL_MS", 0);
     stopProducerDigestWorker = startProducerDigestWorker({
       root: config.artist.workspaceRoot,
       token,
       chatIds: ownerIds,
-      mode: config.autopilot.producerDigest
+      mode: config.autopilot.producerDigest,
+      ...(digestIntervalMs > 0 ? { intervalMs: digestIntervalMs } : {})
     });
   }
   const primaryChatId = Number(ownerIds[0]);
