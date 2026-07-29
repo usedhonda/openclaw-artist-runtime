@@ -122,6 +122,48 @@ function downloadFileSlug(path: string): string | undefined {
   return slug ? slug : undefined;
 }
 
+/**
+ * Pick the `suno-cli download` targets. Prefer the run's harvested song-URLs: a
+ * human-assist/attach create submits through the browser and never populates suno-cli's
+ * own ledger with clip ids, so `download <runId>` resolves to an empty clip list. suno-cli
+ * resolves a song-URL (or clip id) straight to its clip (resolve-target `parseSongUrl`),
+ * so downloading by URL fetches the audio regardless of the ledger. Fall back to the runId
+ * only when no usable URL is supplied — the CLI-API create path, whose ledger run carries
+ * clip ids. Both empty yields [] (fail-closed: no download target).
+ */
+export function selectDownloadTargets(urls: readonly string[], runId: string): string[] {
+  const validUrls = Array.from(
+    new Set(urls.filter((url): url is string => typeof url === "string" && sunoUrlSlug(url) !== undefined))
+  );
+  if (validUrls.length > 0) {
+    return validUrls;
+  }
+  const id = typeof runId === "string" ? runId.trim() : "";
+  return id ? [id] : [];
+}
+
+// Parse one `suno-cli download` stdout into its clip song-URLs and downloaded file paths.
+// Returns null on non-JSON output (schema drift). Reconciliation against the run's expected
+// URLs happens after aggregating across targets.
+function parseDownloadClips(stdout: string): { urls: string[]; paths: string[]; runId?: string } | null {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(stdout);
+  } catch {
+    return null;
+  }
+  const record = typeof parsed === "object" && parsed !== null ? (parsed as Record<string, unknown>) : {};
+  const clips = Array.isArray(record.clips) ? record.clips : [];
+  const urls = clips
+    .map((clip) => (typeof (clip as Record<string, unknown>)?.songUrl === "string" ? (clip as Record<string, unknown>).songUrl as string : undefined))
+    .filter((url): url is string => Boolean(url));
+  const paths = Array.isArray(record.downloadedFiles)
+    ? record.downloadedFiles.filter((path): path is string => typeof path === "string")
+    : [];
+  const runId = readText(record.runId);
+  return runId ? { urls, paths, runId } : { urls, paths };
+}
+
 function vocalGenderFlag(value: unknown): "m" | "f" | undefined {
   const normalized = typeof value === "string" ? value.trim().toLowerCase() : "";
   if (normalized === "male" || normalized === "m") {
@@ -247,29 +289,57 @@ export class CliSunoConnector implements SunoConnector {
       return { urls: [], runId, reason: "suno_cli_not_configured" };
     }
 
-    const args = this.buildDownloadArgs(runId);
+    // Download by the harvested song-URLs first (runId fallback inside). No usable target
+    // -> fail closed rather than silently succeed.
+    const targets = selectDownloadTargets(input.urls, runId);
+    if (targets.length === 0) {
+      return { urls: [], runId, reason: "suno_cli_no_download_target" };
+    }
+
     // Cookie/JWT envs (SUNO_KIT_COOKIE / SUNO_KIT_COOKIE_FILE) flow into the child
     // for the authenticated audio fetch; their values are never read or logged here.
     const childEnv: NodeJS.ProcessEnv = { ...this.env };
 
-    let run: CliRunResult;
-    try {
-      run = await this.runner(entry, args, childEnv);
-    } catch {
-      this.logger.warn(`[suno-cli] download spawn error args=${redactArgs(args).join(" ")}`);
-      return { urls: [], runId, reason: "suno_cli_internal" };
+    // A song-URL resolves to a single clip, so a two-take run needs one download per URL.
+    // Aggregate across targets, then dedupe (a URL whose clip is already in a ledger run
+    // can return the whole run, and re-downloading is idempotent) before reconciling.
+    const aggregatedUrls: string[] = [];
+    const aggregatedPaths: string[] = [];
+    let resolvedRunId = runId;
+    for (const target of targets) {
+      const args = this.buildDownloadArgs(target);
+      let run: CliRunResult;
+      try {
+        run = await this.runner(entry, args, childEnv);
+      } catch {
+        this.logger.warn(`[suno-cli] download spawn error args=${redactArgs(args).join(" ")}`);
+        return { urls: [], runId, reason: "suno_cli_internal" };
+      }
+      if (run.exitCode !== 0) {
+        // Exit 50 (retryable_unknown) -> audio not ready yet. An empty urls result makes
+        // the autopilot/adoption import path retry the whole set rather than fail (matching
+        // how the browser worker signals "not ready yet"). Other non-zero codes map to
+        // their stable fail-closed reason. Never fabricate URLs. Judge by exit code only.
+        this.logger.warn(`[suno-cli] download failed exit=${run.exitCode} args=${redactArgs(args).join(" ")}`);
+        return { urls: [], runId, reason: EXIT_REASONS[run.exitCode] ?? "suno_cli_internal" };
+      }
+      const parsed = parseDownloadClips(run.stdout);
+      if (!parsed) {
+        return { urls: [], runId, reason: "suno_cli_schema_drift" };
+      }
+      aggregatedUrls.push(...parsed.urls);
+      aggregatedPaths.push(...parsed.paths);
+      if (parsed.runId) {
+        resolvedRunId = parsed.runId;
+      }
     }
 
-    if (run.exitCode === 0) {
-      return this.parseDownload(run.stdout, runId, input.urls);
-    }
-
-    // Exit 50 (retryable_unknown) -> audio not ready yet. An empty urls result makes
-    // the autopilot/adoption import path retry rather than fail (matching how the
-    // browser worker signals "not ready yet"). Other non-zero codes map to their
-    // stable fail-closed reason. Never fabricate URLs. Judge by exit code only.
-    this.logger.warn(`[suno-cli] download failed exit=${run.exitCode} args=${redactArgs(args).join(" ")}`);
-    return { urls: [], runId, reason: EXIT_REASONS[run.exitCode] ?? "suno_cli_internal" };
+    return this.reconcileDownload(
+      Array.from(new Set(aggregatedUrls)),
+      Array.from(new Set(aggregatedPaths)),
+      resolvedRunId,
+      input.urls
+    );
   }
 
   // Resolution order: explicit config music.suno.cliEntry, then legacy
@@ -312,24 +382,13 @@ export class CliSunoConnector implements SunoConnector {
     };
   }
 
-  private parseDownload(stdout: string, fallbackRunId: string, expectedUrls: string[]): SunoImportResult {
-    let parsed: unknown;
-    try {
-      parsed = JSON.parse(stdout);
-    } catch {
-      return { urls: [], runId: fallbackRunId, reason: "suno_cli_schema_drift" };
-    }
-
-    const record = typeof parsed === "object" && parsed !== null ? (parsed as Record<string, unknown>) : {};
-    const clips = Array.isArray(record.clips) ? record.clips : [];
-    const urls = clips
-      .map((clip) => (typeof (clip as Record<string, unknown>)?.songUrl === "string" ? (clip as Record<string, unknown>).songUrl as string : undefined))
-      .filter((url): url is string => Boolean(url));
-    const paths = Array.isArray(record.downloadedFiles)
-      ? record.downloadedFiles.filter((path): path is string => typeof path === "string")
-      : [];
-
-    const runId = readText(record.runId) ?? fallbackRunId;
+  private reconcileDownload(
+    urls: string[],
+    paths: string[],
+    fallbackRunId: string,
+    expectedUrls: string[]
+  ): SunoImportResult {
+    const runId = fallbackRunId;
     if (urls.length === 0 || paths.length === 0) {
       return { urls: [], runId, reason: "suno_cli_schema_drift" };
     }

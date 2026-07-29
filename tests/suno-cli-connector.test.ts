@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { CliSunoConnector, type CliRunResult, type CliRunner } from "../src/connectors/suno/cliSunoConnector";
+import { CliSunoConnector, selectDownloadTargets, type CliRunResult, type CliRunner } from "../src/connectors/suno/cliSunoConnector";
 import type { SunoCreateRequest } from "../src/types";
 
 const ENTRY = "/opt/suno-cli/dist/src/cli.js";
@@ -671,5 +671,101 @@ describe("CliSunoConnector.importResults", () => {
     expect(result.paths).toBeUndefined();
     expect(result.reason).toBe("suno_cli_no_run_take");
     expect(result.unmatchedUrls).toEqual(["https://suno.com/song/aaa"]);
+  });
+});
+
+describe("selectDownloadTargets", () => {
+  it("prefers the harvested song-URLs when supplied", () => {
+    expect(
+      selectDownloadTargets(["https://suno.com/song/a", "https://suno.com/song/b"], "run-1")
+    ).toEqual(["https://suno.com/song/a", "https://suno.com/song/b"]);
+  });
+
+  it("falls back to the runId when no URLs are supplied", () => {
+    expect(selectDownloadTargets([], "run-1")).toEqual(["run-1"]);
+  });
+
+  it("ignores non-suno URLs and falls back to the runId", () => {
+    expect(selectDownloadTargets(["not-a-url", ""], "run-1")).toEqual(["run-1"]);
+  });
+
+  it("dedupes repeated song-URLs", () => {
+    expect(
+      selectDownloadTargets(["https://suno.com/song/a", "https://suno.com/song/a"], "run-1")
+    ).toEqual(["https://suno.com/song/a"]);
+  });
+
+  it("returns [] when neither a URL nor a runId is available (fail-closed)", () => {
+    expect(selectDownloadTargets([], "")).toEqual([]);
+  });
+});
+
+describe("CliSunoConnector.importResults download-by-URL", () => {
+  // A human-assist/attach create submits through the browser, so suno-cli's own ledger has
+  // the run as `reserved` with no clip ids; `download <runId>` would resolve to nothing.
+  // Downloading by the harvested song-URLs fetches the audio regardless of the ledger.
+  it("downloads by song-URL target (one call per URL), not the runId", async () => {
+    const runner = vi.fn(async (_entry: string, args: readonly string[]) => {
+      const target = args[1];
+      const slug = target.split("/").pop() ?? "x";
+      return {
+        stdout: JSON.stringify({
+          ok: true,
+          status: "downloaded",
+          runId: "suno_ms6cklyg",
+          downloadedFiles: [`/ws/artist/runtime/suno/cli/downloads/${slug}.mp3`],
+          clips: [{ clipId: slug, songUrl: target }]
+        }),
+        stderr: "",
+        exitCode: 0
+      };
+    });
+    const connector = new CliSunoConnector("/ws/artist", { env: baseEnv(), runner });
+    const urls = ["https://suno.com/song/3faec32d", "https://suno.com/song/0b99a8e3"];
+
+    const result = await connector.importResults({ runId: "suno_ms6cklyg", urls });
+
+    // One download per URL, each targeting the URL (not the runId).
+    expect(runner.mock.calls.length).toBe(2);
+    expect(runner.mock.calls[0][1][1]).toBe(urls[0]);
+    expect(runner.mock.calls[1][1][1]).toBe(urls[1]);
+    expect(result.accepted).toBe(true);
+    expect(new Set(result.urls)).toEqual(new Set(urls));
+    expect(result.paths).toEqual([
+      "/ws/artist/runtime/suno/cli/downloads/3faec32d.mp3",
+      "/ws/artist/runtime/suno/cli/downloads/0b99a8e3.mp3"
+    ]);
+    expect(result.reason).toBe("suno_cli_downloaded");
+  });
+
+  it("falls back to the runId target when no URLs are supplied", async () => {
+    const runner = vi.fn(async () => ({
+      stdout: JSON.stringify({
+        ok: true,
+        status: "downloaded",
+        runId: "run-cli-1",
+        downloadedFiles: ["/ws/artist/runtime/suno/cli/downloads/aaa.mp3"],
+        clips: [{ clipId: "aaa", songUrl: "https://suno.com/song/aaa" }]
+      }),
+      stderr: "",
+      exitCode: 0
+    }));
+    const connector = new CliSunoConnector("/ws/artist", { env: baseEnv(), runner });
+
+    await connector.importResults({ runId: "run-cli-1", urls: [] });
+
+    expect(runner.mock.calls.length).toBe(1);
+    expect(runner.mock.calls[0][1][1]).toBe("run-cli-1");
+  });
+
+  it("fails closed with no download target when both URLs and runId are empty", async () => {
+    const runner = vi.fn(async () => ({ stdout: "{}", stderr: "", exitCode: 0 }));
+    const connector = new CliSunoConnector("/ws/artist", { env: baseEnv(), runner });
+
+    const result = await connector.importResults({ runId: "", urls: [] });
+
+    expect(runner).not.toHaveBeenCalled();
+    expect(result.urls).toEqual([]);
+    expect(result.reason).toBe("suno_cli_no_download_target");
   });
 });
