@@ -11,7 +11,7 @@ import type {
 } from "../../types.js";
 import type { SunoConnector } from "./SunoConnector.js";
 import { SunoBrowserService, sunoBrowserService } from "../../services/sunoBrowserService.js";
-import { sunoCliEntry, type SunoBrowserConfigView } from "../../services/runtimeConfig.js";
+import { isSunoCdpEnabled, sunoCdpEndpoint, sunoCliEntry, type SunoBrowserConfigView } from "../../services/runtimeConfig.js";
 
 // The bundled suno-cli entry, resolved relative to this module so it works in both the
 // source (src/connectors/suno) and compiled/npm-packed (dist/connectors/suno) layouts,
@@ -50,6 +50,37 @@ export interface CliSunoConnectorLogger {
   warn: (message: string) => void;
 }
 
+// Liveness probe for a configured CDP attach endpoint. Returns true when the
+// operator-owned Chrome is reachable, false otherwise. Injectable so tests never
+// touch the network.
+export type CdpEndpointProbe = (endpoint: string) => Promise<boolean>;
+
+const CDP_PREFLIGHT_TIMEOUT_MS = 2_500;
+
+// Reason surfaced when a live create is refused because the configured CDP endpoint
+// (the manually-started Suno Chrome we attach to) is not reachable. Distinct from the
+// captcha reason so it never triggers the human-assist fallback (which would connect to
+// the same dead endpoint and fail), and so retries never fire a real create against a
+// browser that is simply gone.
+export const CLI_CDP_ENDPOINT_UNREACHABLE_REASON = "suno_cdp_endpoint_unreachable";
+
+// GET <endpoint>/json/version with a short timeout. A healthy Chrome DevTools endpoint
+// answers this instantly; a dead one refuses the connection or times out. No response
+// body is read — reachability is the whole signal.
+async function defaultCdpEndpointProbe(endpoint: string): Promise<boolean> {
+  const url = `${endpoint.replace(/\/+$/, "")}/json/version`;
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), CDP_PREFLIGHT_TIMEOUT_MS);
+  try {
+    const response = await fetch(url, { signal: controller.signal });
+    return response.ok;
+  } catch {
+    return false;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 export interface CliSunoConnectorOptions {
   env?: NodeJS.ProcessEnv;
   runner?: CliRunner;
@@ -59,6 +90,9 @@ export interface CliSunoConnectorOptions {
   // Override the bundled vendor entry resolver (tests inject a fixed path or undefined
   // to exercise the resolution order without depending on the real vendored file).
   vendorEntry?: () => string | undefined;
+  // Override the CDP attach-endpoint liveness probe (tests inject a stub so no real
+  // network call is made).
+  cdpProbe?: CdpEndpointProbe;
 }
 
 // suno-cli's own per-day/min-interval budget gate must never double-reject:
@@ -198,6 +232,7 @@ export class CliSunoConnector implements SunoConnector {
   private readonly browserService: Pick<SunoBrowserService, "getCdpEndpoint">;
   private readonly config?: SunoBrowserConfigView;
   private readonly vendorEntry: () => string | undefined;
+  private readonly cdpProbe: CdpEndpointProbe;
 
   constructor(private readonly workspaceRoot = ".", options: CliSunoConnectorOptions = {}) {
     this.env = options.env ?? process.env;
@@ -206,6 +241,7 @@ export class CliSunoConnector implements SunoConnector {
     this.browserService = options.browserService ?? sunoBrowserService;
     this.config = options.config;
     this.vendorEntry = options.vendorEntry ?? resolveVendorSunoCliEntry;
+    this.cdpProbe = options.cdpProbe ?? defaultCdpEndpointProbe;
   }
 
   async status(): Promise<SunoWorkerStatus> {
@@ -237,6 +273,24 @@ export class CliSunoConnector implements SunoConnector {
     const entry = this.entryPath();
     if (!entry) {
       return { accepted: false, runId, reason: "suno_cli_not_configured", urls: [], dryRun: false };
+    }
+
+    // CDP attach preflight: when configured to attach to an operator-owned Chrome
+    // (music.suno.browser.cdpEndpoint / OPENCLAW_SUNO_USE_CDP), that browser is started
+    // by hand and can vanish. Firing a live create against a dead endpoint mints no
+    // captcha token, so suno-cli returns exit=31 (captcha) and the lane burns retries —
+    // and the human-assist fallback then connects to the same dead endpoint and fails
+    // too. Probe the endpoint first and fail closed with a distinct, actionable reason
+    // instead of firing. Skipped entirely when no CDP endpoint is configured.
+    if (isSunoCdpEnabled(this.config, this.env)) {
+      const endpoint = sunoCdpEndpoint(this.config, this.env);
+      const reachable = await this.cdpProbe(endpoint).catch(() => false);
+      if (!reachable) {
+        this.logger.warn(
+          `[suno-cli] cdp endpoint unreachable endpoint=${endpoint}; refusing create — start the external Suno Chrome, then resume`
+        );
+        return { accepted: false, runId, reason: CLI_CDP_ENDPOINT_UNREACHABLE_REASON, urls: [], dryRun: false };
+      }
     }
 
     // Captcha is now an optional escape-hatch: on a trusted session suno-cli

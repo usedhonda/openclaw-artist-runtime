@@ -301,7 +301,7 @@ describe("CliSunoConnector.create — CDP endpoint (OPENCLAW_SUNO_USE_CDP opt-in
   it("sets SUNO_KIT_CDP_ENDPOINT from OPENCLAW_SUNO_CDP_ENDPOINT when CDP is explicitly enabled", async () => {
     const { runner, envAt } = runnerCapturingEnv();
     const env = baseEnv({ OPENCLAW_SUNO_USE_CDP: "on", OPENCLAW_SUNO_CDP_ENDPOINT: "http://127.0.0.1:9333" });
-    const connector = new CliSunoConnector(".", { env, runner });
+    const connector = new CliSunoConnector(".", { env, runner, cdpProbe: async () => true });
 
     await connector.create(request());
 
@@ -312,7 +312,7 @@ describe("CliSunoConnector.create — CDP endpoint (OPENCLAW_SUNO_USE_CDP opt-in
     const { runner, envAt } = runnerCapturingEnv();
     const env = baseEnv({ OPENCLAW_SUNO_USE_CDP: "on" });
     delete env.OPENCLAW_SUNO_CDP_ENDPOINT;
-    const connector = new CliSunoConnector(".", { env, runner });
+    const connector = new CliSunoConnector(".", { env, runner, cdpProbe: async () => true });
 
     await connector.create(request());
 
@@ -358,6 +358,57 @@ describe("CliSunoConnector.create — CDP endpoint (OPENCLAW_SUNO_USE_CDP opt-in
     await connector.create(request());
 
     expect(envAt(0).SUNO_KIT_CDP_ENDPOINT).toBeUndefined();
+  });
+});
+
+describe("CliSunoConnector.create — CDP endpoint preflight", () => {
+  const cdpConfig = { music: { suno: { browser: { cdpEndpoint: "http://127.0.0.1:9222" } } } };
+
+  it("refuses the create (never runs suno-cli) when the configured CDP endpoint is unreachable", async () => {
+    const runner = runnerReturning({ stdout: "", stderr: "", exitCode: 0 });
+    const probe = vi.fn(async () => false);
+    const connector = new CliSunoConnector(".", { env: baseEnv(), runner, config: cdpConfig, cdpProbe: probe });
+
+    const result = await connector.create(request());
+
+    expect(probe).toHaveBeenCalledWith("http://127.0.0.1:9222");
+    expect(runner).not.toHaveBeenCalled();
+    expect(result.accepted).toBe(false);
+    expect(result.reason).toBe("suno_cdp_endpoint_unreachable");
+    expect(result.urls).toEqual([]);
+    expect(result.dryRun).toBe(false);
+  });
+
+  it("proceeds with the create when the configured CDP endpoint is reachable", async () => {
+    const runner = runnerReturning({
+      stdout: JSON.stringify({ clips: [{ clipId: "x", songUrl: "https://suno.com/song/x" }] }),
+      stderr: "",
+      exitCode: 0
+    });
+    const probe = vi.fn(async () => true);
+    const connector = new CliSunoConnector(".", { env: baseEnv(), runner, config: cdpConfig, cdpProbe: probe });
+
+    const result = await connector.create(request());
+
+    expect(probe).toHaveBeenCalledWith("http://127.0.0.1:9222");
+    expect(runner).toHaveBeenCalledTimes(1);
+    expect(result.accepted).toBe(true);
+  });
+
+  it("skips the preflight entirely when no CDP endpoint is configured", async () => {
+    const runner = runnerReturning({
+      stdout: JSON.stringify({ clips: [{ clipId: "x", songUrl: "https://suno.com/song/x" }] }),
+      stderr: "",
+      exitCode: 0
+    });
+    const probe = vi.fn(async () => false);
+    const connector = new CliSunoConnector(".", { env: baseEnv(), runner, cdpProbe: probe });
+
+    const result = await connector.create(request());
+
+    expect(probe).not.toHaveBeenCalled();
+    expect(runner).toHaveBeenCalledTimes(1);
+    expect(result.accepted).toBe(true);
   });
 });
 
