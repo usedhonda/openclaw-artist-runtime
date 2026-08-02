@@ -29,7 +29,13 @@
         "caughtErrorsIgnorePattern": "^_",
         "varsIgnorePattern": "^_"
       }
-    ]
+    ],
+    "no-restricted-imports": ["error", {
+      "patterns": [
+        { "group": ["openclaw/src/*", "openclaw/dist/src/*", "**/openclaw/src/**"],
+          "message": "Do not deep-import OpenClaw internals. Use the public plugin SDK surface (AGENTS.md section 6)." }
+      ]
+    }]
   },
   "overrides": [
     {

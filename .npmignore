@@ -19,29 +19,7 @@ scripts
 
 # Internal docs that must not ship to the marketplace tarball
 AGENTS.md
-AGENTS.distribution-short.md
-CODEX_START_HERE.md
-SPEC_INDEX.md
-docs/codex-detailed-specs
-docs/full-spec
 docs/log
 docs/ask
-docs/SOURCE_NOTES.md
-docs/00_*.md
-docs/01_*.md
-docs/02_*.md
-docs/03_*.md
-docs/04_*.md
-docs/05_*.md
-docs/06_*.md
-docs/07_*.md
-docs/08_*.md
-docs/09_*.md
-docs/10_*.md
-docs/11_*.md
-docs/12_*.md
-docs/13_*.md
-docs/14_*.md
-docs/15_*.md
 docs/THREAT_MODEL.md
 docs/README.md
