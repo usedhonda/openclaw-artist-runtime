@@ -1,462 +1,254 @@
-# AGENTS.md — OpenClaw Artist Runtime Full Distributable
+# artist-runtime — Project Contract
 
-Codex must read this file first.
+This file is the **single source of truth** for every coding agent working on this
+repository, regardless of which tool or model is running.
 
-This repository is both:
+- **Codex** reads this file natively.
+- **Claude Code** reads it because `CLAUDE.md` starts with `@AGENTS.md`.
 
-1. a **distribution-ready OpenClaw plugin package** for ClawHub/npm, and
-2. a **full implementation spec workbench** detailed enough that Codex can start from “read AGENTS.md and make a plan.”
+Rules here are written by **role** (orchestrator / implementer / reviewer), never by
+tool name. Nothing in this repository assumes that a particular tool plans and
+another implements.
 
-The mission is to build an OpenClaw-native plugin that turns an OpenClaw agent into a **public autonomous musical artist** running on a Mac that the producer usually does **not** watch.
+## 0. Working principles
 
-The artist autonomously:
+1. **Think before coding** — separate Fact from Hypothesis. State assumptions and
+   trade-offs instead of hiding a guess inside an edit.
+2. **Simplicity first** — solve today's problem in the smallest form. No speculative
+   abstraction, config knob, or fallback path that nothing asks for.
+3. **Surgical changes** — every changed line must trace to the user's request or the
+   stated Task Intent. No drive-by reformatting, renaming, or "while I'm here" fixes.
+4. **Goal-driven execution** — "it runs" is not done. Done = §7.
 
-1. Maintains a persistent artist identity and evolving creative state.
-2. Forms interests and song ideas from its own observations.
-3. Writes lyrics and Suno prompt packs using the bundled Suno Production Pack derived from `sunomanual`.
-4. Uses Suno through a login-persisted background browser worker.
-5. Saves generated tracks, all prompts, all Suno payloads, run logs, take decisions, social assets, and post URLs.
-6. Publishes daily sharing assets to producer-selected platforms: X, Instagram, TikTok.
-7. Provides a web Producer Console for setup, connection, policy, audit, pause, and recovery.
+## 1. What this project is
 
-The user is the producer, manager, and A&R. The OpenClaw agent is the artist.
+A distribution-ready **OpenClaw plugin** (`@yzhonda/openclaw-artist-runtime`,
+publishable to ClawHub/npm) that turns an OpenClaw agent into a **public autonomous
+musician** on an unattended Mac.
 
----
+The artist keeps a persistent identity, forms song ideas from its own observations,
+writes lyrics and Suno prompt packs, generates tracks through a login-persisted
+background Suno browser worker, records every prompt and payload in append-only
+ledgers, and publishes to producer-selected platforms (X via Bird; Instagram and
+TikTok via official APIs). The human is producer and A&R. The **Producer Console** is
+a control tower for setup, audit, pause, and recovery — not the daily workflow.
 
-## Non-negotiable product assumptions
+Two facts constrain every change:
 
-- This is **not** a private studio helper. It is always a **Public Artist Runtime**.
-- Producer Console is not the daily workflow. It is the control tower: setup, settings, audit, pause, recovery.
-- Normal production mode must be autonomous enough to create music and share it publicly within configured limits.
-- A distributed package must install safely: first launch may be dry-run/setup-safe until the operator explicitly connects accounts and enables public side effects.
-- The producer chooses which public platforms to enable: X, Instagram, TikTok.
-- X uses Bird where available.
-- Instagram and TikTok use official platform APIs where possible.
-- Suno requires login. The plugin must support a dedicated persistent Suno browser session on the Mac.
-- Tampermonkey is not the primary path. Manual copy mode is fallback only.
-- A track is not complete unless all creation prompts and payloads are stored.
-- Created works and all prompts are first-class artifacts, not transient tool output.
+- This is a **public artist runtime**, not a private studio helper. Public side
+  effects are real and irreversible.
+- This repo is simultaneously a **distributable package** and **one operator's live
+  workspace**. See §5.
 
----
+## 2. Architecture
 
-## Distribution-first requirement
+| Path | Responsibility |
+|---|---|
+| `src/index.ts`, `src/pluginApi.ts` | Plugin entry; all OpenClaw SDK contact isolated here |
+| `src/types.ts` | Central types and enum unions (authority / connection / driver / submit modes) |
+| `src/config/` | Schema, defaults, migrations, settings contract |
+| `src/services/` | Autopilot, artist state, prompt ledger, audit log, authority guards, Suno drivers |
+| `src/connectors/suno/` | `SunoConnector` interface + browser-worker / CLI / human-assist drivers |
+| `src/connectors/social/` | `SocialConnector` interface + X (Bird), Instagram, TikTok |
+| `src/suno-production/` | Prompt pack generation, style/exclude/YAML builders, duration plan, vendored knowledge |
+| `src/hooks/` | `authorityGuard`, `bootstrapArtist` |
+| `src/routes/` | Producer Console HTTP API + runtime event stream |
+| `src/tools/` | Registered OpenClaw tools (song / suno / social) |
+| `src/repositories/`, `src/validators/` | Song repository and state machine, prompt pack validation |
+| `ui/` | Producer Console frontend (separate npm project) |
+| `vendor/suno-cli/` | Vendored Suno CLI dist |
 
-This package must remain publishable to ClawHub/npm.
+Boundary rule: the Console frontend calls plugin APIs only. It never talks to Suno,
+X, Instagram, or TikTok directly.
 
-Do not implement local-only hacks that make marketplace distribution hard. Every feature must be documented, configurable, testable, and auditable.
+## 3. Vocabulary
 
-Required public-package files:
+| Term | Meaning |
+|---|---|
+| Artist Runtime | This plugin: identity, autonomy, music, publishing, audit |
+| Producer Console | Web control tower for setup, settings, audit, recovery |
+| Suno Production Pack | `sunomanual`-derived knowledge and prompt-generation engine |
+| Suno Browser Worker | Persistent logged-in Suno browser profile driven by the plugin |
+| Prompt Ledger | Append-only creation history; mandatory for every work |
+| Daily Sharing | Routine public sharing of lyrics, snippets, notes, cards, clips |
+| Official Release | Higher-risk action, approval-gated |
+| Hard Stop | Condition where autonomous execution must pause and alert |
+| Capability Check | Runtime check that a connector can perform an action before enabling it |
 
-- `package.json`
-- `openclaw.plugin.json`
-- `README.md`
-- `SECURITY.md`
-- `PRIVACY.md`
-- `CAPABILITIES.md`
-- `MARKETPLACE.md`
-- `PUBLISHING.md`
-- `CHANGELOG.md`
-- `LICENSE`
-- `NOTICE.md`
+## 4. Standard commands
 
-Required package metadata:
+| Purpose | Command |
+|---|---|
+| Type check | `npm run typecheck` |
+| Lint (zero-warning gate) | `npm run lint` |
+| Test | `npm test` |
+| Test as CI runs it (70% line coverage gate) | `npm run test:coverage` |
+| Build | `npm run build` |
+| Secret / unsafe-bash scan | `npm run boundary-grep` |
+| Maintainer-identity leak scan | `npm run leak-scan` |
+| Package verification | `npm run pack:verify` |
+| Full local pre-publish chain | `npm run prepublish:local` |
 
-- `package.json.openclaw.extensions`
-- `package.json.openclaw.compat.pluginApi`
-- `package.json.openclaw.compat.minGatewayVersion`
-- package-rooted `openclaw.plugin.json`
-- manifest `configSchema`
-- manifest `uiHints`
+`npm run clawhub:dry-run` requires the external `clawhub` CLI, which is not installed
+on every machine. Treat its absence as expected, not as a failure.
 
----
+**Never run `npm install` / `npm i` at the repository root.** The globally installed
+OpenClaw resolves its dependencies from this project's `node_modules`; a root install
+prunes them and makes the gateway unbootable. To add a dependency, state the reason
+and the recovery plan first.
 
-## Local vs Distribution layout contract
+## 5. Change boundaries
 
-This repo is both a distributable package and one operator's live workspace.
-Both CC and Codex must keep those two worlds separated. There are four layers:
+Four layers, and they must not bleed into each other:
 
-1. **Distribution surface** — the `package.json.files` allowlist only. Nothing
-   ships to ClawHub/npm unless it is on that list.
-2. **Tracked repo files** — everything under version control. These MUST be
-   public-safe: no machine-specific absolute paths (`/Users/<name>/...`,
-   `/home/<name>/...`), no credentials, no personal identity/handles. Tracked
-   files are not all distributed, but they are all published as source.
-3. **`.local/`** — gitignored, machine-specific layer for THIS Mac: the env
-   overlay `.local/openclaw-local-env.local.sh`, `.local/social-credentials.env`,
-   private runbooks, runtime state, archives, and scratch working notes.
+1. **Distribution surface** — the `package.json.files` allowlist only. Nothing ships
+   unless it is on that list.
+2. **Tracked repo files** — must be public-safe: no machine-specific absolute paths
+   (`/Users/<name>/...`), no credentials, no personal identity or handles.
+3. **`.local/`** — gitignored, machine-specific: env overlay, credentials, private
+   runbooks, runtime state, scratch notes.
 4. **Temporary files** — the session scratchpad, never the repo root.
 
 Operating rules:
 
-- Never carry a permanent local edit on a tracked file. If a value is unique to
-  this machine, put it in a `.local/` overlay (env seeds in
-  `.local/openclaw-local-env.local.sh`; the tracked launcher sources it early and
-  its generic `"${VAR:-default}"` fallbacks pick the seed up). The only allowed
-  tracked-file dirtiness is a genuine, in-flight, about-to-commit change — not a
-  standing machine tweak. See `docs/LOCAL_RUNTIME_OPS.md`.
+- Never carry a standing local edit on a tracked file. Machine-specific values go in
+  `.local/openclaw-local-env.local.sh`; the tracked launcher's `"${VAR:-default}"`
+  fallbacks pick them up. See `docs/LOCAL_RUNTIME_OPS.md`.
 - Do not leave untracked notes, plans, or instruction files at the repo root.
-  Move working notes into `.local/` (or `.local/archive/` when finished).
-- Prefer promoting a new operator-facing knob to the manifest `configSchema`;
-  use an env var only as a fallback, and set machine-specific values via the
-  `.local/` overlay, not by editing the tracked launcher.
-- When you add a new local file, confirm `.gitignore` already covers it.
-- Codex: this is compatible with the §7.4 filesystem safety boundary. Writing to
-  `.local/` inside the work root is an allowed local layer, not a boundary breach.
-
-This contract is enforced mechanically by `npm test`
-(`tests/tracked-file-hygiene.test.ts`, which fails on machine-specific absolute
-paths in any `git ls-files` entry) and by `npm run leak-scan` (which guards the
-distribution surface). Both reuse one pattern source in
-`scripts/maintainer-leak-scan.mjs`.
-
----
-
-## OpenClaw-native constraints
-
-Follow OpenClaw design. Avoid unique infrastructure that will break every time OpenClaw changes.
-
-### Do
-
-- Use a native OpenClaw plugin package with `openclaw.plugin.json`.
-- Declare user-facing configuration with `configSchema` and `uiHints`.
-- Register plugin behavior through OpenClaw plugin surfaces: tools, hooks, services, HTTP routes.
-- Use focused SDK imports after verifying the current SDK paths and signatures.
-- Keep side effects behind registered tools.
-- Enforce autonomous public action policy through hooks/guards before side-effecting tools run.
-- Use OpenClaw Cron / Heartbeat / Standing Orders / Tasks where appropriate.
-- Keep Producer Console thin: call plugin APIs/tools; do not talk directly to Suno, Instagram, TikTok, or Bird from frontend code.
-- Persist creative state in workspace files and machine runtime state in plugin runtime store.
-- Use append-only ledgers for prompts, Suno runs, social publishing, and audit events.
-- Fail closed on unclear authority, platform error, quota exhaustion, CAPTCHA, payment prompt, login challenge, or selector mismatch.
-
-### Do not
-
-- Do not fork OpenClaw.
-- Do not deep-import OpenClaw internals such as `src/*`, bundled extension internals, or private helpers.
-- Do not replace the OpenClaw agent loop.
-- Do not build a separate daemon unrelated to the OpenClaw Gateway.
-- Do not expose platform passwords to the model or store them in plugin config.
-- Do not automate CAPTCHA, payment prompts, login challenges, or account lockout recovery.
-- Do not use unofficial Suno reverse-engineered APIs as the default connector.
-- Do not implement a hidden approval/permission system that bypasses OpenClaw tool/hook behavior.
-- Do not let Producer Console frontend directly publish to X/Instagram/TikTok/Suno.
-- Do not log API tokens, cookies, passwords, OAuth refresh tokens, session headers, or browser cookies.
-- Do not generate prompts that ask Suno to clone a living artist or unlicensed voice.
-
----
-
-## Architecture boundaries
+- Prefer a new operator knob in the manifest `configSchema` over a new env var.
+- When adding a local file, confirm `.gitignore` already covers it.
 
-```text
-Core Runtime
-  identity, policy, orchestration, workspace bootstrap
+Enforced by `tests/tracked-file-hygiene.test.ts` and `npm run leak-scan`.
 
-Suno Production
-  sunomanual knowledge, prompt pack, validators, payload builder, ledger
+**Do not change without explicit approval:** the `package.json.files` allowlist,
+`openclaw.plugin.json` `configSchema` shape, append-only ledger formats, `compat`
+version pins, or anything under `.github/workflows/`.
 
-Suno Browser Worker
-  logged-in browser profile, form-fill/create/result import, hard stops
-
-Social Distribution
-  connector interface, X/Bird, Instagram, TikTok, asset routing, post ledger
+## 6. Invariants
 
-Producer Console
-  setup, status, settings, recovery, logs, marketplace-friendly disclosures
+**OpenClaw-native.** Do not fork OpenClaw, deep-import its internals (`src/*`,
+bundled extension internals, private helpers), replace the agent loop, or run a
+separate daemon. Register behavior through plugin surfaces: tools, hooks, services,
+HTTP routes. Keep side effects behind registered tools and authority guards.
 
-Authority Guards
-  MusicAuthority, SocialAuthority, RiskClassifier, BudgetLimiter
-```
+**Safety.** Do not automate CAPTCHA solving, payment prompts, login challenges, or
+lockout recovery. Do not use unofficial Suno reverse-engineered APIs as the default
+connector. Fail closed on unclear authority, platform error, quota exhaustion,
+CAPTCHA, payment prompt, login challenge, or selector mismatch.
 
----
+**Secrets.** Never expose platform passwords to the model or store them in plugin
+config. Never log API tokens, cookies, passwords, OAuth refresh tokens, session
+headers, or browser cookies.
 
-## Read these files first
+**Rights.** Never generate prompts asking Suno to clone a living artist or an
+unlicensed voice.
 
-1. `README.md` — repository overview.
-2. `SPEC_INDEX.md` — why this package has both distribution docs and detailed Codex specs.
-3. `docs/00_PRODUCT_BRIEF.md` — public product summary.
-4. `docs/01_ARCHITECTURE.md` — distribution-oriented architecture.
-5. `docs/03_OPENCLAW_NATIVE_RULES.md` — compatibility rules.
-6. `docs/04_PRODUCER_CONSOLE_SPEC.md` — Producer Console.
-7. `docs/05_AUTOPILOT_SPEC.md` — autonomous operation.
-8. `docs/06_SUNO_WORKER_SPEC.md` — Suno background worker.
-9. `docs/07_SOCIAL_CONNECTORS_SPEC.md` — X/Bird, Instagram, TikTok.
-10. `docs/08_PROMPT_LEDGER_SPEC.md` — prompt retention and audit.
-11. `docs/12_SUNOMANUAL_INTEGRATION.md` — how `sunomanual` is absorbed.
-12. `docs/13_CONNECTOR_SPLIT_PLAN.md` — later package split.
-13. `docs/codex-detailed-specs/PRODUCT_SPEC.md` — full product intent.
-14. `docs/codex-detailed-specs/ARCHITECTURE.md` — full OpenClaw-native system design.
-15. `docs/codex-detailed-specs/IMPLEMENTATION_PLAN.md` — detailed phase plan.
-16. `docs/codex-detailed-specs/SUNO_SPEC.md` — detailed Suno spec.
-17. `docs/codex-detailed-specs/SOCIAL_CONNECTORS_SPEC.md` — detailed connector spec.
-18. `docs/codex-detailed-specs/PROMPT_LEDGER_SPEC.md` — exact retention requirements.
-19. `openclaw.plugin.json` — config schema and UI hints.
-20. `workspace-template/AGENTS.md` — artist-facing standing orders.
-
-Then produce a plan before editing code.
-
----
-
-## Implementation order
-
-### Phase 0 — Inspect and adapt
-
-- Inspect the current OpenClaw version and plugin SDK API in the target repository.
-- Confirm exact signatures for plugin entry, tool registration, hook registration, service registration, HTTP routes, runtime store, and config access.
-- Update stubs in `src/**` to current SDK APIs.
-- Run TypeScript/lint checks available in the target repo.
-
-Acceptance:
-
-- Codex reports verified SDK signatures and changed imports before implementing behavior.
-- `npm run typecheck` can be made meaningful.
-
-### Phase 1 — Plugin skeleton and config
-
-- Make the plugin load in OpenClaw.
-- Validate `openclaw.plugin.json`.
-- Register no-op tools and Producer Console routes.
-- Make config readable from plugin code.
-- Add minimal runtime store helpers.
-- Keep package metadata publishable.
-
-Acceptance:
-
-- OpenClaw discovers and enables `artist-runtime`.
-- Producer Console route opens.
-- `/api/status` returns config, platform statuses, worker states, and dry-run state.
-- Package verification passes.
-
-### Phase 2 — Artist workspace and bootstrap
-
-- Copy `workspace-template/**` or generate equivalent files in the selected artist workspace.
-- Implement bootstrap hook so the agent receives `ARTIST.md`, `CURRENT_STATE.md`, `SOCIAL_VOICE.md`, Suno profile, and public-autonomy rules.
-- Implement `ArtistStateService` for reading/writing state files.
-
-Acceptance:
-
-- A session can answer as the artist, not as a generic assistant.
-- Missing workspace files are created safely from templates.
-- Producer Console can show Artist Mind.
-
-### Phase 3 — Prompt ledger and song repository
-
-- Implement append-only ledgers.
-- Implement song directory creation and status state machine.
-- Every tool that creates content must call `PromptLedger.append()` before returning.
-
-Acceptance:
-
-- Creating a song idea produces `songs/<song-id>/brief.md` and `prompts/prompt-ledger.jsonl`.
-- Ledger entries include stage, timestamp, input refs, prompt text, output refs, config snapshot/hash, and artist snapshot/hash.
-- Existing ledger entries are never overwritten.
-
-### Phase 4 — Suno Production Pack
-
-- Import or vendor user-owned `sunomanual` knowledge into `src/suno-production/knowledge` or `packages/suno-production/knowledge`.
-- Implement `createSunoPromptPack()`.
-- Generate Style, Exclude, YAML lyrics, sliders, payload JSON, and validation report.
-- Ensure Suno payload is saved before any Suno browser action.
-
-Acceptance:
-
-- `artist_suno_create_prompt_pack` creates all required files and ledger entries.
-- Validation prevents missing Style/Exclude/YAML/payload.
-- Prompt pack can be re-generated with versioned outputs.
-
-### Phase 5 — Suno Browser Worker
-
-- Implement persistent browser profile for Suno.
-- First-run path opens Suno and waits for human login.
-- After login, background worker can open create page, fill prompt pack, click Create if policy allows, wait/poll for results, and import generated URLs/take info.
-- Stop on login challenge, CAPTCHA, payment prompt, UI mismatch, or repeated failures.
-
-Acceptance:
-
-- With a logged-in Suno profile, a song run can create a generation job without the user watching the screen.
-- If any hard stop is detected, the worker pauses and reports an actionable alert.
-- Prompt Ledger contains the payload hash before Create.
-
-### Phase 6 — Social connectors
-
-- Implement common `SocialConnector` interface.
-- X connector wraps Bird.
-- Instagram connector wraps official publishing APIs where possible.
-- TikTok connector wraps official content posting APIs where possible.
-- Implement capability checks per platform.
-
-Acceptance:
-
-- Each enabled platform reports account, capability, quota/rate status, and last action.
-- X can publish via Bird when Bird is configured.
-- Instagram/TikTok can stage/publish according to capabilities and configured authority.
-- Dry-run mode prevents real external calls.
-
-### Phase 7 — Autopilot
-
-- Implement autonomous cycle service:
-  `observe -> ideate -> brief -> lyrics -> Suno prompt pack -> Suno generate -> select take -> create social assets -> publish -> log`.
-- Use config limits: monthly Suno budget, daily generation cap, per-platform posting caps, quiet windows, hard stops.
-- Schedule with OpenClaw-native cron/heartbeat mechanisms where possible; otherwise isolate scheduling in a registered plugin service and make it inspectable in the Console.
-
-Acceptance:
-
-- On a Mac where the screen is not watched, the artist can create and share daily outputs within policy.
-- Dashboard shows current cycle stage and last successful verified action.
-- All public actions have audit events.
-
-### Phase 8 — Producer Console
-
-- Implement web UI pages:
-  - Dashboard
-  - Platforms
-  - Music / Suno
-  - Content Pipeline
-  - Songs
-  - Prompt Ledger
-  - Artist Mind
-  - Settings
-  - Alerts
-  - Marketplace disclosures
-- Console must call plugin API only.
-- Make all dangerous actions explicit, auditable, and reversible where possible.
-
-Acceptance:
-
-- User can select X/Instagram/TikTok, connect accounts, set authority, set budgets/cadence, pause/reconnect, and inspect ledgers.
-- Console never directly calls platform APIs.
-
-### Phase 9 — Marketplace readiness
-
-- Keep `SECURITY.md`, `PRIVACY.md`, `CAPABILITIES.md`, `MARKETPLACE.md`, `PUBLISHING.md` current.
-- Add screenshots or text descriptions for Producer Console if ClawHub listing needs them.
-- Run dry-run publish commands.
-- Confirm `package.json.files` includes only intended public package files.
-
-Acceptance:
-
-- `npm run pack:verify` passes.
-- `npm run pack:dry-run` passes.
-- `npm run clawhub:dry-run` is documented or stubbed until credentials are available.
-
----
-
-## Default operating policy
-
-The useful production profile after setup is autonomous:
-
-```json
-{
-  "artist": { "mode": "public_artist" },
-  "autopilot": { "enabled": true, "dryRun": false },
-  "music": {
-    "engine": "suno",
-    "suno": {
-      "connectionMode": "background_browser_worker",
-      "authority": "auto_create_and_select_take",
-      "monthlyGenerationBudget": 50,
-      "maxGenerationsPerDay": 4,
-      "minMinutesBetweenCreates": 20,
-      "promptLogging": "full"
-    }
-  },
-  "distribution": {
-    "dailySharing": "auto",
-    "officialRelease": "manual_approval"
-  },
-  "platforms": {
-    "x": { "connector": "bird", "authority": "auto_publish" },
-    "instagram": { "authority": "auto_publish_visuals" },
-    "tiktok": { "authority": "auto_publish_clips" }
-  }
-}
-```
-
-For a distributed package, first install should be setup-safe. It may start with `autopilot.dryRun: true` until the producer explicitly enables real side effects.
-
-Always stop for:
-
-- login expired
-- CAPTCHA or anti-bot challenge
-- payment or credit purchase prompt
-- UI change / selector mismatch
-- platform policy uncertainty
-- legal/rights uncertainty
-- third-party named imitation or voice cloning risk
-- repeated failed publishes
-- quota exhaustion
-- missing connector capability
-
----
-
-## Key design vocabulary
-
-- **Artist Runtime**: OpenClaw-native plugin that manages public artist identity, autonomy, music, social publishing, and audit.
-- **Producer Console**: Web control tower for setup/settings/audit/recovery.
-- **Suno Production Pack**: `sunomanual`-derived knowledge and prompt-generation engine.
-- **Suno Browser Worker**: Dedicated persistent Suno browser profile used by the plugin after human login.
-- **Prompt Ledger**: Append-only creation history. Mandatory for every work.
-- **Daily Sharing**: Routine public sharing of lyrics, demo snippets, creation notes, visual cards, and clips.
-- **Official Release**: Separate higher-risk action, initially approval-gated.
-- **Hard Stop**: Condition where autonomous execution must pause and alert.
-- **Capability Check**: Runtime check that a connector can perform the requested action before it is enabled.
-
----
-
-## Coding rules
-
-- Prefer small modules with explicit types.
-- Make every side-effecting operation idempotent or explicitly non-idempotent with run IDs.
-- Never mutate prompt ledgers; append new entries.
-- Store human-readable Markdown and machine-readable JSONL side by side.
-- Include `reason`, `policyDecision`, `configSnapshot`, and `sourceRefs` for public actions.
-- Do not silently fail. Use Execute → Verify → Report.
-- Use feature flags and capability checks for external platforms.
-- Write tests around policy decisions, ledger append behavior, song state transitions, connector failure modes, config schema, and dry-run prevention.
-- Keep UI copy in producer/artist language, not internal infrastructure language.
-- Keep OpenClaw SDK usage isolated so API changes are easy to patch.
-
----
-
-## Required tests before declaring a phase done
-
-- Config schema validates defaults and rejects unknown keys.
-- Authority guard denies high-risk actions by default.
-- Prompt Ledger appends without overwriting existing entries.
-- Audit log records all mocked public side effects.
-- Dry-run mode prevents all external connector calls.
-- Suno worker stops on simulated CAPTCHA/login/payment/UI mismatch.
-- Social connectors expose capability checks.
-- Producer Console APIs require Gateway/plugin auth as appropriate.
-- Package verification confirms required files for ClawHub/npm distribution.
-
----
-
-## Release discipline
-
-Every release should pass:
-
-```bash
-npm run typecheck
-npm test
-npm run build
-npm run pack:verify
-npm run pack:dry-run
-npm run clawhub:dry-run
-```
-
-If `clawhub:dry-run` behavior changes, update `PUBLISHING.md` with the current command and evidence.
-
----
-
-## First Codex plan must include
-
-1. Current OpenClaw SDK/API verification plan.
-2. Any needed corrections to this scaffold.
-3. MVP scope for the first PR.
-4. Build/test commands for the target repo.
-5. Risks and assumptions.
-6. A step-by-step implementation sequence.
-7. Which external actions remain dry-run in the first PR.
-8. How Prompt Ledger will be tested before real Suno/SNS integration.
-
-Do not begin broad rewrites before producing that plan.
+**Data.** Ledgers are append-only — append new entries, never rewrite existing ones.
+A track is not complete unless all creation prompts and payloads are stored. Store
+human-readable Markdown and machine-readable JSONL side by side.
+
+**Boot.** Startup is read-only. Do not launch a browser or take side effects at
+gateway boot; only an explicit operator action or a create request may do so.
+
+**Code.** Small modules, explicit types. Side-effecting operations are idempotent or
+carry explicit run IDs. Public actions record `reason`, `policyDecision`,
+`configSnapshot`, `sourceRefs`. Do not fail silently: execute, verify, report.
+
+## 7. Definition of done
+
+A change is done when all of the following hold:
+
+1. `npm run typecheck`, `npm run lint`, and `npm test` pass.
+2. The change is reflected where it must take effect (restart / reload / rebuild),
+   and that was actually performed.
+3. A minimal verification was run and its real output is reported.
+4. New behavior has a test; a bug fix has a test that failed before the fix.
+5. Changes are committed with a conventional-commit message (English, no AI
+   co-author trailer).
+6. The report states: what was changed, the commands run, their real output,
+   anything not done, and any remaining risk.
+
+Do not report completion for work that is partially done. Say which part is
+incomplete and why.
+
+## 8. When documentation must be updated
+
+- Public behavior, config schema, or an operator-visible flow changed → update the
+  relevant `docs/*.md` and `CHANGELOG.md`.
+- A new operator knob was added → `openclaw.plugin.json` `configSchema` + `uiHints`
+  + `docs/RUNTIME_SETTINGS.md`.
+- The distribution surface changed → `package.json.files` + `docs/PACKAGE_CONTENTS.md`.
+- A contract or spec hotspot changed → update its doc and its guard test in the same
+  commit.
+- This file's §2, §3, or §4 no longer matches reality → fix it in the same change.
+
+## 9. Roles
+
+Roles are assigned per task, not per tool. Any tool can hold any role, and roles may
+change mid-task.
+
+**Orchestrator** — understands the request and fixes scope; decomposes the task;
+decides the approach; assigns work; tracks progress and dependencies; reviews the
+implementation; confirms test results; records open risks; makes the final done call.
+Detail: `docs/agents/ORCHESTRATOR.md`.
+
+**Implementer** — investigates the codebase; implements; refactors; adds and runs
+tests; reproduces and fixes defects; updates required docs; reports what was done,
+what was decided, and what remains. Detail: `docs/agents/IMPLEMENTER.md`.
+
+**Reviewer** — checks the diff against Task Intent and §5-§7; verifies claims against
+primary evidence rather than the implementer's summary. Detail:
+`docs/agents/REVIEWER.md`.
+
+Whoever holds a role does that role's job. A single agent may hold all three and must
+then satisfy all of their obligations.
+
+## 10. Handoff
+
+Work state must never live only in one model's conversation or private memory.
+
+- The orchestrator writes and maintains `docs/handoff/ACTIVE.md` from
+  `docs/handoff/TEMPLATE.md`.
+- Update it at each meaningful checkpoint, and always before ending a work session or
+  handing over.
+- Anyone picking up work reads `docs/handoff/ACTIVE.md` **before** touching code.
+- On completion, move it to `docs/handoff/archive/YYYY-MM-DD-<slug>.md`.
+- Record verifiable facts, decisions, and reasons — not internal reasoning.
+- Decisions listed under `Decided (do not relitigate)` are settled. Reopen one only
+  with new evidence, and say what the new evidence is.
+
+## 11. Tool adapters
+
+Only genuinely tool-dependent mechanics belong here.
+
+**Claude Code** loads `CLAUDE.md`, which imports this file. Claude-specific
+mechanics — skills, subagents, hooks, settings — live in `CLAUDE.md` and
+`.claude/`. Claude Code does not read `AGENTS.md` directly.
+
+**Codex** loads this file natively, merging `~/.codex/AGENTS.md` first and then
+repository files from root down to the working directory. The combined size is capped
+by `project_doc_max_bytes` (32 KiB by default) — if the global file is large, this
+contract can be silently dropped. Verify that §3's vocabulary is visible before
+trusting that these rules are in effect. Codex persona and machine settings live in
+`.codex/config.toml` (untracked).
+
+## 12. On-demand references
+
+Read these when the task touches them. Do not preload.
+
+| Topic | File |
+|---|---|
+| Operator setup / daily operation | `docs/OPERATOR_QUICKSTART.md`, `docs/OPERATOR_RUNBOOK.md` |
+| HTTP API surface | `docs/API_ROUTES.md` |
+| Producer Console | `docs/PRODUCER_CONSOLE.md` |
+| Suno browser driver and its failure modes | `docs/SUNO_BROWSER_DRIVER.md` |
+| Connector authentication | `docs/CONNECTOR_AUTH.md`, `docs/GATEWAY_AUTH.md` |
+| Runtime settings reference | `docs/RUNTIME_SETTINGS.md` |
+| Persona canon | `docs/PERSONA_CANONICAL.md` |
+| Creative logic / observation pipeline | `docs/CREATIVE_LOGIC.md`, `docs/OBSERVATION_PIPELINE.md` |
+| Local vs distribution operations | `docs/LOCAL_RUNTIME_OPS.md` |
+| Security posture | `docs/THREAT_MODEL.md`, `docs/INCIDENT_RESPONSE.md`, `SECURITY.md` |
+| Publishing | `PUBLISHING.md`, `MARKETPLACE.md`, `docs/PACKAGE_CONTENTS.md` |
+| Role detail | `docs/agents/ORCHESTRATOR.md`, `docs/agents/IMPLEMENTER.md`, `docs/agents/REVIEWER.md` |
+| Handoff | `docs/handoff/TEMPLATE.md`, `docs/handoff/ACTIVE.md` |
+| Historical build phases | `docs/history/IMPLEMENTATION_PHASES.md` |
