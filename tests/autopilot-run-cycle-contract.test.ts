@@ -32,7 +32,9 @@ async function rootWithCachedSecretObservation(): Promise<string> {
     "",
     "Query: music OR society OR culture",
     "",
-    "- text: \"TELEGRAM_BOT_TOKEN" + "=abcd1234efgh5678\"",
+    // Intentional secret-shaped fixture: this test asserts the observation cache scrubs it.
+    // boundary-grep-allow: telegram-token-assignment
+    "- text: \"TELEGRAM_BOT_TOKEN=abcd1234efgh5678\"",
     "  author: \"fixture\"",
     "  url: \"https://x.com/fixture/status/1234567890\"",
     "  postedAt: \"2026-06-11T00:00:00.000Z\"",

@@ -143,6 +143,38 @@ describe("boundary-grep", () => {
     expect(findings).toEqual([]);
   });
 
+  it("skips a forbidden pattern when a matching allow pragma is on the preceding line", async () => {
+    const root = mkdtempSync(join(tmpdir(), "artist-runtime-boundary-grep-pragma-allow-"));
+    await writeFixture(
+      root,
+      "tests/pragma.test.ts",
+      [
+        "// boundary-grep-allow: telegram-token-assignment",
+        `const fixture = "${"TELEGRAM_" + "BOT_TOKEN="}abcd1234efgh5678";`
+      ].join("\n")
+    );
+
+    const findings = await scanBoundaryPatterns({ cwd: root, roots: ["tests"] });
+
+    expect(findings).toEqual([]);
+  });
+
+  it("still flags a forbidden pattern when the allow pragma names a different rule id", async () => {
+    const root = mkdtempSync(join(tmpdir(), "artist-runtime-boundary-grep-pragma-mismatch-"));
+    await writeFixture(
+      root,
+      "tests/pragma-mismatch.test.ts",
+      [
+        "// boundary-grep-allow: suno-password-assignment",
+        `const fixture = "${"TELEGRAM_" + "BOT_TOKEN="}abcd1234efgh5678";`
+      ].join("\n")
+    );
+
+    const findings = await scanBoundaryPatterns({ cwd: root, roots: ["tests"] });
+
+    expect(findings.map((finding) => finding.rule)).toEqual(["telegram-token-assignment"]);
+  });
+
   it("does not flag safe cookie lifecycle messages without dumped values", async () => {
     const root = mkdtempSync(join(tmpdir(), "artist-runtime-boundary-grep-cookie-message-"));
     await writeFixture(

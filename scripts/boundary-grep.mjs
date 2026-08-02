@@ -82,7 +82,26 @@ async function collectFiles(root) {
   return files;
 }
 
-export async function scanBoundaryPatterns({ cwd = process.cwd(), roots = defaultRoots } = {}) {
+const allowPragmaPattern = /boundary-grep-allow:\s*([A-Za-z0-9-]+)/g;
+
+// Collect the rule ids explicitly allowed by `boundary-grep-allow: <rule-id>`
+// pragmas on a single line. Only exact rule ids are honored; there is no
+// wildcard or "allow all" form, so an exception can never widen past the one
+// rule it names.
+function allowedRuleIds(line) {
+  const ids = new Set();
+  if (!line) {
+    return ids;
+  }
+  allowPragmaPattern.lastIndex = 0;
+  let match;
+  while ((match = allowPragmaPattern.exec(line)) !== null) {
+    ids.add(match[1]);
+  }
+  return ids;
+}
+
+export async function scanBoundaryPatterns({ cwd = process.cwd(), roots = defaultRoots, allowed = [] } = {}) {
   const findings = [];
   const files = (await Promise.all(roots.map((root) => collectFiles(join(cwd, root))))).flat();
 
@@ -93,14 +112,21 @@ export async function scanBoundaryPatterns({ cwd = process.cwd(), roots = defaul
     const contents = await readFile(file, "utf8");
     const lines = contents.split(/\r?\n/);
     for (const [index, line] of lines.entries()) {
+      const allowIdsCurrent = allowedRuleIds(line);
+      const allowIdsPrevious = index > 0 ? allowedRuleIds(lines[index - 1]) : new Set();
       for (const rule of forbiddenPatterns) {
         if (rule.pattern.test(line)) {
-          findings.push({
+          const entry = {
             rule: rule.id,
             file: relative(cwd, file),
             line: index + 1,
             text: line.trim()
-          });
+          };
+          if (allowIdsCurrent.has(rule.id) || allowIdsPrevious.has(rule.id)) {
+            allowed.push(entry);
+            continue;
+          }
+          findings.push(entry);
         }
       }
     }
@@ -127,19 +153,29 @@ function parseArgs(argv) {
   return roots.length > 0 ? roots : defaultRoots;
 }
 
+function reportAllowedExceptions(allowed) {
+  console.log(`boundary-grep: ${allowed.length} allowed exception(s)`);
+  for (const entry of allowed) {
+    console.log(`  allowed ${entry.file}:${entry.line} [${entry.rule}]`);
+  }
+}
+
 async function main() {
   const roots = parseArgs(process.argv.slice(2));
-  const findings = await scanBoundaryPatterns({ roots });
+  const allowed = [];
+  const findings = await scanBoundaryPatterns({ roots, allowed });
 
   if (findings.length > 0) {
     for (const finding of findings) {
       console.error(`${finding.file}:${finding.line} [${finding.rule}] ${finding.text}`);
     }
+    reportAllowedExceptions(allowed);
     process.exitCode = 1;
     return;
   }
 
   console.log(`boundary-grep passed (${roots.join(", ")})`);
+  reportAllowedExceptions(allowed);
 }
 
 if (import.meta.url === pathToFileURL(process.argv[1]).href) {

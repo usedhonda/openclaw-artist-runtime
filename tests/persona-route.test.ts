@@ -207,7 +207,9 @@ describe("persona route", () => {
       identity: { text: "# IDENTITY.md\n\nplain snapshot" }
     });
     const rejected = await callPersona(handler, "POST", "/producer", root, {
-      producer: { text: "TELEGRAM_BOT_TOKEN" + "=do-not-write" }
+      // Intentional secret-shaped fixture: this test asserts secret-like persona input is rejected.
+      // boundary-grep-allow: telegram-token-assignment
+      producer: { text: "TELEGRAM_BOT_TOKEN=do-not-write" }
     });
     const producer = await callPersona(handler, "POST", "/producer", root, {
       producer: { text: "avoid vague praise" }
