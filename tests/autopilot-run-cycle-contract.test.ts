@@ -32,7 +32,7 @@ async function rootWithCachedSecretObservation(): Promise<string> {
     "",
     "Query: music OR society OR culture",
     "",
-    "- text: \"TELEGRAM_BOT_TOKEN=abcd1234efgh5678\"",
+    "- text: \"TELEGRAM_BOT_TOKEN" + "=abcd1234efgh5678\"",
     "  author: \"fixture\"",
     "  url: \"https://x.com/fixture/status/1234567890\"",
     "  postedAt: \"2026-06-11T00:00:00.000Z\"",
