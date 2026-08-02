@@ -20,7 +20,7 @@ import { evaluateSunoGenerationLimits, generateSunoRun, importSunoResults, readL
 import { publishSocialAction } from "./socialPublishing.js";
 import { selectTake } from "./takeSelection.js";
 import { evaluateSunoTakeSelection } from "./sunoTakeSelector.js";
-import { emitRuntimeEvent } from "./runtimeEventBus.js";
+import { emitRuntimeEvent, type RuntimeEvent } from "./runtimeEventBus.js";
 import {
   collectSunoTakeUrls,
   evaluateSunoTakeUrlReadiness,
@@ -91,7 +91,29 @@ function nowIso(): string {
   return new Date().toISOString();
 }
 
-async function writeStageState(root: string, previous: AutopilotRunState, next: AutopilotRunState): Promise<AutopilotRunState> {
+// A fail-closed self-pause is a transition INTO a paused-flag state through the cycle's
+// own stage writer. A manual /pause never routes through here (it writes via
+// AutopilotControlService), and the producer-review suspension sets stage="paused" but not
+// paused=true, so keying on the paused flag isolates the autonomous pauses. Returns the
+// notification event exactly on the not-paused -> paused edge (so a still-paused resurface
+// on the next tick stays quiet), or undefined otherwise.
+export function buildAutoPauseEvent(
+  previous: Pick<AutopilotRunState, "paused" | "stage">,
+  next: Pick<AutopilotRunState, "paused" | "stage" | "currentSongId" | "pausedReason" | "blockedReason">
+): Extract<RuntimeEvent, { type: "autopilot_auto_paused" }> | undefined {
+  if (previous.paused === true || next.paused !== true) {
+    return undefined;
+  }
+  return {
+    type: "autopilot_auto_paused",
+    songId: next.currentSongId,
+    reason: next.pausedReason ?? next.blockedReason ?? "autopilot paused",
+    previousStage: previous.stage,
+    timestamp: Date.now()
+  };
+}
+
+export async function writeStageState(root: string, previous: AutopilotRunState, next: AutopilotRunState): Promise<AutopilotRunState> {
   if (previous.stage !== next.stage || previous.currentSongId !== next.currentSongId) {
     emitRuntimeEvent({
       type: "autopilot_stage_changed",
@@ -102,6 +124,16 @@ async function writeStageState(root: string, previous: AutopilotRunState, next: 
     });
   }
   const written = await writeAutopilotRunState(root, next);
+  // Announce a self-pause AFTER the pause is persisted, and never let a notify failure
+  // unwind the pause (emit is fire-and-forget; a throwing subscriber is swallowed here).
+  const autoPauseEvent = buildAutoPauseEvent(previous, written);
+  if (autoPauseEvent) {
+    try {
+      emitRuntimeEvent(autoPauseEvent);
+    } catch (error) {
+      console.warn(`[artist-runtime] auto-pause notify emit failed: ${error instanceof Error ? error.message : String(error)}`);
+    }
+  }
   await emitDraftBoxProactiveNoticeIfNeeded(root, written).catch((error) => {
     const reason = error instanceof Error ? error.message : String(error);
     console.warn(`[artist-runtime] draft box proactive notice failed: ${reason}`);

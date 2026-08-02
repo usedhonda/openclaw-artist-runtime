@@ -69,7 +69,8 @@ const TELEGRAM_SIGNAL_EVENT_TYPES: ReadonlySet<RuntimeEvent["type"]> = new Set([
   "take_selection_stalled",
   "asset_generation_stalled",
   "suno_generate_failed",
-  "suno_human_assist_requested"
+  "suno_human_assist_requested",
+  "autopilot_auto_paused"
 ]);
 
 const HARD_STOP_REASON_PATTERNS: Array<{ category: string; pattern: RegExp; message: string }> = [
@@ -1592,6 +1593,18 @@ async function formatRuntimeEventRaw(
       ].filter((line): line is string => Boolean(line)).join("\n");
     case "autopilot_state_changed":
       return `Autopilot state: enabled=${event.enabled} paused=${event.paused}${event.reason ? ` reason=${event.reason}` : ""}`;
+    case "autopilot_auto_paused": {
+      const cdpDown = /cdp_endpoint_unreachable/i.test(event.reason);
+      return [
+        "自動で止まった。勝手に先へは進めない。",
+        "",
+        TELEGRAM_SECTION_DIVIDER,
+        event.songId ? `song: ${event.songId}` : undefined,
+        `理由: ${summarizeStopReason(event.reason)}`,
+        cdpDown ? "外部の Suno Chrome が落ちている。起動し直してから再開して。" : undefined,
+        "再開: /resume か POST /api/resume。"
+      ].filter((line): line is string => Boolean(line)).join("\n");
+    }
     case "song_take_completed":
       return formatSongTakeCompleted(event, options);
     case "suno_take_url_ready": {

@@ -52,7 +52,10 @@ const CRITICAL_NOTIFY_EVENTS: ReadonlySet<RuntimeEvent["type"]> = new Set([
   "take_selection_stalled",
   "asset_generation_stalled",
   "producer_decision_reminder",
-  "artist_proactive_notice"
+  "artist_proactive_notice",
+  // A silent self-pause is exactly the 26h-blind-spot failure: make the "I paused myself"
+  // alert replay-critical so it re-delivers if Telegram was mid-connect when it fired.
+  "autopilot_auto_paused"
 ]);
 
 export function failedNotifyLedgerPath(root: string): string {

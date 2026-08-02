@@ -7,6 +7,7 @@ export type RuntimeEvent =
   | { type: "autopilot_stage_changed"; songId?: string; from?: AutopilotStage; to: AutopilotStage; timestamp: number }
   | { type: "take_imported"; songId: string; paths: string[]; metadata: SunoImportedAssetMetadata[]; timestamp: number }
   | { type: "autopilot_state_changed"; enabled: boolean; paused: boolean; reason?: string; timestamp: number }
+  | { type: "autopilot_auto_paused"; songId?: string; reason: string; previousStage?: AutopilotStage; timestamp: number }
   | { type: "song_take_completed"; songId: string; selectedTakeId?: string; urls: string[]; observationSummary?: ObservationSummary; actor?: "manual_notify_retrigger"; timestamp: number }
   | { type: "suno_adoption_download_imported"; songId: string; runId: string; urls: string[]; paths: string[]; selectedTakeId?: string; timestamp: number }
   | { type: "suno_adoption_download_failed"; songId: string; runId?: string; urls: string[]; reason: string; timestamp: number }
