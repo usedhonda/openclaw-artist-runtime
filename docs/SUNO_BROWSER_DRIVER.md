@@ -202,13 +202,25 @@ selectors are validated at the next live create, not in unit tests.
   isolated profile. `channel: "chrome"` is opt-in only because the macOS Chrome
   singleton can otherwise navigate the operator's visible Chrome window.
 
-## Profile path
+## Profile paths
 
-- Dedicated local profile path: `.openclaw-browser-profiles/suno/`
-- This path is excluded from git and must stay on the operator machine.
-- Do not copy the profile into ledgers, package artifacts, screenshots, or logs.
+The normal `suno_cli` lane uses one data directory so reauthentication refreshes
+both artifacts consumed by the runtime:
 
-## Profile lifecycle
+- `<workspace>/runtime/suno/cli/browser-profile/` — persistent browser profile;
+- `<workspace>/runtime/suno/cli/session.json` — the CLI session used for API auth.
+
+The no-argument `scripts/openclaw-suno-login.sh` invokes `suno-cli login` for this
+data directory. `<workspace>` is `OPENCLAW_LOCAL_WORKSPACE` when set, otherwise
+`.local/openclaw/workspace` in the repository.
+
+The separate `.openclaw-browser-profiles/suno/` path is legacy Playwright-only
+recovery for the browser-worker lane. Passing an explicit profile as the first
+argument to the wrapper selects that lane and does not refresh `session.json`.
+Both paths are excluded from git and must stay on the operator machine. Do not
+copy either profile into ledgers, package artifacts, screenshots, or logs.
+
+## Legacy Playwright profile lifecycle
 
 Round 67 adds local lifecycle checks around the dedicated browser profile
 without changing the submit path:
@@ -229,10 +241,12 @@ without changing the submit path:
   snapshot store and prunes entries older than 365 days when
   `scripts/cleanup-runtime.sh` is run manually.
 
-When `sunoProfileStale` appears, first run the diagnose script, then either
-rerun `scripts/openclaw-suno-login.sh` for normal reauthentication or follow
-Scenario A below if the profile is corrupt. Keep all snapshots local to the
-operator machine.
+When `sunoProfileStale` appears for the legacy Playwright lane, first run the
+diagnose script, then rerun
+`scripts/openclaw-suno-login.sh .openclaw-browser-profiles/suno` or follow
+Scenario A below if the profile is corrupt. For the normal `suno_cli` lane,
+rerun the no-argument wrapper so the browser profile and `session.json` are
+refreshed together. Keep all snapshots local to the operator machine.
 
 ## Dependency install (operator)
 
@@ -249,31 +263,43 @@ so Chromium is not fetched automatically.
 
 ## First login
 
-Use the manual wrapper once per operator machine or whenever the Suno session
-expires:
+Use the manual wrapper once per operator machine or whenever the `suno_cli`
+session expires:
 
 ```bash
 scripts/openclaw-suno-login.sh
 ```
 
-That script opens Chromium with the dedicated persistent profile, navigates to
-the Suno create surface, and waits for the operator to finish login manually.
-Close the browser window when login is complete.
+The default path runs `suno-cli login --data-dir
+<workspace>/runtime/suno/cli`, which opens the CLI-owned persistent browser
+profile and writes both `browser-profile/` and `session.json`. Complete login
+manually, then close the browser window. To recover only the legacy Playwright
+profile, pass its path explicitly:
+
+```bash
+scripts/openclaw-suno-login.sh .openclaw-browser-profiles/suno
+```
 
 ## Google OAuth bot detection workaround
 
-The current login lane uses the stealth plugin and Chrome channel launch options
-to suppress the default Playwright automation markers that Google OAuth was
-rejecting. In practice, if the operator can sign into Suno through ordinary
-Chrome on the same machine, the Playwright lane should now follow the same
-Google OAuth flow instead of failing at the "could not sign you in" screen.
+The default `suno_cli` login uses the vendored CLI's ordinary Playwright
+persistent-browser launch. It does not use the stealth plugin or Chrome-channel
+launch options. The explicit-profile legacy lane is separate: its
+`openclaw-suno-login.mjs` launcher uses `playwright-extra` with the stealth plugin
+and optional Chrome/executable settings.
+
+If Google OAuth rejects the legacy Playwright lane, signing into Suno through
+ordinary Chrome on the same machine can help confirm that the account itself is
+usable before retrying the manual lane.
 
 If login still fails:
 
 1. confirm ordinary Chrome can sign into the same Suno account;
-2. rerun `scripts/openclaw-suno-login.sh`;
-3. after login, verify the profile with `music.suno.driver = "playwright"` and
-   the existing Suno status/probe surface.
+2. rerun `scripts/openclaw-suno-login.sh` for `suno_cli`, or pass the explicit
+   legacy profile path for the Playwright lane;
+3. after a normal `suno_cli` login, verify connector/platform status sees the
+   refreshed CLI session; after an explicit legacy-profile login, verify with
+   `music.suno.driver = "playwright"` and the existing Suno status/probe surface.
 
 ## Config toggle
 
@@ -575,8 +601,9 @@ is unreadable, or repeated login probes keep failing after ordinary retry.
 2. Rename `.openclaw-browser-profiles/suno/` to a backup path such as
    `.openclaw-browser-profiles/suno.bak-YYYYMMDD-HHMMSS` instead of deleting it.
 3. Create a fresh empty `.openclaw-browser-profiles/suno/` directory.
-4. Rerun `scripts/openclaw-suno-login.sh` so the driver launches the fresh
-   persistent profile with the existing stealth-plugin + bundled Chromium lane.
+4. Rerun `scripts/openclaw-suno-login.sh .openclaw-browser-profiles/suno` so the
+   legacy driver launches the fresh persistent profile with the existing
+   stealth-plugin + bundled Chromium lane.
 5. Complete Google OAuth manually as the operator, then close the browser.
 6. Re-run the login probe and confirm it returns `connected: true` before
    resuming normal use.
@@ -601,7 +628,8 @@ Use this when the probe starts returning `login_required`, the Suno session
 expires, or another machine/logout invalidates the current cookie state.
 
 1. Treat `login_required` as a manual-operator handoff, not an automation bug.
-2. Re-run `scripts/openclaw-suno-login.sh`.
+2. Re-run `scripts/openclaw-suno-login.sh` for `suno_cli`, or pass the explicit
+   legacy profile path for the Playwright lane.
 3. Complete the Google OAuth flow manually in the Chrome-channel browser window.
    The runtime must not auto-script this step.
 4. Close the browser once the operator reaches the authenticated Suno surface.

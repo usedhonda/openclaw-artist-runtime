@@ -196,10 +196,13 @@ and the X section of [CONNECTOR_AUTH.md#x-bird](CONNECTOR_AUTH.md#x-bird).
    ```
 
 3. Complete Google OAuth manually and close the browser after the authenticated
-   Suno surface loads.
+   Suno surface loads. The default wrapper refreshes the CLI data directory,
+   including both `runtime/suno/cli/browser-profile/` and `session.json`.
 
 Expected success: the dedicated profile remains under
-`.openclaw-browser-profiles/suno/`.
+`runtime/suno/cli/browser-profile/` in the workspace. The legacy Playwright
+profile `.openclaw-browser-profiles/suno/` is used only when passed explicitly
+to the wrapper.
 
 If login or profile startup fails, use
 [TROUBLESHOOTING.md#suno-profile-stale-or-corrupt](TROUBLESHOOTING.md#suno-profile-stale-or-corrupt)

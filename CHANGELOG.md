@@ -48,6 +48,9 @@
 - Plan v9.5 finalizes the autopilot revival and Telegram bridge dogfood pass: RuntimeEventBus stage/state/take notifications, owner-only Telegram commands, local free-text inbox staging, debug-only `/review <songId>` mock AI review, and final pre-release distribution gate coverage.
 
 ### Fixed
+- Fixed the default Suno login wrapper to refresh the `suno_cli` data directory,
+  including its browser profile and `session.json`; the explicit profile
+  argument remains a clearly separate legacy Playwright-only lane.
 - Replaced raw `suno-cli` create/download argv in failure logs with metadata-only
   diagnostics. Song titles, lyrics, styles, exclude prompts, Suno targets,
   credentials, and machine-local workspace paths no longer enter warning logs;
