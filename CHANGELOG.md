@@ -43,6 +43,9 @@
 - Plan v9.5 finalizes the autopilot revival and Telegram bridge dogfood pass: RuntimeEventBus stage/state/take notifications, owner-only Telegram commands, local free-text inbox staging, debug-only `/review <songId>` mock AI review, and final pre-release distribution gate coverage.
 
 ### Fixed
+- Isolated write-smoke and Vitest workspaces from the operator workspace, and made
+  config-less autopilot cycles resolve persisted settings instead of silently falling
+  back to dry-run mock defaults that could create quota-counted test songs.
 - Removed the obsolete `suno-cdp` preflight from normal `suno-cli create` execution so live
   creates no longer fail closed before runner invocation when legacy CDP config
   (`OPENCLAW_SUNO_USE_CDP` or `music.suno.browser.cdpEndpoint`) points to an

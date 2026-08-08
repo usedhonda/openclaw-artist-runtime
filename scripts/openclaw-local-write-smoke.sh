@@ -6,7 +6,22 @@ script_dir="$(cd "$(dirname "$0")" && pwd)"
 source "${script_dir}/openclaw-local-env.sh"
 
 base_url="${OPENCLAW_LOCAL_GATEWAY_HTTP_URL}"
-workspace_root="${OPENCLAW_LOCAL_WORKSPACE}"
+production_workspace_root="${OPENCLAW_LOCAL_WORKSPACE}"
+smoke_workspace_root="$(mktemp -d "${TMPDIR:-/tmp}/artist-runtime-write-smoke.XXXXXX")"
+
+cleanup() {
+  if [[ -n "${smoke_workspace_root}" && "${smoke_workspace_root}" != "${production_workspace_root}" ]]; then
+    rm -rf -- "${smoke_workspace_root}"
+  fi
+}
+trap cleanup EXIT
+
+if [[ "${smoke_workspace_root}" == "${production_workspace_root}" ]]; then
+  echo "refusing write smoke against the production workspace" >&2
+  exit 1
+fi
+
+workspace_root="${smoke_workspace_root}"
 
 post_json() {
   local path="$1"

@@ -25,9 +25,9 @@ credential exposure found on the way had to be closed first.
 
 ## Current state
 
-The security item is closed and verified. Generation is still blocked: the
-weekly limit reads `4/3` and the four runs that consumed it were dry-run mocks,
-so no real song has been produced this session.
+The security item is closed and verified. Generation has not yet reached a real
+accepted/imported song. The mock contamination path is fixed in source and under
+test; append-only runtime recovery and the browser A/B remain.
 
 ## Completed
 
@@ -41,6 +41,14 @@ so no real song has been produced this session.
       Masked evidence: `19...b1` → `4f...9b`, both 48 chars.
 - [x] Verified after restart: watcher arguments carry no token, old watcher gone,
       `health ok:true`, `telegram.connected:true`, no 401/403.
+- [x] Ruled out `openclaw-local-write-smoke.sh` as the observed 18:05Z writer:
+      its mandatory config update would have changed `config-overrides.json`, whose
+      mtime remained 17:51Z; no config audit entry was appended.
+- [x] Ruled out the two 18:17Z/18:19Z full Vitest runs as additional writers:
+      the live workspace had zero changed files from 18:17Z through 18:25Z.
+- [x] Fixed the two proven write boundaries: config-less `runCycle()` now resolves
+      the workspace's persisted config, and both write-smoke and Vitest force a
+      disposable workspace even when the launching shell exports the live root.
 
 ## Files changed
 
@@ -49,6 +57,9 @@ so no real song has been produced this session.
 | `scripts/openclaw-local-gateway-supervisor` | Pass the watcher token via environment, not `--token` |
 | `scripts/openclaw-local-gateway` | Three `--token` sites kept, each behind a documented allow pragma |
 | `scripts/boundary-grep.mjs` | New `secret-on-command-line` rule |
+| `src/services/autopilotService.ts` | Resolve persisted config for config-less cycles |
+| `scripts/openclaw-local-write-smoke.sh` | Force write requests into a disposable workspace |
+| `tests/setup-workspace-isolation.ts` | Always replace inherited live workspace values |
 
 Also dirty from separate work, deliberately not in `a590694`: `CHANGELOG.md`,
 `docs/SUNO_BROWSER_DRIVER.md`, `tests/suno-cli-connector.test.ts`.
@@ -73,10 +84,10 @@ Also dirty from separate work, deliberately not in `a590694`: `CHANGELOG.md`,
 
 ## Open questions
 
-- Which path wrote the mock song/run records into the live workspace?
-  `scripts/openclaw-local-write-smoke.sh` posting partial config is the leading
-  suspect, but this is unconfirmed — settle it from audit log, runtime events,
-  and config-update history with mtimes.
+- The exact initiating process for the 18:05Z write is not retained in runtime
+  audit data. The recorded default/mock config proves a config-less/defaulted
+  cycle reached the live root; the service and test boundaries that permitted
+  that state are now covered by regression tests.
 - Does human-assist need the external `:9222` browser, or does a plugin-owned
   browser work? Decide from a real page: URL, title, profile, visible form.
 
@@ -96,13 +107,10 @@ Also dirty from separate work, deliberately not in `a590694`: `CHANGELOG.md`,
 
 ## Next actions
 
-1. Confirm the mock-contamination path from primary evidence, then guard it —
-   force a scratch workspace for the write-smoke path so it cannot touch the
-   production workspace. Add a regression test.
-2. Recover the polluted count without rewriting ledgers. Ledgers are append-only;
+1. Recover the polluted count and song states without rewriting ledgers. Ledgers are append-only;
    use a correction entry or a supported cleanup path, never an in-place edit.
-3. Run the browser A/B and record what the page actually shows.
-4. Only then attempt a real create.
+2. Run the browser A/B and record what the page actually shows.
+3. Only then attempt a real create.
 
 ## Completion conditions
 

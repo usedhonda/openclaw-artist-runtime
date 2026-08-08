@@ -10,8 +10,6 @@ import { join } from "node:path";
 // (`startRuntimeEventLedgerFromEnv` / `startTelegramNotifierFromEnv`). Without
 // this, running `npm test` from the repo appended song_take_completed events to
 // the live runtime-events.jsonl (the observed "song-018 zombie" re-fire on every
-// suite run). Point env resolution at a throwaway dir instead. An explicitly set
-// value is respected so a caller can still target a chosen workspace.
-if (!process.env.OPENCLAW_LOCAL_WORKSPACE?.trim()) {
-  process.env.OPENCLAW_LOCAL_WORKSPACE = mkdtempSync(join(tmpdir(), "artist-runtime-test-ws-"));
-}
+// suite run). Always replace inherited values: a shell sourced from the local
+// runtime exports the production workspace before Vitest starts.
+process.env.OPENCLAW_LOCAL_WORKSPACE = mkdtempSync(join(tmpdir(), "artist-runtime-test-ws-"));

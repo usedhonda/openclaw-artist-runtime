@@ -1,6 +1,5 @@
 import { readFile } from "node:fs/promises";
 import { isAbsolute, join } from "node:path";
-import { applyConfigDefaults } from "../config/schema.js";
 import { resolveSunoConnector } from "../connectors/suno/resolveSunoConnector.js";
 import type { AutopilotRunState, AutopilotStage, AutopilotStatus, ArtistRuntimeConfig, CommissionBrief, CommissionBriefSource, ObservationSummary, SocialPublishLedgerEntry, SocialPublishResult, SongState, SpawnProposal, SunoRunRecord } from "../types.js";
 import { composeDailyVoice } from "./artistDailyVoiceComposer.js";
@@ -37,7 +36,7 @@ import { proposeTheme } from "./themeProposer.js";
 import { pollSongDistribution } from "./songDistributionPoller.js";
 import { cleanupExpiredCallbacks } from "./callbackLedgerMaintenance.js";
 import { readCallbackActionEntries } from "./callbackActionRegistry.js";
-import { applyRuntimeEnvOverrides, getArtistPulseIntervalHours, getSongSpawnIntervalHours, getStaleQueueCleanupHours, isArtistPulseConfigured, isSongbookAutoSyncEnabled, isSongSpawnConfigured } from "./runtimeConfig.js";
+import { getArtistPulseIntervalHours, getSongSpawnIntervalHours, getStaleQueueCleanupHours, isArtistPulseConfigured, isSongbookAutoSyncEnabled, isSongSpawnConfigured, resolveRuntimeConfig } from "./runtimeConfig.js";
 import { proposeSpawn, type ActiveQueueContextEntry } from "./songSpawnProposer.js";
 import { appendSpawnProposal, listBuildingSpawnProposals, listPendingSpawnProposals, markSpawnProposalBuilding, markSpawnProposalDone } from "./spawnProposalQueue.js";
 import { buildCascadeTrace } from "./cascadeTrace.js";
@@ -1357,7 +1356,7 @@ export class ArtistAutopilotService {
       const reason = error instanceof Error ? error.message : String(error);
       console.warn(`[artist-runtime] callback ledger cleanup failed: ${reason}`);
     });
-    const resolvedConfig = applyRuntimeEnvOverrides(applyConfigDefaults(input.config));
+    const resolvedConfig = await resolveRuntimeConfig(input.config, input.workspaceRoot);
     const config = input.manualSeed
       ? { ...resolvedConfig, autopilot: { ...resolvedConfig.autopilot, enabled: true } }
       : resolvedConfig;

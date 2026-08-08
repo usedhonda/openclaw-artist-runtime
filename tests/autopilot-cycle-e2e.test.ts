@@ -6,8 +6,9 @@ import { describe, expect, it, vi } from "vitest";
 import { ArtistAutopilotService } from "../src/services/autopilotService";
 import { ensureArtistWorkspace } from "../src/services/artistWorkspace";
 import { getRuntimeEventBus, type RuntimeEvent } from "../src/services/runtimeEventBus";
-import { ensureSongState, updateSongState } from "../src/services/artistState";
+import { ensureSongState, listSongStates, updateSongState } from "../src/services/artistState";
 import { createAndPersistSunoPromptPack } from "../src/services/sunoPromptPackFiles";
+import { patchResolvedConfig } from "../src/services/runtimeConfig";
 
 function workspace(): string {
   return mkdtempSync(join(tmpdir(), "artist-runtime-autopilot-cycle-e2e-"));
@@ -31,6 +32,25 @@ async function seedSongForSuno(root: string, songId = "song-001"): Promise<void>
 }
 
 describe("autopilot autonomous production loop", () => {
+  it("uses persisted live settings when config is omitted so mock defaults cannot consume the weekly quota", async () => {
+    const root = workspace();
+    await ensureArtistWorkspace(root);
+    await patchResolvedConfig(root, {
+      artist: { workspaceRoot: root },
+      autopilot: { enabled: false, dryRun: false, songsPerWeek: 50 },
+      music: { suno: { driver: "suno_cli", submitMode: "live" } },
+      songSpawn: { enabled: false }
+    });
+
+    const state = await new ArtistAutopilotService().runCycle({ workspaceRoot: root });
+
+    expect(state).toMatchObject({
+      stage: "idle",
+      blockedReason: "autopilot disabled by config"
+    });
+    expect(await listSongStates(root)).toEqual([]);
+  });
+
   it("emits theme generation while creating a song idea without changing dry-run posture", async () => {
     const root = workspace();
     await ensureArtistWorkspace(root);
