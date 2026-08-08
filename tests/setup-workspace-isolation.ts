@@ -12,4 +12,6 @@ import { join } from "node:path";
 // the live runtime-events.jsonl (the observed "song-018 zombie" re-fire on every
 // suite run). Always replace inherited values: a shell sourced from the local
 // runtime exports the production workspace before Vitest starts.
-process.env.OPENCLAW_LOCAL_WORKSPACE = mkdtempSync(join(tmpdir(), "artist-runtime-test-ws-"));
+const testWorkspaceRoot = mkdtempSync(join(tmpdir(), "artist-runtime-test-ws-"));
+process.env.OPENCLAW_TEST_WORKSPACE_ROOT = testWorkspaceRoot;
+process.env.OPENCLAW_LOCAL_WORKSPACE = testWorkspaceRoot;

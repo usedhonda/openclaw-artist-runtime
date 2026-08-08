@@ -6,8 +6,10 @@ describe("Vitest workspace isolation", () => {
     const setup = readFileSync("tests/setup-workspace-isolation.ts", "utf8");
 
     expect(setup).toContain(
-      'process.env.OPENCLAW_LOCAL_WORKSPACE = mkdtempSync(join(tmpdir(), "artist-runtime-test-ws-"));'
+      'const testWorkspaceRoot = mkdtempSync(join(tmpdir(), "artist-runtime-test-ws-"));'
     );
+    expect(setup).toContain("process.env.OPENCLAW_TEST_WORKSPACE_ROOT = testWorkspaceRoot;");
+    expect(setup).toContain("process.env.OPENCLAW_LOCAL_WORKSPACE = testWorkspaceRoot;");
     expect(setup).not.toContain("if (!process.env.OPENCLAW_LOCAL_WORKSPACE");
   });
 });

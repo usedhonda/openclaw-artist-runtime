@@ -6,6 +6,7 @@ import { resolveDefaultWorkspaceRoot, resolveRuntimeConfig } from "../src/servic
 
 const ENV_KEY = "OPENCLAW_LOCAL_WORKSPACE";
 const originalEnv = process.env[ENV_KEY];
+const isolatedTestWorkspace = process.env.OPENCLAW_TEST_WORKSPACE_ROOT;
 
 function makeWorkspace(authStatus: "tested" | "unconfigured" = "tested"): string {
   const root = mkdtempSync(join(tmpdir(), "runtime-config-fallback-"));
@@ -61,13 +62,14 @@ describe("resolveRuntimeConfig env-aware workspace fallback", () => {
     expect(config.artist.workspaceRoot).toBe(workspace);
   });
 
-  it("falls back to defaultArtistRuntimeConfig workspaceRoot when env is unset", () => {
-    expect(resolveDefaultWorkspaceRoot()).toBe(".local/openclaw/workspace");
+  it("falls back to the isolated test workspace when the primary env is unset", () => {
+    expect(isolatedTestWorkspace).toBeTruthy();
+    expect(resolveDefaultWorkspaceRoot()).toBe(isolatedTestWorkspace);
   });
 
   it("ignores empty OPENCLAW_LOCAL_WORKSPACE", () => {
     process.env[ENV_KEY] = "   ";
-    expect(resolveDefaultWorkspaceRoot()).toBe(".local/openclaw/workspace");
+    expect(resolveDefaultWorkspaceRoot()).toBe(isolatedTestWorkspace);
   });
 
   it("payload workspaceRoot still takes priority over env", async () => {

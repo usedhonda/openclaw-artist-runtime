@@ -80,7 +80,8 @@ export async function readResolvedConfig(root: string): Promise<ArtistRuntimeCon
 
 export function resolveDefaultWorkspaceRoot(): string {
   const envWorkspace = process.env.OPENCLAW_LOCAL_WORKSPACE?.trim();
-  return envWorkspace || defaultArtistRuntimeConfig.artist.workspaceRoot;
+  const isolatedTestWorkspace = process.env.OPENCLAW_TEST_WORKSPACE_ROOT?.trim();
+  return envWorkspace || isolatedTestWorkspace || defaultArtistRuntimeConfig.artist.workspaceRoot;
 }
 
 const DEFAULT_ARTIST_NAME = "Unnamed OpenClaw Artist";

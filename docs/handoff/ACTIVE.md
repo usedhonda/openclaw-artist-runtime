@@ -49,6 +49,10 @@ test; append-only runtime recovery and the browser A/B remain.
 - [x] Fixed the two proven write boundaries: config-less `runCycle()` now resolves
       the workspace's persisted config, and both write-smoke and Vitest force a
       disposable workspace even when the launching shell exports the live root.
+- [x] Closed the second Vitest escape discovered during verification: tests that
+      delete `OPENCLAW_LOCAL_WORKSPACE` now fall back to a dedicated test root,
+      never the repository's default live path. Focused 29-test verification left
+      the live autopilot state and runtime-events ledger byte-for-byte unchanged.
 
 ## Files changed
 
@@ -104,6 +108,10 @@ Also dirty from separate work, deliberately not in `a590694`: `CHANGELOG.md`,
 - An internal transcript printed the old watcher token in full before masking
   discipline was in force. That token is now rotated and dead, but it argues for
   masking every process inspection from the start.
+- The first full-suite verification in this recovery recalculated live autopilot
+  state as `8/3` after a test deleted the primary workspace env. No new song was
+  created, but the live state write proved the initial test isolation was incomplete;
+  the dedicated fallback root above is the corrective guard.
 
 ## Next actions
 
