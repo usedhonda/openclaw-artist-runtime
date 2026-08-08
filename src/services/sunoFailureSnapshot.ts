@@ -1,10 +1,11 @@
 import { mkdir, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import type { Page } from "playwright";
+import { sanitizeSunoDiagnosticText, sanitizeSunoDiagnosticUrl } from "./sunoDiagnosticSafety.js";
 
 export interface SunoFailureSnapshot {
   screenshotPath?: string;
-  htmlPath?: string;
+  diagnosticsPath?: string;
   url?: string;
 }
 
@@ -32,15 +33,40 @@ export async function captureSunoFailure(
       .filter(Boolean);
     const prefix = join(opts.logsDir, parts.join("-"));
     const screenshotPath = `${prefix}.png`;
-    const htmlPath = `${prefix}.html`;
+    const diagnosticsPath = `${prefix}.diagnostics.json`;
     const urlPath = `${prefix}.url.txt`;
-    const url = page.url();
+    const url = sanitizeSunoDiagnosticUrl(page.url());
     await page.screenshot({ path: screenshotPath, fullPage: true });
-    await writeFile(htmlPath, await page.content(), "utf8");
+    const safeSelectors = {
+      lyricsEditor: '[role="textbox"][aria-label*="Lyric" i]',
+      styleWrapper: '[data-testid="create-form-styles-wrapper"]',
+      createButton: 'button[aria-label*="Create" i]',
+      customMode: 'button[aria-label*="Custom" i]',
+      captcha: 'iframe[src*="hcaptcha"], iframe[src*="turnstile"], [id*="hcaptcha"]',
+      dialog: '[role="dialog"]'
+    } as const;
+    const selectorCounts = Object.fromEntries(
+      await Promise.all(
+        Object.entries(safeSelectors).map(async ([name, selector]) => [
+          name,
+          typeof page.locator === "function" ? await page.locator(selector).count().catch(() => 0) : 0
+        ])
+      )
+    );
+    const title = typeof page.title === "function" ? await page.title().catch(() => "") : "";
+    const diagnostics = {
+      capturedAt: new Date().toISOString(),
+      url,
+      title: sanitizeSunoDiagnosticText(title),
+      selectorCounts
+    };
+    await writeFile(diagnosticsPath, `${JSON.stringify(diagnostics, null, 2)}\n`, "utf8");
     await writeFile(urlPath, `${url}\n`, "utf8");
-    return { screenshotPath, htmlPath, url };
+    return { screenshotPath, diagnosticsPath, url };
   } catch (error) {
-    console.warn(`[artist-runtime] Suno failure snapshot skipped: ${error instanceof Error ? error.message : String(error)}`);
+    console.warn(
+      `[artist-runtime] Suno failure snapshot skipped: ${sanitizeSunoDiagnosticText(error instanceof Error ? error.message : String(error))}`
+    );
     return {};
   }
 }

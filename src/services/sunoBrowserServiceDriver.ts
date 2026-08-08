@@ -2,6 +2,7 @@ import type { BrowserContext, Page } from "playwright";
 import { SunoBrowserService, sunoBrowserService } from "./sunoBrowserService.js";
 import type { SunoBrowserConfigView } from "./runtimeConfig.js";
 import { isSunoConnected, isSunoLoginRequired } from "./sunoLoginDetection.js";
+import { sanitizeSunoDiagnosticUrl } from "./sunoDiagnosticSafety.js";
 import { SUNO_CREATE_URL } from "./sunoPlaywrightDriver.js";
 import type { SunoBrowserDriver, SunoBrowserDriverProbe } from "./sunoBrowserWorker.js";
 
@@ -56,7 +57,10 @@ export class SunoBrowserServiceProbeDriver implements SunoBrowserDriver {
     if (await isSunoConnected(page, url)) {
       return { state: "connected", detail: "Suno session detected in the plugin browser." };
     }
-    return { state: "disconnected", detail: `Suno connect could not confirm login state at ${url}` };
+    return {
+      state: "disconnected",
+      detail: `Suno connect could not confirm login state at ${sanitizeSunoDiagnosticUrl(url)}`
+    };
   }
 
   async stop(): Promise<void> {

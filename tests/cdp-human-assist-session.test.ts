@@ -9,6 +9,10 @@ import {
 
 const tempRoots: string[] = [];
 
+function cookieHeader(entries: Array<[string, string]>): string {
+  return entries.map(([name, value]) => `${name}=${value}`).join("; ");
+}
+
 afterEach(async () => {
   await Promise.all(tempRoots.splice(0).map((root) => rm(root, { recursive: true, force: true })));
 });
@@ -27,7 +31,11 @@ describe("Suno CLI session hydration", () => {
     const root = await mkdtemp(join(tmpdir(), "artist-runtime-suno-session-"));
     tempRoots.push(root);
     const sessionFile = join(root, "session.json");
-    await writeFile(sessionFile, JSON.stringify({ cookie: "__session=domain-session; __session=host-session; theme=dark" }), "utf8");
+    await writeFile(sessionFile, JSON.stringify({ cookie: cookieHeader([
+      ["__session", "domain-session"],
+      ["__session", "host-session"],
+      ["theme", "dark"]
+    ]) }), "utf8");
     const addCookies = vi.fn(async () => undefined);
 
     await expect(hydrateSunoBrowserSession({ addCookies }, sessionFile)).resolves.toBe(true);
@@ -41,7 +49,7 @@ describe("Suno CLI session hydration", () => {
     const root = await mkdtemp(join(tmpdir(), "artist-runtime-suno-session-"));
     tempRoots.push(root);
     const sessionFile = join(root, "session.json");
-    await writeFile(sessionFile, JSON.stringify({ cookie: "theme=dark" }), "utf8");
+    await writeFile(sessionFile, JSON.stringify({ cookie: cookieHeader([["theme", "dark"]]) }), "utf8");
     const addCookies = vi.fn(async () => undefined);
 
     await expect(hydrateSunoBrowserSession({ addCookies }, sessionFile)).resolves.toBe(false);

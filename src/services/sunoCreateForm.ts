@@ -146,6 +146,28 @@ export async function waitForSunoCreateFormReady(page: Page, timeoutMs: number):
   }
 }
 
+async function clickVisibleLocatorWithRetry(
+  page: Page,
+  candidates: readonly string[],
+  timeoutMs: number,
+  fieldName: string
+): Promise<void> {
+  const deadline = Date.now() + timeoutMs;
+  let lastError: unknown;
+  for (let attempt = 1; attempt <= 3; attempt += 1) {
+    const remainingMs = Math.max(1, deadline - Date.now());
+    const locator = await resolveFirstVisibleLocator(page, candidates, remainingMs, fieldName);
+    try {
+      await locator.click({ timeout: remainingMs });
+      return;
+    } catch (error) {
+      lastError = error;
+    }
+  }
+  const detail = lastError instanceof Error ? lastError.message : String(lastError);
+  throw new Error(`${SUNO_CREATE_FORM_MISSING_REASON}: ${fieldName} click failed after 3 attempts: ${detail}`);
+}
+
 /**
  * Ensure the lyrics editor is present before any lyrics fill and return it.
  *
@@ -175,7 +197,12 @@ export async function ensureSunoLyricsMode(page: Page, timeoutMs: number): Promi
   if (advancedTab) {
     const alreadySelected = (await advancedTab.getAttribute("aria-selected").catch(() => null)) === "true";
     if (!alreadySelected) {
-      await advancedTab.click().catch(() => undefined);
+      await clickVisibleLocatorWithRetry(
+        page,
+        SUNO_CREATE_FALLBACKS.advancedTab,
+        timeoutMs,
+        "Advanced create tab"
+      );
     }
   }
   const editorAfterAdvanced = await visibleEditor();
@@ -189,7 +216,12 @@ export async function ensureSunoLyricsMode(page: Page, timeoutMs: number): Promi
     "Custom lyrics mode"
   ).catch(() => undefined);
   if (customMode) {
-    await customMode.click().catch(() => undefined);
+    await clickVisibleLocatorWithRetry(
+      page,
+      SUNO_CREATE_FALLBACKS.customMode,
+      timeoutMs,
+      "Custom lyrics mode"
+    );
   }
   return resolveFirstVisibleLocator(page, SUNO_CREATE_FALLBACKS.lyricsEditor, timeoutMs, "lyrics editor");
 }

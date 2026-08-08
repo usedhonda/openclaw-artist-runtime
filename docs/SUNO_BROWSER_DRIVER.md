@@ -177,7 +177,14 @@ Selector note: current Suno builds can render `Advanced` and `Create` as plain
 text buttons without the older ARIA metadata. Form readiness and mode switching
 accept both the semantic selectors and these observed text-button fallbacks. In
 Advanced, the driver selects the visible `Custom` mode before waiting for the
-lyrics editor; the editor is not mounted in the default Advanced sub-mode.
+lyrics editor; the editor is not mounted in the default Advanced sub-mode. A
+transient detached-element click is re-resolved and retried because the current
+React surface can replace the mode button while Advanced mounts.
+
+Failure diagnostics never persist raw page HTML or a query-bearing browser URL.
+They store a screenshot, a path-only URL, and a `.diagnostics.json` file containing
+only the page title plus counts for fixed, non-value selectors. Doctor/probe error
+text applies the same URL/query redaction before it reaches logs or status output.
 
 Architecture: the tested contract is the driver-agnostic state machine
 (`src/services/sunoHumanAssist.ts`) plus the connector decorator

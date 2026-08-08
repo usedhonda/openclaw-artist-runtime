@@ -1,5 +1,6 @@
 import type { Browser, BrowserContext, Locator, Page } from "playwright";
 import { sunoCdpEndpoint } from "./runtimeConfig.js";
+import { sanitizeSunoDiagnosticText, sanitizeSunoDiagnosticUrl } from "./sunoDiagnosticSafety.js";
 
 export const SUNO_DOCTOR_DEFAULT_CDP_ENDPOINT = "http://127.0.0.1:9222";
 export const SUNO_DOCTOR_VERSION_PATH = "/json/version";
@@ -67,7 +68,7 @@ export async function runSunoDoctor(options: SunoDoctorOptions = {}): Promise<Su
     const page = await resolveSunoPage(context);
     await page.goto(createUrl, { waitUntil: "domcontentloaded", timeout: timeoutMs });
     await page.waitForLoadState("domcontentloaded").catch(() => undefined);
-    checks.push({ name: "create_page", status: "ok", detail: `opened ${page.url()}` });
+    checks.push({ name: "create_page", status: "ok", detail: `opened ${sanitizeSunoDiagnosticUrl(page.url())}` });
 
     const title = page.locator(TITLE_SELECTOR).first();
     checks.push(await checkWritableLocator("title_input", title, timeoutMs));
@@ -136,13 +137,13 @@ function result(cdpEndpoint: string, createUrl: string, checks: SunoDoctorCheck[
   return {
     ok: checks.every((check) => check.status === "ok"),
     cdpEndpoint,
-    createUrl,
+    createUrl: sanitizeSunoDiagnosticUrl(createUrl),
     checks
   };
 }
 
 function errorMessage(error: unknown): string {
-  return error instanceof Error ? error.message : String(error);
+  return sanitizeSunoDiagnosticText(error instanceof Error ? error.message : String(error));
 }
 
 export function formatSunoDoctorResult(result: SunoDoctorResult): string {

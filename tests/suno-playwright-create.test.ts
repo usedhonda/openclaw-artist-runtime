@@ -751,7 +751,7 @@ describe("PlaywrightSunoDriver create", () => {
     expect(page.screenshot).toHaveBeenCalledWith(expect.objectContaining({
       path: expect.stringContaining(PLAYWRIGHT_CREATE_DOM_MISSING_REASON)
     }));
-    expect(page.content).toHaveBeenCalled();
+    expect(page.content).not.toHaveBeenCalled();
   });
 
   it("does not mask the original create failure when snapshot capture fails", async () => {

@@ -47,7 +47,13 @@
   create-form readiness gate. The live form no longer fails as
   `suno_create_dom_missing` solely because the older ARIA metadata is absent, and
   the driver now selects `Custom` inside Advanced before waiting for the lyrics
-  editor.
+  editor. Advanced/Custom clicks are re-resolved after a detached-element failure
+  so a React rerender does not turn a transient click race into a false missing-DOM
+  result.
+- Removed raw Suno page HTML and query strings from browser failure diagnostics.
+  Snapshots now keep a screenshot, a path-only URL, and selector-count JSON; doctor
+  and probe detail also strip query/fragment data so Clerk handshakes and session
+  parameters cannot enter local logs or status output.
 - Hydrated human-assist Chrome from the existing local `suno-cli` session before
   navigation and opened a fresh page afterward. A valid CLI cookie no longer
   leaves the fallback on stale signed-out markup or a React hydration error; cookie

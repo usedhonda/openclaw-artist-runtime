@@ -11,7 +11,12 @@ import {
   waitForSunoCreateFormReady
 } from "../src/services/sunoCreateForm";
 
-type SelectorState = { visible: boolean; onClick?: () => void; attrs?: Record<string, string> };
+type SelectorState = {
+  visible: boolean;
+  onClick?: () => void;
+  attrs?: Record<string, string>;
+  clickFailures?: number;
+};
 
 /**
  * Minimal Playwright Page fake: each selector maps to a state. waitFor({visible})
@@ -33,6 +38,10 @@ function makePage(states: Record<string, SelectorState>): { page: Page; clicks: 
       },
       click: async () => {
         clicks.push(selector);
+        if ((state.clickFailures ?? 0) > 0) {
+          state.clickFailures = (state.clickFailures ?? 0) - 1;
+          throw new Error(`detached before click: ${selector}`);
+        }
         state.onClick?.();
       }
     };
@@ -183,6 +192,26 @@ describe("ensureSunoLyricsMode", () => {
 
     const locator = await ensureSunoLyricsMode(page, 50);
     expect(clicks).toEqual([customMode]);
+    expect(await locator.isVisible()).toBe(true);
+  });
+
+  it("re-resolves and retries Custom when React replaces the first visible button before click", async () => {
+    const editorState: SelectorState = { visible: false };
+    const customMode = 'button:has-text("Custom")';
+    const { page, clicks } = makePage({
+      [SUNO_CREATE_SELECTORS.lyricsEditor]: editorState,
+      [SUNO_CREATE_SELECTORS.advancedTab]: { visible: true, attrs: { "aria-selected": "true" } },
+      [customMode]: {
+        visible: true,
+        clickFailures: 1,
+        onClick: () => {
+          editorState.visible = true;
+        }
+      }
+    });
+
+    const locator = await ensureSunoLyricsMode(page, 50);
+    expect(clicks).toEqual([customMode, customMode]);
     expect(await locator.isVisible()).toBe(true);
   });
 

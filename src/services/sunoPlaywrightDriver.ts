@@ -12,6 +12,7 @@ import type {
 import type { SunoBrowserDriver, SunoBrowserDriverProbe } from "./sunoBrowserWorker.js";
 import type { BrowserContext, Locator, Page } from "playwright";
 import { captureSunoFailure, resolveSunoFailureLogsDir } from "./sunoFailureSnapshot.js";
+import { sanitizeSunoDiagnosticText, sanitizeSunoDiagnosticUrl } from "./sunoDiagnosticSafety.js";
 import { effectiveLyricsBoxLimit, isSunoCdpEnabled, sunoCdpEndpoint } from "./runtimeConfig.js";
 import { launchSunoPersistentContext } from "./sunoBrowserLaunch.js";
 import { isSunoConnected, isSunoLoginRequired } from "./sunoLoginDetection.js";
@@ -130,7 +131,7 @@ export class PlaywrightSunoDriver implements SunoBrowserDriver {
 
       return {
         state: "disconnected",
-        detail: `Suno probe could not confirm login state at ${url}`
+        detail: `Suno probe could not confirm login state at ${sanitizeSunoDiagnosticUrl(url)}`
       };
     } catch (error) {
       if (this.isModuleNotInstalled(error)) {
@@ -999,7 +1000,7 @@ export class PlaywrightSunoDriver implements SunoBrowserDriver {
   }
 
   private errorMessage(error: unknown): string {
-    return error instanceof Error ? error.message : String(error);
+    return sanitizeSunoDiagnosticText(error instanceof Error ? error.message : String(error));
   }
 
   private async captureCreateFailure(
