@@ -69,6 +69,12 @@ Outcomes are judged by the CLI's exit code (never by string-matching stdout):
 Credential safety: the captcha token is redacted (`***`) in any diagnostic log
 and never appears in a returned reason; the cookie/JWT are never logged.
 
+Normal live `suno-cli create` requests no longer preflight `sunoCdpEndpoint` reachability.
+Endpoint configuration is still passed only for optional mint flows, so unreachable
+legacy CDP config now surfaces as normal CLI failure reasons (for example
+`suno_cli_blocked_captcha`) rather than a separate `suno_cdp_endpoint_unreachable`
+short-circuit.
+
 ### CDP endpoint for the suno-cli captcha mint
 
 The plugin owns the Suno browser lifecycle via `SunoBrowserService`, which
