@@ -43,6 +43,10 @@
 - Plan v9.5 finalizes the autopilot revival and Telegram bridge dogfood pass: RuntimeEventBus stage/state/take notifications, owner-only Telegram commands, local free-text inbox staging, debug-only `/review <songId>` mock AI review, and final pre-release distribution gate coverage.
 
 ### Fixed
+- Hydrated human-assist Chrome from the existing local `suno-cli` session before
+  navigation and opened a fresh page afterward. A valid CLI cookie no longer
+  leaves the fallback on stale signed-out markup or a React hydration error; cookie
+  values remain local and are never logged.
 - Kept `rebrowser-playwright` on the matching bundled Chromium lane. Explicit
   system/custom Chrome now uses stock `playwright-extra`, avoiding the empty page
   and Runtime execution-context errors caused by wrapping a newer Chrome protocol.

@@ -1,4 +1,5 @@
-import type { Locator, Page } from "playwright";
+import { readFile } from "node:fs/promises";
+import type { BrowserContext, Locator, Page } from "playwright";
 import type { SunoCreatePayload } from "../types.js";
 import { SunoBrowserService, sunoBrowserService } from "./sunoBrowserService.js";
 import type { SunoBrowserConfigView } from "./runtimeConfig.js";
@@ -69,8 +70,48 @@ export interface CdpHumanAssistDriverInput {
   sessionFile?: string;
 }
 
+export interface SunoSessionCookie {
+  name: string;
+  value: string;
+  url: "https://suno.com";
+}
+
+export function parseSunoSessionCookieHeader(cookieHeader: string): SunoSessionCookie[] {
+  const cookies = new Map<string, string>();
+  for (const segment of cookieHeader.split(/;\s*/)) {
+    const separator = segment.indexOf("=");
+    if (separator <= 0) continue;
+    const name = segment.slice(0, separator).trim();
+    const value = segment.slice(separator + 1);
+    if (name && value) cookies.set(name, value);
+  }
+  return Array.from(cookies, ([name, value]) => ({ name, value, url: "https://suno.com" as const }));
+}
+
+export async function hydrateSunoBrowserSession(
+  context: Pick<BrowserContext, "addCookies">,
+  sessionFile: string | undefined
+): Promise<boolean> {
+  if (!sessionFile) return false;
+  const contents = await readFile(sessionFile, "utf8").catch(() => "");
+  if (!contents) return false;
+  const parsed = (() => {
+    try {
+      return JSON.parse(contents) as { cookie?: unknown };
+    } catch {
+      return {};
+    }
+  })();
+  if (typeof parsed.cookie !== "string") return false;
+  const cookies = parseSunoSessionCookieHeader(parsed.cookie);
+  if (!cookies.some((cookie) => cookie.name === "__session")) return false;
+  await context.addCookies(cookies);
+  return true;
+}
+
 export class CdpHumanAssistDriver implements HumanAssistBrowserDriver {
   private page: Page | undefined;
+  private ownsPage = false;
   private baselineSongUrls = new Set<string>();
   // Feed clip ids present before submit, so only genuinely new clips count as this
   // create's takes during network-primary reconciliation.
@@ -84,6 +125,7 @@ export class CdpHumanAssistDriver implements HumanAssistBrowserDriver {
 
   async openAndFill(): Promise<void> {
     const { context } = await this.service.ensureRunning(this.input.config);
+    const sessionHydrated = await hydrateSunoBrowserSession(context, this.input.sessionFile);
     const existing = context.pages().find((page) => {
       try {
         return page.url().includes("suno.com");
@@ -91,7 +133,11 @@ export class CdpHumanAssistDriver implements HumanAssistBrowserDriver {
         return false;
       }
     });
-    const page = existing ?? (await context.newPage());
+    // A page that rendered before session hydration can retain signed-out server markup
+    // and fail React hydration after cookies change. Open a fresh page after injecting
+    // the already-authorized CLI session; never close an operator-owned existing tab.
+    const page = sessionHydrated ? await context.newPage() : existing ?? (await context.newPage());
+    this.ownsPage = sessionHydrated || !existing;
     await page.goto(SUNO_CREATE_URL, { waitUntil: "domcontentloaded", timeout: FORM_READY_TIMEOUT_MS });
     // Wait for the form to render past the Clerk handshake using any-of form-ready
     // selectors (not just the Create button) so a single relabel does not defeat the gate.
@@ -193,7 +239,12 @@ export class CdpHumanAssistDriver implements HumanAssistBrowserDriver {
     // Drop our page reference and release the SunoBrowserService hold. The service
     // idle-closes the plugin-launched browser once the last holder releases (a legacy
     // CDP attach is left running); a later attempt re-acquires cleanly.
+    const page = this.page;
     this.page = undefined;
+    if (this.ownsPage) {
+      await page?.close().catch(() => undefined);
+    }
+    this.ownsPage = false;
     await this.service.release();
   }
 
