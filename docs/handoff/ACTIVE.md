@@ -28,9 +28,10 @@ credential exposure found on the way had to be closed first.
 The watcher-token incident is closed and verified. Generation has not yet reached
 a real accepted/imported song. Mock contamination, quota state, browser profile
 selection, current-form selectors, detached-button recovery, CLI failure logging,
-and Telegram delivery evidence are repaired in source and covered by tests. A live
-create is deliberately blocked until the operator invalidates the exposed Suno
-session and signs the dedicated profile in again. No Suno browser is running.
+Telegram delivery evidence, and the login-profile split are repaired in source and
+covered by tests. A live create is deliberately blocked until the operator
+invalidates the exposed Suno session and signs in again through the normal
+no-argument CLI login wrapper. No Suno browser is running.
 
 ## Completed
 
@@ -86,6 +87,12 @@ session and signs the dedicated profile in again. No Suno browser is running.
 - [x] Removed the adoption-download rearm test race. It previously waited only for
       connector invocation, then asserted the later ledger append; it now waits for
       the durable `status: imported` job entry and passed 10/10 isolated repetitions.
+- [x] Fixed the reauthentication split: the no-argument login wrapper now runs the
+      vendored `suno-cli login` against `runtime/suno/cli`, rebuilding both its
+      `browser-profile` and `session.json`; an explicit profile argument remains
+      legacy Playwright-only. Added fake-node regression coverage (3/3 after the
+      fix; 2 failures before it), corrected operator docs, and committed as
+      `91b13d8`.
 
 ## Files changed
 
@@ -153,8 +160,12 @@ session and signs the dedicated profile in again. No Suno browser is running.
 
 ## Next actions
 
-1. Operator invalidates all Suno sessions, then signs the dedicated CLI profile in
-   again. Do not inspect or reuse the old profile/session material.
+1. Operator invalidates all Suno sessions, then runs the no-argument
+   `scripts/openclaw-suno-login.sh`. This rebuilds
+   `runtime/suno/cli/browser-profile` and `runtime/suno/cli/session.json` under
+   `OPENCLAW_LOCAL_WORKSPACE` (or the repository default workspace). Do not
+   inspect or reuse the old profile/session material; do not pass the legacy
+   Playwright profile path for this recovery.
 2. Rebuild/restart the manual gateway once on the latest commits and clear only the
    security pause through the supported autopilot state service.
 3. Run one real create, import its real URLs/audio, and match the completed-song
@@ -170,6 +181,7 @@ session and signs the dedicated profile in again. No Suno browser is running.
 ## References
 
 - Commit: `a590694`
+- Login recovery/profile alignment: `91b13d8`
 - CLI failure-log boundary: `70a138b`
 - Telegram delivery receipt ledger: `84054f7`
 - Guard rule: `scripts/boundary-grep.mjs` → `secret-on-command-line`
