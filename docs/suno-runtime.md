@@ -46,9 +46,10 @@ be needed if Suno forces login, CAPTCHA, account checks, or policy prompts.
 ## Optional Escape Hatches
 
 The plugin owns the Suno browser lifecycle: `SunoBrowserService` launches the
-persistent `.openclaw-browser-profiles/suno` profile itself (with an ephemeral
-`--remote-debugging-port=0` derived from `DevToolsActivePort`), so no manual
-Chrome launch or fixed 9222 port is required. Each knob below is a saved config
+persistent `.openclaw-browser-profiles/suno` profile itself. It reserves a free
+fixed non-zero loopback debugging port and probes that exact `/json/version`
+endpoint for readiness, so no manual Chrome launch or fixed 9222 port is required.
+Each knob below is a saved config
 field under `music.suno.browser.*` that wins over its legacy `OPENCLAW_SUNO_*`
 env var; the env var stays as a backward-compatible fallback.
 

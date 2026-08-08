@@ -87,6 +87,10 @@ ephemeral CDP port (no manual Chrome, no fixed 9222). An explicit
 needs a browser, the connector sources the CDP endpoint from
 `SunoBrowserService.getCdpEndpoint()`:
 
+The service reserves a fixed non-zero loopback port and probes its
+`/json/version` endpoint. It does not wait for `DevToolsActivePort`, which Chrome
+does not reliably write when the debugging port is explicitly non-zero.
+
 - if the plugin already has a browser running (the human-assist/connect flow
   opened one), its ephemeral endpoint is used;
 - if `music.suno.browser.cdpEndpoint` (config) or the legacy

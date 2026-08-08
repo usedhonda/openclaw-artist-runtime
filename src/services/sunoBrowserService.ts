@@ -1,6 +1,4 @@
-import { readFile } from "node:fs/promises";
 import { createServer } from "node:net";
-import { join } from "node:path";
 import type { BrowserContext } from "playwright";
 import { launchSunoPersistentContext } from "./sunoBrowserLaunch.js";
 import { isSunoCdpEnabled, sunoCdpEndpoint, sunoChromeProfileDest, type SunoBrowserConfigView } from "./runtimeConfig.js";
@@ -11,6 +9,12 @@ const DEVTOOLS_PORT_POLL_TIMEOUT_MS = 5_000;
 export interface SunoBrowserHandle {
   cdpEndpoint: string;
   context: BrowserContext;
+}
+
+export interface SunoBrowserServiceOptions {
+  fetcher?: typeof fetch;
+  cdpPollTimeoutMs?: number;
+  cdpPollIntervalMs?: number;
 }
 
 interface RunningBrowser {
@@ -36,7 +40,7 @@ function sleep(ms: number): Promise<void> {
  * auto-passes. Any fixed non-zero port keeps navigator.webdriver=false (no
  * --enable-automation is passed). Reserving avoids a hard-coded port colliding with an
  * unrelated local process; the brief bind/close window before Chromium binds is
- * tolerated by the fail-closed DevToolsActivePort wait in resolveCdpEndpoint.
+ * tolerated by the fail-closed loopback readiness probe after launch.
  */
 function reserveFreePort(): Promise<number> {
   return new Promise((resolve, reject) => {
@@ -56,15 +60,14 @@ function reserveFreePort(): Promise<number> {
  * One headful persistent context (the operator's logged-in `suno` profile) is
  * launched with a fixed, reserved non-zero --remote-debugging-port (see reserveFreePort;
  * port 0 would set navigator.webdriver=true and trip Cloudflare Turnstile). Chromium
- * writes the bound port to <profile>/DevToolsActivePort, which we read to derive the CDP
- * endpoint and gate on browser readiness. That one launch serves both the human-assist
+ * is probed on that exact loopback port to gate on browser readiness. That one launch serves both the human-assist
  * Playwright driver (via `context`) and the suno-cli captcha mint (via `cdpEndpoint`),
  * with no manual start-chrome-cdp.sh and no second profile.
  *
  * Reference-counted: every ensureRunning() holder must call release() exactly once; the
  * browser closes once the last holder releases (idle-close). A single in-flight launch
- * promise prevents a double launch under concurrent holders. If DevToolsActivePort never
- * appears, the launch fails closed with a clear reason rather than silently succeeding.
+ * promise prevents a double launch under concurrent holders. If the loopback CDP endpoint
+ * never becomes reachable, the launch fails closed with a clear reason rather than silently succeeding.
  *
  * A legacy env override (OPENCLAW_SUNO_USE_CDP + OPENCLAW_SUNO_CDP_ENDPOINT) attaches to
  * an already-running Chrome instead of launching, and is never closed on release — the
@@ -75,6 +78,8 @@ export class SunoBrowserService {
   private startInFlight: Promise<RunningBrowser> | undefined;
   private refCount = 0;
   private operatorHeld = false;
+
+  constructor(private readonly options: SunoBrowserServiceOptions = {}) {}
 
   async ensureRunning(config?: SunoBrowserConfigView, env: NodeJS.ProcessEnv = process.env): Promise<SunoBrowserHandle> {
     if (!this.running && !this.startInFlight) {
@@ -160,31 +165,35 @@ export class SunoBrowserService {
       extraArgs: [`--remote-debugging-port=${debugPort}`],
       config
     });
-    const cdpEndpoint = await this.resolveCdpEndpoint(profilePath, context);
+    const cdpEndpoint = await this.resolveCdpEndpoint(debugPort, context);
     return { cdpEndpoint, context, attached: false };
   }
 
-  private async resolveCdpEndpoint(profilePath: string, context: BrowserContext): Promise<string> {
-    const portFile = join(profilePath, "DevToolsActivePort");
-    const deadline = Date.now() + DEVTOOLS_PORT_POLL_TIMEOUT_MS;
-    let lastDetail = "file_not_found";
+  private async resolveCdpEndpoint(debugPort: number, context: BrowserContext): Promise<string> {
+    const endpoint = `http://127.0.0.1:${debugPort}`;
+    const timeoutMs = this.options.cdpPollTimeoutMs ?? DEVTOOLS_PORT_POLL_TIMEOUT_MS;
+    const intervalMs = this.options.cdpPollIntervalMs ?? DEVTOOLS_PORT_POLL_INTERVAL_MS;
+    const fetcher = this.options.fetcher ?? fetch;
+    const deadline = Date.now() + timeoutMs;
+    let lastDetail = "not_ready";
     while (Date.now() < deadline) {
-      const contents = await readFile(portFile, "utf8").catch((error) => {
+      const ready = await fetcher(`${endpoint}/json/version`, { signal: AbortSignal.timeout(1_000) }).then((response) => {
+        lastDetail = `HTTP ${response.status}`;
+        return response.ok;
+      }).catch((error) => {
         lastDetail = error instanceof Error ? error.message : String(error);
-        return "";
+        return false;
       });
-      const firstLine = contents.split(/\r?\n/, 1)[0]?.trim();
-      const port = firstLine ? Number(firstLine) : Number.NaN;
-      if (Number.isSafeInteger(port) && port > 0) {
-        return `http://127.0.0.1:${port}`;
+      if (ready) {
+        return endpoint;
       }
-      await sleep(DEVTOOLS_PORT_POLL_INTERVAL_MS);
+      await sleep(intervalMs);
     }
     // Fail closed: close the just-launched context so we do not leak a browser the
     // caller can never reach, and surface a clear, non-silent reason.
     await context.close().catch(() => undefined);
     throw new Error(
-      `suno_browser_devtools_port_unavailable: DevToolsActivePort not readable at ${portFile} within ${DEVTOOLS_PORT_POLL_TIMEOUT_MS}ms (${lastDetail})`
+      `suno_browser_cdp_unavailable: ${endpoint}/json/version not reachable within ${timeoutMs}ms (${lastDetail})`
     );
   }
 }

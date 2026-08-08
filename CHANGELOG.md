@@ -10,8 +10,8 @@
   sourced by `scripts/openclaw-local-env.sh`; see `docs/LOCAL_RUNTIME_OPS.md`.
 - Distribution-grade Suno browser + captcha human-assist. The plugin now owns the
   Suno browser lifecycle via a new `SunoBrowserService` (launches the single
-  persistent `suno` profile with an ephemeral `--remote-debugging-port=0` derived
-  from `DevToolsActivePort`), so there is no manual `start-chrome-cdp.sh`, fixed
+  persistent `suno` profile with a reserved fixed non-zero debugging port), so
+  there is no manual `start-chrome-cdp.sh`, operator-chosen
   9222 port, or `OPENCLAW_SUNO_USE_CDP` opt-in required for the `human_click`
   fallback. Browser knobs are promoted to config `music.suno.browser.{profileDir,
   executablePath, channel, cdpEndpoint}` with the `OPENCLAW_SUNO_*` env vars kept
@@ -43,6 +43,10 @@
 - Plan v9.5 finalizes the autopilot revival and Telegram bridge dogfood pass: RuntimeEventBus stage/state/take notifications, owner-only Telegram commands, local free-text inbox staging, debug-only `/review <songId>` mock AI review, and final pre-release distribution gate coverage.
 
 ### Fixed
+- Probed the exact fixed CDP port reserved by `SunoBrowserService` instead of
+  waiting for `DevToolsActivePort`, which Chrome does not reliably write for a
+  non-zero port. Plugin-owned human assist now reaches its launched browser
+  instead of failing after five seconds with `suno_browser_devtools_port_unavailable`.
 - Reused the authenticated `suno-cli login` browser profile for captcha human
   assist. The fallback previously opened the separate browser-worker profile, so
   a valid CLI login could still redirect to Suno's signed-out home page and fail
