@@ -214,6 +214,12 @@ The no-argument `scripts/openclaw-suno-login.sh` invokes `suno-cli login` for th
 data directory. `<workspace>` is `OPENCLAW_LOCAL_WORKSPACE` when set, otherwise
 `.local/openclaw/workspace` in the repository.
 
+For an invalidated or corrupt CLI auth profile, the `--fresh` form moves only
+`browser-profile/` and `session.json` into
+`<workspace>/runtime/suno/cli/auth-quarantine/<UTC timestamp>-<pid>/`, then starts
+the same CLI login against the original data directory. It never moves or
+rewrites the append-only `runs.json` ledger, and it never deletes a quarantine.
+
 The separate `.openclaw-browser-profiles/suno/` path is legacy Playwright-only
 recovery for the browser-worker lane. Passing an explicit profile as the first
 argument to the wrapper selects that lane and does not refresh `session.json`.
@@ -273,8 +279,10 @@ scripts/openclaw-suno-login.sh
 The default path runs `suno-cli login --data-dir
 <workspace>/runtime/suno/cli`, which opens the CLI-owned persistent browser
 profile and writes both `browser-profile/` and `session.json`. Complete login
-manually, then close the browser window. To recover only the legacy Playwright
-profile, pass its path explicitly:
+manually, then close the browser window. Routine session expiry uses this
+no-argument form. Use `scripts/openclaw-suno-login.sh --fresh` only after the CLI
+session was explicitly invalidated or its auth profile is proven corrupt. To
+recover only the legacy Playwright profile, pass its path explicitly:
 
 ```bash
 scripts/openclaw-suno-login.sh .openclaw-browser-profiles/suno
@@ -592,6 +600,22 @@ When `/api/status.suno.profile.stale` is true, the Producer Console shows a
 manual-recovery banner. It points operators at `scripts/suno-profile-diagnose.sh`
 but never runs that script from the browser; diagnostics remain local CLI work.
 
+### `suno_cli` invalidated or corrupt auth recovery
+
+Use this after an exposed session was invalidated, or when the existing CLI
+profile closes during launch while the same browser succeeds with a scratch
+profile.
+
+1. Ensure no Suno login/browser process is using the CLI data directory.
+2. Run `scripts/openclaw-suno-login.sh --fresh`.
+3. Complete login manually and close the browser window.
+4. Verify connector/platform status sees the refreshed CLI session.
+
+The command moves only `runtime/suno/cli/browser-profile/` and `session.json`
+into a unique `runtime/suno/cli/auth-quarantine/<UTC timestamp>-<pid>/`
+directory before login. `runs.json` remains byte-for-byte in place. Keep the
+quarantine for rollback or local investigation; the wrapper never deletes it.
+
 ### Scenario A: profile corruption
 
 Use this when the browser lane starts failing at launch, the profile directory
@@ -624,8 +648,9 @@ Backup and rebuild notes:
 
 ### Scenario B: Google OAuth reauthentication required
 
-Use this when the probe starts returning `login_required`, the Suno session
-expires, or another machine/logout invalidates the current cookie state.
+Use this when the probe starts returning `login_required` because the Suno
+session expired normally. Use the `--fresh` recovery above for an explicitly
+invalidated session or a proven corrupt CLI auth profile.
 
 1. Treat `login_required` as a manual-operator handoff, not an automation bug.
 2. Re-run `scripts/openclaw-suno-login.sh` for `suno_cli`, or pass the explicit
