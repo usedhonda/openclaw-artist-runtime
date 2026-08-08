@@ -43,6 +43,9 @@
 - Plan v9.5 finalizes the autopilot revival and Telegram bridge dogfood pass: RuntimeEventBus stage/state/take notifications, owner-only Telegram commands, local free-text inbox staging, debug-only `/review <songId>` mock AI review, and final pre-release distribution gate coverage.
 
 ### Fixed
+- Kept `rebrowser-playwright` on the matching bundled Chromium lane. Explicit
+  system/custom Chrome now uses stock `playwright-extra`, avoiding the empty page
+  and Runtime execution-context errors caused by wrapping a newer Chrome protocol.
 - Probed the exact fixed CDP port reserved by `SunoBrowserService` instead of
   waiting for `DevToolsActivePort`, which Chrome does not reliably write for a
   non-zero port. Plugin-owned human assist now reaches its launched browser

@@ -103,6 +103,12 @@ does not reliably write when the debugging port is explicitly non-zero.
 invariant. This mirrors `isSunoCdpEnabled()`/`sunoCdpEndpoint()` in
 `runtimeConfig.ts`, which now take config-first precedence with env fallback.
 
+Bundled Chromium uses the matching `rebrowser-playwright` launcher. An explicit
+system/custom Chrome (`browser.channel` or `browser.executablePath`) uses stock
+`playwright-extra` instead: wrapping a newer operator Chrome with the bundled
+rebrowser protocol can leave the authenticated page empty with Runtime context
+errors.
+
 Trap: suno-cli prints `Live create submit is disabled in this build` only when
 neither `--dry-run` nor `--live` is passed. It is **not** a global kill-switch.
 This driver always passes `--live` and judges by exit code; never parse that

@@ -6,6 +6,7 @@ import {
   sunoChromeExecutablePath,
   sunoChromeProfileDest
 } from "../src/services/runtimeConfig";
+import { shouldUseRebrowser } from "../src/services/sunoBrowserLaunch";
 
 function browserConfig(browser: Record<string, unknown>) {
   return { music: { suno: { browser } } };
@@ -40,5 +41,13 @@ describe("music.suno.browser accessor precedence", () => {
 
     expect(isSunoCdpEnabled(undefined, {})).toBe(false);
     expect(sunoCdpEndpoint(undefined, {})).toBe("http://127.0.0.1:9222");
+  });
+});
+
+describe("Suno browser launcher compatibility", () => {
+  it("uses rebrowser only with the bundled Chromium lane", () => {
+    expect(shouldUseRebrowser(undefined)).toBe(true);
+    expect(shouldUseRebrowser(browserConfig({ channel: "chrome" }))).toBe(false);
+    expect(shouldUseRebrowser(browserConfig({ executablePath: "/custom/chrome" }))).toBe(false);
   });
 });

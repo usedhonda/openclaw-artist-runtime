@@ -25,7 +25,13 @@ function errorMessage(error: unknown): string {
 // captcha path (vendor/suno-cli/dist/src/browser/captcha.js `loadPlaywright`) runs
 // rebrowser-playwright ALONE under the same addBinding mode and passes Turnstile, so
 // rebrowser's own CDP patches — not stealth — are the load-bearing evasion.
-async function resolveSunoChromium(): Promise<{ launchPersistentContext: (...args: unknown[]) => Promise<BrowserContext> }> {
+export function shouldUseRebrowser(config?: SunoBrowserConfigView): boolean {
+  return !sunoChromeExecutablePath(config) && !sunoBrowserChannel(config);
+}
+
+async function resolveSunoChromium(
+  useRebrowser: boolean
+): Promise<{ launchPersistentContext: (...args: unknown[]) => Promise<BrowserContext> }> {
   if (!process.env.REBROWSER_PATCHES_RUNTIME_FIX_MODE) {
     process.env.REBROWSER_PATCHES_RUNTIME_FIX_MODE = "addBinding";
   }
@@ -34,6 +40,9 @@ async function resolveSunoChromium(): Promise<{ launchPersistentContext: (...arg
     addExtra?: (launcher: unknown) => { launchPersistentContext: (...args: unknown[]) => Promise<BrowserContext> };
   };
   let chromium = playwrightExtra.chromium;
+  if (!useRebrowser) {
+    return chromium;
+  }
   try {
     // Indirect import so TypeScript/bundlers do not hard-require the optional package.
     const dynamicImport = new Function("specifier", "return import(specifier)") as (s: string) => Promise<unknown>;
@@ -64,10 +73,14 @@ export async function launchSunoPersistentContext(
   profilePath: string,
   options: { extraArgs?: string[]; config?: SunoBrowserConfigView } = {}
 ): Promise<BrowserContext> {
-  const chromium = await resolveSunoChromium();
   await mkdir(profilePath, { recursive: true });
   const executablePath = sunoChromeExecutablePath(options.config);
   const channel = executablePath ? undefined : sunoBrowserChannel(options.config);
+  // rebrowser-playwright is pinned to the bundled Chromium protocol. Wrapping an
+  // explicitly selected system/custom Chrome can cross protocol versions and leave
+  // the page body empty with Runtime execution-context errors. Operator-selected
+  // browsers therefore use stock playwright-extra; the bundled lane keeps rebrowser.
+  const chromium = await resolveSunoChromium(shouldUseRebrowser(options.config));
   const usesBundledChromium = !executablePath && !channel;
   const launchOptions = {
     headless: false,

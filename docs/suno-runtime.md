@@ -59,7 +59,9 @@ It is not auto-detected and should remain unset for normal installs.
 
 `music.suno.browser.channel: "chrome"` (env `OPENCLAW_SUNO_BROWSER_CHANNEL`) is
 an explicit opt-in escape hatch for machines where the operator accepts the macOS
-Chrome singleton risk. It is not the default.
+Chrome singleton risk. It is not the default. This explicit system-Chrome lane
+uses stock `playwright-extra`; `rebrowser-playwright` remains confined to its
+matching bundled Chromium protocol.
 
 `music.suno.browser.cdpEndpoint` (env `OPENCLAW_SUNO_CDP_ENDPOINT` +
 `OPENCLAW_SUNO_USE_CDP=on`) is the advanced/emergency attach mode: instead of
