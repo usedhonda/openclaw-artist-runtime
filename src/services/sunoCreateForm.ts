@@ -63,6 +63,10 @@ export const SUNO_CREATE_FALLBACKS = {
     SUNO_CREATE_SELECTORS.addLyricsButton,
     'button:has-text("Add your own lyrics")'
   ],
+  customMode: [
+    'button:has-text("Custom")',
+    'button[aria-label*="Custom" i]'
+  ],
   style: [
     '[data-testid="create-form-styles-wrapper"] textarea',
     'textarea[placeholder="Describe the sound you want"]',
@@ -151,9 +155,16 @@ export async function waitForSunoCreateFormReady(page: Page, timeoutMs: number):
  * contenteditable lyrics body — never the "Cowriter prompt" co-writer chat box.
  */
 export async function ensureSunoLyricsMode(page: Page, timeoutMs: number): Promise<Locator> {
-  const editor = page.locator(SUNO_CREATE_SELECTORS.lyricsEditor).first();
-  if (await editor.isVisible().catch(() => false)) {
-    return editor;
+  const visibleEditor = async (): Promise<Locator | undefined> => {
+    for (const selector of SUNO_CREATE_FALLBACKS.lyricsEditor) {
+      const candidate = page.locator(selector).first();
+      if (await candidate.isVisible().catch(() => false)) return candidate;
+    }
+    return undefined;
+  };
+  const existingEditor = await visibleEditor();
+  if (existingEditor) {
+    return existingEditor;
   }
   const advancedTab = await resolveFirstVisibleLocator(
     page,
@@ -166,6 +177,19 @@ export async function ensureSunoLyricsMode(page: Page, timeoutMs: number): Promi
     if (!alreadySelected) {
       await advancedTab.click().catch(() => undefined);
     }
+  }
+  const editorAfterAdvanced = await visibleEditor();
+  if (editorAfterAdvanced) {
+    return editorAfterAdvanced;
+  }
+  const customMode = await resolveFirstVisibleLocator(
+    page,
+    SUNO_CREATE_FALLBACKS.customMode,
+    timeoutMs,
+    "Custom lyrics mode"
+  ).catch(() => undefined);
+  if (customMode) {
+    await customMode.click().catch(() => undefined);
   }
   return resolveFirstVisibleLocator(page, SUNO_CREATE_FALLBACKS.lyricsEditor, timeoutMs, "lyrics editor");
 }

@@ -45,7 +45,9 @@
 ### Fixed
 - Accepted Suno's current plain-text `Advanced` and `Create` buttons in the shared
   create-form readiness gate. The live form no longer fails as
-  `suno_create_dom_missing` solely because the older ARIA metadata is absent.
+  `suno_create_dom_missing` solely because the older ARIA metadata is absent, and
+  the driver now selects `Custom` inside Advanced before waiting for the lyrics
+  editor.
 - Hydrated human-assist Chrome from the existing local `suno-cli` session before
   navigation and opened a fresh page afterward. A valid CLI cookie no longer
   leaves the fallback on stale signed-out markup or a React hydration error; cookie

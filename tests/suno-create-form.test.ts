@@ -167,6 +167,25 @@ describe("ensureSunoLyricsMode", () => {
     expect(await locator.isVisible()).toBe(true);
   });
 
+  it("selects Custom inside Advanced before waiting for the current lyrics editor", async () => {
+    const editorState: SelectorState = { visible: false };
+    const customMode = 'button:has-text("Custom")';
+    const { page, clicks } = makePage({
+      [SUNO_CREATE_SELECTORS.lyricsEditor]: editorState,
+      [SUNO_CREATE_SELECTORS.advancedTab]: { visible: true, attrs: { "aria-selected": "true" } },
+      [customMode]: {
+        visible: true,
+        onClick: () => {
+          editorState.visible = true;
+        }
+      }
+    });
+
+    const locator = await ensureSunoLyricsMode(page, 50);
+    expect(clicks).toEqual([customMode]);
+    expect(await locator.isVisible()).toBe(true);
+  });
+
   it("does not re-click the Advanced tab when it is already selected", async () => {
     // Advanced already selected but editor still resolving: must not toggle it off.
     const { page, clicks } = makePage({
