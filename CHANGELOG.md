@@ -43,6 +43,9 @@
 - Plan v9.5 finalizes the autopilot revival and Telegram bridge dogfood pass: RuntimeEventBus stage/state/take notifications, owner-only Telegram commands, local free-text inbox staging, debug-only `/review <songId>` mock AI review, and final pre-release distribution gate coverage.
 
 ### Fixed
+- Accepted Suno's current plain-text `Advanced` and `Create` buttons in the shared
+  create-form readiness gate. The live form no longer fails as
+  `suno_create_dom_missing` solely because the older ARIA metadata is absent.
 - Hydrated human-assist Chrome from the existing local `suno-cli` session before
   navigation and opened a fresh page afterward. A valid CLI cookie no longer
   leaves the fallback on stale signed-out markup or a React hydration error; cookie

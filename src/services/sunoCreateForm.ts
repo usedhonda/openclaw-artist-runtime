@@ -59,6 +59,7 @@ export const SUNO_CREATE_FALLBACKS = {
   advancedTab: [
     SUNO_CREATE_SELECTORS.advancedTab,
     '[role="tab"][aria-label="Advanced"]',
+    'button:has-text("Advanced")',
     SUNO_CREATE_SELECTORS.addLyricsButton,
     'button:has-text("Add your own lyrics")'
   ],
@@ -79,11 +80,10 @@ export const SUNO_CREATE_FALLBACKS = {
  */
 export const SUNO_CREATE_FORM_READY_SELECTORS: readonly string[] = [
   SUNO_CREATE_SELECTORS.lyricsEditor,
-  SUNO_CREATE_SELECTORS.advancedTab,
   SUNO_CREATE_SELECTORS.lyricsTextarea,
-  SUNO_CREATE_SELECTORS.addLyricsButton,
   SUNO_CREATE_SELECTORS.stylesWrapper,
-  SUNO_CREATE_SELECTORS.createButton
+  ...SUNO_CREATE_FALLBACKS.advancedTab,
+  ...SUNO_CREATE_FALLBACKS.createButton
 ];
 
 /** Comma-joined style selector kept for callers that want one locator string. */

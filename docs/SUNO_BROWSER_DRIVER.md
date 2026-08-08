@@ -173,6 +173,10 @@ Safety invariants:
 - The two-take delivery contract is unchanged: a run is accepted only once both
   `/song/<id>` take URLs are captured (`EXPECTED_SUNO_TAKE_URLS` = 2).
 
+Selector note: current Suno builds can render `Advanced` and `Create` as plain
+text buttons without the older ARIA metadata. Form readiness and mode switching
+accept both the semantic selectors and these observed text-button fallbacks.
+
 Architecture: the tested contract is the driver-agnostic state machine
 (`src/services/sunoHumanAssist.ts`) plus the connector decorator
 (`src/connectors/suno/humanAssistSunoConnector.ts`). The live DOM automation

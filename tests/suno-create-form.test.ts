@@ -78,6 +78,14 @@ describe("waitForSunoCreateFormReady", () => {
     await expect(waitForSunoCreateFormReady(page, 50)).resolves.toBeUndefined();
   });
 
+  it("accepts the current plain-text Create button as a ready form signal", async () => {
+    const plainCreate = 'button:has-text("Create")';
+    const { page } = makePage({
+      [plainCreate]: { visible: true }
+    });
+    await expect(waitForSunoCreateFormReady(page, 50)).resolves.toBeUndefined();
+  });
+
   it("rejects with DOM-missing when no form-ready selector is visible", async () => {
     const { page } = makePage({});
     await expect(waitForSunoCreateFormReady(page, 10)).rejects.toThrow(SUNO_CREATE_FORM_MISSING_REASON);
@@ -139,6 +147,23 @@ describe("ensureSunoLyricsMode", () => {
     });
     const locator = await ensureSunoLyricsMode(page, 50);
     expect(clicks).toContain(SUNO_CREATE_SELECTORS.advancedTab);
+    expect(await locator.isVisible()).toBe(true);
+  });
+
+  it("uses the current plain-text Advanced button when no tab aria metadata exists", async () => {
+    const editorState: SelectorState = { visible: false };
+    const plainAdvanced = 'button:has-text("Advanced")';
+    const { page, clicks } = makePage({
+      [SUNO_CREATE_SELECTORS.lyricsEditor]: editorState,
+      [plainAdvanced]: {
+        visible: true,
+        onClick: () => {
+          editorState.visible = true;
+        }
+      }
+    });
+    const locator = await ensureSunoLyricsMode(page, 50);
+    expect(clicks).toContain(plainAdvanced);
     expect(await locator.isVisible()).toBe(true);
   });
 
