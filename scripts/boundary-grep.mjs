@@ -21,6 +21,9 @@ export const forbiddenPatterns = [
   { id: "hardcoded-env-fallback", pattern: /process\.env\.[A-Z0-9_]*(?:TOKEN|SECRET|PASSWORD|COOKIE)\s*\|\|\s*["'`][^"'`\s]+/ },
   { id: "absolute-env-path", pattern: /\/Users\/[^"'`\s]+\/[^"'`\s]*\.env(?:\.[^"'`\s]+)?/ },
   { id: "document-cookie-access", pattern: /\bdocument\.cookie\b/ },
+  // Process arguments are world-readable through ps. A secret handed to a flag on
+  // the command line is published to every local process; pass it in the environment.
+  { id: "secret-on-command-line", pattern: /--(?:token|secret|password|api-?key)[=\s]+["']?\$/i },
   { id: "profile-cookie-copy", pattern: /openclaw-browser-profiles\/suno\/.*(?:cookie|session|token)/i },
   { id: "bash-mapfile", pattern: /^\s*mapfile\b/ },
   { id: "bash-readarray", pattern: /^\s*readarray\b/ },

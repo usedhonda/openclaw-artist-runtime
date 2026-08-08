@@ -156,14 +156,17 @@ start_ticker_watcher() {
     log_line "ticker watcher disabled; safe tick token missing"
     return
   fi
+  # Hand the token over through the environment, never on the command line:
+  # process arguments are world-readable through ps, so --token would publish the
+  # secret to every local process. The watcher already reads this variable.
+  OPENCLAW_SAFE_TICK_TRIGGER_TOKEN="${ticker_token}" \
   node "${script_dir}/openclaw-ticker-watcher" \
     --workspace "${OPENCLAW_LOCAL_WORKSPACE}" \
     --gateway-url "${OPENCLAW_LOCAL_GATEWAY_HTTP_URL}" \
     --supervisor "${script_dir}/openclaw-local-gateway-supervisor" \
     --log "${ticker_watcher_log}" \
     --stale-ms "${ticker_watcher_stale_ms}" \
-    --interval-ms "${ticker_watcher_interval_ms}" \
-    --token "${ticker_token}" >/dev/null 2>&1 &
+    --interval-ms "${ticker_watcher_interval_ms}" >/dev/null 2>&1 &
   ticker_watcher_pid=$!
   log_line "ticker watcher started pid=${ticker_watcher_pid} staleMs=${ticker_watcher_stale_ms} intervalMs=${ticker_watcher_interval_ms}"
 }

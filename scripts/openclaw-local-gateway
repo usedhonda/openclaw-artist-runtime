@@ -165,6 +165,11 @@ case "${command}" in
   health)
     gateway_token="$(read_gateway_token)"
     if [[ -n "${gateway_token}" ]]; then
+      # These one-shot commands must pass --token: with --url overridden the CLI
+      # demands explicit credentials, and `gateway health` rejects --token-file.
+      # The exposure window is a single short-lived process, unlike the long-running
+      # ticker watcher, which now receives its token through the environment.
+      # boundary-grep-allow: secret-on-command-line
       exec "${script_dir}/openclaw-local" gateway health --json --url "${OPENCLAW_LOCAL_GATEWAY_WS_URL}" --token "${gateway_token}" "$@"
     fi
     exec "${script_dir}/openclaw-local" gateway health --json --url "${OPENCLAW_LOCAL_GATEWAY_WS_URL}" "$@"
@@ -172,6 +177,7 @@ case "${command}" in
   probe)
     gateway_token="$(read_gateway_token)"
     if [[ -n "${gateway_token}" ]]; then
+      # boundary-grep-allow: secret-on-command-line
       exec "${script_dir}/openclaw-local" gateway probe --json --url "${OPENCLAW_LOCAL_GATEWAY_WS_URL}" --token "${gateway_token}" "$@"
     fi
     exec "${script_dir}/openclaw-local" gateway probe --json --url "${OPENCLAW_LOCAL_GATEWAY_WS_URL}" "$@"
@@ -188,6 +194,7 @@ case "${command}" in
     fi
     gateway_token="$(read_gateway_token)"
     if [[ -n "${gateway_token}" ]]; then
+      # boundary-grep-allow: secret-on-command-line
       exec "${script_dir}/openclaw-local" gateway status --url "${OPENCLAW_LOCAL_GATEWAY_WS_URL}" --token "${gateway_token}" "$@"
     fi
     exec "${script_dir}/openclaw-local" gateway status --url "${OPENCLAW_LOCAL_GATEWAY_WS_URL}" "$@"
