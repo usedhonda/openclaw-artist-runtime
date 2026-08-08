@@ -268,23 +268,67 @@ describe("CliSunoConnector.create", () => {
     expect(runner).not.toHaveBeenCalled();
   });
 
-  it("redacts the captcha token in logs and never leaks the token or cookie in any surface", async () => {
+  it("logs only create metadata and never leaks creative payloads, paths, or credentials", async () => {
     const logged: string[] = [];
+    const privateTitle = "private-title-marker";
+    const privateStyle = "private-style-marker";
+    const privateLyrics = "private-lyrics-marker";
+    const privateExclude = "private-exclude-marker";
+    const privateWorkspace = "/operator/private-workspace-marker";
     const runner = runnerReturning({ stdout: "", stderr: "boom", exitCode: 30 });
-    const connector = new CliSunoConnector(".", {
+    const connector = new CliSunoConnector(privateWorkspace, {
       env: baseEnv(),
       runner,
       logger: { warn: (message) => logged.push(message) }
     });
 
-    const result = await connector.create(request());
+    const result = await connector.create(request({
+      payload: {
+        songName: privateTitle,
+        styleAndFeel: privateStyle,
+        payloadYaml: privateLyrics,
+        excludeStyles: privateExclude
+      }
+    }));
 
     const joinedLogs = logged.join("\n");
-    expect(joinedLogs).toContain("***");
+    expect(joinedLogs).toContain("run=run-cli-1");
+    expect(joinedLogs).toContain(`titleChars=${privateTitle.length}`);
+    expect(joinedLogs).toContain(`styleChars=${privateStyle.length}`);
+    expect(joinedLogs).toContain(`lyricsChars=${privateLyrics.length}`);
+    expect(joinedLogs).toContain(`excludeChars=${privateExclude.length}`);
+    expect(joinedLogs).not.toContain(privateTitle);
+    expect(joinedLogs).not.toContain(privateStyle);
+    expect(joinedLogs).not.toContain(privateLyrics);
+    expect(joinedLogs).not.toContain(privateExclude);
+    expect(joinedLogs).not.toContain(privateWorkspace);
     expect(joinedLogs).not.toContain(CAPTCHA_TOKEN);
     expect(joinedLogs).not.toContain(COOKIE);
     expect(JSON.stringify(result)).not.toContain(CAPTCHA_TOKEN);
     expect(JSON.stringify(result)).not.toContain(COOKIE);
+  });
+
+  it("keeps create spawn-error logs metadata-only", async () => {
+    const logged: string[] = [];
+    const privateLyrics = "spawn-error-private-lyrics";
+    const privateWorkspace = "/operator/spawn-error-workspace";
+    const runner: CliRunner = vi.fn(async () => {
+      throw new Error("spawn failed");
+    });
+    const connector = new CliSunoConnector(privateWorkspace, {
+      env: baseEnv(),
+      runner,
+      logger: { warn: (message) => logged.push(message) }
+    });
+
+    await connector.create(request({ payload: { payloadYaml: privateLyrics } }));
+
+    const joinedLogs = logged.join("\n");
+    expect(joinedLogs).toContain("create spawn error");
+    expect(joinedLogs).toContain(`lyricsChars=${privateLyrics.length}`);
+    expect(joinedLogs).not.toContain(privateLyrics);
+    expect(joinedLogs).not.toContain(privateWorkspace);
+    expect(joinedLogs).not.toContain(CAPTCHA_TOKEN);
   });
 });
 
@@ -629,20 +673,49 @@ describe("CliSunoConnector.importResults", () => {
     expect(runner).not.toHaveBeenCalled();
   });
 
-  it("never leaks the cookie in download failure logs", async () => {
+  it("logs only download metadata and never leaks targets, paths, or credentials", async () => {
     const logged: string[] = [];
+    const privateWorkspace = "/operator/private-workspace-marker";
+    const privateUrl = "https://suno.com/song/private-clip-marker";
     const runner = runnerReturning({ stdout: "", stderr: "boom", exitCode: 30 });
-    const connector = new CliSunoConnector("/ws/artist", {
+    const connector = new CliSunoConnector(privateWorkspace, {
       env: baseEnv(),
       runner,
       logger: { warn: (message) => logged.push(message) }
     });
 
-    const result = await connector.importResults({ runId: "run-cli-1", urls: [] });
+    const result = await connector.importResults({ runId: "run-cli-1", urls: [privateUrl] });
 
     const joinedLogs = logged.join("\n");
+    expect(joinedLogs).toContain("run=run-cli-1");
+    expect(joinedLogs).toContain("target=song_url");
+    expect(joinedLogs).not.toContain(privateUrl);
+    expect(joinedLogs).not.toContain(privateWorkspace);
     expect(joinedLogs).not.toContain(COOKIE);
     expect(JSON.stringify(result)).not.toContain(COOKIE);
+  });
+
+  it("keeps download spawn-error logs metadata-only", async () => {
+    const logged: string[] = [];
+    const privateWorkspace = "/operator/download-spawn-workspace";
+    const privateUrl = "https://suno.com/song/download-spawn-private-clip";
+    const runner: CliRunner = vi.fn(async () => {
+      throw new Error("spawn failed");
+    });
+    const connector = new CliSunoConnector(privateWorkspace, {
+      env: baseEnv(),
+      runner,
+      logger: { warn: (message) => logged.push(message) }
+    });
+
+    await connector.importResults({ runId: "run-cli-1", urls: [privateUrl] });
+
+    const joinedLogs = logged.join("\n");
+    expect(joinedLogs).toContain("download spawn error");
+    expect(joinedLogs).toContain("target=song_url");
+    expect(joinedLogs).not.toContain(privateUrl);
+    expect(joinedLogs).not.toContain(privateWorkspace);
+    expect(joinedLogs).not.toContain(COOKIE);
   });
 
   it("imports only the run's takes when the CLI returns unrelated downloads", async () => {

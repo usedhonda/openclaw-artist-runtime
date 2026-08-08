@@ -90,18 +90,6 @@ function defaultRunner(entry: string, args: readonly string[], env: NodeJS.Proce
   });
 }
 
-// Redact the single-use captcha token before any diagnostic surface. Cookies
-// live only in the child env and are never logged.
-function redactArgs(args: readonly string[]): string[] {
-  const out = [...args];
-  for (let index = 0; index < out.length; index += 1) {
-    if (out[index] === "--captcha-token" && index + 1 < out.length) {
-      out[index + 1] = "***";
-    }
-  }
-  return out;
-}
-
 function readText(value: unknown): string | undefined {
   return typeof value === "string" && value.trim() ? value : undefined;
 }
@@ -181,6 +169,32 @@ function extractLyrics(payload: SunoCreatePayload): string | undefined {
   return readText(payload.payloadYaml) ?? readText(payload.lyrics) ?? readText(payload.lyricsText);
 }
 
+function safeLogRunId(value: string): string {
+  const normalized = value.trim();
+  return /^[A-Za-z0-9][A-Za-z0-9._-]{0,79}$/.test(normalized) ? normalized : "redacted";
+}
+
+function createLogContext(
+  input: SunoCreateRequest,
+  runId: string,
+  captchaProvided: boolean
+): string {
+  const payload = input.payload ?? {};
+  return [
+    `run=${safeLogRunId(runId)}`,
+    `titleChars=${readText(payload.songName)?.length ?? 0}`,
+    `styleChars=${readText(payload.styleAndFeel)?.length ?? 0}`,
+    `lyricsChars=${extractLyrics(payload)?.length ?? 0}`,
+    `excludeChars=${readText(payload.excludeStyles)?.length ?? 0}`,
+    `instrumental=${Boolean(payload.instrumental)}`,
+    `captcha=${captchaProvided ? "provided" : "none"}`
+  ].join(" ");
+}
+
+function downloadLogContext(runId: string, target: string): string {
+  return `run=${safeLogRunId(runId)} target=${sunoUrlSlug(target) ? "song_url" : "run_id"}`;
+}
+
 /**
  * SunoConnector that drives song creation by shelling out to the external
  * suno-cli tool (an authenticated HTTP POST to Suno's generate endpoint),
@@ -242,7 +256,9 @@ export class CliSunoConnector implements SunoConnector {
     // Captcha is now an optional escape-hatch: on a trusted session suno-cli
     // succeeds with token=null. Only supply the pair when BOTH env vars are
     // present and valid; a half pair is treated as "not supplied".
-    const args = this.buildArgs(input, runId, this.resolveCaptcha());
+    const captcha = this.resolveCaptcha();
+    const args = this.buildArgs(input, runId, captcha);
+    const logContext = createLogContext(input, runId, Boolean(captcha));
     // Inherit the cookie envs (SUNO_KIT_COOKIE / SUNO_KIT_COOKIE_FILE) into the
     // child; their values are never read or logged here.
     const childEnv: NodeJS.ProcessEnv = { ...this.env };
@@ -263,7 +279,7 @@ export class CliSunoConnector implements SunoConnector {
     try {
       run = await this.runner(entry, args, childEnv);
     } catch {
-      this.logger.warn(`[suno-cli] create spawn error args=${redactArgs(args).join(" ")}`);
+      this.logger.warn(`[suno-cli] create spawn error ${logContext}`);
       return { accepted: false, runId, reason: "suno_cli_internal", urls: [], dryRun: false };
     }
 
@@ -271,7 +287,7 @@ export class CliSunoConnector implements SunoConnector {
       return this.parseSuccess(run.stdout, runId);
     }
 
-    this.logger.warn(`[suno-cli] create failed exit=${run.exitCode} args=${redactArgs(args).join(" ")}`);
+    this.logger.warn(`[suno-cli] create failed exit=${run.exitCode} ${logContext}`);
     return {
       accepted: false,
       runId,
@@ -308,11 +324,12 @@ export class CliSunoConnector implements SunoConnector {
     let resolvedRunId = runId;
     for (const target of targets) {
       const args = this.buildDownloadArgs(target);
+      const logContext = downloadLogContext(runId, target);
       let run: CliRunResult;
       try {
         run = await this.runner(entry, args, childEnv);
       } catch {
-        this.logger.warn(`[suno-cli] download spawn error args=${redactArgs(args).join(" ")}`);
+        this.logger.warn(`[suno-cli] download spawn error ${logContext}`);
         return { urls: [], runId, reason: "suno_cli_internal" };
       }
       if (run.exitCode !== 0) {
@@ -320,7 +337,7 @@ export class CliSunoConnector implements SunoConnector {
         // the autopilot/adoption import path retry the whole set rather than fail (matching
         // how the browser worker signals "not ready yet"). Other non-zero codes map to
         // their stable fail-closed reason. Never fabricate URLs. Judge by exit code only.
-        this.logger.warn(`[suno-cli] download failed exit=${run.exitCode} args=${redactArgs(args).join(" ")}`);
+        this.logger.warn(`[suno-cli] download failed exit=${run.exitCode} ${logContext}`);
         return { urls: [], runId, reason: EXIT_REASONS[run.exitCode] ?? "suno_cli_internal" };
       }
       const parsed = parseDownloadClips(run.stdout);
