@@ -167,6 +167,8 @@ session and signs the dedicated profile in again. No Suno browser is running.
 ## References
 
 - Commit: `a590694`
+- CLI failure-log boundary: `70a138b`
+- Telegram delivery receipt ledger: `84054f7`
 - Guard rule: `scripts/boundary-grep.mjs` → `secret-on-command-line`
 - Token validation: `src/routes/responseBuilders.ts:1839-1848`
 - Tick path: `src/services/autopilotTicker.ts:186-224`
