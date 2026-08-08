@@ -74,6 +74,8 @@ Endpoint configuration is still passed only for optional mint flows, so unreacha
 legacy CDP config now surfaces as normal CLI failure reasons (for example
 `suno_cli_blocked_captcha`) rather than a separate `suno_cdp_endpoint_unreachable`
 short-circuit.
+The operator-led human-assist fallback path is the only remaining caller for CDP
+reachability-sensitive attach/mint attempts.
 
 ### CDP endpoint for the suno-cli captcha mint
 

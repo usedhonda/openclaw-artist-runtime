@@ -364,23 +364,24 @@ describe("CliSunoConnector.create — CDP endpoint (OPENCLAW_SUNO_USE_CDP opt-in
 describe("CliSunoConnector.create — CDP endpoint behavior", () => {
   const cdpConfig = { music: { suno: { browser: { cdpEndpoint: "http://127.0.0.1:9222" } } } } ;
 
-  it("does not run a CDP preflight for live create; it still runs runner and maps existing failure reasons", async () => {
-    const runner = runnerReturning({
-      stdout: "",
-      stderr: "",
-      exitCode: 31
-    });
+  it("does not preflight legacy CDP reachability for live create and still maps CLI exit reasons", async () => {
+    const runner = runnerReturning({ stdout: "", stderr: "", exitCode: 31 });
     const connector = new CliSunoConnector(".", {
-      env: baseEnv({ OPENCLAW_SUNO_USE_CDP: "on", OPENCLAW_SUNO_CDP_ENDPOINT: "http://127.0.0.1:9222" }),
-      runner,
-      config: cdpConfig
+      env: baseEnv({
+        OPENCLAW_SUNO_USE_CDP: "on",
+        OPENCLAW_SUNO_CDP_ENDPOINT: "http://127.0.0.1:65535"
+      }),
+      runner
     });
 
     const result = await connector.create(request());
 
     expect(runner).toHaveBeenCalledTimes(1);
+    expect(runner.mock.calls[0][2].OPENCLAW_SUNO_USE_CDP).toBe("on");
+    expect(runner.mock.calls[0][2].SUNO_KIT_CDP_ENDPOINT).toBe("http://127.0.0.1:65535");
     expect(result.accepted).toBe(false);
     expect(result.reason).toBe("suno_cli_blocked_captcha");
+    expect(result.reason).not.toBe("suno_cdp_endpoint_unreachable");
   });
 
   it("maps configured config-based CDP endpoints into child env without blocking create execution", async () => {

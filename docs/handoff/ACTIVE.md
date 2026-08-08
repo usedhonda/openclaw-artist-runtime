@@ -1,75 +1,121 @@
-# Handoff: recover live suno generation via runtime-config rollback
+# Handoff: restore autonomous Suno generation
 
-Task ID: artist-runtime-2973xxxx
-Last updated: 2026-08-09T17:55:30+09:00 by worker
-Status: in-progress
+Task ID: suno-root-fix-2026-08
+Last updated: 2026-08-09 by implementer (artist-runtime.cc)
+Status: in-progress — security item closed, generation still blocked
 
 ## Objective
-Apply runtime fix 5415a3f to live operator instance, remove stale local CDP forcing in config-overrides, restart gateway cleanly, and validate that normal song generation/import resumes without CAPTCHA automation.
+
+Get autonomous Suno generation producing and importing a real song again. A
+credential exposure found on the way had to be closed first.
 
 ## Scope
-- `.local/openclaw/workspace/runtime/config-overrides.json`
-- `.local/openclaw/workspace/runtime/config-overrides.backup-*.json`
-- `scripts/openclaw-local-gateway` lifecycle commands
-- Local gateway health/process verification and resume validation
+
+- Close the ticker-watcher token exposure and rotate the secret.
+- Find why real generation is blocked and fix the root cause.
+- Prove recovery with a real (non-dry-run) accepted/imported song.
 
 ## Explicitly out of scope
-- Source code changes beyond local runtime config and handoff docs
-- CAPTCHA solving or payment/login challenge automation
-- Social publishing path changes
-- Remote/Telegram-side command sending unless local resume API fails
+
+- CAPTCHA automation or bypass of any kind.
+- Restoring the normal-live dead-endpoint preflight that `5415a3f` removed.
+- `git push` — commits stay local until the owner lifts this.
+- Changing the weekly-limit rule itself if it is a genuine internal-song contract.
+  Fix the path that polluted the count, not the rule.
 
 ## Current state
-- Working tree had `cdpEndpoint` hard-setting in `.local/openclaw/workspace/runtime/config-overrides.json` before task start.
-- Gateway wrapper status initially reported PID-state drift (`gateway_pid=stopped`) but runtime health and listeners were available.
-- `openclaw-local-gateway start` now returns process with listener on 43134 and `telegram` connected false in current `health` read.
+
+The security item is closed and verified. Generation is still blocked: the
+weekly limit reads `4/3` and the four runs that consumed it were dry-run mocks,
+so no real song has been produced this session.
 
 ## Completed
-- [x] Backed up `config-overrides.json` to `.local/openclaw/workspace/runtime/config-overrides.backup-2026...json` and removed only `music.suno.browser.cdpEndpoint`.
-- [x] Performed full stop sequence (`openclaw-local-gateway stop`, kill watcher/supervisor/gateway run) and restarted supervisor.
-- [x] Verified 43134 is LISTEN with fresh gateway tree (`openclaw` process + open socket).
-- [x] Rebuilt runtime (`npm run build:runtime`) and rechecked compiled artifacts.
+
+- [x] Confirmed the exposure independently — a 48-char token sat in the live
+      watcher's `ps`-readable arguments.
+- [x] Fixed the channel — the supervisor now hands the token to the watcher
+      through the environment. Commit `a590694` (not pushed).
+- [x] Added a `boundary-grep` rule for secrets on the command line, which
+      immediately found three more sites in the gateway wrapper.
+- [x] Rotated the token via one clean stop/start with both token vars unset.
+      Masked evidence: `19...b1` → `4f...9b`, both 48 chars.
+- [x] Verified after restart: watcher arguments carry no token, old watcher gone,
+      `health ok:true`, `telegram.connected:true`, no 401/403.
 
 ## Files changed
+
 | File | Change |
 |---|---|
-| `docs/handoff/ACTIVE.md` | Incident handoff initialization/update |
+| `scripts/openclaw-local-gateway-supervisor` | Pass the watcher token via environment, not `--token` |
+| `scripts/openclaw-local-gateway` | Three `--token` sites kept, each behind a documented allow pragma |
+| `scripts/boundary-grep.mjs` | New `secret-on-command-line` rule |
+
+Also dirty from separate work, deliberately not in `a590694`: `CHANGELOG.md`,
+`docs/SUNO_BROWSER_DRIVER.md`, `tests/suno-cli-connector.test.ts`.
 
 ## Decided (do not relitigate)
+
 | Decision | Reason |
 |---|---|
-| Remove only `music.suno.browser.cdpEndpoint` | Higher impact than adding fallback logic; explicit task intent is rollback of stale override. |
-| Keep runtime edit local-only | File is `.local` and explicitly not tracked; no repo config defaults change required. |
+| The watcher token goes through the environment | Process arguments are world-readable via `ps`; the watcher is long-lived |
+| The three gateway-wrapper `--token` sites stay | With `--url` overridden the CLI demands explicit credentials, and `gateway health` rejects `--token-file`. Both upstream-suggested alternatives were tried and both fail. One-shot processes, exposure window far smaller than a daemon |
+| Exceptions are recorded as visible pragmas | An auditable exception beats silently reshaping code to dodge the scanner |
+| No forced safe-tick trigger to manufacture an `http=200` | An unpaused trigger calls `runCycle`, a real pipeline advance. Evidence is not worth causing a public side effect |
+| Rotation means restart, not editing stored copies | The token is minted fresh at launcher time and never persisted |
 
-## Commands run
-```bash
-cat .local/openclaw/workspace/runtime/config-overrides.json
-scripts/openclaw-local-gateway stop
-pkill -f "openclaw-ticker-watcher"
-pkill -f "openclaw-local-gateway-supervisor"
-pkill -f "gateway run"
-scripts/openclaw-local-gateway start
-scripts/openclaw-local-gateway status
-scripts/openclaw-local-gateway health
-npm run build:runtime
-lsof -nP -iTCP:43134 -sTCP:LISTEN
-```
+## Rejected alternatives
+
+| Option | Why rejected |
+|---|---|
+| `OPENCLAW_GATEWAY_TOKEN` for the wrapper | `GatewayExplicitAuthRequiredError: gateway url override requires explicit credentials` |
+| `--token-file` for the wrapper | `OpenClaw does not recognize option "--token-file"` for `gateway health` |
+| Leaving the wrapper broken to keep the scanner clean | Breaks operator tooling for a cosmetic pass |
 
 ## Open questions
-- Should `telegram.connected` recover from false to true automatically within next poll cycle or require manual warmup step?
+
+- Which path wrote the mock song/run records into the live workspace?
+  `scripts/openclaw-local-write-smoke.sh` posting partial config is the leading
+  suspect, but this is unconfirmed — settle it from audit log, runtime events,
+  and config-update history with mtimes.
+- Does human-assist need the external `:9222` browser, or does a plugin-owned
+  browser work? Decide from a real page: URL, title, profile, visible form.
 
 ## Known risks
-- CDP endpoint rollback alone may not recover if a stale / corrupted run-state exists.
-- Health shows `telegram.connected=false` after restart in one read, so immediate run resumption may still need bounded retry.
+
+- Dry-run mock imports appear to consume the real weekly production quota. Until
+  that is fixed, real generation stays blocked at `4/3`.
+- Auto-memory claims the gateway is launchd-managed. It is not on this machine —
+  LaunchAgent not loaded, launchd logs empty since Jul 26, nothing respawned
+  during a 15s stop window. The memory is stale and will mislead the next agent.
+- `gateway.pid` holds a stale pid (9149) while the live supervisor is 2235, so
+  `status` prints `stopped` while `health` is `ok:true`. A plain `stop` will fall
+  through to the `pkill` fallbacks.
+- An internal transcript printed the old watcher token in full before masking
+  discipline was in force. That token is now rotated and dead, but it argues for
+  masking every process inspection from the start.
 
 ## Next actions
-1. Verify `gateway_pid` and process age against prebuild timestamp.
-2. Retry resume path through local API for any paused song.
-3. Monitor `song-spawn-state` / `runtime/suno` outputs for new run and take URLs, then verify Telegram outbound notification evidence.
+
+1. Confirm the mock-contamination path from primary evidence, then guard it —
+   force a scratch workspace for the write-smoke path so it cannot touch the
+   production workspace. Add a regression test.
+2. Recover the polluted count without rewriting ledgers. Ledgers are append-only;
+   use a correction entry or a supported cleanup path, never an in-place edit.
+3. Run the browser A/B and record what the page actually shows.
+4. Only then attempt a real create.
 
 ## Completion conditions
-- [ ] `music.suno.browser.cdpEndpoint` absent in live config-overrides
-- [ ] gateway tree restarted with 43134 LISTEN and plugin+telegram block healthy
-- [ ] resume trigger succeeds and new run enters active state
-- [ ] at least one new take URL or completion event is recorded
-- [ ] handoff archive updated with completion evidence
+
+- [ ] A `dryRun:false` run reaches accepted/imported.
+- [ ] Real Suno URLs, counted, no `mock://`.
+- [ ] Telegram delivery confirmed from the ledger, not assumed.
+- [ ] Mock runs cannot consume the real weekly quota, proven by a test.
+
+## References
+
+- Commit: `a590694`
+- Guard rule: `scripts/boundary-grep.mjs` → `secret-on-command-line`
+- Token validation: `src/routes/responseBuilders.ts:1839-1848`
+- Tick path: `src/services/autopilotTicker.ts:186-224`
+- Flaky test: `tests/suno-take-url-ready.test.ts` — fails under full-suite load,
+  passes 3/3 in isolation. Timer-sensitive, unrelated to these changes.

@@ -44,7 +44,11 @@
 
 ### Fixed
 - Removed the obsolete `suno-cdp` preflight from normal `suno-cli create` execution so live
-  creates no longer fail closed before runner invocation when legacy CDP config (`OPENCLAW_SUNO_USE_CDP` or `music.suno.browser.cdpEndpoint`) points to an unreachable endpoint. Reachability is now considered only by the human-assist/captcha mint path; normal live failures now map through existing `suno-cli` exit-code reasons.
+  creates no longer fail closed before runner invocation when legacy CDP config
+  (`OPENCLAW_SUNO_USE_CDP` or `music.suno.browser.cdpEndpoint`) points to an
+  unreachable endpoint. Reachability is now considered only by the human-assist/operator
+  fallback path; normal live failures now map through existing `suno-cli` exit-code
+  reasons.
 
 ## [0.3.0] - 2026-04-26
 
