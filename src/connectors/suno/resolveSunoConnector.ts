@@ -21,7 +21,7 @@ export function resolveSunoConnector(
     // producer for a manual Create click instead of hard-stopping. The captcha is never
     // auto-solved -- the fallback only closes the challenge and waits for a human click.
     if (config?.music?.suno?.captchaFallback === "human_click") {
-      return createHumanAssistSunoConnector(cli, config);
+      return createHumanAssistSunoConnector(cli, config, workspaceRoot);
     }
     return cli;
   }

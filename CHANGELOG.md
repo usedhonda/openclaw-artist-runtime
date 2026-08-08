@@ -43,6 +43,10 @@
 - Plan v9.5 finalizes the autopilot revival and Telegram bridge dogfood pass: RuntimeEventBus stage/state/take notifications, owner-only Telegram commands, local free-text inbox staging, debug-only `/review <songId>` mock AI review, and final pre-release distribution gate coverage.
 
 ### Fixed
+- Reused the authenticated `suno-cli login` browser profile for captcha human
+  assist. The fallback previously opened the separate browser-worker profile, so
+  a valid CLI login could still redirect to Suno's signed-out home page and fail
+  as `suno_create_dom_missing`.
 - Isolated write-smoke and Vitest workspaces from the operator workspace, and made
   config-less autopilot cycles resolve persisted settings instead of silently falling
   back to dry-run mock defaults that could create quota-counted test songs.

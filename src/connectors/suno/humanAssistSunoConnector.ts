@@ -16,6 +16,7 @@ import {
 import { emitRuntimeEvent } from "../../services/runtimeEventBus.js";
 import { CdpHumanAssistDriver } from "../../services/cdpHumanAssistDriver.js";
 import { findTakeAttributionCollisions } from "../../services/takeAttributionGuard.js";
+import type { SunoBrowserConfigView } from "../../services/runtimeConfig.js";
 import type { SunoConnector } from "./SunoConnector.js";
 
 // The CLI connector reason for a captcha-blocked create (EXIT_REASONS[31]). Only this
@@ -147,22 +148,53 @@ export function createHumanAssistNotifier(timeoutMinutes: number): HumanAssistNo
 }
 
 /**
+ * The CLI login command persists its authenticated Chromium profile inside the CLI
+ * data directory. Human assist must reuse that profile by default; opening the
+ * separate browser-worker profile makes a successful CLI login invisible to the
+ * fallback and turns a captcha block into a misleading DOM-missing error.
+ */
+export function resolveHumanAssistBrowserConfig(
+  config: SunoBrowserConfigView | undefined,
+  workspaceRoot: string | undefined
+): SunoBrowserConfigView | undefined {
+  const browser = config?.music?.suno?.browser;
+  if (!workspaceRoot || browser?.profileDir || browser?.cdpEndpoint) {
+    return config;
+  }
+  return {
+    ...config,
+    music: {
+      ...config?.music,
+      suno: {
+        ...config?.music?.suno,
+        browser: {
+          ...browser,
+          profileDir: join(workspaceRoot, "runtime", "suno", "cli", "browser-profile")
+        }
+      }
+    }
+  };
+}
+
+/**
  * Wire the decorator for production: attach to CDP Chrome and alert via Telegram.
  * Kept separate from the class so tests can drive the class with stub deps.
  */
 export function createHumanAssistSunoConnector(
   inner: SunoConnector,
-  config?: Partial<ArtistRuntimeConfig>
+  config?: Partial<ArtistRuntimeConfig>,
+  workspaceRootOverride?: string
 ): HumanAssistSunoConnector {
   const timeoutMinutes = config?.music?.suno?.humanAssistTimeoutMinutes ?? 60;
-  const workspaceRoot = config?.artist?.workspaceRoot;
+  const workspaceRoot = workspaceRootOverride ?? config?.artist?.workspaceRoot;
+  const browserConfig = resolveHumanAssistBrowserConfig(config, workspaceRoot);
   // The suno-cli session.json (Clerk cookie -> JWT) lives under the workspace runtime dir
   // and authenticates the network-primary feed harvest. Omitted when no workspace root is
   // known, in which case the driver stays DOM-only.
   const sessionFile = workspaceRoot ? join(workspaceRoot, "runtime", "suno", "cli", "session.json") : undefined;
   return new HumanAssistSunoConnector(inner, {
     timeoutMs: timeoutMinutes * 60_000,
-    driverFactory: ({ payload }) => new CdpHumanAssistDriver({ payload, config, sessionFile }),
+    driverFactory: ({ payload }) => new CdpHumanAssistDriver({ payload, config: browserConfig, sessionFile }),
     notifier: createHumanAssistNotifier(timeoutMinutes),
     filterCrossSongTakeUrls: async (songId, urls) => {
       if (!workspaceRoot || urls.length === 0) {

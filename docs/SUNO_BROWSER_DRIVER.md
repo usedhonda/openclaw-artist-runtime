@@ -79,10 +79,13 @@ reachability-sensitive attach/mint attempts.
 
 ### CDP endpoint for the suno-cli captcha mint
 
-The plugin owns the Suno browser lifecycle via `SunoBrowserService`, which
-launches the persistent `suno` profile with an ephemeral CDP port (no manual
-Chrome, no fixed 9222). When the captcha mint needs a browser, the connector
-sources the CDP endpoint from `SunoBrowserService.getCdpEndpoint()`:
+The plugin owns the Suno browser lifecycle via `SunoBrowserService`. For the
+`suno_cli` human-assist path it launches the same persistent profile written by
+`suno-cli login` at `<workspace>/runtime/suno/cli/browser-profile`, with an
+ephemeral CDP port (no manual Chrome, no fixed 9222). An explicit
+`music.suno.browser.profileDir` or CDP endpoint still wins. When the captcha mint
+needs a browser, the connector sources the CDP endpoint from
+`SunoBrowserService.getCdpEndpoint()`:
 
 - if the plugin already has a browser running (the human-assist/connect flow
   opened one), its ephemeral endpoint is used;
@@ -124,8 +127,9 @@ Enable it only alongside the CLI driver:
 }
 ```
 
-No manual browser setup is required: the plugin's `SunoBrowserService` launches
-the persistent `suno` profile itself when the fallback runs. The legacy
+No separate browser login is required after `suno-cli login`: the plugin's
+`SunoBrowserService` launches that CLI-authenticated profile when the fallback
+runs. The legacy
 `scripts/start-chrome-cdp.sh` + `OPENCLAW_SUNO_USE_CDP=1` path remains only as an
 advanced/emergency override (see the CDP endpoint section above).
 

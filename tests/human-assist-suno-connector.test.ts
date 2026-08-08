@@ -4,7 +4,8 @@ import {
   createHumanAssistNotifier,
   CLI_BLOCKED_CAPTCHA_REASON,
   HUMAN_ASSIST_CREATED_REASON,
-  HUMAN_ASSIST_CROSS_SONG_REJECTED_REASON
+  HUMAN_ASSIST_CROSS_SONG_REJECTED_REASON,
+  resolveHumanAssistBrowserConfig
 } from "../src/connectors/suno/humanAssistSunoConnector";
 import { HUMAN_ASSIST_TIMEOUT_REASON, type HumanAssistBrowserDriver } from "../src/services/sunoHumanAssist";
 import { getRuntimeEventBus, type RuntimeEvent } from "../src/services/runtimeEventBus";
@@ -193,5 +194,27 @@ describe("createHumanAssistNotifier", () => {
       title: "Neon Alley",
       timeoutMinutes: 45
     });
+  });
+});
+
+describe("resolveHumanAssistBrowserConfig", () => {
+  it("defaults human assist to the suno-cli login profile in the active workspace", () => {
+    const config = {
+      artist: { workspaceRoot: "/workspace" },
+      music: { suno: { browser: { channel: "chrome" as const } } }
+    };
+
+    expect(resolveHumanAssistBrowserConfig(config, "/workspace").music?.suno?.browser).toEqual({
+      channel: "chrome",
+      profileDir: "/workspace/runtime/suno/cli/browser-profile"
+    });
+  });
+
+  it("preserves an explicit browser profile override", () => {
+    const config = {
+      music: { suno: { browser: { profileDir: "/operator/profile", channel: "chrome" as const } } }
+    };
+
+    expect(resolveHumanAssistBrowserConfig(config, "/workspace")).toBe(config);
   });
 });
