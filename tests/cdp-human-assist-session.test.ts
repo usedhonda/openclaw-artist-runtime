@@ -14,10 +14,12 @@ afterEach(async () => {
 });
 
 describe("Suno CLI session hydration", () => {
-  it("parses cookie values without truncating embedded equals signs", () => {
-    expect(parseSunoSessionCookieHeader("__session=header.payload==; theme=dark")).toEqual([
-      { name: "__session", value: "header.payload==", url: "https://suno.com" },
-      { name: "theme", value: "dark", url: "https://suno.com" }
+  it("preserves duplicate Clerk sessions on their original host scopes", () => {
+    expect(parseSunoSessionCookieHeader("__session=parent==; __client_uat=uat; __session=host; __client=auth; theme=dark")).toEqual([
+      { name: "__session", value: "parent==", domain: ".suno.com", path: "/", secure: true },
+      { name: "__client_uat", value: "uat", domain: ".suno.com", path: "/", secure: true },
+      { name: "__session", value: "host", url: "https://suno.com" },
+      { name: "__client", value: "auth", url: "https://auth.suno.com" }
     ]);
   });
 
@@ -25,13 +27,13 @@ describe("Suno CLI session hydration", () => {
     const root = await mkdtemp(join(tmpdir(), "artist-runtime-suno-session-"));
     tempRoots.push(root);
     const sessionFile = join(root, "session.json");
-    await writeFile(sessionFile, JSON.stringify({ cookie: "__session=test-session; theme=dark" }), "utf8");
+    await writeFile(sessionFile, JSON.stringify({ cookie: "__session=domain-session; __session=host-session; theme=dark" }), "utf8");
     const addCookies = vi.fn(async () => undefined);
 
     await expect(hydrateSunoBrowserSession({ addCookies }, sessionFile)).resolves.toBe(true);
     expect(addCookies).toHaveBeenCalledWith([
-      { name: "__session", value: "test-session", url: "https://suno.com" },
-      { name: "theme", value: "dark", url: "https://suno.com" }
+      { name: "__session", value: "domain-session", domain: ".suno.com", path: "/", secure: true },
+      { name: "__session", value: "host-session", url: "https://suno.com" }
     ]);
   });
 

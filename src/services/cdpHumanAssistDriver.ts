@@ -73,19 +73,40 @@ export interface CdpHumanAssistDriverInput {
 export interface SunoSessionCookie {
   name: string;
   value: string;
-  url: "https://suno.com";
+  url?: "https://suno.com" | "https://auth.suno.com";
+  domain?: ".suno.com";
+  path?: "/";
+  secure?: true;
 }
 
 export function parseSunoSessionCookieHeader(cookieHeader: string): SunoSessionCookie[] {
-  const cookies = new Map<string, string>();
+  const cookies: SunoSessionCookie[] = [];
+  let plainSessionCount = 0;
   for (const segment of cookieHeader.split(/;\s*/)) {
     const separator = segment.indexOf("=");
     if (separator <= 0) continue;
     const name = segment.slice(0, separator).trim();
     const value = segment.slice(separator + 1);
-    if (name && value) cookies.set(name, value);
+    if (!name || !value) continue;
+    if (name === "__session") {
+      cookies.push(plainSessionCount++ === 0
+        ? { name, value, domain: ".suno.com", path: "/", secure: true }
+        : { name, value, url: "https://suno.com" });
+      continue;
+    }
+    if (name.startsWith("__session_") || name === "clerk_active_context") {
+      cookies.push({ name, value, url: "https://suno.com" });
+      continue;
+    }
+    if (name === "__client" || (name.startsWith("__client_") && !name.startsWith("__client_uat"))) {
+      cookies.push({ name, value, url: "https://auth.suno.com" });
+      continue;
+    }
+    if (name.startsWith("__client_uat")) {
+      cookies.push({ name, value, domain: ".suno.com", path: "/", secure: true });
+    }
   }
-  return Array.from(cookies, ([name, value]) => ({ name, value, url: "https://suno.com" as const }));
+  return cookies;
 }
 
 export async function hydrateSunoBrowserSession(
