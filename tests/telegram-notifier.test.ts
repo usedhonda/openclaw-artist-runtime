@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import { mkdtempSync } from "node:fs";
+import { readFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { RuntimeEventBus } from "../src/services/runtimeEventBus";
@@ -23,6 +24,37 @@ const songCompletionButtonEffects = [
 ];
 
 describe("TelegramNotifier", () => {
+  it("appends a metadata-only delivery receipt after Telegram accepts a completed-song message", async () => {
+    const root = mkdtempSync(join(tmpdir(), "artist-runtime-telegram-delivery-"));
+    const fetchImpl = vi.fn().mockResolvedValue(jsonResponse({
+      ok: true,
+      result: { message_id: 77, chat: { id: 123 } }
+    }));
+    const notifier = new TelegramNotifier({ token: "token", chatId: "123", workspaceRoot: root, fetchImpl });
+
+    await notifier.notify({
+      type: "song_take_completed",
+      songId: "song-delivery-proof",
+      urls: ["https://suno.com/song/private-url-not-in-receipt"],
+      timestamp: 10
+    });
+
+    const lines = (await readFile(join(root, "runtime", "telegram-deliveries.jsonl"), "utf8"))
+      .trim()
+      .split("\n")
+      .map((line) => JSON.parse(line) as Record<string, unknown>);
+    expect(lines).toEqual([
+      expect.objectContaining({
+        eventType: "song_take_completed",
+        songId: "song-delivery-proof",
+        messageId: 77,
+        eventTimestamp: 10
+      })
+    ]);
+    expect(JSON.stringify(lines)).not.toContain("private-url-not-in-receipt");
+    expect(JSON.stringify(lines)).not.toContain("chatId");
+  });
+
   it("surfaces self-heal events to Telegram when OPENCLAW_SELF_HEAL_NOTIFY=on (Plan v10.56 Phase 4)", async () => {
     vi.stubEnv("OPENCLAW_SELF_HEAL_NOTIFY", "on");
     const fetchImpl = vi.fn().mockResolvedValue(jsonResponse({ ok: true, result: { message_id: 1, chat: { id: 123 } } }));

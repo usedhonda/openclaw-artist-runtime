@@ -17,6 +17,7 @@ import { access, readdir, readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { buildCascadeTrace } from "./cascadeTrace.js";
 import { appendFailedNotification, isCriticalNotificationEvent } from "./failedNotifyLedger.js";
+import { appendTelegramDeliveryReceipt } from "./telegramDeliveryLedger.js";
 import { readLatestPromptPackMetadata } from "./sunoPromptPackFiles.js";
 import { readLatestCreativeQualityEntry } from "./creativeQualityLedger.js";
 import { composeDraftBoxNextAction, formatDraftBoxNextActionSection } from "./draftBoxNextAction.js";
@@ -204,6 +205,13 @@ export class TelegramNotifier {
     this.client = new TelegramClient(options.token, options.fetchImpl);
   }
 
+  private async recordDelivery(event: RuntimeEvent, messageId: number): Promise<void> {
+    if (!this.options.workspaceRoot) return;
+    await appendTelegramDeliveryReceipt(this.options.workspaceRoot, event, messageId).catch((error) => {
+      logNotifySideEffectFailure(`delivery receipt event=${event.type}`, error);
+    });
+  }
+
   subscribe(bus: RuntimeEventBus): () => void {
     const unsubscribe = bus.subscribe((event) => {
       void this.notify(event).catch((err) => {
@@ -254,11 +262,13 @@ export class TelegramNotifier {
         return "skipped";
       }
       this.recentSelfHealNotifications.set(key, now);
-      await this.client.sendMessage(this.options.chatId, formatSelfHealText(event));
+      const sent = await this.client.sendMessage(this.options.chatId, formatSelfHealText(event));
+      await this.recordDelivery(event, sent.message_id);
       return "delivered";
     }
     if (isActionableSunoHardStop(event)) {
-      await this.client.sendMessage(this.options.chatId, formatActionableHardStopText(event));
+      const sent = await this.client.sendMessage(this.options.chatId, formatActionableHardStopText(event));
+      await this.recordDelivery(event, sent.message_id);
       return "delivered";
     }
     if (this.options.producerDigest === "off") return "skipped";
@@ -283,6 +293,7 @@ export class TelegramNotifier {
       dashboardBaseUrl: this.options.dashboardBaseUrl
     });
     const sent = await this.client.sendMessage(this.options.chatId, text);
+    await this.recordDelivery(event, sent.message_id);
     if (event.type === "song_take_completed") {
       await this.attachSongCompletionButtons(event, sent.message_id);
     }
@@ -510,6 +521,7 @@ export class TelegramNotifier {
       dashboardBaseUrl: this.options.dashboardBaseUrl
     });
     const sent = await this.client.sendMessage(this.options.chatId, text);
+    await Promise.all(events.map((item) => this.recordDelivery(item, sent.message_id)));
     await this.attachSongSpawnButtons(event, sent.message_id);
   }
 

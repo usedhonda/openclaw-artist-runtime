@@ -213,4 +213,8 @@ submitted successfully at `maxLength=5000` (`readbackMatches: true`).
   port is clear, then Start.
 - **Telegram silent:** check `.local/openclaw/logs/gateway.log` and the
   `channels.telegram` block in `scripts/openclaw-local-gateway health`. Emit is
-  not delivery — confirm an actual inbound/outbound, not just that an event fired.
+  not delivery. Successful signal sends append metadata-only receipts to
+  `.local/openclaw/workspace/runtime/telegram-deliveries.jsonl`; match the event
+  type, song id, and Telegram message id there instead of inferring delivery from
+  `runtime-events.jsonl` or channel health. Receipt entries never contain message
+  text, URLs, chat ids, or tokens.

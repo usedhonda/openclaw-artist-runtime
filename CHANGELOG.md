@@ -3,6 +3,11 @@
 ## [Unreleased]
 
 ### Added
+- Successful Telegram signal deliveries now append a metadata-only receipt to
+  `runtime/telegram-deliveries.jsonl` with the event type, song identifier,
+  Telegram message ID, and timestamps. Message text, URLs, chat IDs, and tokens
+  are excluded, giving operators an append-only delivery proof rather than a
+  health-check inference.
 - Local vs Distribution layout contract in `AGENTS.md`, enforced mechanically by
   a new `npm test` guard (`tests/tracked-file-hygiene.test.ts`) that fails on
   machine-specific absolute paths in any tracked file. Machine-specific gateway
