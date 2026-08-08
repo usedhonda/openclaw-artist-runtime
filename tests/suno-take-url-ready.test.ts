@@ -599,7 +599,9 @@ describe("Suno take URL ready flow", () => {
 
     expect(result).toMatchObject({ queued: 1, runNow: 1 });
     await vi.waitFor(() => expect(connectorImportMock).toHaveBeenCalledTimes(1));
-    expect((await readAdoptionDownloadJobEntries(root)).at(-1)).toMatchObject({ status: "imported" });
+    await vi.waitFor(async () => {
+      expect((await readAdoptionDownloadJobEntries(root)).at(-1)).toMatchObject({ status: "imported" });
+    });
   });
 
   it("schedules adoption downloads only for URL-ready archive callbacks and resolves sibling review callbacks", async () => {

@@ -83,6 +83,9 @@ session and signs the dedicated profile in again. No Suno browser is running.
       completed-song test proves Telegram's returned message id is persisted without
       message text, URLs, chat ids, or tokens, so delivery no longer depends on health
       or event-emission inference.
+- [x] Removed the adoption-download rearm test race. It previously waited only for
+      connector invocation, then asserted the later ledger append; it now waits for
+      the durable `status: imported` job entry and passed 10/10 isolated repetitions.
 
 ## Files changed
 
@@ -172,5 +175,3 @@ session and signs the dedicated profile in again. No Suno browser is running.
 - Guard rule: `scripts/boundary-grep.mjs` → `secret-on-command-line`
 - Token validation: `src/routes/responseBuilders.ts:1839-1848`
 - Tick path: `src/services/autopilotTicker.ts:186-224`
-- Flaky test: `tests/suno-take-url-ready.test.ts` — fails under full-suite load,
-  passes 3/3 in isolation. Timer-sensitive, unrelated to these changes.
