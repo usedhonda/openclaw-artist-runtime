@@ -42,7 +42,7 @@ async function captureFromCdp(input) {
     const browser = await runtime.chromium.connectOverCDP(endpoint);
     const context = browser.contexts()[0];
     if (!context) {
-        disconnectBrowser(browser);
+        await closeBrowser(browser);
         throw new Error(`CDP attach at ${endpoint} has no browser context.`);
     }
     let page = context.pages().find((candidate) => isSunoPage(candidate.url()));
@@ -62,7 +62,7 @@ async function captureFromCdp(input) {
         throw new LoginTimeoutError("Timed out waiting for Suno login in the browser.");
     }
     finally {
-        disconnectBrowser(browser);
+        await closeBrowser(browser);
     }
 }
 function isSunoPage(url) {
@@ -74,10 +74,8 @@ function isSunoPage(url) {
         return false;
     }
 }
-function disconnectBrowser(browser) {
-    if (typeof browser.disconnect === "function") {
-        browser.disconnect();
-    }
+async function closeBrowser(browser) {
+    await browser.close().catch(() => undefined);
 }
 async function loadPlaywrightForLogin() {
     let lastError;

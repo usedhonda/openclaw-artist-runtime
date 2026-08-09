@@ -24,7 +24,7 @@ describe("suno-cli browser login CDP capture", () => {
           cookies: vi.fn(async () => [{ domain: ".suno.com", name: "__" + "session", value: "fixture-session" }])
         }
       ]),
-      disconnect: vi.fn()
+      close: vi.fn(async () => undefined)
     };
     connectOverCDP.mockResolvedValue(browser);
 
@@ -40,7 +40,7 @@ describe("suno-cli browser login CDP capture", () => {
 
     expect(result).toBe(0);
     expect(connectOverCDP).toHaveBeenCalledWith("http://127.0.0.1:9222");
-    expect(browser.disconnect).toHaveBeenCalledTimes(1);
+    expect(browser.close).toHaveBeenCalledTimes(1);
     expect(JSON.parse(await readFile(sessionFile, "utf8")).cookie).toBe(
       ["__" + "session", "fixture-session"].join("=")
     );
@@ -69,5 +69,22 @@ describe("suno-cli browser login CDP capture", () => {
       cdpEndpoint: "http://127.0.0.1:9222"
     })).rejects.toThrow("connection refused");
     expect(connectOverCDP).toHaveBeenCalledTimes(1);
+  });
+
+  it("closes the attached browser when CDP has no context", async () => {
+    const browser = {
+      contexts: vi.fn(() => []),
+      close: vi.fn(async () => undefined)
+    };
+    connectOverCDP.mockResolvedValue(browser);
+    const { captureBrowserSession } = await import("../vendor/suno-cli/dist/src/browser/login.js");
+
+    await expect(captureBrowserSession({
+      profileDir: "/not-read",
+      loginUrl: "https://suno.com/",
+      timeoutMs: 10,
+      cdpEndpoint: "http://127.0.0.1:9222"
+    })).rejects.toThrow("has no browser context");
+    expect(browser.close).toHaveBeenCalledTimes(1);
   });
 });

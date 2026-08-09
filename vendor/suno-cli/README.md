@@ -37,7 +37,9 @@ scripts/openclaw-suno-login.sh
 
 The login attach accepts loopback endpoints only (`--cdp-endpoint
 http://127.0.0.1:9222`) and never falls back to a second persistent-profile
-browser when the endpoint is unavailable.
+browser when the endpoint is unavailable. After capture, the wrapper closes the
+CDP-attached external browser; the saved `session.json` is authoritative for
+subsequent CLI commands.
 
 ## Retrieve Results
 

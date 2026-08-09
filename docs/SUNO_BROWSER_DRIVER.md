@@ -225,8 +225,10 @@ Chrome for Testing bundle through macOS LaunchServices with
 CLI profile, then invokes `suno-cli login --cdp-endpoint` to capture that already
 authenticated Suno page. It reuses an existing Suno tab when present or opens
 one, and stores the result in `session.json` without changing the browser
-profile. CDP failure is fail-closed; the wrapper does not silently retry with
-Playwright's persistent-profile launcher. `<workspace>` is
+profile. After the session is captured, the CDP-attached external Chrome is
+closed and the saved `session.json` is authoritative. CDP failure is fail-closed;
+the wrapper does not silently retry with Playwright's persistent-profile launcher.
+`<workspace>` is
 `OPENCLAW_LOCAL_WORKSPACE` when set, otherwise `.local/openclaw/workspace` in the
 repository.
 
