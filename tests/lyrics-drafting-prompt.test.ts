@@ -70,10 +70,11 @@ describe("lyrics drafting prompt", () => {
 
     expect(activePrompt).toContain("Shibuya anger lens");
     expect(activePrompt).toContain("Do not attack private individuals");
-    expect(activePrompt).toContain("Dopagaki variation: ACTIVE / OVERT");
+    expect(activePrompt).toContain("High-velocity progressive rap: ACTIVE / OVERT");
     expect(activePrompt).toContain("2-4 bar bursts");
-    expect(activePrompt).toContain("Keep the nu-jazz low-bass core");
-    expect(inactivePrompt).toContain("Dopagaki variation: inactive");
-    expect(inactivePrompt).toContain("Keep the default spacious rap pacing");
+    expect(activePrompt).toContain("Keep live breakbeat jazz drums, thick electric bass, Rhodes");
+    expect(inactivePrompt).toContain("core motion is always active; overt density mode is inactive");
+    expect(inactivePrompt).toContain("rapid section development");
+    expect(inactivePrompt).not.toContain("default spacious rap pacing");
   });
 });

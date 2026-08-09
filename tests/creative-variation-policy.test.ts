@@ -49,8 +49,11 @@ describe("creative variation policy", () => {
       variationSeed: "dopagaki:overt:test"
     }).join("\n");
 
-    expect(lines).toContain("ACTIVE / OVERT");
+    expect(lines).toContain("High-velocity progressive rap: ACTIVE / OVERT");
     expect(lines).toContain("2-4 bar bursts");
     expect(lines).toContain("Never turn the full song into double-time");
+    expect(lines).toContain("metric displacement");
+    expect(lines).toContain("transformed hook returns");
+    expect(lines).not.toMatch(/dopagaki|dopamine|high stimulus|instant hook/i);
   });
 });

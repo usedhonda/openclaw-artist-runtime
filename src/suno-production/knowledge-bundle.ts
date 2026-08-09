@@ -2839,70 +2839,51 @@ Piano solo, [BPM] BPM, [Key], contemplative, grand piano, concert hall reverb, d
 
 ---
 
-## ドパガキ Recipe（高刺激・即サビ・高速展開ポップ）
+## 高速多展開プログレッシブ・ラップ Recipe
 
-「ドパガキ」=「ドーパミン中毒のガキ」向けに設計された注意維持特化の高刺激ポップ。音楽ジャンルではなく
-**ショート動画世代向けの横断スタイル**（J/K-POP・洋楽・Hyperpop を貫く「刺激の強さ」の軸）。特徴: 即サビ・
-展開が速い・一定間隔でメロディ変化・中毒フック・音圧高い。良質版はカオスでなく**整合枠内に高密度**を詰める
-（伏線/回収を保つ）。出典: コミュニティ調査 + Cdx レビュー（2026-06）。単体バンドルは未実証 — A/B 推奨。
+**high-velocity progressive rap** is a durable artist identity: fast technical flow rides live breakbeat jazz drums, thick electric bass, Rhodes, tense horn punctuation, and a dry intelligible mid-range male vocal. The progressive motion is structural, not a novelty genre: sections turn quickly, rhythmic cells switch at boundaries, metric displacement creates pressure, motifs recur, and the final hook returns with changed meaning. Keep the nu-jazz / 2000s NY underground / contemporary Brooklyn body and the Shibuya civic-satire lens intact.
 
-**設計原則（最重要）**: 密度は **Style タグ詰めでなく構造で出す**。Suno は Style が短いほど安定（Tag Soup で
-劣化）なので、ジャンルを増やさず**安定 genre core の上でセクション毎に編曲/態度を切り替える**（Bracket
-Theory: 構造タグは Style の10倍強い）。「次々変わる」は歌詞ボックス側へ寄せる。
+**設計原則（最重要）**: 密度は Style タグ詰めでなく、セクション設計と演奏の譜割りで出す。高速ラップは軸だが、全曲をダブルタイムにはしない。通常モードでも rapid section development、metric displacement、rhythmic switch-ups、motif callbacks を保ち、overt mode だけ 2-4 bar の double-density burst を許可する。
 
 ### Style core（≤120字・どちらか）
 \`\`\`text
-hyperpop x J-pop, 150 BPM, E minor, euphoric manic, chant vocal, punchy drums, distorted synth bass, loud glossy mix
+high-velocity progressive rap, 148 BPM, F minor, dry male rap, live jazz breakbeats, thick electric bass, Rhodes, tense horns
 \`\`\`
 \`\`\`text
-K-pop x electro-pop, 144 BPM, F# minor, sharp playful, bright hook vocal, club drums, rubber bass, glossy loud mix
+nu-jazz progressive rap, 142 BPM, D minor, technical fast flow, live drums, electric bass, Rhodes, dry mid-range vocal
 \`\`\`
-- BPM: 138-160（スイートスポット 144-152）
-- Key: minor（E/F#/G minor）= エッジ/中毒性、major（Db/E/F# major）= 多幸感。最終 Bridge/Chorus で半音上げ（D→Eb / E→F / F#→G）
+- BPM: 138-158。曲尺は DurationPlan を正本にし、テンポだけで構造を決めない。
+- Key: minor を基本にし、ホーンの緊張と Rhodes の陰影で夜間の都市圧を作る。転調は物語の視点が変わる境界だけに置く。
 
-### 8小節構成テンプレ（~8 bars ごとに変化＝注意維持の主軸）
+### Rapid-section structure template
 \`\`\`text
-[Hook - cold open, no intro, chant title phrase]            # イントロなし、3-6語の固定フックを1秒目に
-[Verse 1 - clipped, sparse beat, hook fragments]            # 詰めた譜割り・内韻、ビートは安定
-[Pre-Chorus - rising every 2 bars, harmony]                # 2小節ごとに上昇、サビへ助走
-[Chorus - loud glossy, fixed hook, wider vocal stack]       # 固定フック反復、ドラム増、ボーカル厚く
-[Post-Chorus - counter-hook, glitch stutter]               # 2個目の耳虫。キーはまだ変えない
-[Verse 2 - arrangement switch, keep vocal identity]        # 編曲テクスチャを変える、声の同一性は保持
-[Bridge - silence hit, half-step up]                       # 1拍の無音 → 半音上げ → 感情スパイク
-[Final Chorus - all motifs return, max density, hard stop] # 全モチーフ回収、最高密度、ハードエンド
+[Intro - 2-4 bars, headline image, live drum pickup]
+[Verse 1 - 12-16 bars, technical fast flow, street detail, internal rhymes]
+[Pre-Hook - 2-4 bars, metric displacement, business/system language enters]
+[Hook - 4-8 bars, concise core claim, motif anchor, intelligible dry vocal]
+[Verse 2 - 12-16 bars, rhythmic cell switch, consequences and pressure]
+[Bridge - 4-8 bars, perspective turn, Rhodes/horn punctuation, density reset]
+[Final Hook - 4-8 bars, earlier motif returns with changed meaning, Shibuya punchline]
 \`\`\`
-Performance Direction（Style の後に改行で）: \`Verse: clipped aggressive\` / \`Post-Chorus: glitch counter-hook\` /
-\`Bridge: one-beat silence then lift\` のようにセクション毎の態度を1行で（ジャンル名でなく編曲を切り替える）。
+At musical section boundaries, move headline -> street detail -> business/system language -> Shibuya punchline. Do not use unmotivated edit effects: every turn must be motivated by the lyric argument, the groove, or a returning motif.
 
-### スライダー（セクション別 Weirdness / Style Influence）
-| Section | Weirdness | Style Influence |
-|---|---:|---:|
-| Hook / Cold Open | 35-45 | 75-85 |
-| Verse | 45-55 | 60-70 |
-| Pre-Chorus | 40-50 | 70-80 |
-| Chorus | 35-45 | 80-85 |
-| Post-Chorus | 50-60 | 60-70 |
-| Bridge / Switch | 55-65 | 55-65 |
-| Final Chorus | 35-45 | 80-85 |
+### Performance and intensity
+- Core mode: keep section turns audible, use fast technical flow in selected lines, and preserve intelligibility and jazz-rap pocket.
+- Overt mode: compress adjacent sections and add one or more 2-4 bar double-density bursts; return to the normal pocket immediately after each burst.
+- Final hook: repeat the earlier motif with a changed implication; never substitute a generic slogan or an unrelated drop.
+- Weirdness / Style Influence: start 40 / 70. Raise Weirdness only for a motivated metric or timbral turn; keep both sliders in the 15-85 safety range.
 
-初回は Weirdness 45 / Style 70。構造が壊れたら Weirdness 35-40 / Style 75-80 へ。安全域 15-85 を厳守。
-
-### Exclude（どちらか・2-5項目）
+### Exclude（2-5項目）
 \`\`\`text
-long intro, ambient drift, acoustic ballad, muddy low end, random filler noises
-\`\`\`
-\`\`\`text
-slow fade, loose timing, cavernous reverb, soft ballad, filler percussion
+generic digital gloss, random edit effects, bombastic rock virtuosity, festival-drop dynamics, full-song double-time
 \`\`\`
 
-### 歌詞・フックの作り（既存テクの流用）
-- フック: Chorus 冒頭 3-6語、口ずさめる、母音の波（a-i 反復等）、直前ブレイク（… で1拍空ける）→ lyric_craft §3
-- 音節: Chorus 5-7 / Verse 8-10（セクション認識＋歌いやすさ）→ lyric_craft §5
-- 整合枠: 1曲1モチーフの伏線/回収（plant=Verse1 / recall=Final Chorus）でカオス化を防ぐ → lyric_craft §1
-- 即サビ: \`[Intro]\` を使わず cold open（インスト引き伸ばし回避）→ suno_v55_reference の [Intro] 回避
-- 一定間隔の変化/転調: \`[Energy: High/Build/Explosive]\` と \`[modulate up a key]\` を ~8 小節間隔で配置 → suno_v55_reference の Community-reported inline tags
-- 半音上げクライマックス: suno_v55_reference の Climax Design（silence → half-step transposition）
-- 構成の土台: song_structures の Pattern E（Build→Drop）× Pattern D（Pop Anthem）二段サビ
+### 歌詞・フックの作り
+- フック: Chorus 冒頭 3-6語で命題を置き、Verse のモチーフを Final Hook で意味変換する → lyric_craft §3
+- Flow: Verse は内部韻と多音節韻、セクション境界では譜割りを変える。高速さは語の明瞭さを壊さない範囲で使う → rap_and_flow §
+- 伏線: headline の具体物を Verse 1 に置き、street detail と system language を経由し、Final Hook の Shibuya punchline で回収する → lyric_craft §1
+- 構成の変化: 変拍子、metric displacement、ブレイク、Rhodes / horn の punctuation は理由のある境界に配置する。無作為な編集や festival-drop dynamics を構成の代わりに使わない。
+- 声: dry mid-range male vocal を前面に置き、bilingual phrasing は意味とリズムが改善する場合だけ使う。
 
 ---
 

@@ -66,21 +66,21 @@ export function decideDopagakiVariation(input: DopagakiVariationInput): Dopagaki
 export function appendDopagakiMoodHint(base: string | undefined, decision: DopagakiVariationDecision): string | undefined {
   if (!decision.active) return base;
   const prefix = base?.trim() || "aggressive urban critique";
-  return `${prefix}, ドパガキ強め, overt high stimulus, clipped instant hook burst`;
+  return `${prefix}, high-velocity progressive rap, overt structural density, compressed section turns, technical fast-flow burst`;
 }
 
 export function dopagakiPromptLines(decision?: DopagakiVariationDecision): string[] {
   if (!decision?.active) {
     return [
-      "Dopagaki variation: inactive for this song.",
-      "Keep the default spacious rap pacing; do not force clipped high-stimulus structure."
+      "High-velocity progressive rap: core motion is always active; overt density mode is inactive for this song.",
+      "Keep rapid section development, metric displacement, motif callbacks, and jazz-rap continuity; reserve double-density delivery for selected 2-4 bar passages."
     ];
   }
   return [
-    "Dopagaki variation: ACTIVE / OVERT for this song.",
-    "Use clipped fragments, instant hook pressure, bilingual chant accents, and fast-development contrast inside the existing artist style.",
+    "High-velocity progressive rap: ACTIVE / OVERT for this song.",
+    "Use compressed sections, metric displacement, abrupt but motivated transitions, rhythmic switch-ups, motif callbacks, transformed hook returns, and technical fast-flow bursts inside the live nu-jazz rap core.",
     "Limit high-speed or double-density delivery to 2-4 bar bursts. Never turn the full song into double-time.",
-    "Keep the nu-jazz low-bass core and dry intelligible vocal identity intact."
+    "Keep live breakbeat jazz drums, thick electric bass, Rhodes, tense horn punctuation, and the dry intelligible mid-range male vocal identity intact."
   ];
 }
 

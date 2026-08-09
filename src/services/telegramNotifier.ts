@@ -1003,7 +1003,7 @@ async function formatCreativeQualityLine(workspaceRoot: string | undefined, song
   const entry = await readLatestCreativeQualityEntry(workspaceRoot, songId).catch(() => undefined);
   if (!entry) return [];
   return [
-    `creative: dopagaki=${entry.dopagakiActive ? "on" : "off"}, bare ${entry.bareLyricsChars}/${entry.bareLines}行, diss-bank ${entry.dissBankHitCount} hits`
+    `creative: high-velocity-prog=${entry.dopagakiActive ? "overt" : "core"}, bare ${entry.bareLyricsChars}/${entry.bareLines}行, diss-bank ${entry.dissBankHitCount} hits`
   ];
 }
 
@@ -1053,7 +1053,7 @@ async function formatSongResultCard(
     `1. ニュース/観察: ${truncatePlain(trace.lyricsTheme, 120)}`,
     `2. X反応: ${reaction?.quote ? capQuote(reaction.quote, 120) : "記録なし"}`,
     `3. 音: ${truncatePlain(trace.styleLayer, 120)}`,
-    "4. 揺らぎ: ドパガキ/高速展開/英日比率は prompt pack と artist 設定に従う",
+    "4. 構造: 高速多展開プログレッシブ・ラップの譜割り/展開/英日比率は prompt pack と artist 設定に従う",
     "",
     ...formatLyricsCheck(metadata),
     ...(await formatCreativeQualityLine(options.workspaceRoot, event.songId)),

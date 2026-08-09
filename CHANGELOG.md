@@ -3,6 +3,7 @@
 ## [Unreleased]
 
 ### Added
+- Reframed the artist's creative identity as high-velocity progressive rap: fast technical flow, rapid motivated section turns, metric displacement, motif callbacks, and transformed final-hook returns over the existing nu-jazz / Shibuya civic-satire core. Overt density is bounded to 2-4 bar bursts, and Telegram result cards now use `high-velocity-prog` display terminology while preserving internal ledger compatibility.
 - Successful Telegram signal deliveries now append a metadata-only receipt to
   `runtime/telegram-deliveries.jsonl` with the event type, song identifier,
   Telegram message ID, and timestamps. Message text, URLs, chat IDs, and tokens

@@ -915,10 +915,10 @@ describe("ProducerRoomApp diagnostics creative quality card", () => {
 
     expect(html).toContain("Creative quality");
     expect(html).toContain("Neon Ledger");
-    expect(html).toContain("dopagaki on");
+    expect(html).toContain("high-velocity-prog overt");
     expect(html).toContain("diss-bank 5 hits");
     expect(html).toContain("last 4 songs");
-    expect(html).toContain("dopagaki 50%");
+    expect(html).toContain("high-velocity-prog 50%");
   });
 
   it("shows an empty state when there are no creative quality records", () => {

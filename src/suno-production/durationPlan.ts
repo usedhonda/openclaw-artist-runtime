@@ -197,8 +197,8 @@ const UP_PLAN: DurationPlan = {
   ]
 };
 
-// dopagaki: high-speed dense rap variation. ~148 BPM, packed verses, 110 bars,
-// double-time bursts allowed on the densest bars.
+// Internal fast-band contract: high-velocity progressive rap at ~148 BPM,
+// packed verses, 110 bars; double-density is limited to selected 2-4 bar bursts.
 const DOPAGAKI_PLAN: DurationPlan = {
   version: "duration_plan_v1",
   templateId: "dopagaki_fast_rap_v1",
@@ -220,16 +220,16 @@ const DOPAGAKI_PLAN: DurationPlan = {
   totalPlannedBars: 110,
   chorusPolicy: SHARED_CHORUS_POLICY,
   sectionPlan: [
-    mk("intro", "Intro", 4, 1, "0-1 line", "4 bars, sharp scene set, instant pressure",
-      "0-1 line; slam the scene down fast and set high stimulus immediately."),
-    mk("verse1", "Verse 1", 30, 20, "20-21 lines", "30 bars, packed rap phrasing, internal rhymes, double-time bursts allowed",
-      "20-21 lines; pack the bars with dense internal rhymes; controlled double-time bursts are allowed on the densest bars."),
-    mk("prehook1", "Pre-Hook", 4, 3, "3-4 lines", "4 bars, hard rising tension, tight turn",
-      "3-4 lines; snap tension up into the hook with a tight turn."),
-    mk("hook1", "Hook", 8, 4, "4 lines", "8 bars, full hook, clipped chant, repeatable",
-      "4 lines; full hook with a clipped, chantable, repeatable phrase."),
-    mk("verse2", "Verse 2", 30, 20, "20-21 lines", "30 bars, packed rap phrasing, internal rhymes, double-time bursts allowed",
-      "20-21 lines; extend the image with packed phrasing; controlled double-time bursts allowed on the densest bars."),
+    mk("intro", "Intro", 4, 1, "0-1 line", "4 bars, sharp scene set, immediate rhythmic pressure",
+      "0-1 line; set the scene quickly and establish the first rhythmic cell."),
+    mk("verse1", "Verse 1", 30, 20, "20-21 lines", "30 bars, packed rap phrasing, internal rhymes, section-turn pressure",
+      "20-21 lines; pack the bars with dense internal rhymes and reserve any double-density for one 2-4 bar burst."),
+    mk("prehook1", "Pre-Hook", 4, 3, "3-4 lines", "4 bars, metric turn, rising tension",
+      "3-4 lines; shift the metric cell and turn tension into the hook."),
+    mk("hook1", "Hook", 8, 4, "4 lines", "8 bars, full hook, intelligible repeat, motif anchor",
+      "4 lines; full intelligible hook that anchors a motif for later transformation."),
+    mk("verse2", "Verse 2", 30, 20, "20-21 lines", "30 bars, packed rap phrasing, internal rhymes, transformed rhythmic cell",
+      "20-21 lines; extend the image with a new rhythmic cell and reserve any double-density for one 2-4 bar burst."),
     mk("prehook2", "Pre-Hook 2", 4, 3, "3-4 lines", "4 bars, hard rising tension, answer verse",
       "3-4 lines; answer Verse 2 and snap into the repeated hook."),
     mk("hook2", "Hook 2", 8, 4, "4 lines", "8 bars, full hook, repeat same text",

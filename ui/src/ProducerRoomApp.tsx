@@ -818,7 +818,7 @@ export function DiagnosticsView(props: { locale?: ProducerRoomLocale; status?: S
           <div className="item">
             <strong>last {creativeQuality.rolling.sampleSize} songs</strong>
             <div className="muted">
-              dopagaki {Math.round(creativeQuality.rolling.dopagakiRate * 100)}% · avg bare {creativeQuality.rolling.averageBareChars}/{creativeQuality.rolling.averageBareLines} · avg diss-bank {creativeQuality.rolling.averageDissBankHits}
+              high-velocity-prog {Math.round(creativeQuality.rolling.dopagakiRate * 100)}% · avg bare {creativeQuality.rolling.averageBareChars}/{creativeQuality.rolling.averageBareLines} · avg diss-bank {creativeQuality.rolling.averageDissBankHits}
             </div>
           </div>
         ) : null}
@@ -828,7 +828,7 @@ export function DiagnosticsView(props: { locale?: ProducerRoomLocale; status?: S
               <div className="item" key={`${song.songId}-${index}`}>
                 <strong>{song.title || song.songId}</strong>
                 <div className="muted">
-                  dopagaki {song.dopagakiActive ? "on" : "off"} · bare {song.bareLyricsChars}/{song.bareLines} · diss-bank {song.dissBankHitCount} hits{song.degraded ? " · degraded" : ""}
+                  high-velocity-prog {song.dopagakiActive ? "overt" : "core"} · bare {song.bareLyricsChars}/{song.bareLines} · diss-bank {song.dissBankHitCount} hits{song.degraded ? " · degraded" : ""}
                 </div>
               </div>
             ))}

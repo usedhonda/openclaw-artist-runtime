@@ -100,27 +100,27 @@ describe("Suno V5.5 style builder", () => {
   it("forces the dopagaki variation profile when the brief asks for it", () => {
     const result = buildStyle({
       genre: "alternative pop",
-      moodHint: "dopagaki but still the same artist",
-      brief: "Keep the current style, add dopagaki pressure only as variation."
+      moodHint: "high-velocity progressive rap but still the same artist",
+      brief: "Keep the current style, add high-velocity progressive architecture only as variation."
     });
 
     expect(result.total.length).toBeLessThanOrEqual(CANONICAL_STYLE_HARD_MAX_CHARS);
-    expect(result.total).toContain("dopamine-pop pressure");
-    expect(result.total).toContain("cold-open hook energy");
+    expect(result.total).toContain("high-velocity progressive rap");
+    expect(result.total).toContain("rapid section development");
   });
 
   it("uses the overt dopagaki variation when the prompt asks for strong exposure", () => {
     const result = buildStyle({
       genre: "nu-jazz rap",
-      moodHint: "ドパガキ強め, overt high stimulus, but keep the current artist",
-      brief: "Expose the dopagaki ingredient clearly inside the nu-jazz rap frame."
+      moodHint: "高速多展開プログレッシブ・ラップ強め, overt structural density, but keep the current artist",
+      brief: "Expose the high-velocity progressive architecture clearly inside the nu-jazz rap frame."
     });
 
     expect(result.total.length).toBeLessThanOrEqual(CANONICAL_STYLE_HARD_MAX_CHARS);
-    expect(result.total).toContain("overt dopamine-pop pressure");
-    expect(result.total).toContain("instant bilingual chant hook");
-    expect(result.total).toContain("glitch-vocal");
-    expect(result.total).not.toContain("light dopamine-pop pressure");
+    expect(result.total).toContain("overt high-velocity progressive rap");
+    expect(result.total).toContain("metric displacement");
+    expect(result.total).toContain("technical fast-flow bursts");
+    expect(result.total).not.toContain("digital gloss");
     expect(result.coreTags).not.toContain(",,");
     expect(result.coreTags).not.toContain(" ,");
   });
@@ -133,9 +133,9 @@ describe("Suno V5.5 style builder", () => {
       variationSeed: "dopagaki:overt:spawn_001"
     });
 
-    expect(result.total).toContain("overt dopamine-pop pressure");
-    expect(result.total).toContain("instant bilingual chant hook");
-    expect(result.total).not.toContain("light dopamine-pop pressure");
+    expect(result.total).toContain("overt high-velocity progressive rap");
+    expect(result.total).toContain("metric displacement");
+    expect(result.total).not.toContain("generic digital gloss");
   });
 });
 

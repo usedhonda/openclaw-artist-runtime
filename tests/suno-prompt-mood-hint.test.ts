@@ -52,17 +52,17 @@ describe("Suno prompt mood hint", () => {
         "## Sound",
         "- Genre DNA: hip-hop",
         "- nu-jazz rap",
-        "- Autonomous variation policy: the artist may occasionally choose ドパガキ強め to break template repetition.",
-        "- Dopagaki pressure: artist-side high-stimulus fast-development accent inside the current style.",
+        "- Autonomous variation policy: the artist keeps high-velocity progressive motion to break template repetition.",
+        "- High-velocity progressive architecture: compressed sections, metric displacement, and bounded fast-flow bursts inside the current style.",
         "## Lyrics",
         "- Language policy: Japanese 60% / English 40%; chorus may use English up to 40%."
       ].join("\n")
     });
 
-    expect(pack.style).toContain("overt dopamine-pop pressure");
-    expect(pack.style).toContain("instant bilingual chant hook");
-    expect(pack.style).toContain("glitch-vocal");
-    expect(String(pack.payload.styleAndFeel)).toContain("overt dopamine-pop pressure");
+    expect(pack.style).toContain("overt high-velocity progressive rap");
+    expect(pack.style).toContain("metric displacement");
+    expect(pack.style).toContain("technical fast-flow bursts");
+    expect(String(pack.payload.styleAndFeel)).toContain("overt high-velocity progressive rap");
     expect(pack.yamlLyrics).toContain("language: Japanese 60% / English 40%");
   });
 
@@ -74,8 +74,8 @@ describe("Suno prompt mood hint", () => {
       styleVariationSeed: "dopagaki:overt:spawn_seed"
     });
 
-    expect(pack.style).toContain("overt dopamine-pop pressure");
-    expect(pack.style).toContain("instant bilingual chant hook");
+    expect(pack.style).toContain("overt high-velocity progressive rap");
+    expect(pack.style).toContain("metric displacement");
     expect(pack.lyricsBundle?.originalLyricsText).toContain("街の灯りが遅れる");
     expect(pack.lyricsBundle?.lyricsText).toContain("まちのあかりがおくれる");
   });

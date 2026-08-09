@@ -74,7 +74,7 @@ function fitPhrase(value: string, max: number): string {
 
 function englishStylePhrase(value: string | undefined, fallback: string): string {
   const translated = (value ?? "")
-    .replace(/\u30c9\u30d1\u30ac\u30ad/g, "dopagaki pressure")
+    .replace(/\u30c9\u30d1\u30ac\u30ad/g, "high-velocity progressive rap")
     .replace(/[^\x20-\x7E]/g, " ");
   return compact(translated) || fallback;
 }
@@ -115,18 +115,18 @@ interface StyleVariationProfile {
 
 const variationProfiles: StyleVariationProfile[] = [
   {
-    id: "dopagaki-overt",
-    line: "Variation Move: overt dopamine-pop pressure inside the existing genre; instant bilingual chant hook with glitch-vocal sparks, candy-bright synth stabs tucked behind the core band, snap-cut drum mutes every 4 bars, post-hook earworm tag, and final hook overload without festival EDM or novelty voice.",
-    arrangement: ["instant bilingual chant hook with glitch-vocal sparks", "4-bar snap-cut drum mutes", "post-hook earworm tag", "final hook overload"],
-    mix: ["hypergloss transient snap", "front-loaded hook loudness", "bright hook stabs under dry rap", "controlled overload without festival scale"],
-    texture: ["candy-bright synth pinpricks", "arcade-like counter hooks tucked behind Rhodes", "glitch-vocal sparks"]
+    id: "progressive-overt",
+    line: "Variation Move: overt high-velocity progressive rap; 2-4 bar technical fast-flow bursts, compressed sections, metric displacement, motivated transitions, rhythmic switch-ups, motif callbacks, transformed hook returns.",
+    arrangement: ["compressed section turns", "metric displacement at boundaries", "2-4 bar technical fast-flow bursts", "transformed final hook return"],
+    mix: ["dry transient definition", "bass-forward rhythmic pressure", "Rhodes and horn punctuation at turns", "controlled density without festival scale"],
+    texture: ["live-room drum grain", "Rhodes shadow detail", "tight rhythmic counter-motifs"]
   },
   {
-    id: "dopagaki-lite",
-    line: "Variation Move: light dopamine-pop pressure inside the existing genre; cold-open hook energy, fast earworm recall, 8-bar texture switches, post-hook counter-motif, one-beat bridge silence, and a final hook density lift while preserving the natural mid-range male lead.",
-    arrangement: ["cold-open hook pressure", "8-bar texture switches", "post-hook counter-motif", "one-beat bridge silence", "final hook density lift"],
-    mix: ["tight glossy transients", "front-loaded hook impact", "controlled loudness without festival scale"],
-    texture: ["sharp playful top-line motion", "clean digital sparkle tucked into the existing palette"]
+    id: "progressive-core",
+    line: "Variation Move: core high-velocity progressive rap; rapid but intelligible section development, rhythmic cell changes at musical boundaries, recurring motifs, jazz-rap continuity, and a final hook that returns with changed meaning while preserving the natural mid-range male lead.",
+    arrangement: ["rapid section development", "rhythmic cell changes at boundaries", "recurring motif callback", "changed-meaning final hook"],
+    mix: ["dry transient definition", "bass-forward pocket", "controlled density without digital gloss"],
+    texture: ["live-room drum grain", "Rhodes shadow detail"]
   },
   {
     id: "percussive-negative-space",
@@ -160,15 +160,17 @@ const variationProfiles: StyleVariationProfile[] = [
 
 function variationProfile(input: BuildStyleInput): StyleVariationProfile {
   const source = `${input.variationSeed ?? ""}\n${input.artistProfile ?? ""}\n${input.brief ?? ""}\n${input.moodHint ?? ""}\n${input.vibe ?? ""}`;
+  const progressiveIdentity = /high-velocity progressive rap|progressive architecture|structural density|metric displacement/i.test(source);
+  const legacyVariation = /\bdopagaki\b|\bdopamine\b|\bhigh stimulus\b/i.test(source) || source.includes("\u30c9\u30d1\u30ac\u30ad");
   if (
     /\b(overt|strong|hard|max(?:imum)?|explicit|full)\b/i.test(source)
     || /露骨|強め|濃い|全開|はっきり|ガッツリ|ごりごり|ゴリゴリ/.test(source)
   ) {
-    if (/\bdopagaki\b|\bdopamine\b|\bhigh stimulus\b/i.test(source) || source.includes("\u30c9\u30d1\u30ac\u30ad")) {
+    if (legacyVariation || progressiveIdentity) {
       return variationProfiles[0];
     }
   }
-  if (/\bdopagaki\b|\bdopamine\b|\bhigh stimulus\b/i.test(source) || source.includes("\u30c9\u30d1\u30ac\u30ad")) {
+  if (legacyVariation || progressiveIdentity) {
     return variationProfiles[1];
   }
   const seed = input.variationSeed ?? source;

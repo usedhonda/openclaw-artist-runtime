@@ -168,7 +168,7 @@ describe("TelegramNotifier", () => {
       "1. ニュース/観察: 未記録",
       "2. X反応: 記録なし",
       "3. 音: 未記録",
-      "4. 揺らぎ: ドパガキ/高速展開/英日比率は prompt pack と artist 設定に従う",
+      "4. 構造: 高速多展開プログレッシブ・ラップの譜割り/展開/英日比率は prompt pack と artist 設定に従う",
       "",
       "歌詞チェック: 記録なし",
       "",
@@ -204,7 +204,7 @@ describe("TelegramNotifier", () => {
       timestamp: 1
     }, { workspaceRoot: root });
 
-    expect(text).toContain("creative: dopagaki=on, bare 2080/58行, diss-bank 5 hits");
+    expect(text).toContain("creative: high-velocity-prog=overt, bare 2080/58行, diss-bank 5 hits");
   });
 
   it("formats a completed take without selectedTakeId", async () => {
@@ -229,7 +229,7 @@ describe("TelegramNotifier", () => {
       "1. ニュース/観察: 未記録",
       "2. X反応: 記録なし",
       "3. 音: 未記録",
-      "4. 揺らぎ: ドパガキ/高速展開/英日比率は prompt pack と artist 設定に従う",
+      "4. 構造: 高速多展開プログレッシブ・ラップの譜割り/展開/英日比率は prompt pack と artist 設定に従う",
       "",
       "歌詞チェック: 記録なし",
       "",
