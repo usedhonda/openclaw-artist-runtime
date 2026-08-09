@@ -12,17 +12,27 @@ async function runWithFakeNode(options: {
   fresh?: boolean;
   script?: string;
   cwd?: string;
+  chromeExecutable?: string | null;
+  playwrightExecutable?: string | null;
 }) {
   const root = await mkdtemp(join(tmpdir(), "artist-runtime-suno-login-test-"));
   const bin = join(root, "bin");
   const capturePath = join(root, "node-args.txt");
   const openCapturePath = join(root, "open-args.txt");
   const curlCountPath = join(root, "curl-count.txt");
+  const explicitExecutable = join(root, "Explicit Chrome.app", "Contents", "MacOS", "Google Chrome");
+  const playwrightExecutable = join(root, "Google Chrome for Testing.app", "Contents", "MacOS", "Google Chrome");
   await mkdir(bin, { recursive: true });
+  await mkdir(join(explicitExecutable, ".."), { recursive: true });
+  await writeFile(explicitExecutable, "#!/bin/sh\nexit 0\n", "utf8");
+  await chmod(explicitExecutable, 0o755);
+  await mkdir(join(playwrightExecutable, ".."), { recursive: true });
+  await writeFile(playwrightExecutable, "#!/bin/sh\nexit 0\n", "utf8");
+  await chmod(playwrightExecutable, 0o755);
   const fakeNode = join(bin, "node");
   await writeFile(
     fakeNode,
-    "#!/bin/sh\nprintf '%s\\n' \"$@\" > \"$FAKE_NODE_ARGS\"\nexit 0\n",
+    "#!/bin/sh\ncase \"$*\" in\n  *chromium.executablePath*)\n    if [ \"$FAKE_PLAYWRIGHT_RESOLVE\" = missing ]; then exit 0; fi\n    printf '%s' \"$FAKE_PLAYWRIGHT_EXECUTABLE\"\n    exit 0\n    ;;\nesac\nprintf '%s\\n' \"$@\" > \"$FAKE_NODE_ARGS\"\nexit 0\n",
     "utf8"
   );
   await chmod(fakeNode, 0o755);
@@ -45,9 +55,11 @@ async function runWithFakeNode(options: {
     FAKE_NODE_ARGS: capturePath,
     FAKE_OPEN_ARGS: openCapturePath,
     FAKE_CURL_COUNT: curlCountPath,
-    OPENCLAW_SUNO_CHROME_EXECUTABLE:
-      "/Applications/Google Chrome for Testing.app/Contents/MacOS/Google Chrome"
+    FAKE_PLAYWRIGHT_EXECUTABLE: options.playwrightExecutable === null ? "" : options.playwrightExecutable ?? playwrightExecutable,
+    FAKE_PLAYWRIGHT_RESOLVE: options.playwrightExecutable === null ? "missing" : "ok"
   };
+  if (options.chromeExecutable === null) delete env.OPENCLAW_SUNO_CHROME_EXECUTABLE;
+  else env.OPENCLAW_SUNO_CHROME_EXECUTABLE = options.chromeExecutable ?? explicitExecutable;
   if (options.workspace) env.OPENCLAW_LOCAL_WORKSPACE = options.workspace;
   else delete env.OPENCLAW_LOCAL_WORKSPACE;
 
@@ -60,7 +72,9 @@ async function runWithFakeNode(options: {
   return {
     result,
     args: (await readFile(capturePath, "utf8")).trim().split("\n"),
-    openArgs: (await pathExists(openCapturePath)) ? (await readFile(openCapturePath, "utf8")).trim().split("\n") : []
+    openArgs: (await pathExists(openCapturePath)) ? (await readFile(openCapturePath, "utf8")).trim().split("\n") : [],
+    chromeApp: (options.chromeExecutable === null ? playwrightExecutable : options.chromeExecutable ?? explicitExecutable)
+      .split("/Contents/MacOS/")[0]
   };
 }
 
@@ -71,7 +85,7 @@ async function pathExists(path: string): Promise<boolean> {
 describe("openclaw-suno-login.sh", () => {
   it("uses the configured workspace suno-cli data dir by default", async () => {
     const workspace = "/tmp/artist-runtime-login-workspace";
-    const { result, args, openArgs } = await runWithFakeNode({ workspace });
+    const { result, args, openArgs, chromeApp } = await runWithFakeNode({ workspace });
 
     expect(result.status).toBe(0);
     expect(args).toEqual([
@@ -84,7 +98,7 @@ describe("openclaw-suno-login.sh", () => {
     ]);
     expect(openArgs).toEqual([
       "-na",
-      "/Applications/Google Chrome for Testing.app",
+      chromeApp,
       "--args",
       `--user-data-dir=${join(workspace, "runtime/suno/cli/browser-profile")}`,
       "--profile-directory=Default",
@@ -96,6 +110,22 @@ describe("openclaw-suno-login.sh", () => {
       "--no-default-browser-check",
       "https://suno.com/"
     ]);
+  });
+
+  it("resolves the visible Chrome app from installed Playwright when no override is set", async () => {
+    const { result, openArgs, chromeApp } = await runWithFakeNode({ chromeExecutable: null });
+
+    expect(result.status).toBe(0);
+    expect(openArgs[1]).toBe(chromeApp);
+    expect(openArgs).toContain("--password-store=basic");
+  });
+
+  it("fails before launching when Playwright returns no executable", async () => {
+    const { result, openArgs } = await runWithFakeNode({ chromeExecutable: null, playwrightExecutable: null });
+
+    expect(result.status).not.toBe(0);
+    expect(result.stderr).toContain("could not resolve an executable Chrome browser");
+    expect(openArgs).toEqual([]);
   });
 
   it("falls back to the repository workspace when no workspace env is set", async () => {

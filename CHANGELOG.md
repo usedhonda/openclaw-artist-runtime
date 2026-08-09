@@ -50,10 +50,11 @@
 ### Fixed
 - Changed the no-argument Suno login recovery to attach explicitly over a
   loopback CDP endpoint to the visible Chrome for Testing instance using the
-  authoritative CLI profile and `--password-store=basic`. It reuses the existing
-  Suno page, stores the captured session, closes the external browser after
-  capture, rejects remote endpoints, and does not fall back to the crashing
-  persistent-profile launcher.
+  authoritative CLI profile and `--password-store=basic`. It resolves the
+  installed Playwright Chromium app by default, preserves a validated explicit
+  executable override, reuses the existing Suno page, stores the captured
+  session, closes the external browser after capture, rejects remote endpoints,
+  and does not fall back to the crashing persistent-profile launcher.
 - Hardened the vendored `suno-cli` persistent browser login with
   `--password-store=basic`, avoiding the macOS Chromium Safe Storage
   login-password prompt while keeping the authenticated browser profile

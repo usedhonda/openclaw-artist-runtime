@@ -65,7 +65,15 @@ else
     exit 1
   fi
 
-  CHROME_EXECUTABLE="${OPENCLAW_SUNO_CHROME_EXECUTABLE:-/Applications/Google Chrome for Testing.app/Contents/MacOS/Google Chrome}"
+  if [[ -n "${OPENCLAW_SUNO_CHROME_EXECUTABLE:-}" ]]; then
+    CHROME_EXECUTABLE="$OPENCLAW_SUNO_CHROME_EXECUTABLE"
+  else
+    CHROME_EXECUTABLE="$(node -e 'import("playwright").then(({ chromium }) => { const executable = chromium.executablePath(); if (!executable) process.exit(1); process.stdout.write(executable); }).catch(() => process.exit(1))')"
+  fi
+  if [[ -z "$CHROME_EXECUTABLE" || ! -x "$CHROME_EXECUTABLE" ]]; then
+    echo "Suno login could not resolve an executable Chrome browser." >&2
+    exit 1
+  fi
   case "$CHROME_EXECUTABLE" in
     */Contents/MacOS/*)
       CHROME_APP="${CHROME_EXECUTABLE%%/Contents/MacOS/*}"
@@ -75,6 +83,10 @@ else
       exit 1
       ;;
   esac
+  if [[ "$CHROME_APP" != *.app || ! -d "$CHROME_APP" ]]; then
+    echo "Suno login requires an executable inside a Chrome .app bundle." >&2
+    exit 1
+  fi
 
   open -na "$CHROME_APP" --args \
     --user-data-dir="$CLI_DATA_DIR/browser-profile" \
