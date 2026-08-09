@@ -321,6 +321,7 @@ export class CliSunoConnector implements SunoConnector {
     // can return the whole run, and re-downloading is idempotent) before reconciling.
     const aggregatedUrls: string[] = [];
     const aggregatedPaths: string[] = [];
+    const downloadingByUrl = targets.some((target) => sunoUrlSlug(target) !== undefined);
     let resolvedRunId = runId;
     for (const target of targets) {
       const args = this.buildDownloadArgs(target);
@@ -346,7 +347,10 @@ export class CliSunoConnector implements SunoConnector {
       }
       aggregatedUrls.push(...parsed.urls);
       aggregatedPaths.push(...parsed.paths);
-      if (parsed.runId) {
+      // Direct URL downloads report a transient clip_* run id. Keep the accepted
+      // create run identity so the importer appends to that run; only a run-id
+      // fallback download may adopt the CLI's parsed run id.
+      if (parsed.runId && !downloadingByUrl) {
         resolvedRunId = parsed.runId;
       }
     }

@@ -826,7 +826,7 @@ describe("CliSunoConnector.importResults download-by-URL", () => {
         stdout: JSON.stringify({
           ok: true,
           status: "downloaded",
-          runId: "suno_ms6cklyg",
+          runId: `clip_${slug}`,
           downloadedFiles: [`/ws/artist/runtime/suno/cli/downloads/${slug}.mp3`],
           clips: [{ clipId: slug, songUrl: target }]
         }),
@@ -849,6 +849,7 @@ describe("CliSunoConnector.importResults download-by-URL", () => {
       "/ws/artist/runtime/suno/cli/downloads/3faec32d.mp3",
       "/ws/artist/runtime/suno/cli/downloads/0b99a8e3.mp3"
     ]);
+    expect(result.runId).toBe("suno_ms6cklyg");
     expect(result.reason).toBe("suno_cli_downloaded");
   });
 
