@@ -97,20 +97,20 @@ async function loadPlaywrightForLogin() {
 async function readSunoSession(context, page) {
     const cookies = (await context.cookies().catch(() => []));
     const sunoCookies = cookies.filter((cookie) => SUNO_DOMAIN_RE.test(cookie.domain.replace(/^\./, "")));
-    const hasSession = sunoCookies.some((cookie) => cookie.name === "__session");
-    if (!hasSession)
-        return undefined;
     const cookieHeader = sunoCookies.map((cookie) => `${cookie.name}=${cookie.value}`).join("; ");
     const jwt = await readClerkJwt(page);
     if (jwt) {
         const token = clerkTokenFromJwt(jwt);
         return {
             jwt,
-            cookie: cookieHeader,
+            ...(cookieHeader ? { cookie: cookieHeader } : {}),
             ...(token.sessionId ? { sessionId: token.sessionId } : {}),
             ...(token.expiresAt ? { expiresAt: token.expiresAt } : {})
         };
     }
+    const hasSession = sunoCookies.some((cookie) => cookie.name === "__session");
+    if (!hasSession)
+        return undefined;
     return { cookie: cookieHeader };
 }
 async function readClerkJwt(page) {

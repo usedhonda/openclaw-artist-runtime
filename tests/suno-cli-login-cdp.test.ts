@@ -46,6 +46,77 @@ describe("suno-cli browser login CDP capture", () => {
     );
   });
 
+  it("stores a Clerk JWT when the authoritative page has no legacy session cookie", async () => {
+    const jwt = "header.eyJzaWQiOiJzZXNzX2ZpeHR1cmUiLCJleHAiOjE3MDAwMDAwMDB9.signature";
+    const page = {
+      url: vi.fn(() => "https://suno.com/create"),
+      evaluate: vi.fn(async () => jwt)
+    };
+    const browser = {
+      contexts: vi.fn(() => [
+        {
+          pages: vi.fn(() => [page]),
+          cookies: vi.fn(async () => [])
+        }
+      ]),
+      close: vi.fn(async () => undefined)
+    };
+    connectOverCDP.mockResolvedValue(browser);
+
+    const output = vi.spyOn(process.stdout, "write").mockImplementation(() => true);
+    try {
+      const { loginCommand } = await import("../vendor/suno-cli/dist/src/commands/login.js");
+      const { captureBrowserSession } = await import("../vendor/suno-cli/dist/src/browser/login.js");
+      const dataDir = await mkdtemp(join(tmpdir(), "suno-cli-login-cdp-jwt-"));
+      const sessionFile = join(dataDir, "session.json");
+      const result = await loginCommand({
+        sessionFile,
+        profileDir: join(dataDir, "browser-profile"),
+        timeoutMs: 10,
+        capturer: { capture: (input) => captureBrowserSession({ ...input, cdpEndpoint: "http://127.0.0.1:9222" }) }
+      });
+
+      const saved = JSON.parse(await readFile(sessionFile, "utf8"));
+      expect(result).toBe(0);
+      expect(saved.jwt).toBe(jwt);
+      expect(saved.sessionId).toBe("sess_fixture");
+      expect(saved.cookie).toBeUndefined();
+      expect(output.mock.calls.map(([value]) => String(value)).join("")).not.toContain(jwt);
+    } finally {
+      output.mockRestore();
+    }
+  });
+
+  it("does not accept a Suno client cookie without a Clerk JWT or legacy session cookie", async () => {
+    const page = {
+      url: vi.fn(() => "https://suno.com/create"),
+      evaluate: vi.fn(async () => "")
+    };
+    const browser = {
+      contexts: vi.fn(() => [
+        {
+          pages: vi.fn(() => [page]),
+          cookies: vi.fn(async () => [{ domain: ".suno.com", name: "__client", value: "fixture-client" }])
+        }
+      ]),
+      close: vi.fn(async () => undefined)
+    };
+    connectOverCDP.mockResolvedValue(browser);
+
+    const { loginCommand } = await import("../vendor/suno-cli/dist/src/commands/login.js");
+    const { captureBrowserSession } = await import("../vendor/suno-cli/dist/src/browser/login.js");
+    const dataDir = await mkdtemp(join(tmpdir(), "suno-cli-login-cdp-no-jwt-"));
+    const result = await loginCommand({
+      sessionFile: join(dataDir, "session.json"),
+      profileDir: join(dataDir, "browser-profile"),
+      timeoutMs: 10,
+      capturer: { capture: (input) => captureBrowserSession({ ...input, cdpEndpoint: "http://127.0.0.1:9222" }) }
+    });
+
+    expect(result).toBe(30);
+    expect(browser.close).toHaveBeenCalledTimes(1);
+  });
+
   it("rejects a non-loopback endpoint before connecting or falling back", async () => {
     const { captureBrowserSession } = await import("../vendor/suno-cli/dist/src/browser/login.js");
 
