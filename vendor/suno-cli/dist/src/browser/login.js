@@ -1,5 +1,5 @@
 import { clerkTokenFromJwt } from "../auth/clerk.js";
-import { launchPersistentBrowser } from "./captcha.js";
+import { launchPersistentBrowser, normalizeLoopbackCdpEndpoint } from "./captcha.js";
 export class LoginTimeoutError extends Error {
     constructor(message) {
         super(message);
@@ -13,6 +13,9 @@ const POLL_INTERVAL_MS = 1000;
 // payment modal) are intentionally left for a later phase.
 // TODO(phase-2c): detect and surface MFA / social-login / Cloudflare / payment states.
 export async function captureBrowserSession(input) {
+    if (input.cdpEndpoint) {
+        return captureFromCdp(input);
+    }
     const context = (await launchPersistentBrowser({
         profileDir: input.profileDir,
         headless: false
@@ -32,6 +35,66 @@ export async function captureBrowserSession(input) {
     finally {
         await context.close().catch(() => undefined);
     }
+}
+async function captureFromCdp(input) {
+    const endpoint = normalizeLoopbackCdpEndpoint(input.cdpEndpoint);
+    const runtime = await loadPlaywrightForLogin();
+    const browser = await runtime.chromium.connectOverCDP(endpoint);
+    const context = browser.contexts()[0];
+    if (!context) {
+        disconnectBrowser(browser);
+        throw new Error(`CDP attach at ${endpoint} has no browser context.`);
+    }
+    let page = context.pages().find((candidate) => isSunoPage(candidate.url()));
+    const openedPage = !page;
+    try {
+        page ??= await context.newPage();
+        if (openedPage) {
+            await page.goto(input.loginUrl, { waitUntil: "domcontentloaded", timeout: input.timeoutMs });
+        }
+        const deadline = Date.now() + input.timeoutMs;
+        while (Date.now() < deadline) {
+            const captured = await readSunoSession(context, page);
+            if (captured)
+                return captured;
+            await delay(POLL_INTERVAL_MS);
+        }
+        throw new LoginTimeoutError("Timed out waiting for Suno login in the browser.");
+    }
+    finally {
+        disconnectBrowser(browser);
+    }
+}
+function isSunoPage(url) {
+    try {
+        const hostname = new URL(url).hostname;
+        return SUNO_DOMAIN_RE.test(hostname);
+    }
+    catch {
+        return false;
+    }
+}
+function disconnectBrowser(browser) {
+    if (typeof browser.disconnect === "function") {
+        browser.disconnect();
+    }
+}
+async function loadPlaywrightForLogin() {
+    let lastError;
+    for (const specifier of ["rebrowser-playwright", "playwright"]) {
+        try {
+            if (specifier === "rebrowser-playwright")
+                return await import("rebrowser-playwright");
+            return await import("playwright");
+        }
+        catch (error) {
+            lastError = error;
+        }
+    }
+    const message = lastError instanceof Error ? lastError.message : String(lastError);
+    const error = new Error(`Playwright is not installed or cannot be loaded: ${message}`);
+    error.status = "browser_required";
+    throw error;
 }
 async function readSunoSession(context, page) {
     const cookies = (await context.cookies().catch(() => []));

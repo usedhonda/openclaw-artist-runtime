@@ -48,6 +48,11 @@
 - Plan v9.5 finalizes the autopilot revival and Telegram bridge dogfood pass: RuntimeEventBus stage/state/take notifications, owner-only Telegram commands, local free-text inbox staging, debug-only `/review <songId>` mock AI review, and final pre-release distribution gate coverage.
 
 ### Fixed
+- Changed the no-argument Suno login recovery to attach explicitly over a
+  loopback CDP endpoint to the visible Chrome for Testing instance using the
+  authoritative CLI profile and `--password-store=basic`. It reuses the existing
+  Suno page, stores the captured session, rejects remote endpoints, and does not
+  fall back to the crashing persistent-profile launcher.
 - Hardened the vendored `suno-cli` persistent browser login with
   `--password-store=basic`, avoiding the macOS Chromium Safe Storage
   login-password prompt while keeping the authenticated browser profile

@@ -27,6 +27,18 @@ suno-cli create --live \
 
 The command prints JSON with Suno clip ids and `https://suno.com/song/<clip-id>` URLs. A successful create spends credits. If Suno requires a captcha, the CLI stops with `blocked_captcha` rather than opening or retrying a browser automatically.
 
+On macOS, the operator recovery wrapper launches the matching visible Chrome for
+Testing profile with a loopback DevTools endpoint and captures the existing
+session with an explicit attach:
+
+```bash
+scripts/openclaw-suno-login.sh
+```
+
+The login attach accepts loopback endpoints only (`--cdp-endpoint
+http://127.0.0.1:9222`) and never falls back to a second persistent-profile
+browser when the endpoint is unavailable.
+
 ## Retrieve Results
 
 Check a run or clip:

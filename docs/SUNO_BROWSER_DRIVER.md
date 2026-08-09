@@ -219,9 +219,16 @@ do not copy it into logs, screenshots, ledgers, package artifacts, or another
 machine. This repository carries that runtime hardening patch on top of
 `VENDOR_COMMIT` `165ab8c`; the vendor marker is intentionally unchanged.
 
-The no-argument `scripts/openclaw-suno-login.sh` invokes `suno-cli login` for this
-data directory. `<workspace>` is `OPENCLAW_LOCAL_WORKSPACE` when set, otherwise
-`.local/openclaw/workspace` in the repository.
+The no-argument `scripts/openclaw-suno-login.sh` launches the matching visible
+Chrome for Testing bundle through macOS LaunchServices with
+`--password-store=basic`, loopback-only remote debugging, and the authoritative
+CLI profile, then invokes `suno-cli login --cdp-endpoint` to capture that already
+authenticated Suno page. It reuses an existing Suno tab when present or opens
+one, and stores the result in `session.json` without changing the browser
+profile. CDP failure is fail-closed; the wrapper does not silently retry with
+Playwright's persistent-profile launcher. `<workspace>` is
+`OPENCLAW_LOCAL_WORKSPACE` when set, otherwise `.local/openclaw/workspace` in the
+repository.
 
 For an invalidated or corrupt CLI auth profile, the `--fresh` form moves only
 `browser-profile/` and `session.json` into
@@ -285,13 +292,12 @@ session expires:
 scripts/openclaw-suno-login.sh
 ```
 
-The default path runs `suno-cli login --data-dir
-<workspace>/runtime/suno/cli`, which opens the CLI-owned persistent browser
-profile and writes both `browser-profile/` and `session.json`. Complete login
-manually, then close the browser window. Routine session expiry uses this
-no-argument form. Use `scripts/openclaw-suno-login.sh --fresh` only after the CLI
-session was explicitly invalidated or its auth profile is proven corrupt. To
-recover only the legacy Playwright profile, pass its path explicitly:
+The default path runs the visible Chrome + loopback CDP capture against
+`<workspace>/runtime/suno/cli`, writing `session.json` from the existing login.
+No additional login is requested when that browser is already authenticated.
+Use `scripts/openclaw-suno-login.sh --fresh` only after the CLI session was
+explicitly invalidated or its auth profile is proven corrupt. To recover only
+the legacy Playwright profile, pass its path explicitly:
 
 ```bash
 scripts/openclaw-suno-login.sh .openclaw-browser-profiles/suno

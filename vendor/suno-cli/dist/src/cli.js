@@ -155,6 +155,8 @@ async function runLogin(args) {
         sessionFile: paths.sessionFile,
         profileDir: paths.browserProfileDir
     };
+    if (args.cdpEndpoint)
+        loginOptions.cdpEndpoint = args.cdpEndpoint;
     if (args.timeoutMs)
         loginOptions.timeoutMs = args.timeoutMs;
     if (args.jwtPaste !== undefined) {
@@ -166,7 +168,10 @@ async function runLogin(args) {
     else {
         const login = await import("./browser/login.js");
         loginOptions.capturer = {
-            capture: (input) => login.captureBrowserSession(input)
+            capture: (input) => login.captureBrowserSession({
+                ...input,
+                ...(args.cdpEndpoint ? { cdpEndpoint: args.cdpEndpoint } : {})
+            })
         };
     }
     return loginCommand(loginOptions);
@@ -333,7 +338,7 @@ function usage() {
     writeJson({
         ok: true,
         usage: [
-            "suno-cli login [--jwt-paste <jwt>] [--cookie-paste <document.cookie>] [--timeout-ms <ms>] [--data-dir <dir>]",
+            "suno-cli login [--jwt-paste <jwt>] [--cookie-paste <document.cookie>] [--cdp-endpoint <loopback-url>] [--timeout-ms <ms>] [--data-dir <dir>]",
             "suno-cli logout [--data-dir <dir>]",
             "suno-cli create --live --title <title> --style <style> [--lyrics <text>|--instrumental]",
             "suno-cli create --dry-run --title <title> --style <style> [--lyrics <text>|--instrumental]",

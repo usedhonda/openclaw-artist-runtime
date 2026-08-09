@@ -16,6 +16,8 @@ async function runWithFakeNode(options: {
   const root = await mkdtemp(join(tmpdir(), "artist-runtime-suno-login-test-"));
   const bin = join(root, "bin");
   const capturePath = join(root, "node-args.txt");
+  const openCapturePath = join(root, "open-args.txt");
+  const curlCountPath = join(root, "curl-count.txt");
   await mkdir(bin, { recursive: true });
   const fakeNode = join(bin, "node");
   await writeFile(
@@ -24,8 +26,28 @@ async function runWithFakeNode(options: {
     "utf8"
   );
   await chmod(fakeNode, 0o755);
+  await writeFile(
+    join(bin, "open"),
+    "#!/bin/sh\nprintf '%s\\n' \"$@\" > \"$FAKE_OPEN_ARGS\"\nexit 0\n",
+    "utf8"
+  );
+  await chmod(join(bin, "open"), 0o755);
+  await writeFile(
+    join(bin, "curl"),
+    "#!/bin/sh\ncount=0\nif [ -f \"$FAKE_CURL_COUNT\" ]; then count=$(cat \"$FAKE_CURL_COUNT\"); fi\ncount=$((count + 1))\nprintf '%s\\n' \"$count\" > \"$FAKE_CURL_COUNT\"\nif [ \"$count\" -eq 1 ]; then exit 1; fi\nexit 0\n",
+    "utf8"
+  );
+  await chmod(join(bin, "curl"), 0o755);
 
-  const env = { ...process.env, PATH: `${bin}:${process.env.PATH ?? ""}`, FAKE_NODE_ARGS: capturePath };
+  const env = {
+    ...process.env,
+    PATH: `${bin}:${process.env.PATH ?? ""}`,
+    FAKE_NODE_ARGS: capturePath,
+    FAKE_OPEN_ARGS: openCapturePath,
+    FAKE_CURL_COUNT: curlCountPath,
+    OPENCLAW_SUNO_CHROME_EXECUTABLE:
+      "/Applications/Google Chrome for Testing.app/Contents/MacOS/Google Chrome"
+  };
   if (options.workspace) env.OPENCLAW_LOCAL_WORKSPACE = options.workspace;
   else delete env.OPENCLAW_LOCAL_WORKSPACE;
 
@@ -35,7 +57,11 @@ async function runWithFakeNode(options: {
     env,
     encoding: "utf8"
   });
-  return { result, args: (await readFile(capturePath, "utf8")).trim().split("\n") };
+  return {
+    result,
+    args: (await readFile(capturePath, "utf8")).trim().split("\n"),
+    openArgs: (await pathExists(openCapturePath)) ? (await readFile(openCapturePath, "utf8")).trim().split("\n") : []
+  };
 }
 
 async function pathExists(path: string): Promise<boolean> {
@@ -45,14 +71,30 @@ async function pathExists(path: string): Promise<boolean> {
 describe("openclaw-suno-login.sh", () => {
   it("uses the configured workspace suno-cli data dir by default", async () => {
     const workspace = "/tmp/artist-runtime-login-workspace";
-    const { result, args } = await runWithFakeNode({ workspace });
+    const { result, args, openArgs } = await runWithFakeNode({ workspace });
 
     expect(result.status).toBe(0);
     expect(args).toEqual([
       resolve("vendor/suno-cli/dist/src/cli.js"),
       "login",
       "--data-dir",
-      join(workspace, "runtime/suno/cli")
+      join(workspace, "runtime/suno/cli"),
+      "--cdp-endpoint",
+      "http://127.0.0.1:9222"
+    ]);
+    expect(openArgs).toEqual([
+      "-na",
+      "/Applications/Google Chrome for Testing.app",
+      "--args",
+      `--user-data-dir=${join(workspace, "runtime/suno/cli/browser-profile")}`,
+      "--profile-directory=Default",
+      "--remote-debugging-address=127.0.0.1",
+      "--remote-debugging-port=9222",
+      "--remote-allow-origins=http://127.0.0.1:9222",
+      "--password-store=basic",
+      "--no-first-run",
+      "--no-default-browser-check",
+      "https://suno.com/"
     ]);
   });
 
@@ -64,7 +106,9 @@ describe("openclaw-suno-login.sh", () => {
       resolve("vendor/suno-cli/dist/src/cli.js"),
       "login",
       "--data-dir",
-      resolve(".local/openclaw/workspace/runtime/suno/cli")
+      resolve(".local/openclaw/workspace/runtime/suno/cli"),
+      "--cdp-endpoint",
+      "http://127.0.0.1:9222"
     ]);
   });
 

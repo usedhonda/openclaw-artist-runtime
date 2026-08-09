@@ -47,7 +47,54 @@ elif [[ $# -gt 0 ]]; then
   node "$ROOT_DIR/scripts/openclaw-suno-login.mjs" "$PROFILE_PATH"
 else
   # The normal lane must refresh the profile and session.json consumed by suno-cli.
+  # Launch the matching visible Chrome bundle through LaunchServices, then attach
+  # explicitly over loopback. This avoids the known launchPersistentContext crash
+  # against the authenticated CLI profile; a failed attach never falls back.
   WORKSPACE_ROOT="${OPENCLAW_LOCAL_WORKSPACE:-$ROOT_DIR/.local/openclaw/workspace}"
-  node "$ROOT_DIR/vendor/suno-cli/dist/src/cli.js" login \
-    --data-dir "$WORKSPACE_ROOT/runtime/suno/cli"
+  CLI_DATA_DIR="$WORKSPACE_ROOT/runtime/suno/cli"
+  CDP_PORT="${OPENCLAW_SUNO_LOGIN_CDP_PORT:-9222}"
+  CDP_HOST="127.0.0.1"
+  CDP_ENDPOINT="http://${CDP_HOST}:${CDP_PORT}"
+
+  if curl -fsS --max-time 1 "$CDP_ENDPOINT/json/version" >/dev/null 2>&1; then
+    echo "Suno login CDP port is already in use: $CDP_ENDPOINT" >&2
+    exit 1
+  fi
+  if command -v lsof >/dev/null 2>&1 && lsof -nP -iTCP:"$CDP_PORT" -sTCP:LISTEN >/dev/null 2>&1; then
+    echo "Suno login CDP port is already in use: $CDP_ENDPOINT" >&2
+    exit 1
+  fi
+
+  CHROME_EXECUTABLE="${OPENCLAW_SUNO_CHROME_EXECUTABLE:-/Applications/Google Chrome for Testing.app/Contents/MacOS/Google Chrome}"
+  case "$CHROME_EXECUTABLE" in
+    */Contents/MacOS/*)
+      CHROME_APP="${CHROME_EXECUTABLE%%/Contents/MacOS/*}"
+      ;;
+    *)
+      echo "Suno login requires a Chrome app executable under a .app bundle: $CHROME_EXECUTABLE" >&2
+      exit 1
+      ;;
+  esac
+
+  open -na "$CHROME_APP" --args \
+    --user-data-dir="$CLI_DATA_DIR/browser-profile" \
+    --profile-directory=Default \
+    --remote-debugging-address="$CDP_HOST" \
+    --remote-debugging-port="$CDP_PORT" \
+    --remote-allow-origins="$CDP_ENDPOINT" \
+    --password-store=basic \
+    --no-first-run \
+    --no-default-browser-check \
+    https://suno.com/
+
+  for _ in {1..40}; do
+    if curl -fsS --max-time 1 "$CDP_ENDPOINT/json/version" >/dev/null 2>&1; then
+      exec node "$ROOT_DIR/vendor/suno-cli/dist/src/cli.js" login \
+        --data-dir "$CLI_DATA_DIR" \
+        --cdp-endpoint "$CDP_ENDPOINT"
+    fi
+    sleep 0.5
+  done
+  echo "Suno login Chrome did not expose loopback CDP: $CDP_ENDPOINT" >&2
+  exit 1
 fi
