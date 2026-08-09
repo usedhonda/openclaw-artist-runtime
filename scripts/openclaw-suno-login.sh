@@ -122,7 +122,6 @@ else
 
   for _ in {1..40}; do
     if curl -fsS --max-time 1 "$CDP_ENDPOINT/json/version" >/dev/null 2>&1; then
-      CHROME_PID=""
       node "$ROOT_DIR/vendor/suno-cli/dist/src/cli.js" login \
         --data-dir "$CLI_DATA_DIR" \
         --cdp-endpoint "$CDP_ENDPOINT"

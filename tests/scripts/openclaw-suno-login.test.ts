@@ -15,6 +15,8 @@ async function runWithFakeNode(options: {
   chromeExecutable?: string | null;
   playwrightExecutable?: string | null;
   cdpTimeout?: boolean;
+  holdBrowser?: boolean;
+  cliExit?: number;
 }) {
   const root = await mkdtemp(join(tmpdir(), "artist-runtime-suno-login-test-"));
   const bin = join(root, "bin");
@@ -27,7 +29,7 @@ async function runWithFakeNode(options: {
   const playwrightExecutable = join(root, "Google Chrome for Testing.app", "Contents", "MacOS", "Google Chrome");
   await mkdir(bin, { recursive: true });
   await mkdir(join(explicitExecutable, ".."), { recursive: true });
-  const chromeScript = `#!/bin/sh\nprintf '%s\\n' "$@" > '${chromeArgsPath}'\nprintf '%s' "$$" > '${chromePidPath}'\nsleep 30\n`;
+  const chromeScript = `#!/bin/sh\nprintf '%s\\n' "$@" > '${chromeArgsPath}'\nprintf '%s' "$$" > '${chromePidPath}'\n/bin/sleep 0.2\nsleep 30\n`;
   await writeFile(explicitExecutable, chromeScript, "utf8");
   await chmod(explicitExecutable, 0o755);
   await mkdir(join(playwrightExecutable, ".."), { recursive: true });
@@ -35,14 +37,14 @@ async function runWithFakeNode(options: {
   await chmod(playwrightExecutable, 0o755);
   await writeFile(
     join(bin, "sleep"),
-    "#!/bin/sh\nif [ \"$FAKE_CDP_TIMEOUT\" = 1 ] && [ \"$1\" = 30 ]; then exec /bin/sleep \"$@\"; fi\nexit 0\n",
+    "#!/bin/sh\nif [ \"$FAKE_HOLD_BROWSER\" = 1 ] && [ \"$1\" = 30 ]; then exec /bin/sleep \"$@\"; fi\nexit 0\n",
     "utf8"
   );
   await chmod(join(bin, "sleep"), 0o755);
   const fakeNode = join(bin, "node");
   await writeFile(
     fakeNode,
-    "#!/bin/sh\ncase \"$*\" in\n  *chromium.executablePath*)\n    if [ \"$FAKE_PLAYWRIGHT_RESOLVE\" = missing ]; then exit 0; fi\n    printf '%s' \"$FAKE_PLAYWRIGHT_EXECUTABLE\"\n    exit 0\n    ;;\nesac\nprintf '%s\\n' \"$@\" > \"$FAKE_NODE_ARGS\"\nexit 0\n",
+    "#!/bin/sh\ncase \"$*\" in\n  *chromium.executablePath*)\n    if [ \"$FAKE_PLAYWRIGHT_RESOLVE\" = missing ]; then exit 0; fi\n    printf '%s' \"$FAKE_PLAYWRIGHT_EXECUTABLE\"\n    exit 0\n    ;;\n  *import*playwright*) exit 0 ;;\nesac\nprintf '%s\\n' \"$@\" > \"$FAKE_NODE_ARGS\"\nexit \"${FAKE_CLI_EXIT:-0}\"\n",
     "utf8"
   );
   await chmod(fakeNode, 0o755);
@@ -69,7 +71,9 @@ async function runWithFakeNode(options: {
     FAKE_CURL_COUNT: curlCountPath,
     FAKE_PLAYWRIGHT_EXECUTABLE: options.playwrightExecutable === null ? "" : options.playwrightExecutable ?? playwrightExecutable,
     FAKE_PLAYWRIGHT_RESOLVE: options.playwrightExecutable === null ? "missing" : "ok",
-    FAKE_CDP_TIMEOUT: options.cdpTimeout ? "1" : "0"
+    FAKE_CDP_TIMEOUT: options.cdpTimeout ? "1" : "0",
+    FAKE_HOLD_BROWSER: options.holdBrowser ? "1" : "0",
+    FAKE_CLI_EXIT: String(options.cliExit ?? 0)
   };
   if (options.chromeExecutable === null) delete env.OPENCLAW_SUNO_CHROME_EXECUTABLE;
   else env.OPENCLAW_SUNO_CHROME_EXECUTABLE = options.chromeExecutable ?? explicitExecutable;
@@ -84,7 +88,7 @@ async function runWithFakeNode(options: {
   });
   return {
     result,
-    args: (await readFile(capturePath, "utf8")).trim().split("\n"),
+    args: (await pathExists(capturePath)) ? (await readFile(capturePath, "utf8")).trim().split("\n") : [],
     openArgs: (await pathExists(openCapturePath)) ? (await readFile(openCapturePath, "utf8")).trim().split("\n") : [],
     chromeArgs: (await pathExists(chromeArgsPath)) ? (await readFile(chromeArgsPath, "utf8")).trim().split("\n") : [],
     chromePid: (await pathExists(chromePidPath)) ? Number(await readFile(chromePidPath, "utf8")) : undefined,
@@ -149,6 +153,14 @@ describe("openclaw-suno-login.sh", () => {
 
     expect(result.status).not.toBe(0);
     expect(result.stderr).toContain("did not expose loopback CDP");
+    expect(chromePid).toBeDefined();
+    expect(() => process.kill(chromePid!, 0)).toThrow();
+  });
+
+  it("keeps ownership through CLI attach failure and preserves its exit code", async () => {
+    const { result, chromePid } = await runWithFakeNode({ holdBrowser: true, cliExit: 37 });
+
+    expect(result.status).toBe(37);
     expect(chromePid).toBeDefined();
     expect(() => process.kill(chromePid!, 0)).toThrow();
   });
