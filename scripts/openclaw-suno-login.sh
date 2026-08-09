@@ -88,7 +88,27 @@ else
     exit 1
   fi
 
-  open -na "$CHROME_APP" --args \
+  BROWSER_LOG="$(mktemp "${TMPDIR:-/tmp}/openclaw-suno-login.XXXXXX")"
+  CHROME_PID=""
+  terminate_tree() {
+    local parent="$1"
+    local child
+    while read -r child; do
+      [[ -n "$child" ]] || continue
+      terminate_tree "$child"
+    done < <(pgrep -P "$parent" 2>/dev/null || true)
+    kill -TERM "$parent" >/dev/null 2>&1 || true
+  }
+  cleanup_browser() {
+    if [[ -n "$CHROME_PID" ]] && kill -0 "$CHROME_PID" >/dev/null 2>&1; then
+      terminate_tree "$CHROME_PID"
+      wait "$CHROME_PID" >/dev/null 2>&1 || true
+    fi
+    rm -f "$BROWSER_LOG"
+  }
+  trap cleanup_browser EXIT
+
+  "$CHROME_EXECUTABLE" \
     --user-data-dir="$CLI_DATA_DIR/browser-profile" \
     --profile-directory=Default \
     --remote-debugging-address="$CDP_HOST" \
@@ -97,13 +117,16 @@ else
     --password-store=basic \
     --no-first-run \
     --no-default-browser-check \
-    https://suno.com/
+    https://suno.com/ >"$BROWSER_LOG" 2>&1 &
+  CHROME_PID=$!
 
   for _ in {1..40}; do
     if curl -fsS --max-time 1 "$CDP_ENDPOINT/json/version" >/dev/null 2>&1; then
-      exec node "$ROOT_DIR/vendor/suno-cli/dist/src/cli.js" login \
+      CHROME_PID=""
+      node "$ROOT_DIR/vendor/suno-cli/dist/src/cli.js" login \
         --data-dir "$CLI_DATA_DIR" \
         --cdp-endpoint "$CDP_ENDPOINT"
+      exit $?
     fi
     sleep 0.5
   done

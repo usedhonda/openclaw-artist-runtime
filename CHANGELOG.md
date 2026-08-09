@@ -49,7 +49,7 @@
 
 ### Fixed
 - Changed the no-argument Suno login recovery to attach explicitly over a
-  loopback CDP endpoint to the visible Chrome for Testing instance using the
+  loopback CDP endpoint to a directly spawned visible Chrome for Testing instance using the
   authoritative CLI profile and `--password-store=basic`. It resolves the
   installed Playwright Chromium app by default, preserves a validated explicit
   executable override, reuses the existing Suno page, stores the captured

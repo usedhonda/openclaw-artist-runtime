@@ -14,21 +14,31 @@ async function runWithFakeNode(options: {
   cwd?: string;
   chromeExecutable?: string | null;
   playwrightExecutable?: string | null;
+  cdpTimeout?: boolean;
 }) {
   const root = await mkdtemp(join(tmpdir(), "artist-runtime-suno-login-test-"));
   const bin = join(root, "bin");
   const capturePath = join(root, "node-args.txt");
   const openCapturePath = join(root, "open-args.txt");
+  const chromeArgsPath = join(root, "chrome-args.txt");
+  const chromePidPath = join(root, "chrome-pid.txt");
   const curlCountPath = join(root, "curl-count.txt");
   const explicitExecutable = join(root, "Explicit Chrome.app", "Contents", "MacOS", "Google Chrome");
   const playwrightExecutable = join(root, "Google Chrome for Testing.app", "Contents", "MacOS", "Google Chrome");
   await mkdir(bin, { recursive: true });
   await mkdir(join(explicitExecutable, ".."), { recursive: true });
-  await writeFile(explicitExecutable, "#!/bin/sh\nexit 0\n", "utf8");
+  const chromeScript = `#!/bin/sh\nprintf '%s\\n' "$@" > '${chromeArgsPath}'\nprintf '%s' "$$" > '${chromePidPath}'\nsleep 30\n`;
+  await writeFile(explicitExecutable, chromeScript, "utf8");
   await chmod(explicitExecutable, 0o755);
   await mkdir(join(playwrightExecutable, ".."), { recursive: true });
-  await writeFile(playwrightExecutable, "#!/bin/sh\nexit 0\n", "utf8");
+  await writeFile(playwrightExecutable, chromeScript, "utf8");
   await chmod(playwrightExecutable, 0o755);
+  await writeFile(
+    join(bin, "sleep"),
+    "#!/bin/sh\nif [ \"$FAKE_CDP_TIMEOUT\" = 1 ] && [ \"$1\" = 30 ]; then exec /bin/sleep \"$@\"; fi\nexit 0\n",
+    "utf8"
+  );
+  await chmod(join(bin, "sleep"), 0o755);
   const fakeNode = join(bin, "node");
   await writeFile(
     fakeNode,
@@ -44,7 +54,7 @@ async function runWithFakeNode(options: {
   await chmod(join(bin, "open"), 0o755);
   await writeFile(
     join(bin, "curl"),
-    "#!/bin/sh\ncount=0\nif [ -f \"$FAKE_CURL_COUNT\" ]; then count=$(cat \"$FAKE_CURL_COUNT\"); fi\ncount=$((count + 1))\nprintf '%s\\n' \"$count\" > \"$FAKE_CURL_COUNT\"\nif [ \"$count\" -eq 1 ]; then exit 1; fi\nexit 0\n",
+    "#!/bin/sh\ncount=0\nif [ -f \"$FAKE_CURL_COUNT\" ]; then count=$(cat \"$FAKE_CURL_COUNT\"); fi\ncount=$((count + 1))\nprintf '%s\\n' \"$count\" > \"$FAKE_CURL_COUNT\"\nif [ \"$FAKE_CDP_TIMEOUT\" = 1 ] || [ \"$count\" -eq 1 ]; then exit 1; fi\n/bin/sleep 0.1\nexit 0\n",
     "utf8"
   );
   await chmod(join(bin, "curl"), 0o755);
@@ -54,9 +64,12 @@ async function runWithFakeNode(options: {
     PATH: `${bin}:${process.env.PATH ?? ""}`,
     FAKE_NODE_ARGS: capturePath,
     FAKE_OPEN_ARGS: openCapturePath,
+    FAKE_CHROME_ARGS: chromeArgsPath,
+    FAKE_CHROME_PID: chromePidPath,
     FAKE_CURL_COUNT: curlCountPath,
     FAKE_PLAYWRIGHT_EXECUTABLE: options.playwrightExecutable === null ? "" : options.playwrightExecutable ?? playwrightExecutable,
-    FAKE_PLAYWRIGHT_RESOLVE: options.playwrightExecutable === null ? "missing" : "ok"
+    FAKE_PLAYWRIGHT_RESOLVE: options.playwrightExecutable === null ? "missing" : "ok",
+    FAKE_CDP_TIMEOUT: options.cdpTimeout ? "1" : "0"
   };
   if (options.chromeExecutable === null) delete env.OPENCLAW_SUNO_CHROME_EXECUTABLE;
   else env.OPENCLAW_SUNO_CHROME_EXECUTABLE = options.chromeExecutable ?? explicitExecutable;
@@ -73,6 +86,8 @@ async function runWithFakeNode(options: {
     result,
     args: (await readFile(capturePath, "utf8")).trim().split("\n"),
     openArgs: (await pathExists(openCapturePath)) ? (await readFile(openCapturePath, "utf8")).trim().split("\n") : [],
+    chromeArgs: (await pathExists(chromeArgsPath)) ? (await readFile(chromeArgsPath, "utf8")).trim().split("\n") : [],
+    chromePid: (await pathExists(chromePidPath)) ? Number(await readFile(chromePidPath, "utf8")) : undefined,
     chromeApp: (options.chromeExecutable === null ? playwrightExecutable : options.chromeExecutable ?? explicitExecutable)
       .split("/Contents/MacOS/")[0]
   };
@@ -85,7 +100,7 @@ async function pathExists(path: string): Promise<boolean> {
 describe("openclaw-suno-login.sh", () => {
   it("uses the configured workspace suno-cli data dir by default", async () => {
     const workspace = "/tmp/artist-runtime-login-workspace";
-    const { result, args, openArgs, chromeApp } = await runWithFakeNode({ workspace });
+    const { result, args, openArgs, chromeArgs } = await runWithFakeNode({ workspace });
 
     expect(result.status).toBe(0);
     expect(args).toEqual([
@@ -96,10 +111,8 @@ describe("openclaw-suno-login.sh", () => {
       "--cdp-endpoint",
       "http://127.0.0.1:9222"
     ]);
-    expect(openArgs).toEqual([
-      "-na",
-      chromeApp,
-      "--args",
+    expect(openArgs).toEqual([]);
+    expect(chromeArgs).toEqual([
       `--user-data-dir=${join(workspace, "runtime/suno/cli/browser-profile")}`,
       "--profile-directory=Default",
       "--remote-debugging-address=127.0.0.1",
@@ -113,19 +126,31 @@ describe("openclaw-suno-login.sh", () => {
   });
 
   it("resolves the visible Chrome app from installed Playwright when no override is set", async () => {
-    const { result, openArgs, chromeApp } = await runWithFakeNode({ chromeExecutable: null });
+    const { result, openArgs, chromeArgs, chromeApp } = await runWithFakeNode({ chromeExecutable: null });
 
     expect(result.status).toBe(0);
-    expect(openArgs[1]).toBe(chromeApp);
-    expect(openArgs).toContain("--password-store=basic");
+    expect(openArgs).toEqual([]);
+    expect(chromeArgs[0]).toContain("--user-data-dir=");
+    expect(chromeApp).toContain("Google Chrome for Testing.app");
+    expect(chromeArgs).toContain("--password-store=basic");
   });
 
   it("fails before launching when Playwright returns no executable", async () => {
-    const { result, openArgs } = await runWithFakeNode({ chromeExecutable: null, playwrightExecutable: null });
+    const { result, openArgs, chromeArgs } = await runWithFakeNode({ chromeExecutable: null, playwrightExecutable: null });
 
     expect(result.status).not.toBe(0);
     expect(result.stderr).toContain("could not resolve an executable Chrome browser");
     expect(openArgs).toEqual([]);
+    expect(chromeArgs).toEqual([]);
+  });
+
+  it("cleans up the directly spawned browser when CDP never becomes ready", async () => {
+    const { result, chromePid } = await runWithFakeNode({ cdpTimeout: true });
+
+    expect(result.status).not.toBe(0);
+    expect(result.stderr).toContain("did not expose loopback CDP");
+    expect(chromePid).toBeDefined();
+    expect(() => process.kill(chromePid!, 0)).toThrow();
   });
 
   it("falls back to the repository workspace when no workspace env is set", async () => {

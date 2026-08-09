@@ -220,7 +220,7 @@ machine. This repository carries that runtime hardening patch on top of
 `VENDOR_COMMIT` `165ab8c`; the vendor marker is intentionally unchanged.
 
 The no-argument `scripts/openclaw-suno-login.sh` launches the matching visible
-Chrome for Testing bundle through macOS LaunchServices with
+Chrome for Testing executable directly (when invoked from a GUI terminal) with
 `--password-store=basic`, loopback-only remote debugging, and the authoritative
 CLI profile, then invokes `suno-cli login --cdp-endpoint` to capture that already
 authenticated Suno page. With `OPENCLAW_SUNO_CHROME_EXECUTABLE` set, that
