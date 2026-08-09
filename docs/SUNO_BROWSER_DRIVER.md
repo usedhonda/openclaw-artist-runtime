@@ -210,6 +210,15 @@ both artifacts consumed by the runtime:
 - `<workspace>/runtime/suno/cli/browser-profile/` — persistent browser profile;
 - `<workspace>/runtime/suno/cli/session.json` — the CLI session used for API auth.
 
+The packaged `suno-cli` persistent-browser launcher passes
+`--password-store=basic`, keeping its password-store data in the local profile
+instead of requesting macOS Chromium Safe Storage. A macOS Keychain
+login-password prompt is therefore not expected for this login lane. The
+profile remains sensitive authenticated state and must stay private and local;
+do not copy it into logs, screenshots, ledgers, package artifacts, or another
+machine. This repository carries that runtime hardening patch on top of
+`VENDOR_COMMIT` `165ab8c`; the vendor marker is intentionally unchanged.
+
 The no-argument `scripts/openclaw-suno-login.sh` invokes `suno-cli login` for this
 data directory. `<workspace>` is `OPENCLAW_LOCAL_WORKSPACE` when set, otherwise
 `.local/openclaw/workspace` in the repository.

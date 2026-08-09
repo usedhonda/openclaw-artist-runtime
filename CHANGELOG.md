@@ -48,6 +48,11 @@
 - Plan v9.5 finalizes the autopilot revival and Telegram bridge dogfood pass: RuntimeEventBus stage/state/take notifications, owner-only Telegram commands, local free-text inbox staging, debug-only `/review <songId>` mock AI review, and final pre-release distribution gate coverage.
 
 ### Fixed
+- Hardened the vendored `suno-cli` persistent browser login with
+  `--password-store=basic`, avoiding the macOS Chromium Safe Storage
+  login-password prompt while keeping the authenticated browser profile
+  explicitly private and local. The runtime patch is layered on vendor commit
+  `165ab8c`; `VENDOR_COMMIT` remains unchanged.
 - Added a reversible `openclaw-suno-login.sh --fresh` recovery that quarantines
   only the CLI browser profile and `session.json`, preserves `runs.json` in
   place, and starts a clean vendored CLI login without deleting the quarantine.

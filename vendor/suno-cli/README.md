@@ -61,6 +61,16 @@ suno-cli download <run-id|clip-id|song-url> --out ./downloads
 ~/.local/share/suno-kit/
 ```
 
+The persistent Chromium profile uses the local basic password store
+(`--password-store=basic`) instead of macOS Chromium Safe Storage, so a
+macOS Keychain login-password prompt is not expected during CLI login. Keep
+this profile private and local: it contains authenticated browser state and
+must not be copied into logs, screenshots, issues, or package artifacts.
+
+The packaged browser launch carries a runtime hardening patch on top of
+`VENDOR_COMMIT` `165ab8c`; that marker remains the upstream vendor revision and
+is intentionally not modified.
+
 Runtime files stay outside the repository. The saved session is written with owner-only permissions where the OS supports them. To clear saved auth and the browser profile:
 
 ```bash
