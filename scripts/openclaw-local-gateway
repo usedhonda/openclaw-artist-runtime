@@ -17,6 +17,10 @@ common_args=(
   --port "${OPENCLAW_LOCAL_GATEWAY_PORT}"
 )
 
+launchd_label="com.openclaw.artist-runtime.gateway"
+launchd_service_target="gui/$(id -u)/${launchd_label}"
+supervisor_lock="${OPENCLAW_LOCAL_WORKSPACE}/runtime/gateway-supervisor.lock"
+
 ensure_runtime_dirs() {
   mkdir -p "${OPENCLAW_LOCAL_ROOT}" "${OPENCLAW_HOME}" "${OPENCLAW_STATE_DIR}" "${OPENCLAW_LOCAL_WORKSPACE}" "${OPENCLAW_LOCAL_LOGS}" "$(dirname "${OPENCLAW_CONFIG_PATH}")"
 }
@@ -98,6 +102,67 @@ cleanup_stale_pid() {
   fi
 }
 
+launchd_service_loaded() {
+  command -v launchctl >/dev/null 2>&1 && launchctl print "${launchd_service_target}" >/dev/null 2>&1
+}
+
+launchd_service_pid() {
+  launchctl print "${launchd_service_target}" 2>/dev/null \
+    | awk '$1 == "pid" && $2 == "=" && $3 ~ /^[0-9]+$/ { print $3; exit }'
+}
+
+live_supervisor_lock_owner() {
+  local owner_pid=""
+  if [[ -f "${supervisor_lock}" ]]; then
+    owner_pid="$(tr -d '[:space:]' < "${supervisor_lock}" 2>/dev/null || true)"
+  fi
+  if [[ -n "${owner_pid}" ]] && gateway_pid_is_live "${owner_pid}" \
+    && ps -o args= -p "${owner_pid}" 2>/dev/null | grep -Fq "openclaw-local-gateway-supervisor"; then
+    printf '%s\n' "${owner_pid}"
+  fi
+}
+
+launchd_owner_state() {
+  # 0 = launchd owns a live supervisor, 1 = launchd is not loaded, 2 = loaded
+  # but not ready. The latter must fail closed rather than spawning a contender.
+  if ! launchd_service_loaded; then
+    return 1
+  fi
+  local launchd_pid lock_pid
+  launchd_pid="$(launchd_service_pid)"
+  lock_pid="$(live_supervisor_lock_owner)"
+  if [[ -n "${launchd_pid}" && "${launchd_pid}" == "${lock_pid}" ]]; then
+    return 0
+  fi
+  return 2
+}
+
+manual_start_owner_guard() {
+  local launchd_state
+  if launchd_owner_state 2>/dev/null; then
+    launchd_state=0
+  else
+    launchd_state=$?
+  fi
+  case "${launchd_state}" in
+    0)
+      echo "Gateway already running under launchd; use scripts/openclaw-gateway-launchd.sh restart for lifecycle changes." >&2
+      return 0
+      ;;
+    2)
+      echo "Gateway launchd service is loaded but its supervisor is not ready; refusing a second supervisor. Check scripts/openclaw-gateway-launchd.sh status." >&2
+      return 2
+      ;;
+  esac
+  local owner_pid
+  owner_pid="$(live_supervisor_lock_owner)"
+  if [[ -n "${owner_pid}" ]]; then
+    echo "Gateway already running (supervisor pid ${owner_pid}); refusing a second supervisor." >&2
+    return 0
+  fi
+  return 1
+}
+
 case "${command}" in
   run)
     ensure_runtime_dirs
@@ -107,6 +172,14 @@ case "${command}" in
   start)
     ensure_runtime_dirs
     ensure_gateway_config
+    if manual_start_owner_guard; then
+      exit 0
+    else
+      guard_rc=$?
+      if [[ "${guard_rc}" -eq 2 ]]; then
+        exit 1
+      fi
+    fi
     cleanup_stale_pid
     existing_pid="$(read_gateway_pid)"
     if gateway_pid_is_live "${existing_pid:-}"; then
@@ -122,10 +195,19 @@ case "${command}" in
     disown "${gateway_pid}" 2>/dev/null || true
     echo "${gateway_pid}" > "${OPENCLAW_LOCAL_GATEWAY_PID}"
     for _ in $(seq 1 20); do
+      lock_owner="$(live_supervisor_lock_owner)"
+      if [[ -n "${lock_owner}" && "${lock_owner}" != "${gateway_pid}" ]]; then
+        echo "Gateway start refused: spawned supervisor does not own the singleton lock; another owner is live." >&2
+        kill "${gateway_pid}" 2>/dev/null || true
+        rm -f "${OPENCLAW_LOCAL_GATEWAY_PID}"
+        exit 1
+      fi
       if "${script_dir}/openclaw-local-http-smoke.sh" >/dev/null 2>&1; then
-        echo "Gateway started (pid ${gateway_pid})."
-        echo "Log: ${OPENCLAW_LOCAL_GATEWAY_LOG}"
-        exit 0
+        if [[ "${lock_owner}" == "${gateway_pid}" ]] && gateway_pid_is_live "${gateway_pid}"; then
+          echo "Gateway started (pid ${gateway_pid})."
+          echo "Log: ${OPENCLAW_LOCAL_GATEWAY_LOG}"
+          exit 0
+        fi
       fi
       sleep 1
       if ! gateway_pid_is_live "${gateway_pid}"; then
@@ -138,6 +220,10 @@ case "${command}" in
     exit 1
     ;;
   stop)
+    if launchd_service_loaded; then
+      echo "Gateway is launchd-managed; refusing manual stop. Use scripts/openclaw-gateway-launchd.sh stop or restart." >&2
+      exit 1
+    fi
     cleanup_stale_pid
     existing_pid="$(read_gateway_pid)"
     if [[ -z "${existing_pid}" ]]; then

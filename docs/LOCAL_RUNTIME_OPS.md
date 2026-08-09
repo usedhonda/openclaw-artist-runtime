@@ -20,6 +20,12 @@ worker, and the Telegram producer room all run inside this gateway process.
 The `openclaw` binary itself is **not** global; it lives at
 `.local/openclaw/bin/openclaw` and is invoked through `scripts/openclaw-local`.
 
+There must be exactly one lifecycle owner. Choose either the manual wrapper
+(`scripts/openclaw-local-gateway start|stop`) or the launchd wrapper
+(`scripts/openclaw-gateway-launchd.sh install|stop|restart`); never run both. The
+manual `start` and `stop` commands fail closed when launchd owns the gateway, so
+they cannot create a contender or kill the launchd tree.
+
 ## Environment: tracked defaults vs machine-specific overlay
 
 `scripts/openclaw-local-env.sh` is a **tracked, generic** launcher. It must never
@@ -56,14 +62,17 @@ scripts/openclaw-local-gateway health
 
 ## Stop (clean, no leftovers)
 
-A plain `stop` kills the PID-file supervisor, but nested supervisors/watchers
-can survive. To tear the whole tree down:
+In manual mode, stop the PID-file supervisor with:
 
 ```sh
 scripts/openclaw-local-gateway stop
-pkill -f "openclaw-ticker-watcher" || true
-pkill -f "openclaw-local-gateway-supervisor" || true
-pkill -f "gateway run" || true
+```
+
+If launchd is installed, do not use the manual command. Boot the launchd job
+out through its owner wrapper instead:
+
+```sh
+scripts/openclaw-gateway-launchd.sh stop
 ```
 
 Then confirm nothing still holds the port (no output = clean):
@@ -96,11 +105,9 @@ exhausted-retry song actually re-attempts.
 
 ## Auto-restart via launchd (persistent gateway)
 
-By default the gateway only runs while you keep it running. On 2026-07-20 a
-graceful stop left it down and nobody restarted it for six days, so song
-production silently stalled. To make the gateway survive login and its own
-death, register it as a per-user launchd LaunchAgent (gui domain, no sudo, no
-LaunchDaemon):
+To make the gateway survive login and its own death, register it as a per-user
+launchd LaunchAgent (gui domain, no sudo, no LaunchDaemon). Do this only when
+the manual gateway is stopped:
 
 ```sh
 scripts/openclaw-gateway-launchd.sh install
@@ -139,20 +146,20 @@ lifecycle, **not** `openclaw-local-gateway stop/start`:
 
 ```sh
 scripts/openclaw-gateway-launchd.sh restart    # force restart (launchctl kickstart -k)
+scripts/openclaw-gateway-launchd.sh stop       # boot out the job, keep plist
 scripts/openclaw-gateway-launchd.sh status     # loaded? pid? last exit code
 scripts/openclaw-gateway-launchd.sh uninstall  # stop, unload, remove the plist
 ```
 
-Coexistence notes:
+Ownership notes:
 
-- `openclaw-local-gateway stop` kills only the PID-file supervisor. Under
-  launchd there is no PID file, so `stop` reports "not running" while the
-  launchd-managed supervisor keeps going. To actually stop a launchd gateway,
-  run `uninstall` (or `launchctl bootout gui/$(id -u) <plist>`).
-- `openclaw-local-gateway start` while launchd is managing the gateway is
-  harmless but pointless: the supervisor's singleton lock detects the live
-  launchd supervisor (same argv) and the new one exits immediately. Use
-  `scripts/openclaw-gateway-launchd.sh restart` instead.
+- `openclaw-local-gateway stop` refuses to kill anything while the launchd job
+  is loaded. Use `scripts/openclaw-gateway-launchd.sh stop` or `restart`.
+- `openclaw-local-gateway start` refuses to spawn while launchd owns the live
+  supervisor, and also refuses when launchd is loaded but not ready. It never
+  treats another owner's HTTP listener as proof that its own process started.
+- A manual start reports success only after its spawned PID is alive and owns
+  `runtime/gateway-supervisor.lock`; the HTTP smoke check is secondary.
 - After a source rebuild (`npm run build:runtime`), restart with
   `scripts/openclaw-gateway-launchd.sh restart` rather than the manual Stop/Start
   sequence.
@@ -167,8 +174,8 @@ source change you must rebuild and restart:
 
 ```sh
 npm run build:runtime          # rebuild dist
-# then run the full Stop sequence above, then:
-scripts/openclaw-local-gateway start
+# then restart exactly one lifecycle owner:
+scripts/openclaw-gateway-launchd.sh restart
 ```
 
 Confirm the new process is newer than the dist build time before trusting it.
@@ -209,8 +216,10 @@ submitted successfully at `maxLength=5000` (`readbackMatches: true`).
 
 ## Troubleshooting
 
-- **Multiple supervisors / port held:** run the full Stop sequence, confirm the
-  port is clear, then Start.
+- **Multiple supervisors / port held:** inspect the owner with
+  `scripts/openclaw-gateway-launchd.sh status`; use that wrapper for launchd or
+  `scripts/openclaw-local-gateway stop` for manual mode, then start exactly one
+  owner.
 - **Telegram silent:** check `.local/openclaw/logs/gateway.log` and the
   `channels.telegram` block in `scripts/openclaw-local-gateway health`. Emit is
   not delivery. Successful signal sends append metadata-only receipts to

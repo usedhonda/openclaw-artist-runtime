@@ -48,6 +48,12 @@
 - Plan v9.5 finalizes the autopilot revival and Telegram bridge dogfood pass: RuntimeEventBus stage/state/take notifications, owner-only Telegram commands, local free-text inbox staging, debug-only `/review <songId>` mock AI review, and final pre-release distribution gate coverage.
 
 ### Fixed
+- Hardened the local gateway lifecycle wrappers against mixed manual/launchd
+  ownership. Manual start now refuses a loaded launchd service, requires its
+  spawned PID to own the supervisor lock before accepting HTTP readiness, and
+  rejects foreign-listener false positives. Manual stop fails closed under
+  launchd; `scripts/openclaw-gateway-launchd.sh stop` now provides the matching
+  owner-safe stop path.
 - Changed the no-argument Suno login recovery to attach explicitly over a
   loopback CDP endpoint to a directly spawned visible Chrome for Testing instance using the
   authoritative CLI profile and `--password-store=basic`. It resolves the

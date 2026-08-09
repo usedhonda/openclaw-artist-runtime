@@ -11,6 +11,7 @@
 #
 # Usage:
 #   scripts/openclaw-gateway-launchd.sh install     # generate plist + load + start
+#   scripts/openclaw-gateway-launchd.sh stop        # stop without removing plist
 #   scripts/openclaw-gateway-launchd.sh uninstall   # stop + unload + remove plist
 #   scripts/openclaw-gateway-launchd.sh restart     # kickstart -k (force restart)
 #   scripts/openclaw-gateway-launchd.sh status      # launchctl print + health hint
@@ -101,6 +102,20 @@ cmd_uninstall() {
   echo "Gateway is no longer launchd-managed. Use scripts/openclaw-local-gateway start to run it manually."
 }
 
+cmd_stop() {
+  if ! is_loaded; then
+    echo "Service not loaded; nothing to stop."
+    return 0
+  fi
+  if launchctl bootout "${gui_domain}" "${plist_path}" 2>/dev/null || \
+    launchctl bootout "${service_target}" 2>/dev/null; then
+    echo "Stopped ${service_target}"
+  else
+    echo "Could not stop ${service_target}" >&2
+    return 1
+  fi
+}
+
 cmd_restart() {
   if ! is_loaded; then
     echo "Service not loaded. Run: $0 install" >&2
@@ -124,6 +139,7 @@ cmd_status() {
 
 case "${1:-status}" in
   install) cmd_install ;;
+  stop) cmd_stop ;;
   uninstall) cmd_uninstall ;;
   restart) cmd_restart ;;
   generate) generate_plist ;;
