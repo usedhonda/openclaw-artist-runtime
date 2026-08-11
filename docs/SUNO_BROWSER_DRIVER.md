@@ -149,9 +149,9 @@ Flow when a live create returns `suno_cli_blocked_captcha`:
 
 1. open the plugin-owned browser at `suno.com/create` and auto-fill the form from
    the saved `suno-payload.json` (lyrics/style/title/exclude);
-2. close the confirmed non-transactional `Our Terms Are Changing` site-news
-   dialog when it is visible. Other dialogs, including login, payment, consent,
-   and captcha surfaces, are never generically dismissed;
+2. close non-transactional site-news or upsell dialogs through an explicit
+   accessible `Close` control. Dialogs containing form/challenge controls or
+   login, payment, consent, and captcha language remain fail-closed;
 3. try a **machine** Create click. If Suno accepts it (new `/song/<id>` cards
    appear) the run continues through the normal record/import pipeline with **zero
    human involvement**;

@@ -49,8 +49,11 @@ const POLL_INTERVAL_MS = 3_000;
 const FEED_RECONCILE_ATTEMPTS = 5;
 const FEED_RECONCILE_INTERVAL_MS = 3_000;
 const INFORMATIONAL_DIALOG_CLOSE_TIMEOUT_MS = 5_000;
-const TERMS_UPDATE_DIALOG_CLOSE_SELECTOR =
-  '[role="dialog"]:has-text("Our Terms Are Changing") button[aria-label="Close"]';
+const DIALOG_SELECTOR = '[role="dialog"]';
+const DIALOG_CLOSE_SELECTOR = 'button[aria-label="Close"]';
+const SENSITIVE_DIALOG_CONTROL_SELECTOR = "input, textarea, select, iframe";
+const SENSITIVE_DIALOG_TEXT =
+  /\b(?:captcha|turnstile|verify you are human|sign\s*in|log\s*in|password|payment|billing|checkout|credit card|debit card|card number|cvv|purchase|pay now|accept|agree|consent)\b/i;
 
 function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
@@ -65,17 +68,25 @@ function extractLyrics(payload: SunoCreatePayload): string | undefined {
 }
 
 /**
- * Close only the confirmed non-transactional Suno Terms update notice. This is
- * intentionally narrower than a generic dialog dismiss: login, payment, consent,
- * and captcha surfaces must remain visible and fail closed.
+ * Close a non-transactional Suno notice or upsell through its explicit Close
+ * control. Dialogs with form/challenge controls or sensitive login, payment,
+ * consent, and captcha language remain visible and fail closed.
  */
-export async function dismissKnownSunoInformationalDialog(page: Page): Promise<boolean> {
-  const closeButton = page.locator(TERMS_UPDATE_DIALOG_CLOSE_SELECTOR).first();
-  if (!(await closeButton.isVisible().catch(() => false))) {
-    return false;
+export async function dismissSafeSunoBlockingDialog(page: Page): Promise<boolean> {
+  const dialogs = page.locator(DIALOG_SELECTOR);
+  const dialogCount = await dialogs.count();
+  for (let index = 0; index < dialogCount; index += 1) {
+    const dialog = dialogs.nth(index);
+    if (!(await dialog.isVisible().catch(() => false))) continue;
+    const text = await dialog.innerText().catch(() => "");
+    if (SENSITIVE_DIALOG_TEXT.test(text)) continue;
+    if ((await dialog.locator(SENSITIVE_DIALOG_CONTROL_SELECTOR).count()) > 0) continue;
+    const closeButton = dialog.locator(DIALOG_CLOSE_SELECTOR).first();
+    if (!(await closeButton.isVisible().catch(() => false))) continue;
+    await closeButton.click({ timeout: INFORMATIONAL_DIALOG_CLOSE_TIMEOUT_MS });
+    return true;
   }
-  await closeButton.click({ timeout: INFORMATIONAL_DIALOG_CLOSE_TIMEOUT_MS });
-  return true;
+  return false;
 }
 
 export interface CdpHumanAssistDriverInput {
@@ -212,10 +223,10 @@ export class CdpHumanAssistDriver implements HumanAssistBrowserDriver {
 
   async attemptMachineSubmit(): Promise<HumanAssistSubmitOutcome> {
     const page = this.requirePage();
-    // Suno can place a site-news dialog over an otherwise complete create form.
-    // Dismiss the one confirmed informational notice before resolving/clicking
+    // Suno can place site-news or upsell dialogs over an otherwise complete
+    // create form. Dismiss only a safe explicit-Close surface before resolving
     // Create so Playwright does not burn repeated 25-second pointer retries.
-    await dismissKnownSunoInformationalDialog(page);
+    await dismissSafeSunoBlockingDialog(page);
     const createButton = await resolveFirstVisibleLocator(
       page,
       SUNO_CREATE_FALLBACKS.createButton,
