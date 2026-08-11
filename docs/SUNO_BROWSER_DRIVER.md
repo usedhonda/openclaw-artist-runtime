@@ -149,16 +149,19 @@ Flow when a live create returns `suno_cli_blocked_captcha`:
 
 1. open the plugin-owned browser at `suno.com/create` and auto-fill the form from
    the saved `suno-payload.json` (lyrics/style/title/exclude);
-2. try a **machine** Create click. If Suno accepts it (new `/song/<id>` cards
+2. close the confirmed non-transactional `Our Terms Are Changing` site-news
+   dialog when it is visible. Other dialogs, including login, payment, consent,
+   and captcha surfaces, are never generically dismissed;
+3. try a **machine** Create click. If Suno accepts it (new `/song/<id>` cards
    appear) the run continues through the normal record/import pipeline with **zero
    human involvement**;
-3. if an hCaptcha challenge appears, **close the challenge overlay** (Escape only
+4. if an hCaptcha challenge appears, **close the challenge overlay** (Escape only
    — it is never solved or bypassed), keep the filled form, bring the window to
    the front, and send one Telegram alert asking the producer to press Create on
    the Mac (with the song title). State is `awaiting_human_create`;
-4. when the producer presses Create and new `/song/<id>` cards appear, the run is
+5. when the producer presses Create and new `/song/<id>` cards appear, the run is
    recorded as accepted and flows into the usual import/notify pipeline;
-5. if no manual click lands within `humanAssistTimeoutMinutes` (default 60), the
+6. if no manual click lands within `humanAssistTimeoutMinutes` (default 60), the
    browser reference is released and the song returns to the generation pipeline
    for a later retry. This is **not** a hard stop: the producer is re-prompted at
    most once per cycle (the alert fires once per attempt), throttled by the daily

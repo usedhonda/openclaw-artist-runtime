@@ -2,6 +2,13 @@
 
 ## [Unreleased]
 
+### Fixed
+- The Suno human-assist driver now closes the confirmed informational `Our Terms
+  Are Changing` dialog before clicking Create. The notice previously intercepted
+  the pointer for 25 seconds per attempt and surfaced repeated generation-failure
+  alerts in Telegram. Login, payment, consent, and captcha dialogs remain
+  fail-closed and are not generically dismissed.
+
 ### Added
 - Reframed the artist's creative identity as high-velocity progressive rap: fast technical flow, rapid motivated section turns, metric displacement, motif callbacks, and transformed final-hook returns over the existing nu-jazz / Shibuya civic-satire core. Overt density is bounded to 2-4 bar bursts, and Telegram result cards now use `high-velocity-prog` display terminology while preserving internal ledger compatibility.
 - Successful Telegram signal deliveries now append a metadata-only receipt to

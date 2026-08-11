@@ -48,6 +48,9 @@ const POLL_INTERVAL_MS = 3_000;
 // so give it a short bounded poll before falling back to the DOM harvest.
 const FEED_RECONCILE_ATTEMPTS = 5;
 const FEED_RECONCILE_INTERVAL_MS = 3_000;
+const INFORMATIONAL_DIALOG_CLOSE_TIMEOUT_MS = 5_000;
+const TERMS_UPDATE_DIALOG_CLOSE_SELECTOR =
+  '[role="dialog"]:has-text("Our Terms Are Changing") button[aria-label="Close"]';
 
 function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
@@ -59,6 +62,20 @@ function readText(value: unknown): string | undefined {
 
 function extractLyrics(payload: SunoCreatePayload): string | undefined {
   return readText(payload.payloadYaml) ?? readText(payload.lyrics) ?? readText(payload.lyricsText);
+}
+
+/**
+ * Close only the confirmed non-transactional Suno Terms update notice. This is
+ * intentionally narrower than a generic dialog dismiss: login, payment, consent,
+ * and captcha surfaces must remain visible and fail closed.
+ */
+export async function dismissKnownSunoInformationalDialog(page: Page): Promise<boolean> {
+  const closeButton = page.locator(TERMS_UPDATE_DIALOG_CLOSE_SELECTOR).first();
+  if (!(await closeButton.isVisible().catch(() => false))) {
+    return false;
+  }
+  await closeButton.click({ timeout: INFORMATIONAL_DIALOG_CLOSE_TIMEOUT_MS });
+  return true;
 }
 
 export interface CdpHumanAssistDriverInput {
@@ -195,6 +212,10 @@ export class CdpHumanAssistDriver implements HumanAssistBrowserDriver {
 
   async attemptMachineSubmit(): Promise<HumanAssistSubmitOutcome> {
     const page = this.requirePage();
+    // Suno can place a site-news dialog over an otherwise complete create form.
+    // Dismiss the one confirmed informational notice before resolving/clicking
+    // Create so Playwright does not burn repeated 25-second pointer retries.
+    await dismissKnownSunoInformationalDialog(page);
     const createButton = await resolveFirstVisibleLocator(
       page,
       SUNO_CREATE_FALLBACKS.createButton,
