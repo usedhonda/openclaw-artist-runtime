@@ -28,12 +28,12 @@ describe("config field source metadata", () => {
     expect(config.autopilot.dryRun).toBe(false);
     expect(config.music.suno.connectionMode).toBe("background_browser_worker");
     expect(config.music.suno.driver).toBe("playwright");
-    expect(config.music.suno.submitMode).toBe("live");
+    expect(config.music.suno.submitMode).toBe("skip");
     expect(config.aiReview.provider).toBe("openclaw");
     expect(config.fieldMeta["autopilot.dryRun"]).toMatchObject({ source: "env", editable: false, envVar: "OPENCLAW_AUTOPILOT_DRYRUN_OVERRIDE" });
     expect(config.fieldMeta["music.suno.connectionMode"]).toMatchObject({ source: "env", editable: false, envVar: "OPENCLAW_SUNO_LIVE" });
     expect(config.fieldMeta["music.suno.driver"]).toMatchObject({ source: "env", editable: false, envVar: "OPENCLAW_SUNO_LIVE" });
-    expect(config.fieldMeta["music.suno.submitMode"]).toMatchObject({ source: "env", editable: false, envVar: "OPENCLAW_SUNO_LIVE" });
+    expect(config.fieldMeta["music.suno.submitMode"]).toMatchObject({ source: "config", editable: true });
     expect(config.fieldMeta["aiReview.provider"]).toMatchObject({ source: "env", editable: false, envVar: "OPENCLAW_AI_REVIEW_PROVIDER" });
   });
 
@@ -49,7 +49,7 @@ describe("config field source metadata", () => {
 
     expect(patch.autopilot).not.toHaveProperty("dryRun");
     expect(patch.music?.suno).not.toHaveProperty("driver");
-    expect(patch.music?.suno).not.toHaveProperty("submitMode");
+    expect(patch.music?.suno?.submitMode).toBe("skip");
     expect(patch.aiReview).not.toHaveProperty("provider");
     expect(patch.autopilot?.cycleIntervalMinutes).toBe(180);
     expect(patch.music?.suno?.dailyCreditLimit).toBe(60);

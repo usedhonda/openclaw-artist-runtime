@@ -33,7 +33,7 @@ describe("Suno live env overrides", () => {
     const config = await resolveRuntimeConfig({ artist: { workspaceRoot: root } as never });
 
     expect(config.music.suno.driver).toBe("playwright");
-    expect(config.music.suno.submitMode).toBe("live");
+    expect(config.music.suno.submitMode).toBe("skip");
     expect(config.autopilot.dryRun).toBe(false);
     expect(config.distribution.liveGoArmed).toBe(false);
     expect(config.distribution.platforms.x.liveGoArmed).toBe(false);

@@ -412,7 +412,6 @@ export function applyRuntimeEnvOverrides(config: ArtistRuntimeConfig, env: NodeJ
       next.music.suno.connectionMode = "background_browser_worker";
       next.music.suno.driver = "playwright";
     }
-    next.music.suno.submitMode = "live";
   }
   const submitMode = env.OPENCLAW_SUNO_SUBMIT_MODE?.trim().toLowerCase();
   if (!isSunoLiveDisabled(env) && (submitMode === "live" || submitMode === "manual" || submitMode === "skip")) {

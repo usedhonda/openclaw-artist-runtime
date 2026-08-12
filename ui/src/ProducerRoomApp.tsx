@@ -665,10 +665,18 @@ export function SettingsView(props: {
                   <FieldSourceNote meta={fieldMeta("music.suno.connectionMode")} />
                   <FieldSourceNote meta={fieldMeta("music.suno.driver")} />
                 </div>
-                <div className="settings-readonly">
-                  <div className="eyebrow">Create button</div>
-                  <strong>Live submit</strong>
-                  <div className="warning-banner">{t(locale, "settingsCreateButtonWarning")}</div>
+                <div>
+                  <label className="toggle">
+                    <input
+                      type="checkbox"
+                      checked={draft.sunoSubmitMode === "live"}
+                      disabled={fieldMeta("music.suno.submitMode")?.editable === false}
+                      onChange={(event) => props.onUpdateDraft({ sunoSubmitMode: event.target.checked ? "live" : "manual" })}
+                    />
+                    {t(locale, "settingsAutoCreate")}
+                  </label>
+                  <div className="muted">{t(locale, "settingsAutoCreateHelp")}</div>
+                  {draft.sunoSubmitMode === "live" ? <div className="warning-banner">{t(locale, "settingsCreateButtonWarning")}</div> : null}
                   <FieldSourceNote meta={fieldMeta("music.suno.submitMode")} />
                 </div>
               </div>

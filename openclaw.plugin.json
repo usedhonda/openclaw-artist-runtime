@@ -768,8 +768,8 @@
       "help": "Select 'mock' for the built-in dry-run skeleton or 'playwright' after the operator installs playwright locally."
     },
     "music.suno.submitMode": {
-      "label": "Suno submit mode",
-      "help": "Use 'skip' for no-submit validation, 'manual' to edit the autofilled form and press Create yourself, or 'live' for an automatic Create click when budget gates allow it."
+      "label": "Press Create automatically",
+      "help": "Use 'manual' (off) to edit the autofilled form and press Create yourself, or 'live' (on) for an automatic Create click when budget gates allow it. 'skip' remains a no-submit validation mode."
     },
     "music.suno.captchaFallback": {
       "label": "Captcha fallback",

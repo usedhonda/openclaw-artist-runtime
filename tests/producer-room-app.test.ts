@@ -269,8 +269,8 @@ describe("ProducerRoomApp Songs and Settings views", () => {
     expect(html).toContain("AI / Audit");
     expect(html).toContain("Creation driver");
     expect(html).toContain("Browser worker");
-    expect(html).toContain("Create button");
-    expect(html).toContain("Live submit");
+    expect(html).toContain("Press Create automatically");
+    expect(html).toContain("Off: fill the form and wait for your edits and Create click.");
     expect(html).toContain("Instagram");
     expect(html).toContain("TikTok");
     expect(html).toContain("Save settings");
@@ -402,6 +402,7 @@ describe("ProducerRoomApp Songs and Settings views", () => {
     expect(html).toContain("source: env OPENCLAW_SUNO_LIVE");
     expect(html).toContain("source: env OPENCLAW_DASHBOARD_BASE_URL");
     expect(html).toContain("source: env OPENCLAW_AI_REVIEW_PROVIDER");
+    expect(html).toContain("Press Create automatically");
     expect(html).toContain("editable fallback");
     expect(html).toContain("read-only here");
     expect(html).toContain("disabled");

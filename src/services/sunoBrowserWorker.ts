@@ -281,7 +281,7 @@ export class SunoBrowserWorker {
     if (driverMode === "playwright") {
       return new PlaywrightSunoDriver(
         this.profilePath(),
-        this.options.submitMode ?? (isSunoLiveEnabled() ? "live" : this.options.config?.music?.suno?.submitMode ?? "skip"),
+        this.options.submitMode ?? this.options.config?.music?.suno?.submitMode ?? "skip",
         this.workspaceRoot
       );
     }
