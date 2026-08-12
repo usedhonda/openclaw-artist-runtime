@@ -118,10 +118,13 @@ describe("TelegramNotifier", () => {
       timestamp: 1
     });
 
-    expect(text).toContain("残りのパラメータを調整して");
-    expect(text).toContain("自動で Create を押さない");
-    expect(text).toContain("押した後は自動でURL取得と取込を続ける");
+    expect(text).toContain("「Neon Alley」の入力は済ませた");
+    expect(text).toContain("残りを調整して");
+    expect(text).toContain("取込と選曲まで自動で続ける");
+    expect(text).toContain("こちらから Create は押さない");
     expect(text).not.toContain("captcha が出た");
+    expect(text).not.toContain("song-manual");
+    expect(text).not.toContain("song:");
   });
 
   it("formats observation collection diagnostics without making rejected tweets visible", async () => {

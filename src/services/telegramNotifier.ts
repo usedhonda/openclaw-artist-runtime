@@ -1694,13 +1694,9 @@ async function formatRuntimeEventRaw(
     case "suno_human_assist_requested":
       if (event.mode === "manual_submit") {
         return [
-          `Suno の入力は済ませた。残りのパラメータを調整して「Create」を押して。曲: ${event.title}`,
-          "",
-          TELEGRAM_SECTION_DIVIDER,
-          `song: ${event.songId}`,
-          `title: ${event.title}`,
-          `待機: 最大 ${event.timeoutMinutes} 分。押した後は自動でURL取得と取込を続ける。`,
-          "注: このモードでは自動で Create を押さない。ブラウザは開いたまま前面に出してある。"
+          `「${event.title}」の入力は済ませた。残りを調整して「Create」を押して。`,
+          `最大 ${event.timeoutMinutes} 分待つ。押した後は取込と選曲まで自動で続ける。`,
+          "このモードでは、こちらから Create は押さない。"
         ].join("\n");
       }
       return [
