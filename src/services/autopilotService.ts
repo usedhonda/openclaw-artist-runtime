@@ -956,8 +956,8 @@ async function createPromptPackForSong(root: string, song: SongState, config?: P
 // undefined when the failure is not a lyrics-content class we can guide (style
 // cap, missing fields, lyrics-box overflow), which routes straight to parking.
 // Above this many offending tokens, enumerating each one is fragile: only one
-// corrective re-draft is allowed, and the model missing a single token in a long
-// list re-fails validation and parks the song. Dense fast-band lyrics regularly
+// bounded corrective re-drafts are allowed, and the model missing a single token in a long
+// list can still re-fail validation and park the song. Dense fast-band lyrics regularly
 // cross this, so switch to a blanket all-hiragana rewrite instead of a per-token
 // list. Expanding the deterministic kana dictionary is deliberately not the fix.
 const BLANKET_HIRAGANA_REWRITE_THRESHOLD = 8;
@@ -982,9 +982,8 @@ export function correctionGuidanceFromDegraded(reason: string): string[] | undef
       "この曲の Suno 登録用歌詞本文には漢字や数字が多く残っている。個別に直すのではなく、歌詞本文（セクションタグ内の各行）を、漢字を一切使わず、数字もひらがなの読みにして、全文をひらがなで書き直すこと（カタカナと英語はそのまま、意味・行数・歌いやすさは保つ。1文字でも漢字が残ると不合格）。"
     ];
   }
-  // Only one corrective re-draft is allowed, so the guidance must ask for every
-  // offending token to be resolved in this single rewrite (leaving one behind
-  // fails validation again and parks the song).
+  // Each corrective re-draft should resolve every reported token. Leaving known
+  // tokens behind wastes the bounded retry budget and can still park the song.
   const notes: string[] = [];
   if (kanji.length > 0) {
     const list = kanji.map((match) => `${match[1]}(line ${match[2]})`).join(", ");
@@ -997,7 +996,7 @@ export function correctionGuidanceFromDegraded(reason: string): string[] | undef
   return notes;
 }
 
-// Park a song that stays invalid after auto-repair + one corrective re-draft.
+// Park a song that stays invalid after the bounded corrective re-drafts.
 // Instead of pausing the whole autopilot (head-of-line block), mark the song as a
 // terminal needs-operator state so the ticker advances to the next song, alert the
 // operator once, and preserve the song data for a manual retry. This is a

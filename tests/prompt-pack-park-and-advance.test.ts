@@ -75,7 +75,7 @@ describe("prompt-pack corrective regen + skip-and-advance parking", () => {
     expect(guided![0]).not.toContain("(line 1)");
   });
 
-  it("parks an unrepairable song as a terminal needs-operator state, alerts once, and clears the current song", async () => {
+  it("quarantines an unrepairable song without producer noise or pausing the pipeline", async () => {
     const root = workspace();
     await ensureArtistWorkspace(root);
     await ensureSongState(root, "song-park", "Parked Song");
@@ -90,7 +90,8 @@ describe("prompt-pack corrective regen + skip-and-advance parking", () => {
       existing,
       baseRunState(root, "song-park"),
       "song-park",
-      "lyrics_generation_degraded: suno_prompt_pack_invalid: residual_kanji:蜃気楼:line_2"
+      "lyrics_generation_degraded: suno_prompt_pack_invalid: residual_kanji:蜃気楼:line_2",
+      false
     );
 
     unsubscribe();
@@ -104,10 +105,7 @@ describe("prompt-pack corrective regen + skip-and-advance parking", () => {
     expect(song.degradedLyrics).toBe(true);
     expect(song.lastReason ?? "").toContain("parked_needs_operator");
 
-    const parkedAlerts = events.filter(
-      (event) => event.type === "lyrics_generation_degraded" && event.detail === "parked_needs_operator:song-park"
-    );
-    expect(parkedAlerts).toHaveLength(1);
+    expect(events.filter((event) => event.type === "lyrics_generation_degraded")).toHaveLength(0);
   });
 
   it("does not resurface a parked (terminal failed) song, so there is no 20-minute re-send loop", async () => {
