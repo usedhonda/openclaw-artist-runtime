@@ -1070,6 +1070,7 @@ export interface PersistSunoPromptPackInput extends Omit<CreateSunoPromptPackInp
   observationPath?: string;
   observationSummary?: ObservationSummary;
   aiReviewProvider?: AiReviewProvider;
+  deferDegradedNotification?: boolean;
 }
 
 export interface PersistedPromptPackResult {

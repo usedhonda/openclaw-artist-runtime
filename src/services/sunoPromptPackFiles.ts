@@ -93,19 +93,21 @@ function isLyricsBoxOverflowReason(reason: string): boolean {
 async function failClosedLyricsBoxOverflow(input: PersistSunoPromptPackInput, detail: string): Promise<never> {
   const repairNotes = [`lyrics_too_long_for_suno_box: ${detail}`];
   const reason = `lyrics_generation_degraded: ${repairNotes.join(" | ")}`;
-  emitRuntimeEvent({
-    type: "lyrics_generation_degraded",
-    songId: input.songId,
-    reason,
-    detail,
-    repairNotes,
-    timestamp: Date.now()
-  });
-  await updateSongState(input.workspaceRoot, input.songId, {
-    degradedLyrics: true,
-    reason,
-    status: "brief"
-  });
+  if (!input.deferDegradedNotification) {
+    emitRuntimeEvent({
+      type: "lyrics_generation_degraded",
+      songId: input.songId,
+      reason,
+      detail,
+      repairNotes,
+      timestamp: Date.now()
+    });
+    await updateSongState(input.workspaceRoot, input.songId, {
+      degradedLyrics: true,
+      reason,
+      status: "brief"
+    });
+  }
   const error = new Error(reason);
   throw Object.assign(error, { repairNotes });
 }
@@ -113,19 +115,21 @@ async function failClosedLyricsBoxOverflow(input: PersistSunoPromptPackInput, de
 async function failClosedPromptPackValidation(input: PersistSunoPromptPackInput, detail: string): Promise<never> {
   const repairNotes = [`suno_prompt_pack_invalid: ${detail}`];
   const reason = `lyrics_generation_degraded: ${repairNotes.join(" | ")}`;
-  emitRuntimeEvent({
-    type: "lyrics_generation_degraded",
-    songId: input.songId,
-    reason,
-    detail,
-    repairNotes,
-    timestamp: Date.now()
-  });
-  await updateSongState(input.workspaceRoot, input.songId, {
-    degradedLyrics: true,
-    reason,
-    status: "brief"
-  });
+  if (!input.deferDegradedNotification) {
+    emitRuntimeEvent({
+      type: "lyrics_generation_degraded",
+      songId: input.songId,
+      reason,
+      detail,
+      repairNotes,
+      timestamp: Date.now()
+    });
+    await updateSongState(input.workspaceRoot, input.songId, {
+      degradedLyrics: true,
+      reason,
+      status: "brief"
+    });
+  }
   const error = new Error(reason);
   throw Object.assign(error, { repairNotes });
 }

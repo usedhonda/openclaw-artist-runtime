@@ -3,6 +3,12 @@
 ## [Unreleased]
 
 ### Fixed
+- Residual kanji or digits in Suno registration lyrics now stay inside a bounded
+  corrective re-draft loop instead of notifying the producer and parking the
+  song after a single retry. Intermediate lint failures stay internal; only an
+  exhausted draft is quarantined silently so the artist can continue to another
+  song. Internal validator details no longer demand a producer decision, and the
+  failure never pauses the whole autopilot.
 - The Suno human-assist driver now closes non-transactional site-news and upsell
   dialogs through their explicit `Close` control before clicking Create. The
   observed `Our Terms Are Changing` notice previously intercepted the pointer for

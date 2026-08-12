@@ -942,7 +942,10 @@ async function createPromptPackForSong(root: string, song: SongState, config?: P
     styleVariationSeed: dopagakiVariation.variationSeed,
     weirdnessOverride,
     observationPath: observationPath && observationPath !== "(runtime observation)" ? isAbsolute(observationPath) ? observationPath : join(root, observationPath) : undefined,
-    aiReviewProvider: config?.aiReview?.provider
+    aiReviewProvider: config?.aiReview?.provider,
+    // Correctable content lint stays inside the autopilot retry loop. Only an
+    // exhausted/non-content failure is surfaced to the producer.
+    deferDegradedNotification: true
   });
   return readSongState(root, readySong.songId);
 }
@@ -995,7 +998,8 @@ export async function parkSongForOperator(
   existing: AutopilotRunState,
   baseState: AutopilotRunState,
   songId: string,
-  degradedReason: string
+  degradedReason: string,
+  notifyProducer = true
 ): Promise<AutopilotRunState> {
   const parkedReason = `parked_needs_operator: ${degradedReason}`;
   await updateSongState(root, songId, {
@@ -1003,14 +1007,16 @@ export async function parkSongForOperator(
     degradedLyrics: true,
     reason: parkedReason
   });
-  emitRuntimeEvent({
-    type: "lyrics_generation_degraded",
-    songId,
-    reason: parkedReason,
-    detail: `parked_needs_operator:${songId}`,
-    repairNotes: [degradedReason],
-    timestamp: Date.now()
-  });
+  if (notifyProducer) {
+    emitRuntimeEvent({
+      type: "lyrics_generation_degraded",
+      songId,
+      reason: parkedReason,
+      detail: `parked_needs_operator:${songId}`,
+      repairNotes: [degradedReason],
+      timestamp: Date.now()
+    });
+  }
   return writeStageState(root, existing, {
     ...baseState,
     currentSongId: undefined,
@@ -1718,31 +1724,32 @@ export class ArtistAutopilotService {
 
       switch (stage) {
         case "prompt_pack": {
-          let packedSong: SongState;
-          try {
-            packedSong = await createPromptPackForSong(input.workspaceRoot, song, config, input.manualSeed?.weirdness);
-          } catch (error) {
-            const reason = error instanceof Error ? error.message : String(error);
-            if (!reason.includes("lyrics_generation_degraded")) {
-              throw error;
-            }
-            // One corrective re-draft when the failure is a lyrics-content class we
-            // can guide (residual kanji / ascii numbers). If it still fails, or the
-            // failure is not guidable, park the song and advance instead of pausing
-            // the whole autopilot.
-            const guidance = correctionGuidanceFromDegraded(reason);
-            if (!guidance) {
-              return parkSongForOperator(input.workspaceRoot, existing, baseState, song.songId, reason);
-            }
+          const maxCorrectiveRedrafts = 4;
+          let packedSong: SongState | undefined;
+          let correctionGuidance: string[] | undefined;
+          for (let attempt = 0; attempt <= maxCorrectiveRedrafts; attempt += 1) {
             try {
-              packedSong = await createPromptPackForSong(input.workspaceRoot, song, config, input.manualSeed?.weirdness, guidance);
-            } catch (retryError) {
-              const retryReason = retryError instanceof Error ? retryError.message : String(retryError);
-              if (!retryReason.includes("lyrics_generation_degraded")) {
-                throw retryError;
+              packedSong = await createPromptPackForSong(
+                input.workspaceRoot,
+                song,
+                config,
+                input.manualSeed?.weirdness,
+                correctionGuidance
+              );
+              break;
+            } catch (error) {
+              const reason = error instanceof Error ? error.message : String(error);
+              if (!reason.includes("lyrics_generation_degraded")) {
+                throw error;
               }
-              return parkSongForOperator(input.workspaceRoot, existing, baseState, song.songId, retryReason);
+              correctionGuidance = correctionGuidanceFromDegraded(reason);
+              if (!correctionGuidance || attempt === maxCorrectiveRedrafts) {
+                return parkSongForOperator(input.workspaceRoot, existing, baseState, song.songId, reason, false);
+              }
             }
+          }
+          if (!packedSong) {
+            throw new Error("prompt_pack_corrective_redraft_exhausted");
           }
           const draftBoxOneShot = await isBuildingDraftSong(input.workspaceRoot, packedSong.songId);
           const promptReadySuspension = config.telegram.enabled && isPreGenerationApprovalEnabled() && !draftBoxOneShot;
