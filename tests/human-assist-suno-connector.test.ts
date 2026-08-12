@@ -122,6 +122,28 @@ describe("HumanAssistSunoConnector", () => {
     ]);
   });
 
+  it("bypasses the CLI submit and waits for a human Create in manual mode", async () => {
+    const { connector, createCalls } = innerReturning({ accepted: true, runId: "wrong", reason: "should_not_run", urls: [] });
+    const driver = stubDriver("captcha_then_human");
+    const machineSubmit = vi.spyOn(driver, "attemptMachineSubmit");
+    const decorated = new HumanAssistSunoConnector(connector, {
+      timeoutMs: 1000,
+      submitMode: "manual",
+      driverFactory: () => driver,
+      notifier: notifierSpy
+    });
+
+    const result = await decorated.create(request);
+
+    expect(createCalls).toHaveLength(0);
+    expect(machineSubmit).not.toHaveBeenCalled();
+    expect(result).toMatchObject({
+      accepted: true,
+      runId: "run-1",
+      reason: HUMAN_ASSIST_CREATED_REASON
+    });
+  });
+
   it("surfaces a timeout reason when the producer never presses Create", async () => {
     const { connector } = innerReturning({ accepted: false, runId: "run-1", reason: CLI_BLOCKED_CAPTCHA_REASON, urls: [] });
     const decorated = connectorWith(connector, stubDriver("captcha_then_timeout"));

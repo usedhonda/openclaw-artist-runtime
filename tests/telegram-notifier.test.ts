@@ -108,6 +108,22 @@ describe("TelegramNotifier", () => {
     })).resolves.toBe("Autopilot stage: planning -> prompt_pack (song-001)");
   });
 
+  it("explains manual Suno parameter editing without claiming captcha", async () => {
+    const text = await formatRuntimeEvent({
+      type: "suno_human_assist_requested",
+      songId: "song-manual",
+      title: "Neon Alley",
+      timeoutMinutes: 60,
+      mode: "manual_submit",
+      timestamp: 1
+    });
+
+    expect(text).toContain("残りのパラメータを調整して");
+    expect(text).toContain("自動で Create を押さない");
+    expect(text).toContain("押した後は自動でURL取得と取込を続ける");
+    expect(text).not.toContain("captcha が出た");
+  });
+
   it("formats observation collection diagnostics without making rejected tweets visible", async () => {
     const text = await formatRuntimeEvent({
       type: "observation_collected",

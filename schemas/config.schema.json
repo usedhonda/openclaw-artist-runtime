@@ -144,10 +144,11 @@
               "type": "string",
               "enum": [
                 "skip",
+                "manual",
                 "live"
               ],
               "default": "skip",
-              "description": "Suno create submit mode. 'skip' fills the create form but never clicks Create, so credit consumption stays at zero. 'live' clicks Create when dry-run is off, the live worker is configured, and Suno budget gates allow it."
+              "description": "Suno create submit mode. 'skip' fills the create form for validation and closes without submitting. 'manual' opens and fills the visible form, lets the producer adjust remaining parameters, and waits for their Create click. 'live' clicks Create automatically when dry-run is off and budget gates allow it."
             },
             "captchaFallback": {
               "type": "string",

@@ -371,7 +371,11 @@ To control create behavior separately:
 ```
 
 `submitMode: "skip"` is the default and fills the Suno form without clicking
-`Create`. `submitMode: "live"` is now the operator-approved path that clicks
+`Create`, then closes the validation session. `submitMode: "manual"` opens the
+visible authenticated form, fills the known payload fields, brings it forward,
+and waits while the producer adjusts remaining parameters and presses Create.
+After that human click, URL harvesting and import continue automatically.
+`submitMode: "live"` is the operator-approved path that clicks
 `Create` and waits for new Suno song URLs to appear first on `/create`, then in
 the library if the card view stays silent.
 

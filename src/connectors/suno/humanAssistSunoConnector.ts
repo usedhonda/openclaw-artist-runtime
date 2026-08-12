@@ -35,6 +35,7 @@ export interface HumanAssistDriverInput {
 
 export interface HumanAssistConnectorDeps {
   timeoutMs: number;
+  submitMode?: "skip" | "manual" | "live";
   driverFactory: (input: HumanAssistDriverInput) => HumanAssistBrowserDriver;
   notifier: HumanAssistNotifier;
   // Given the harvested take URLs, return only those NOT already attributed to another
@@ -58,6 +59,8 @@ function readText(value: unknown): string | undefined {
  * for a manual Create click. A machine or human success is mapped back to an accepted
  * SunoCreateResult (so the normal run/import pipeline continues unchanged); a timeout
  * or error is surfaced as a non-accepted result the autopilot routes for a later retry.
+ * Explicit manual mode bypasses the CLI create and every machine click, opens/fills
+ * the form, then waits for the producer's adjusted manual submission.
  */
 export class HumanAssistSunoConnector implements SunoConnector {
   constructor(
@@ -74,10 +77,18 @@ export class HumanAssistSunoConnector implements SunoConnector {
   }
 
   async create(input: SunoCreateRequest): Promise<SunoCreateResult> {
-    const result = await this.inner.create(input);
+    const manualSubmit = this.deps.submitMode === "manual";
+    const result = manualSubmit && !input.dryRun
+      ? {
+          accepted: false,
+          runId: input.runId ?? `manual_${Date.now().toString(36)}`,
+          reason: "suno_manual_submit_requested",
+          urls: []
+        }
+      : await this.inner.create(input);
     // Only intercept a captcha block on a real (non dry-run) live create. Everything
     // else -- accepted, dry-run, or a different failure reason -- passes through.
-    if (input.dryRun || result.accepted || result.reason !== CLI_BLOCKED_CAPTCHA_REASON) {
+    if (input.dryRun || result.accepted || (!manualSubmit && result.reason !== CLI_BLOCKED_CAPTCHA_REASON)) {
       return result;
     }
 
@@ -90,7 +101,8 @@ export class HumanAssistSunoConnector implements SunoConnector {
       notifier: this.deps.notifier,
       songId,
       title,
-      timeoutMs: this.deps.timeoutMs
+      timeoutMs: this.deps.timeoutMs,
+      manualSubmit
     });
 
     if (outcome.status === "accepted") {
@@ -133,7 +145,10 @@ export class HumanAssistSunoConnector implements SunoConnector {
  * Production notifier: emits a non-silent runtime event so the Telegram notifier can
  * ask the producer to press Create on the Mac. Fires at most once per attempt.
  */
-export function createHumanAssistNotifier(timeoutMinutes: number): HumanAssistNotifier {
+export function createHumanAssistNotifier(
+  timeoutMinutes: number,
+  mode: "captcha_fallback" | "manual_submit" = "captcha_fallback"
+): HumanAssistNotifier {
   return {
     awaitingHumanCreate: ({ songId, title }) => {
       emitRuntimeEvent({
@@ -141,6 +156,7 @@ export function createHumanAssistNotifier(timeoutMinutes: number): HumanAssistNo
         songId,
         title,
         timeoutMinutes,
+        mode,
         timestamp: Date.now()
       });
     }
@@ -194,8 +210,12 @@ export function createHumanAssistSunoConnector(
   const sessionFile = workspaceRoot ? join(workspaceRoot, "runtime", "suno", "cli", "session.json") : undefined;
   return new HumanAssistSunoConnector(inner, {
     timeoutMs: timeoutMinutes * 60_000,
+    submitMode: config?.music?.suno?.submitMode,
     driverFactory: ({ payload }) => new CdpHumanAssistDriver({ payload, config: browserConfig, sessionFile }),
-    notifier: createHumanAssistNotifier(timeoutMinutes),
+    notifier: createHumanAssistNotifier(
+      timeoutMinutes,
+      config?.music?.suno?.submitMode === "manual" ? "manual_submit" : "captcha_fallback"
+    ),
     filterCrossSongTakeUrls: async (songId, urls) => {
       if (!workspaceRoot || urls.length === 0) {
         return urls;

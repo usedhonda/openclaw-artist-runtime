@@ -220,10 +220,11 @@
                 "type": "string",
                 "enum": [
                   "skip",
+                  "manual",
                   "live"
                 ],
                 "default": "skip",
-                "description": "Suno create submit mode. 'skip' fills the create form but never clicks Create, so credit consumption stays at zero. 'live' clicks Create when dry-run is off, the live worker is configured, and Suno budget gates allow it."
+                "description": "Suno create submit mode. 'skip' fills the create form for validation and closes without submitting. 'manual' opens and fills the visible form, lets the producer adjust remaining parameters, and waits for their Create click. 'live' clicks Create automatically when dry-run is off and budget gates allow it."
               },
               "captchaFallback": {
                 "type": "string",
@@ -768,7 +769,7 @@
     },
     "music.suno.submitMode": {
       "label": "Suno submit mode",
-      "help": "Keep 'skip' to fill the Suno form without clicking Create. 'live' clicks Create only when dry-run is off and budget gates allow it."
+      "help": "Use 'skip' for no-submit validation, 'manual' to edit the autofilled form and press Create yourself, or 'live' for an automatic Create click when budget gates allow it."
     },
     "music.suno.captchaFallback": {
       "label": "Captcha fallback",

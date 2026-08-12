@@ -17,10 +17,10 @@ export function resolveSunoConnector(
 ): SunoConnector {
   if (config?.music?.suno?.driver === "suno_cli") {
     const cli = new CliSunoConnector(workspaceRoot, { config });
-    // Opt-in captcha human-assist: on a captcha-blocked live create, hand off to the
-    // producer for a manual Create click instead of hard-stopping. The captcha is never
-    // auto-solved -- the fallback only closes the challenge and waits for a human click.
-    if (config?.music?.suno?.captchaFallback === "human_click") {
+    // Human assist supports both captcha fallback and explicit manual submit.
+    // Manual mode bypasses CLI submission, fills the visible form, and waits for
+    // the producer to adjust parameters and press Create.
+    if (config?.music?.suno?.captchaFallback === "human_click" || config?.music?.suno?.submitMode === "manual") {
       return createHumanAssistSunoConnector(cli, config, workspaceRoot);
     }
     return cli;

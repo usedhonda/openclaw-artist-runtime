@@ -46,6 +46,11 @@ manifest schema.
 | `observation.newsRssUrls` | Schema config, env fallback | Operator news RSS feed list used by the news observation collector. A non-empty config list wins over `OPENCLAW_NEWS_RSS_URLS`; the env var remains the fallback when the config list is empty. Diagnostics show count only. |
 | `observation.xTcoFetchEnabled` | Schema config, env fallback | Enables t.co link expansion during X reply-target resolution. A defined config boolean wins over `OPENCLAW_X_TCO_FETCH_ENABLED`; the env var remains the fallback when the config value is unset. |
 | `aiReview.provider` | Schema config, env forced | Supported values are `mock`, `openclaw`, and `openai-codex`. `OPENCLAW_AI_REVIEW_PROVIDER` can force the effective provider and makes the field read-only in Settings. |
+
+`music.suno.submitMode` accepts `skip`, `manual`, or `live`. `manual` bypasses
+the CLI Create submission, opens and autofills the visible Suno form, then waits
+for the producer to adjust remaining parameters and press Create. Telegram states
+that no automatic Create click will occur and that import resumes after the click.
 | `safety.*` | Schema config | Safety policy defaults and invariant guard settings. |
 
 ## Environment-Only Values

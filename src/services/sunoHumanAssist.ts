@@ -1,12 +1,13 @@
 /**
  * Human-assisted Suno create state machine.
  *
- * When a live create is blocked by a captcha challenge, this flow opens the CDP
- * browser, auto-fills the create form, and tries a machine submit. If the machine
+ * This flow opens the CDP browser and auto-fills the create form. In fallback
+ * mode it tries a machine submit. If the machine
  * click is met by a captcha challenge, the challenge overlay is CLOSED (never
  * solved), the window is brought to the front, the producer is alerted once, and
  * the flow waits for the producer to press Create manually. A real human click on
- * Suno's Create button passes captcha-free.
+ * Suno's Create button passes captcha-free. Manual-submit mode skips the machine
+ * click so the producer can adjust remaining parameters first.
  *
  * This module is driver-agnostic and side-effect-free beyond the injected driver
  * and notifier, so the full flow (machine success / captcha -> human success /
@@ -61,6 +62,8 @@ export interface RunHumanAssistCreateInput {
   songId: string;
   title: string;
   timeoutMs: number;
+  /** Skip every machine Create attempt and wait for the producer to edit and submit. */
+  manualSubmit?: boolean;
 }
 
 export type HumanAssistCreateResult =
@@ -77,7 +80,7 @@ export type HumanAssistCreateResult =
 export async function runHumanAssistCreate(
   input: RunHumanAssistCreateInput
 ): Promise<HumanAssistCreateResult> {
-  const { driver, notifier, songId, title, timeoutMs } = input;
+  const { driver, notifier, songId, title, timeoutMs, manualSubmit = false } = input;
   try {
     try {
       await driver.openAndFill();
@@ -85,23 +88,27 @@ export async function runHumanAssistCreate(
       return { status: "error", reason: describeError(error, "open_fill_failed") };
     }
 
-    let submit: HumanAssistSubmitOutcome;
-    try {
-      submit = await driver.attemptMachineSubmit();
-    } catch (error) {
-      return { status: "error", reason: describeError(error, "machine_submit_failed") };
+    if (!manualSubmit) {
+      let submit: HumanAssistSubmitOutcome;
+      try {
+        submit = await driver.attemptMachineSubmit();
+      } catch (error) {
+        return { status: "error", reason: describeError(error, "machine_submit_failed") };
+      }
+
+      if (submit.kind === "accepted") {
+        return { status: "accepted", urls: submit.urls ?? [], via: "machine" };
+      }
+      if (submit.kind === "error") {
+        return { status: "error", reason: submit.reason ?? HUMAN_ASSIST_ERROR_REASON };
+      }
+
+      // captcha_challenge: close the challenge (never solve it), then hand off.
+      await driver.closeChallengeOverlay();
     }
 
-    if (submit.kind === "accepted") {
-      return { status: "accepted", urls: submit.urls ?? [], via: "machine" };
-    }
-    if (submit.kind === "error") {
-      return { status: "error", reason: submit.reason ?? HUMAN_ASSIST_ERROR_REASON };
-    }
-
-    // captcha_challenge: close the challenge (never solve it), surface the window,
-    // and hand off to the producer for a manual Create click.
-    await driver.closeChallengeOverlay();
+    // Manual mode reaches this point without any machine Create attempt. The
+    // producer can adjust remaining Suno parameters before pressing Create.
     await driver.bringToFront();
     await notifier.awaitingHumanCreate({ songId, title });
 

@@ -219,6 +219,9 @@ export class CdpHumanAssistDriver implements HumanAssistBrowserDriver {
     if (exclude) {
       await this.fillCandidates(SUNO_CREATE_FALLBACKS.excludeInput, "exclude styles", exclude);
     }
+    // Leave the producer a usable form in manual-submit mode. Only safe
+    // informational/upsell overlays are closed; sensitive surfaces stay visible.
+    await dismissSafeSunoBlockingDialog(page);
   }
 
   async attemptMachineSubmit(): Promise<HumanAssistSubmitOutcome> {

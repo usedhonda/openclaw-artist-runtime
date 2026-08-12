@@ -960,7 +960,7 @@ function buildConfigFieldMeta(
     meta["music.suno.driver"] = configField("env", sourceVar);
     meta["music.suno.submitMode"] = configField("env", sourceVar);
   }
-  if (!sunoDisabled && (submitMode === "live" || submitMode === "skip")) {
+  if (!sunoDisabled && (submitMode === "live" || submitMode === "manual" || submitMode === "skip")) {
     meta["music.suno.submitMode"] = configField("env", "OPENCLAW_SUNO_SUBMIT_MODE");
   }
 

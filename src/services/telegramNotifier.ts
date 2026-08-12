@@ -1692,6 +1692,17 @@ async function formatRuntimeEventRaw(
         `reason: ${event.reason}`
       ].filter(Boolean).join("\n");
     case "suno_human_assist_requested":
+      if (event.mode === "manual_submit") {
+        return [
+          `Suno の入力は済ませた。残りのパラメータを調整して「Create」を押して。曲: ${event.title}`,
+          "",
+          TELEGRAM_SECTION_DIVIDER,
+          `song: ${event.songId}`,
+          `title: ${event.title}`,
+          `待機: 最大 ${event.timeoutMinutes} 分。押した後は自動でURL取得と取込を続ける。`,
+          "注: このモードでは自動で Create を押さない。ブラウザは開いたまま前面に出してある。"
+        ].join("\n");
+      }
       return [
         `captcha が出た。Mac の Suno で「Create」ボタンを押して。曲: ${event.title}`,
         "",
