@@ -3,6 +3,9 @@
 ## [Unreleased]
 
 ### Fixed
+- Manual Suno handoff messages now show only the song title, the producer's
+  Create action, the wait window, and the automatic continuation. Internal song
+  IDs and diagnostic-style sections are no longer exposed in this routine step.
 - Residual kanji or digits in Suno registration lyrics now stay inside a bounded
   corrective re-draft loop instead of notifying the producer and parking the
   song after a single retry. Intermediate lint failures stay internal; only an
