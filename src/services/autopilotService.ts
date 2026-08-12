@@ -910,7 +910,8 @@ async function ensureLyrics(root: string, song: SongState, config?: Partial<Arti
     songId: song.songId,
     config,
     aiReviewProvider: config?.aiReview?.provider,
-    correctionGuidance
+    correctionGuidance,
+    deferDegradedNotification: true
   });
   return readSongState(root, song.songId);
 }
@@ -962,6 +963,15 @@ async function createPromptPackForSong(root: string, song: SongState, config?: P
 const BLANKET_HIRAGANA_REWRITE_THRESHOLD = 8;
 
 export function correctionGuidanceFromDegraded(reason: string): string[] | undefined {
+  const short = reason.match(/lyrics_too_short_for_duration_plan: bare lyric body (\d+)\/(\d+), lines (\d+)\/(\d+)/);
+  if (short) {
+    return [
+      `Suno用の歌詞本文が短い。現在${short[1]}文字・${short[3]}行なので、意味と構成を保ちながら最低${short[2]}文字・${short[4]}行以上へ書き直すこと。薄い反復で水増しせず、具体像と展開を足す。`
+    ];
+  }
+  if (reason.includes("lyrics_too_long_for_suno_box")) {
+    return ["Sunoの歌詞欄に収まるよう、意味・フック・展開を保ちながら本文を短く書き直すこと。"];
+  }
   const kanji = [...reason.matchAll(/residual_kanji:([^:]+):line_(\d+)/g)];
   const numbers = [...reason.matchAll(/ascii_number:([^:]+):line_(\d+)/g)];
   if (kanji.length === 0 && numbers.length === 0) {

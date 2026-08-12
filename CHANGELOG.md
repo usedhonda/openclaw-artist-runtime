@@ -9,6 +9,8 @@
   exhausted draft is quarantined silently so the artist can continue to another
   song. Internal validator details no longer demand a producer decision, and the
   failure never pauses the whole autopilot.
+- Short or oversized lyric drafts now use the same internal corrective loop;
+  draft-composition failures remain silent while the artist retries them.
 - The Suno human-assist driver now closes non-transactional site-news and upsell
   dialogs through their explicit `Close` control before clicking Create. The
   observed `Our Terms Are Changing` notice previously intercepted the pointer for

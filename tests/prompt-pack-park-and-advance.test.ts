@@ -56,7 +56,10 @@ describe("prompt-pack corrective regen + skip-and-advance parking", () => {
     ).toBeUndefined();
     expect(
       correctionGuidanceFromDegraded("lyrics_generation_degraded: lyrics_too_long_for_suno_box: lyric body 6000/3000")
-    ).toBeUndefined();
+    ).toEqual([expect.stringContaining("短く書き直す")]);
+    expect(
+      correctionGuidanceFromDegraded("lyrics_generation_degraded: lyrics_too_short_for_duration_plan: bare lyric body 1543/1650, lines 65/64")
+    ).toEqual([expect.stringContaining("最低1650文字")]);
   });
 
   it("switches to a blanket all-hiragana rewrite when many tokens remain", () => {

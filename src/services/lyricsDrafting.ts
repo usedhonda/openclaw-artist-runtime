@@ -23,6 +23,7 @@ export interface DraftLyricsInput {
   // Feedback from a failed prompt-pack validation (offending kanji/numbers) so a
   // corrective re-draft can open or replace them. Seeded as repair notes.
   correctionGuidance?: string[];
+  deferDegradedNotification?: boolean;
 }
 
 interface LyricsDraft {
@@ -341,12 +342,14 @@ export async function draftLyrics(input: DraftLyricsInput): Promise<{ lyricsText
       ? (error as { repairNotes: string[] }).repairNotes
       : [];
     const detail = repairNotes.join(" | ") || undefined;
-    emitRuntimeEvent({ type: "lyrics_generation_degraded", songId: input.songId, reason, detail, repairNotes, timestamp: Date.now() });
-    await updateSongState(input.workspaceRoot, input.songId, {
-      degradedLyrics: true,
-      reason,
-      status: "brief"
-    });
+    if (!input.deferDegradedNotification) {
+      emitRuntimeEvent({ type: "lyrics_generation_degraded", songId: input.songId, reason, detail, repairNotes, timestamp: Date.now() });
+      await updateSongState(input.workspaceRoot, input.songId, {
+        degradedLyrics: true,
+        reason,
+        status: "brief"
+      });
+    }
     throw error;
   }
   const lyricsText = draft.lyrics || deriveLyrics(title, briefText);
