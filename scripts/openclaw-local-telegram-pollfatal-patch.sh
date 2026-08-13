@@ -39,6 +39,7 @@ marker='polling cycle fatal (non-recoverable)'
 found_any=0
 patched_any=0
 already=0
+unresolved=0
 
 for dist in ${dist_glob}; do
   [ -d "${dist}" ] || continue
@@ -55,11 +56,13 @@ for dist in ${dist_glob}; do
     fi
     if ! grep -qF "${needle}" "${file}"; then
       echo "WARN: needle not found (bundled code changed?): ${file}" >&2
+      unresolved=1
       continue
     fi
     count="$(grep -cF "${needle}" "${file}")"
     if [ "${count}" != "1" ]; then
       echo "WARN: needle not unique (count=${count}); refusing to patch: ${file}" >&2
+      unresolved=1
       continue
     fi
     backup="${file}.bak-pre-pollfatal-$(date -u +%Y%m%dT%H%M%SZ)"
@@ -93,6 +96,11 @@ done
 
 if [ "${found_any}" = "0" ]; then
   echo "ERROR: no bundled monitor-polling.runtime-*.js found under ${dist_glob}" >&2
+  exit 1
+fi
+
+if [ "${unresolved}" = "1" ]; then
+  echo "ERROR: Telegram polling patch seam changed; refusing to continue." >&2
   exit 1
 fi
 

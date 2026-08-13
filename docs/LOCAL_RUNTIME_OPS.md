@@ -145,7 +145,7 @@ Once launchd owns the process, use `launchctl` (or the wrapper below) for
 lifecycle, **not** `openclaw-local-gateway stop/start`:
 
 ```sh
-scripts/openclaw-gateway-launchd.sh restart    # force restart (launchctl kickstart -k)
+scripts/openclaw-gateway-launchd.sh restart    # safe restart after active work drains
 scripts/openclaw-gateway-launchd.sh stop       # boot out the job, keep plist
 scripts/openclaw-gateway-launchd.sh status     # loaded? pid? last exit code
 scripts/openclaw-gateway-launchd.sh uninstall  # stop, unload, remove the plist
@@ -161,8 +161,9 @@ Ownership notes:
 - A manual start reports success only after its spawned PID is alive and owns
   `runtime/gateway-supervisor.lock`; the HTTP smoke check is secondary.
 - After a source rebuild (`npm run build:runtime`), restart with
-  `scripts/openclaw-gateway-launchd.sh restart` rather than the manual Stop/Start
-  sequence.
+  `scripts/openclaw-gateway-launchd.sh restart`. It calls the live Gateway's
+  drain-aware restart request through the configured URL; it does not replace
+  the launchd-owned supervisor and never falls back to a force restart.
 
 To go back to fully manual operation, run `uninstall` and then use
 `scripts/openclaw-local-gateway start` as before.
@@ -174,7 +175,7 @@ source change you must rebuild and restart:
 
 ```sh
 npm run build:runtime          # rebuild dist
-# then restart exactly one lifecycle owner:
+# then request a safe in-process restart:
 scripts/openclaw-gateway-launchd.sh restart
 ```
 
@@ -227,6 +228,15 @@ submitted successfully at `maxLength=5000` (`readbackMatches: true`).
   type, song id, and Telegram message id there instead of inferring delivery from
   `runtime-events.jsonl` or channel health. Receipt entries never contain message
   text, URLs, chat ids, or tokens.
+- **Telegram network errors:** the installed main-thread polling and fatal-error
+  patches rebuild Telegram polling locally. The supervisor's whole-Gateway
+  Telegram watchdog is opt-in (`OPENCLAW_TELEGRAM_WATCHDOG_ENABLED=1`) and must
+  not be enabled as a routine recovery mechanism because it can terminate an
+  active producer reply.
+- **OpenClaw install/update:** `scripts/openclaw-local-install.sh` reapplies both
+  Telegram transport patches before declaring the install complete. If the
+  upstream patch seam changed, installation fails closed and the running
+  Gateway must not be restarted until the patch is reviewed.
 - **Telegram producer turn edits code or disappears after a self-restart:** the
   local gateway seeds `messages.visibleReplies=automatic` and denies runtime,
   file-mutation, and gateway-control tools to the public artist. This leaves

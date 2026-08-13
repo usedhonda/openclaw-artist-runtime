@@ -27,6 +27,13 @@ echo "State isolation:"
 
 bash "${installer_tmp}" --prefix "${OPENCLAW_LOCAL_PREFIX}" --version latest --json
 
+# The local Telegram transport fixes patch the installed OpenClaw dist and are
+# overwritten by every install/update. Reapply them before the new runtime is
+# allowed to start; either script fails closed if its expected upstream seam has
+# changed.
+"${script_dir}/openclaw-local-telegram-ingress-patch.sh"
+"${script_dir}/openclaw-local-telegram-pollfatal-patch.sh"
+
 echo
 echo "Install finished."
 echo "Use scripts/openclaw-local --help"

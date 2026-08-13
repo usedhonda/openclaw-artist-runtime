@@ -180,12 +180,11 @@ export OPENCLAW_ARTIST_PULSE_HOURS="${OPENCLAW_ARTIST_PULSE_HOURS:-24}"
 # so it only fires on a genuine multi-cycle stall, not the normal inter-tick gap.
 export OPENCLAW_TICKER_WATCHER_STALE_MS="${OPENCLAW_TICKER_WATCHER_STALE_MS:-1200000}"
 
-# Gateway supervisor Telegram-network watchdog. Default-on (2026-06-16): the
-# gateway's own stall-restart loop could not recover an 8h getUpdates wedge on
-# Jun 15 (inbound receive silently dead while outbound still worked), so the
-# supervisor must be able to kill+restart a wedged poll as a backstop. Set to 0
-# to opt out if the kill/restart churn ever amplifies a transient outage.
-export OPENCLAW_TELEGRAM_WATCHDOG_ENABLED="${OPENCLAW_TELEGRAM_WATCHDOG_ENABLED:-1}"
+# Gateway supervisor Telegram-network watchdog. Keep whole-process killing
+# opt-in: OpenClaw's main-thread polling and fatal-error recovery rebuild the
+# Telegram transport locally, while killing the Gateway can drop active producer
+# replies. Enable only for a supervised incident drill.
+export OPENCLAW_TELEGRAM_WATCHDOG_ENABLED="${OPENCLAW_TELEGRAM_WATCHDOG_ENABLED:-0}"
 
 if [[ "${1:-}" == "print" ]]; then
   telegram_token_status=""

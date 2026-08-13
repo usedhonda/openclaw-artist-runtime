@@ -3,6 +3,11 @@
 ## [Unreleased]
 
 ### Fixed
+- Gateway maintenance now uses OpenClaw's drain-aware restart request against
+  the configured live endpoint instead of force-replacing the launchd process.
+  Supervisor status reports its live Gateway child, Telegram network recovery
+  stays component-local by default, and local OpenClaw installs reapply the two
+  required Telegram polling patches before the runtime can be restarted.
 - Telegram producer DMs now use automatic final-reply delivery instead of the
   Codex harness's message-tool-only default. The local public artist also loses
   shell, file-mutation, and gateway-control tools at config seed time, preventing

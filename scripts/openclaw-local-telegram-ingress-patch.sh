@@ -30,6 +30,7 @@ replacement='isolatedIngress?.enabled ?? false'
 found_any=0
 patched_any=0
 already=0
+unresolved=0
 
 for dist in ${dist_glob}; do
   [ -d "${dist}" ] || continue
@@ -48,6 +49,7 @@ for dist in ${dist_glob}; do
     if ! grep -qF "${needle}" "${file}"; then
       # lever present but in an unexpected form; do not guess.
       echo "lever found but neither default literal present (skipping): ${file}"
+      unresolved=1
       continue
     fi
     stamp="$(date -u +%Y%m%dT%H%M%SZ)"
@@ -69,6 +71,11 @@ done
 if [ "${found_any}" -eq 0 ]; then
   echo "no bundled openclaw dist with the ingress lever found; nothing to patch"
   exit 0
+fi
+
+if [ "${unresolved}" -eq 1 ]; then
+  echo "ERROR: Telegram ingress patch seam changed; refusing to continue." >&2
+  exit 1
 fi
 
 if [ "${patched_any}" -eq 1 ]; then
