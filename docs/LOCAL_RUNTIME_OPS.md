@@ -227,3 +227,8 @@ submitted successfully at `maxLength=5000` (`readbackMatches: true`).
   type, song id, and Telegram message id there instead of inferring delivery from
   `runtime-events.jsonl` or channel health. Receipt entries never contain message
   text, URLs, chat ids, or tokens.
+- **Telegram shows internal commands:** the local gateway seeds
+  `channels.telegram.streaming.preview.toolProgress=false` while retaining
+  partial answer previews. Existing explicit streaming choices are preserved;
+  set this field to `false` in the local OpenClaw config if an older config still
+  exposes file reads or shell commands.

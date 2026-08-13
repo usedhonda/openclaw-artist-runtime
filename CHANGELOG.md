@@ -3,6 +3,10 @@
 ## [Unreleased]
 
 ### Fixed
+- Telegram answer previews no longer expose internal file reads, shell commands,
+  planning updates, or other tool progress in producer conversations. The local
+  gateway now defaults only that progress lane off while retaining partial answer
+  previews and preserving explicit operator streaming choices.
 - Natural Telegram turns no longer fail at model startup or silently lose the
   Artist Runtime tools on OpenClaw 2026.6.1. Tool registration now uses the
   current factory/`execute` contract and binds every call to the active artist

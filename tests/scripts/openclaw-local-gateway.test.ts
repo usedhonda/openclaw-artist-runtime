@@ -139,6 +139,11 @@ describe("openclaw-local-gateway owner guards", () => {
     const started = runWrapper(fixture, "start");
     expect(started.status).toBe(0);
     expect(started.stdout).toContain("Gateway started");
+    const config = JSON.parse(await readFile(join(fixture.root, "openclaw/config/openclaw.json"), "utf8"));
+    expect(config.channels.telegram.streaming).toEqual({
+      mode: "partial",
+      preview: { toolProgress: false }
+    });
     const stopped = runWrapper(fixture, "stop");
     expect(stopped.status).toBe(0);
     expect(stopped.stdout).toContain("Gateway stopped");

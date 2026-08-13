@@ -59,6 +59,21 @@ if (typeof config.gateway.auth.token !== "string" || config.gateway.auth.token.t
   config.gateway.auth.token = crypto.randomBytes(24).toString("hex");
 }
 
+config.channels ??= {};
+config.channels.telegram ??= {};
+const telegramStreaming = config.channels.telegram.streaming;
+if (telegramStreaming === undefined) {
+  config.channels.telegram.streaming = {
+    mode: "partial",
+    preview: { toolProgress: false }
+  };
+} else if (telegramStreaming && typeof telegramStreaming === "object" && !Array.isArray(telegramStreaming)) {
+  telegramStreaming.preview ??= {};
+  if (typeof telegramStreaming.preview.toolProgress !== "boolean") {
+    telegramStreaming.preview.toolProgress = false;
+  }
+}
+
 fs.mkdirSync(path.dirname(configPath), { recursive: true });
 fs.writeFileSync(configPath, `${JSON.stringify(config, null, 2)}\n`, "utf8");
 EOF
