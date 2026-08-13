@@ -74,6 +74,14 @@ if (telegramStreaming === undefined) {
   }
 }
 
+config.messages ??= {};
+config.messages.visibleReplies = "automatic";
+
+config.tools ??= {};
+const requiredToolDenies = ["group:runtime", "write", "edit", "apply_patch", "gateway"];
+const configuredToolDenies = Array.isArray(config.tools.deny) ? config.tools.deny : [];
+config.tools.deny = [...new Set([...configuredToolDenies, ...requiredToolDenies])];
+
 fs.mkdirSync(path.dirname(configPath), { recursive: true });
 fs.writeFileSync(configPath, `${JSON.stringify(config, null, 2)}\n`, "utf8");
 EOF

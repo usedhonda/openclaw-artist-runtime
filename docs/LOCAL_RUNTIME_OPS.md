@@ -227,6 +227,11 @@ submitted successfully at `maxLength=5000` (`readbackMatches: true`).
   type, song id, and Telegram message id there instead of inferring delivery from
   `runtime-events.jsonl` or channel health. Receipt entries never contain message
   text, URLs, chat ids, or tokens.
+- **Telegram producer turn edits code or disappears after a self-restart:** the
+  local gateway seeds `messages.visibleReplies=automatic` and denies runtime,
+  file-mutation, and gateway-control tools to the public artist. This leaves
+  read access and the registered `artist_*` production tools available while
+  ensuring normal final text is delivered without a `message` tool call.
 - **Telegram shows internal commands:** the local gateway seeds
   `channels.telegram.streaming.preview.toolProgress=false` while retaining
   partial answer previews. Existing explicit streaming choices are preserved;

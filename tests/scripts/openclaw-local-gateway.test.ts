@@ -144,6 +144,10 @@ describe("openclaw-local-gateway owner guards", () => {
       mode: "partial",
       preview: { toolProgress: false }
     });
+    expect(config.messages.visibleReplies).toBe("automatic");
+    expect(config.tools.deny).toEqual(
+      expect.arrayContaining(["group:runtime", "write", "edit", "apply_patch", "gateway"])
+    );
     const stopped = runWrapper(fixture, "stop");
     expect(stopped.status).toBe(0);
     expect(stopped.stdout).toContain("Gateway stopped");

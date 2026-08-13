@@ -3,6 +3,11 @@
 ## [Unreleased]
 
 ### Fixed
+- Telegram producer DMs now use automatic final-reply delivery instead of the
+  Codex harness's message-tool-only default. The local public artist also loses
+  shell, file-mutation, and gateway-control tools at config seed time, preventing
+  a conversational turn from editing the repository or restarting its own
+  gateway before the reply is delivered.
 - Telegram producer messages now stay conversational before they become work:
   tentative suggestions continue the current song discussion without tool calls
   or internal artifact narration. Explicitly approved Suno revisions use strict
