@@ -1,7 +1,7 @@
 # Handoff: gateway stability hardening
 
 Task ID: gateway-stability-20260814
-Last updated: 2026-08-14 00:16 +08:00 by solo-fallback
+Last updated: 2026-08-14 00:18 +08:00 by solo-fallback
 Status: in-progress
 
 ## Objective
@@ -33,6 +33,7 @@ completion gate is the planned 24-hour passive observation window.
 - [x] Final gates — evidence: typecheck, lint, boundary-grep, 378 files / 1761 tests, and runtime build passed.
 - [x] Runtime reflection — evidence: one preflight-safe launchd replacement; health recovered and Telegram connected.
 - [x] Live safe restart — evidence: supervisor and child PIDs unchanged, no forced restart, Telegram reconnected.
+- [x] Live child uptime refresh — evidence: commit `83a90ff`; focused test 3/3 and heartbeat advanced to 242385ms without restart.
 
 ## Files changed
 | File | Change |
@@ -83,7 +84,7 @@ live safe restart -> scheduled, no PID replacement, Telegram connected
 - A 24-hour observation window is still required before declaring stable completion.
 
 ## Next actions
-1. Keep the current runtime untouched for 24 hours.
+1. Keep runtime commit `83a90ff` untouched until 2026-08-15 00:18:30 +08:00.
 2. Verify zero unexpected supervisor stops, non-zero child exits, and watchdog kills.
 3. Archive this handoff and mark the goal complete only if the observation gate passes.
 
