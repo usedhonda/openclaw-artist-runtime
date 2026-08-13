@@ -6,7 +6,24 @@ type HttpMethod = "GET" | "POST" | "PATCH";
 
 export interface ToolRegistration {
   name: string;
+  description?: string;
+  parameters?: Record<string, unknown>;
   handler: UnknownHandler;
+}
+
+interface PluginToolContextLike {
+  workspaceDir?: string;
+}
+
+interface AgentToolLike {
+  name: string;
+  label: string;
+  description: string;
+  parameters: Record<string, unknown>;
+  execute: (toolCallId: string, params: unknown) => Promise<{
+    content: Array<{ type: "text"; text: string }>;
+    details: unknown;
+  }>;
 }
 
 export interface HookRegistration {
@@ -45,7 +62,10 @@ export interface InteractiveHandlerRegistration {
 }
 
 export interface PluginApiLike {
-  registerTool?: (tool: ToolRegistration, opts?: { name?: string; names?: string[]; optional?: boolean }) => void;
+  registerTool?: (
+    tool: AgentToolLike | ((context: PluginToolContextLike) => AgentToolLike),
+    opts?: { name?: string; names?: string[]; optional?: boolean }
+  ) => void;
   registerHook?: (events: string | string[], handler: UnknownHandler, opts?: { name?: string; description?: string; register?: boolean }) => void;
   registerService?: (service: { id?: string; name?: string; start?: UnknownHandler; stop?: UnknownHandler }) => void;
   registerCommand?: (command: CommandRegistration) => void;
@@ -191,7 +211,26 @@ function createHttpRouteHandler(route: RouteRegistration) {
 }
 
 export function safeRegisterTool(api: unknown, tool: ToolRegistration): void {
-  asPluginApi(api).registerTool?.(tool, { name: tool.name });
+  asPluginApi(api).registerTool?.((context) => ({
+    name: tool.name,
+    label: tool.name,
+    description: tool.description ?? `Artist Runtime tool: ${tool.name}`,
+    parameters: tool.parameters ?? { type: "object", additionalProperties: true },
+    execute: async (_toolCallId, params) => {
+      const payload = typeof params === "object" && params !== null && !Array.isArray(params)
+        ? { ...(params as Record<string, unknown>) }
+        : {};
+      if (context.workspaceDir) {
+        payload.workspaceRoot = context.workspaceDir;
+      }
+      const details = await tool.handler(payload);
+      const text = typeof details === "string" ? details : JSON.stringify(details, null, 2) ?? "null";
+      return {
+        content: [{ type: "text", text }],
+        details
+      };
+    }
+  }), { name: tool.name });
 }
 
 export function safeRegisterHook(api: unknown, hook: HookRegistration): void {

@@ -155,14 +155,19 @@ describe("registration shells", () => {
   it("registers tools, hooks, services, and routes against a fake api", async () => {
     const registered = {
       tools: [] as string[],
+      toolDefinitions: [] as Array<{ name: string; parameters?: unknown; execute?: unknown }>,
       hooks: [] as string[],
       services: [] as string[],
       routes: [] as string[],
       routeHandlers: new Map<string, (req: IncomingMessage, res: ServerResponse) => Promise<boolean | void> | boolean | void>()
     };
     const api = {
-      registerTool(definition: { name: string }) {
+      registerTool(definitionOrFactory: { name: string } | ((context: { workspaceDir: string }) => { name: string; parameters?: unknown; execute?: unknown })) {
+        const definition = typeof definitionOrFactory === "function"
+          ? definitionOrFactory({ workspaceDir: "/trusted/artist-workspace" })
+          : definitionOrFactory;
         registered.tools.push(definition.name);
+        registered.toolDefinitions.push(definition);
       },
       registerHook(event: string, _handler?: unknown) {
         registered.hooks.push(event);
@@ -183,6 +188,9 @@ describe("registration shells", () => {
 
     expect(registered.tools).toContain("artist_suno_create_prompt_pack");
     expect(registered.tools).toContain("artist_song_ideate");
+    expect(registered.toolDefinitions).toHaveLength(7);
+    expect(registered.toolDefinitions.every((tool) => typeof tool.execute === "function")).toBe(true);
+    expect(registered.toolDefinitions.every((tool) => typeof tool.parameters === "object" && tool.parameters !== null)).toBe(true);
     expect(registered.hooks).toContain("agent:bootstrap");
     expect(registered.services).toContain("artistAutopilotService");
     expect(registered.routes).toContain("/plugins/artist-runtime/api/status");

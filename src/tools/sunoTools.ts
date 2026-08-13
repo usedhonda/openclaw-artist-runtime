@@ -5,6 +5,7 @@ import { generateSunoRun, importSunoResults } from "../services/sunoRuns.js";
 export function registerSunoTools(api: unknown): void {
   safeRegisterTool(api, {
     name: "artist_suno_create_prompt_pack",
+    description: "Create and persist the Style, Exclude, lyrics, and payload files for a Suno song without submitting it.",
     handler: async (input) => {
       const payload = typeof input === "object" && input !== null ? (input as Record<string, unknown>) : {};
       return createAndPersistSunoPromptPack({
@@ -20,6 +21,7 @@ export function registerSunoTools(api: unknown): void {
 
   safeRegisterTool(api, {
     name: "artist_suno_generate",
+    description: "Run the configured Suno generation flow for an existing Artist Runtime song, subject to runtime safety gates.",
     handler: async (input) => {
       const payload = typeof input === "object" && input !== null ? (input as Record<string, unknown>) : {};
       return generateSunoRun({
@@ -32,6 +34,7 @@ export function registerSunoTools(api: unknown): void {
 
   safeRegisterTool(api, {
     name: "artist_suno_import_results",
+    description: "Import known Suno result URLs or files for an existing Artist Runtime run.",
     handler: async (input) => {
       const payload = typeof input === "object" && input !== null ? (input as Record<string, unknown>) : {};
       return importSunoResults({

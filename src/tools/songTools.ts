@@ -5,6 +5,7 @@ import { selectTake } from "../services/takeSelection.js";
 export function registerSongTools(api: unknown): void {
   safeRegisterTool(api, {
     name: "artist_song_ideate",
+    description: "Create and persist an Artist Runtime song idea in the active artist workspace.",
     handler: async (input) => {
       const payload = typeof input === "object" && input !== null ? (input as Record<string, unknown>) : {};
       return createSongIdea({
@@ -18,6 +19,7 @@ export function registerSongTools(api: unknown): void {
 
   safeRegisterTool(api, {
     name: "artist_take_select",
+    description: "Select a generated Suno take for an Artist Runtime song in the active artist workspace.",
     handler: async (input) => {
       const payload = typeof input === "object" && input !== null ? (input as Record<string, unknown>) : {};
       return selectTake({

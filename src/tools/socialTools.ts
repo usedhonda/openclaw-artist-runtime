@@ -4,6 +4,7 @@ import { publishSocialAction } from "../services/socialPublishing.js";
 export function registerSocialTools(api: unknown): void {
   safeRegisterTool(api, {
     name: "artist_social_publish",
+    description: "Publish an approved Artist Runtime social action through the configured authority and safety gates.",
     handler: async (input) => {
       const payload = typeof input === "object" && input !== null ? (input as Record<string, unknown>) : {};
       return publishSocialAction({
@@ -22,6 +23,7 @@ export function registerSocialTools(api: unknown): void {
 
   safeRegisterTool(api, {
     name: "artist_social_reply",
+    description: "Reply on an enabled social platform through the configured Artist Runtime authority and safety gates.",
     handler: async (input) => {
       const payload = typeof input === "object" && input !== null ? (input as Record<string, unknown>) : {};
       return publishSocialAction({

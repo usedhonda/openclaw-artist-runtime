@@ -3,6 +3,10 @@
 ## [Unreleased]
 
 ### Fixed
+- Natural Telegram turns no longer fail at model startup or silently lose the
+  Artist Runtime tools on OpenClaw 2026.6.1. Tool registration now uses the
+  current factory/`execute` contract and binds every call to the active artist
+  workspace.
 - Manual Suno handoff messages now show only the song title, the producer's
   Create action, the wait window, and the automatic continuation. Internal song
   IDs and diagnostic-style sections are no longer exposed in this routine step.
