@@ -155,6 +155,17 @@ read_gateway_pid() {
   fi
 }
 
+read_heartbeat_gateway_pid() {
+  node -e '
+const fs = require("node:fs");
+const path = require("node:path");
+try {
+  const value = JSON.parse(fs.readFileSync(path.join(process.env.OPENCLAW_LOCAL_WORKSPACE, "runtime", "supervisor-heartbeat.json"), "utf8"));
+  if (Number.isInteger(value?.gateway?.pid) && value.gateway.pid > 0) process.stdout.write(String(value.gateway.pid));
+} catch {}
+'
+}
+
 gateway_pid_is_live() {
   local pid="$1"
   [[ -n "${pid}" ]] && kill -0 "${pid}" 2>/dev/null
@@ -339,12 +350,27 @@ case "${command}" in
     ;;
   status)
     cleanup_stale_pid
-    existing_pid="$(read_gateway_pid)"
-    if [[ -n "${existing_pid}" ]]; then
-      echo "gateway_pid=${existing_pid}"
+    supervisor_pid="$(live_supervisor_lock_owner)"
+    if [[ -z "${supervisor_pid}" ]]; then
+      supervisor_pid="$(read_gateway_pid)"
+    fi
+    gateway_child_pid="$(read_heartbeat_gateway_pid)"
+    if [[ -n "${supervisor_pid}" ]] && gateway_pid_is_live "${supervisor_pid}"; then
+      echo "gateway_pid=${supervisor_pid}"
+      echo "supervisor_pid=${supervisor_pid}"
+      if [[ -n "${gateway_child_pid}" ]] && gateway_pid_is_live "${gateway_child_pid}"; then
+        echo "gateway_child_pid=${gateway_child_pid}"
+        echo "gateway_state=running"
+      else
+        echo "gateway_child_pid=stopped"
+        echo "gateway_state=restarting"
+      fi
       echo "gateway_log=${OPENCLAW_LOCAL_GATEWAY_LOG}"
     else
       echo "gateway_pid=stopped"
+      echo "supervisor_pid=stopped"
+      echo "gateway_child_pid=stopped"
+      echo "gateway_state=stopped"
       echo "gateway_log=${OPENCLAW_LOCAL_GATEWAY_LOG}"
     fi
     gateway_token="$(read_gateway_token)"

@@ -6,6 +6,12 @@ export interface SupervisorHeartbeat {
   pid: number;
   uptimeMs: number;
   startedAt: string;
+  gateway?: {
+    state: string;
+    pid?: number;
+    startedAt?: string;
+    uptimeMs?: number;
+  };
 }
 
 export interface AutopilotHeartbeat {

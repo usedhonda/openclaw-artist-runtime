@@ -63,6 +63,7 @@ child=""
 cleanup() { [[ -n "\${child}" ]] && kill "\${child}" 2>/dev/null || true; rm -f "\${lock}"; exit 0; }
 trap cleanup TERM INT EXIT
 sleep 30 & child=$!
+printf '{"pid":%s,"gateway":{"state":"running","pid":%s}}\n' "$$" "\${child}" > "\${OPENCLAW_LOCAL_WORKSPACE}/runtime/supervisor-heartbeat.json"
 wait "\${child}"
 `,
     "utf8"
@@ -158,6 +159,10 @@ describe("openclaw-local-gateway owner guards", () => {
     expect(config.tools.deny).toEqual(
       expect.arrayContaining(["group:runtime", "write", "edit", "apply_patch", "gateway"])
     );
+    const status = runWrapper(fixture, "status");
+    expect(status.stdout).toContain("gateway_state=running");
+    expect(status.stdout).toMatch(/supervisor_pid=\d+/);
+    expect(status.stdout).toMatch(/gateway_child_pid=\d+/);
     const stopped = runWrapper(fixture, "stop");
     expect(stopped.status).toBe(0);
     expect(stopped.stdout).toContain("Gateway stopped");

@@ -1,4 +1,5 @@
 import { mkdtempSync } from "node:fs";
+import { execFileSync } from "node:child_process";
 import { readFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -41,6 +42,18 @@ describe("supervisor heartbeat artifacts", () => {
       staleMs: 60_000
     })).toBe(true);
     expect(isSupervisorHeartbeatStale(undefined, { now, staleMs: 60_000 })).toBe(true);
+  });
+
+  it("records and preserves the live Gateway child across supervisor heartbeat refreshes", async () => {
+    const root = workspace();
+    const helper = "scripts/openclaw-supervisor-health.mjs";
+    execFileSync("node", [helper, "heartbeat", "--workspace", root, "--pid", "1234", "--started-at-ms", "1000", "--child-pid", "5678", "--child-state", "running", "--child-started-at-ms", "2000"]);
+    execFileSync("node", [helper, "heartbeat", "--workspace", root, "--pid", "1234", "--started-at-ms", "1000"]);
+
+    expect(await readSupervisorHeartbeat(root)).toMatchObject({
+      pid: 1234,
+      gateway: { pid: 5678, state: "running" }
+    });
   });
 
   it("writes autopilot heartbeat attempts and results without changing state machine semantics", async () => {

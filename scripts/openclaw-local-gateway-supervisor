@@ -132,10 +132,20 @@ record_watchdog_kill() {
 }
 
 write_supervisor_heartbeat() {
-  node "${script_dir}/openclaw-supervisor-health.mjs" heartbeat \
-    --workspace "${OPENCLAW_LOCAL_WORKSPACE}" \
-    --pid "$$" \
-    --started-at-ms "${supervisor_started_ms}" >/dev/null 2>&1 \
+  local -a heartbeat_args
+  heartbeat_args=(
+    heartbeat
+    --workspace "${OPENCLAW_LOCAL_WORKSPACE}"
+    --pid "$$"
+    --started-at-ms "${supervisor_started_ms}"
+  )
+  if [[ $# -gt 0 ]]; then
+    heartbeat_args+=(--child-pid "${1}" --child-state "${2:-stopped}")
+    if [[ -n "${3:-}" ]]; then
+      heartbeat_args+=(--child-started-at-ms "${3}")
+    fi
+  fi
+  node "${script_dir}/openclaw-supervisor-health.mjs" "${heartbeat_args[@]}" >/dev/null 2>&1 \
     || log_line "supervisor heartbeat write failed"
 }
 
@@ -237,6 +247,7 @@ watchdog_loop() {
 
 handle_term() {
   log_line "received signal; shutting down"
+  write_supervisor_heartbeat 0 stopped
   # Release the singleton lock only if we still own it (avoid clobbering a
   # successor supervisor that may have reclaimed a stale lock).
   if [[ -f "${supervisor_lock}" ]] && [[ "$(tr -d '[:space:]' < "${supervisor_lock}" 2>/dev/null)" == "$$" ]]; then
@@ -261,6 +272,7 @@ trap 'log_line "received SIGHUP; ignoring"' HUP
 
 log_line "started (pid $$)"
 acquire_singleton_lock
+write_supervisor_heartbeat 0 starting
 supervisor_heartbeat_loop &
 heartbeat_pid=$!
 start_ticker_watcher
@@ -278,6 +290,7 @@ while true; do
   ) >>"${OPENCLAW_LOCAL_GATEWAY_LOG}" 2>&1 &
   child=$!
   log_line "spawned gateway pid=${child}"
+  write_supervisor_heartbeat "${child}" running "${child_started_ms}"
 
   watchdog_loop "${child}" &
   watchdog_pid=$!
@@ -285,6 +298,7 @@ while true; do
   wait "${child}"
   rc=$?
   child_exited_ms="$(now_ms)"
+  write_supervisor_heartbeat 0 restarting
 
   if [[ -n "${watchdog_pid}" ]]; then
     kill "${watchdog_pid}" 2>/dev/null

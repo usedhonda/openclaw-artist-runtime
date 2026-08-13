@@ -65,11 +65,27 @@ async function heartbeat(args) {
   const now = Date.now();
   const startedAtMs = numberArg(args, "--started-at-ms", now);
   const pid = numberArg(args, "--pid", process.pid);
-  await writeJson(join(workspace, "runtime", "supervisor-heartbeat.json"), {
+  const heartbeatPath = join(workspace, "runtime", "supervisor-heartbeat.json");
+  const existing = await readHeartbeat(heartbeatPath);
+  const childPidValue = argValue(args, "--child-pid", undefined);
+  let gateway = existing?.gateway;
+  if (childPidValue !== undefined) {
+    const childPid = Number.parseInt(childPidValue, 10);
+    const childState = argValue(args, "--child-state", childPid > 0 ? "running" : "stopped");
+    const childStartedAtMs = numberArg(args, "--child-started-at-ms", now);
+    gateway = childPid > 0 ? {
+      state: childState,
+      pid: childPid,
+      startedAt: new Date(childStartedAtMs).toISOString(),
+      uptimeMs: Math.max(0, now - childStartedAtMs)
+    } : { state: childState };
+  }
+  await writeJson(heartbeatPath, {
     timestamp: new Date(now).toISOString(),
     pid,
     uptimeMs: Math.max(0, now - startedAtMs),
-    startedAt: new Date(startedAtMs).toISOString()
+    startedAt: new Date(startedAtMs).toISOString(),
+    ...(gateway ? { gateway } : {})
   });
 }
 
