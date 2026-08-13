@@ -50,10 +50,12 @@ describe("supervisor heartbeat artifacts", () => {
     execFileSync("node", [helper, "heartbeat", "--workspace", root, "--pid", "1234", "--started-at-ms", "1000", "--child-pid", "5678", "--child-state", "running", "--child-started-at-ms", "2000"]);
     execFileSync("node", [helper, "heartbeat", "--workspace", root, "--pid", "1234", "--started-at-ms", "1000"]);
 
-    expect(await readSupervisorHeartbeat(root)).toMatchObject({
+    const heartbeat = await readSupervisorHeartbeat(root);
+    expect(heartbeat).toMatchObject({
       pid: 1234,
       gateway: { pid: 5678, state: "running" }
     });
+    expect(heartbeat?.gateway?.uptimeMs).toBeGreaterThan(0);
   });
 
   it("writes autopilot heartbeat attempts and results without changing state machine semantics", async () => {

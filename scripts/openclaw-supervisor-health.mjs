@@ -79,6 +79,11 @@ async function heartbeat(args) {
       startedAt: new Date(childStartedAtMs).toISOString(),
       uptimeMs: Math.max(0, now - childStartedAtMs)
     } : { state: childState };
+  } else if (gateway?.pid && typeof gateway.startedAt === "string") {
+    const childStartedAtMs = Date.parse(gateway.startedAt);
+    if (Number.isFinite(childStartedAtMs)) {
+      gateway = { ...gateway, uptimeMs: Math.max(0, now - childStartedAtMs) };
+    }
   }
   await writeJson(heartbeatPath, {
     timestamp: new Date(now).toISOString(),
