@@ -79,6 +79,18 @@ describe("Suno V5.5 style builder", () => {
     expect(result.total).not.toContain("Knowledge Vocabulary");
   });
 
+  it("keeps nu-jazz rap fallback bass electric unless upright is explicit", () => {
+    const result = buildStyle({
+      genre: "nu-jazz rap",
+      moodHint: "tense underground hip-hop",
+      brief: "Rhodes, live jazz drums, hard pick electric bass, no acoustic bass."
+    });
+
+    expect(result.total).toContain("thick electric bass");
+    expect(result.total).not.toContain("fat upright bass");
+    expect(result.total).not.toContain("upright bass");
+  });
+
   it("exposes mygpts-derived style synthesis prompt guidance with catalog attribution", async () => {
     const prompt = await buildStyleSynthesisPrompt({
       brief: "Rhodes and sax move under a restrained vocal.",

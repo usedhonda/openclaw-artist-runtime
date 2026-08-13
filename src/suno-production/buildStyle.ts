@@ -56,6 +56,33 @@ function uniq(values: string[]): string[] {
   return [...new Set(values.map((value) => value.trim()).filter(Boolean))];
 }
 
+const ACOUSTIC_BASS_TERMS = [
+  "upright bass",
+  "acoustic double bass",
+  "double bass",
+  "wood bass",
+  "walking acoustic jazz bass",
+  "acoustic bass",
+  "fat upright bass"
+];
+
+function acousticBassAvoidanceRequested(input: BuildStyleInput): boolean {
+  const source = [
+    input.artistProfile,
+    input.brief,
+    input.moodHint,
+    input.genre,
+    input.vibe,
+    input.performanceDirection
+  ].filter(Boolean).join(" ").toLowerCase();
+  return /\b(no|avoid|exclude|without|remove|removed|not|must not contain)\b[^.]*\b(upright|wood|acoustic double|double|acoustic)\s*-?\s*bass\b/.test(source)
+    || /\b(upright|wood|acoustic double|double|acoustic)\s*-?\s*bass\b[^.]*\b(not|avoid|exclude|remove|removed|forbid|forbidden)\b/.test(source);
+}
+
+function removeAcousticBassTerms(values: string[]): string[] {
+  return values.filter((value) => !ACOUSTIC_BASS_TERMS.some((term) => value.toLowerCase().includes(term)));
+}
+
 function fitTags(tags: string[], max: number): string {
   const fitted: string[] = [];
   for (const tag of tags) {
@@ -203,11 +230,13 @@ function inferMood(input: BuildStyleInput): string {
 }
 
 function inferInstruments(input: BuildStyleInput): string[] {
-  const source = `${input.brief ?? ""} ${input.artistProfile ?? ""}`.toLowerCase();
+  const source = `${input.brief ?? ""} ${input.artistProfile ?? ""} ${input.moodHint ?? ""} ${input.genre ?? ""} ${input.vibe ?? ""}`.toLowerCase();
+  const excludesAcousticBass = acousticBassAvoidanceRequested(input);
   const candidates = [
     ["Rhodes", /\brhodes\b/],
     ["sax", /\bsax(?:ophone)?\b/],
-    ["upright bass", /\bupright bass\b/],
+    ...(excludesAcousticBass ? [] : [["upright bass", /\bupright bass\b/]] as const),
+    ["thick electric bass", /\belectric bass\b|\bsolid-body bass\b/],
     ["brushed drums", /\bbrushed drums?\b|\bbrushes\b/],
     ["warm bass", /\bwarm bass\b/],
     ["cold synth", /\bcold synth\b/],
@@ -220,6 +249,9 @@ export function buildStyle(input: BuildStyleInput): BuildStyleResult {
   const vibe = fitPhrase(englishStylePhrase(input.vibe, inferMood(input)), 40);
   const genre = inferGenre(input);
   const template = STYLE_TEMPLATES[genre] ?? STYLE_TEMPLATES.default;
+  const templateInstruments = acousticBassAvoidanceRequested(input)
+    ? removeAcousticBassTerms(template.instruments)
+    : template.instruments;
   const bpm = Math.round(input.bpm ?? 124);
   const seedHash = hashString(input.variationSeed ?? `${input.artistProfile ?? ""}\n${input.brief ?? ""}\n${input.moodHint ?? ""}\n${genre}\n${bpm}`);
   const profile = variationProfile(input);
@@ -231,12 +263,15 @@ export function buildStyle(input: BuildStyleInput): BuildStyleResult {
     vibe,
     `BPM ${bpm}`,
     vocalDescriptor,
-    ...(instruments.length > 0 ? instruments : template.instruments).slice(0, 3),
+    ...(instruments.length > 0 ? instruments : templateInstruments).slice(0, 3),
     input.mixKeyword ?? "intimate mix"
   ]);
   const coreTags = fitTags(tags, CANONICAL_STYLE_CORE_MAX_CHARS);
   const direction = trimAtPhraseBoundary(compact(input.performanceDirection ?? "Keep performance restrained, intelligible, and image-led; no double-time vocal."), 76);
-  const injectedInstruments = richList(uniq([...instruments, ...template.instruments]), seedHash, 7);
+  const injectedInstruments = uniq([
+    ...instruments,
+    ...richList(uniq([...instruments, ...templateInstruments]), seedHash, 7)
+  ]);
   const vocabulary = [
     "wide stereo",
     "close-mic",

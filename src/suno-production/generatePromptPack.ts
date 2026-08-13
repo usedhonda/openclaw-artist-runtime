@@ -54,6 +54,26 @@ function artistDefaultVocalGender(artistSnapshot: string): "male" | "female" | "
   return (match?.[1]?.toLowerCase() as "male" | "female" | "neutral" | undefined) ?? "male";
 }
 
+function acousticBassAvoidanceTerms(source: string): string[] {
+  return /\b(upright|wood|acoustic double|double|acoustic)\s*-?\s*bass\b/i.test(source)
+    ? ["upright bass", "acoustic double bass", "wood bass", "walking acoustic jazz bass", "muddy round bass", "acoustic bass"]
+    : [];
+}
+
+export function sanitizeAcousticBassStyle(style: string, acousticBassAvoidance: string[]): string {
+  if (acousticBassAvoidance.length === 0) return style;
+  return style
+    .replace(/\bfat upright bass\b/gi, "hard-pick solid-body electric bass")
+    .replace(/\bupright bass\b/gi, "hard-pick solid-body electric bass")
+    .replace(/\bacoustic double bass\b/gi, "hard-pick solid-body electric bass")
+    .replace(/\bwalking acoustic jazz bass\b/gi, "tight electric bass line")
+    .replace(/\bwood bass\b/gi, "clear DI electric bass")
+    .replace(/\bacoustic bass\b/gi, "clear DI electric bass")
+    .replace(/(?:,\s*){2,}/g, ", ")
+    .replace(/\s+,/g, ",")
+    .trim();
+}
+
 export function classifyLyricsZoneForPromptCounts(
   lyricsLength: number,
   markerChars: number,
@@ -92,6 +112,7 @@ export function createSunoPromptPack(input: CreateSunoPromptPackInput): SunoProm
   const originalLyricsText = repairCommandLeak(input.lyricsText).trim();
   const lyricsText = normalizeSunoRegistrationJapanese(originalLyricsText);
   const genre = `${input.artistReason} ${input.moodHint ?? ""}`;
+  const acousticBassAvoidance = acousticBassAvoidanceTerms(genre);
   const durationPlan = getDurationPlan(input.tempoBand);
   const bpm = input.bpm ?? durationPlan.bpm.target;
   const vocalGender = input.vocalGender ?? artistDefaultVocalGender(input.artistSnapshot);
@@ -107,10 +128,10 @@ export function createSunoPromptPack(input: CreateSunoPromptPackInput): SunoProm
     vocalGender,
     variationSeed: input.styleVariationSeed
   });
-  const style = enforceStyleCoreContract(styleResult.total);
+  const style = sanitizeAcousticBassStyle(enforceStyleCoreContract(styleResult.total), acousticBassAvoidance);
   const exclude = buildExcludeV55({
     genre,
-    artistAvoid: ["generic EDM drop", "fake crowd noise"],
+    artistAvoid: ["generic EDM drop", "fake crowd noise", ...acousticBassAvoidance],
     copyrightSourceNameDenylist: [input.songTitle]
   }).text;
   const yamlLyrics = buildYamlV55({
@@ -192,6 +213,7 @@ export async function createSunoPromptPackWithAi(
   const originalLyricsText = repairCommandLeak(input.lyricsText).trim();
   const lyricsText = normalizeSunoRegistrationJapanese(originalLyricsText);
   const genre = `${input.artistReason} ${input.moodHint ?? ""}`;
+  const acousticBassAvoidance = acousticBassAvoidanceTerms(genre);
   const durationPlan = getDurationPlan(input.tempoBand);
   const bpm = input.bpm ?? durationPlan.bpm.target;
   const vocalGender = input.vocalGender ?? artistDefaultVocalGender(input.artistSnapshot);
@@ -209,7 +231,7 @@ export async function createSunoPromptPackWithAi(
   }, { provider: input.aiReviewProvider });
   const excludeResult = await synthesizeExclude({
     genre,
-    artistAvoid: ["generic EDM drop", "fake crowd noise"],
+    artistAvoid: ["generic EDM drop", "fake crowd noise", ...acousticBassAvoidance],
     copyrightSourceNameDenylist: [input.songTitle]
   }, { provider: input.aiReviewProvider });
   const yamlLyrics = buildYamlV55({
@@ -251,7 +273,7 @@ export async function createSunoPromptPackWithAi(
     durationPlan
   });
   const sliders = buildSlidersV55({ genre, moodHint: input.moodHint, weirdnessOverride: input.weirdnessOverride });
-  const style = enforceStyleCoreContract(styleResult.total);
+  const style = sanitizeAcousticBassStyle(enforceStyleCoreContract(styleResult.total), acousticBassAvoidance);
   const payload = buildPayload({ ...input, lyricsText, bpm, vocalGender }, style, excludeResult.text, yamlLyrics, sliders, lyricsBoxLimit);
   const payloadHash = hashText(JSON.stringify(payload));
   const promptHash = hashText(`${style}\n${excludeResult.text}\n${yamlLyrics}`);

@@ -3,7 +3,7 @@ import { mkdir, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
-import { createSunoPromptPack } from "../src/suno-production/generatePromptPack";
+import { createSunoPromptPack, sanitizeAcousticBassStyle } from "../src/suno-production/generatePromptPack";
 import { CANONICAL_STYLE_TARGET_MAX_CHARS } from "../src/suno-production/buildStyle";
 import { createAndPersistSunoPromptPack } from "../src/services/sunoPromptPackFiles";
 import { validateNoCommandLeak } from "../src/services/lyricsValidator";
@@ -78,6 +78,35 @@ describe("Suno V5.5 prompt pack orchestration", () => {
     expect(String(pack.payload.lyricsText)).not.toContain("AABB");
     expect(String(pack.yamlLyrics)).not.toContain("flow =");
     expect(validateNoCommandLeak(String(pack.payload.lyrics))).toEqual([]);
+  });
+
+  it("keeps acoustic bass avoidance out of style and in exclude", () => {
+    const pack = createSunoPromptPack({
+      songId: "song-bass-guard",
+      songTitle: "Bass Guard",
+      artistReason: "Producer approved redo. Avoid upright bass and acoustic bass; use hard-pick electric bass.",
+      lyricsText: lyrics,
+      moodHint: "tense underground hip-hop",
+      artistSnapshot: "# ARTIST\nnu-jazz rap civic pressure",
+      currentStateSnapshot: "# CURRENT\nobservational"
+    });
+
+    expect(pack.style).toContain("thick electric bass");
+    expect(pack.style).not.toMatch(/\b(upright|acoustic|wood)\s+bass\b/i);
+    expect(pack.exclude).toContain("upright bass");
+    expect(pack.exclude).toContain("acoustic bass");
+  });
+
+  it("sanitizes acoustic bass terms returned by style synthesis", () => {
+    const style = sanitizeAcousticBassStyle([
+      "# Style",
+      "nu-jazz rap, BPM 126, upright bass, Rhodes",
+      "- Instruments: acoustic double bass, sax, live jazz drums.",
+      "- Rhythm & Bass: wood bass bloom."
+    ].join("\n"), ["upright bass", "acoustic bass"]);
+
+    expect(style).toContain("hard-pick solid-body electric bass");
+    expect(style).not.toMatch(/\b(upright|acoustic|wood)\s+bass\b/i);
   });
 
   it("persists style, exclude, yaml-suno, and lyrics-suno under the song Suno directory", async () => {

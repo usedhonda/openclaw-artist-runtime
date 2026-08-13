@@ -12,7 +12,7 @@ export interface StyleTemplate {
 export const STYLE_TEMPLATES: Record<Genre, StyleTemplate> = {
   "nu-jazz rap": {
     genreLine: "nu-jazz rap, 132 BPM, minor key, 2000s underground lineage",
-    instruments: ["live jazz drums", "fat upright bass", "Rhodes voicings", "tenor sax fragments", "muted horn stabs"],
+    instruments: ["live jazz drums", "thick electric bass", "Rhodes voicings", "tenor sax fragments", "muted horn stabs"],
     mixVision: ["wide stereo room", "raw analog glue", "bass-forward low mids", "dry vocal center", "tight transient control"],
     texture: ["vintage tape character", "vinyl warmth without lo-fi blur", "dim club air", "brushed cymbal grain"],
     vocalProduction: ["close mic dry lead", "restrained doubles", "spoken-rap edges", "clear consonants above bass"],
