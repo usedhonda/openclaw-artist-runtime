@@ -3,6 +3,11 @@
 ## [Unreleased]
 
 ### Fixed
+- Telegram producer messages now stay conversational before they become work:
+  tentative suggestions continue the current song discussion without tool calls
+  or internal artifact narration. Explicitly approved Suno revisions use strict
+  tool inputs, and the generation tool reads the persisted runtime setting so
+  manual mode reliably fills the form and stops before Create.
 - Telegram answer previews no longer expose internal file reads, shell commands,
   planning updates, or other tool progress in producer conversations. The local
   gateway now defaults only that progress lane off while retaining partial answer

@@ -62,6 +62,8 @@ describe("ensureArtistWorkspace AGENTS.md fallback", () => {
       readFile(join(root, "CLAUDE.md"), "utf8")
     ]);
     expect(agents).toBe(claude);
+    expect(agents).toContain("Producer conversation comes first");
+    expect(agents).toContain("do not call tools or change");
     expect(result.created).toContain("AGENTS.md");
 
     rmSync(templateRoot, { recursive: true, force: true });

@@ -433,6 +433,14 @@ producer, and Telegram is the channel between them. The artist answers as
 itself, proposes ChangeSets when files should change, and waits for producer
 confirmation before writing managed files.
 
+Tentative producer language remains conversation, not execution. For example,
+`スラップがいいかもね` continues the current song discussion without tool
+calls or file writes. After an explicit `それで直して` (and, when wanted,
+`Create直前まで準備して`), the artist updates the prompt pack through the
+registered tool and runs the persisted Suno submit mode. With `manual`, the
+visible form is filled and left open before Create. Routine replies omit tool
+names, paths, song IDs, prompt-pack versions, and diagnostic narration.
+
 Core journeys:
 
 1. Persona refinement: talk to the artist with `/persona ...` or plain text.

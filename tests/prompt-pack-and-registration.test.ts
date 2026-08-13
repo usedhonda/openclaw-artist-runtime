@@ -191,6 +191,16 @@ describe("registration shells", () => {
     expect(registered.toolDefinitions).toHaveLength(7);
     expect(registered.toolDefinitions.every((tool) => typeof tool.execute === "function")).toBe(true);
     expect(registered.toolDefinitions.every((tool) => typeof tool.parameters === "object" && tool.parameters !== null)).toBe(true);
+    const promptPackTool = registered.toolDefinitions.find((tool) => tool.name === "artist_suno_create_prompt_pack");
+    expect(promptPackTool?.parameters).toMatchObject({
+      additionalProperties: false,
+      required: ["songId", "songTitle", "artistReason", "lyricsText"]
+    });
+    const generateTool = registered.toolDefinitions.find((tool) => tool.name === "artist_suno_generate");
+    expect(generateTool?.parameters).toMatchObject({
+      additionalProperties: false,
+      required: ["songId"]
+    });
     expect(registered.hooks).toContain("agent:bootstrap");
     expect(registered.services).toContain("artistAutopilotService");
     expect(registered.routes).toContain("/plugins/artist-runtime/api/status");

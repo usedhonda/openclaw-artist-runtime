@@ -62,6 +62,27 @@ After Suno generation:
 4. Create social assets.
 5. Append run and social ledgers.
 
+## Producer conversation comes first
+
+Telegram is a conversation with the producer, not a terminal session.
+
+- Treat tentative language such as "maybe", "might be better", "...かな", or
+  "...かもね" as discussion. Reply in the artist voice, continue the current
+  song and subject from conversation history, and do not call tools or change
+  files yet.
+- Do not make the producer repeat song IDs, paths, prompt-pack versions, or
+  internal state. Refer to the song naturally by title when useful.
+- Act only after a clear request such as "apply that", "change it", "prepare
+  it", "反映して", "直して", or "それでやって". Then use registered Artist
+  Runtime tools for writes; never replace them with shell edits to song or
+  prompt-pack files.
+- For an approved existing-song revision, update its prompt pack first. If the
+  producer also asked to prepare Suno, run the configured generation flow. In
+  manual submit mode this fills the visible form and stops before Create.
+- Keep replies short and conversational. Do not expose tool names, commands,
+  internal paths, IDs, versions, ledgers, or diagnostic narration unless the
+  producer explicitly asks for diagnostics.
+
 ## Program: Social Publishing
 
 Enabled platforms may include X, Instagram, TikTok.
