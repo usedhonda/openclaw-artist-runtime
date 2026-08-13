@@ -106,6 +106,49 @@ try {
 EOF
 }
 
+request_safe_restart() {
+  local gateway_token output restart_status
+  local -a restart_args
+  gateway_token="$(read_gateway_token)"
+  restart_args=(
+    gateway call gateway.restart.request
+    --json
+    --url "${OPENCLAW_LOCAL_GATEWAY_WS_URL}"
+    --timeout 10000
+    --params '{"reason":"artist-runtime.maintenance"}'
+  )
+  if [[ -n "${gateway_token}" ]]; then
+    # The gateway call CLI has no token-file option. This is a short-lived
+    # control request; never place the token on a long-running process argv.
+    # boundary-grep-allow: secret-on-command-line
+    restart_args+=(--token "${gateway_token}")
+  fi
+  if ! output="$("${script_dir}/openclaw-local" "${restart_args[@]}")"; then
+    echo "Safe Gateway restart request failed; no force-restart fallback was attempted." >&2
+    return 1
+  fi
+  restart_status="$(node -e '
+let input = "";
+process.stdin.on("data", (chunk) => input += chunk);
+process.stdin.on("end", () => {
+  try {
+    const value = JSON.parse(input);
+    const status = value?.status ?? value?.result?.status ?? value?.payload?.status;
+    if (typeof status === "string") process.stdout.write(status);
+  } catch {}
+});
+' <<<"${output}")"
+  case "${restart_status}" in
+    scheduled|deferred|coalesced)
+      printf '%s\n' "${output}"
+      ;;
+    *)
+      echo "Safe Gateway restart returned an unrecognized status; no force-restart fallback was attempted." >&2
+      return 1
+      ;;
+  esac
+}
+
 read_gateway_pid() {
   if [[ -f "${OPENCLAW_LOCAL_GATEWAY_PID}" ]]; then
     tr -d '[:space:]' < "${OPENCLAW_LOCAL_GATEWAY_PID}"
@@ -266,6 +309,9 @@ case "${command}" in
     rm -f "${OPENCLAW_LOCAL_GATEWAY_PID}"
     echo "Gateway force-stopped."
     ;;
+  restart)
+    request_safe_restart
+    ;;
   tail)
     ensure_runtime_dirs
     touch "${OPENCLAW_LOCAL_GATEWAY_LOG}"
@@ -309,7 +355,7 @@ case "${command}" in
     exec "${script_dir}/openclaw-local" gateway status --url "${OPENCLAW_LOCAL_GATEWAY_WS_URL}" "$@"
     ;;
   *)
-    echo "Usage: scripts/openclaw-local-gateway [run|start|stop|tail|health|probe|status] [args...]" >&2
+    echo "Usage: scripts/openclaw-local-gateway [run|start|stop|restart|tail|health|probe|status] [args...]" >&2
     exit 1
     ;;
 esac

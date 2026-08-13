@@ -13,7 +13,7 @@
 #   scripts/openclaw-gateway-launchd.sh install     # generate plist + load + start
 #   scripts/openclaw-gateway-launchd.sh stop        # stop without removing plist
 #   scripts/openclaw-gateway-launchd.sh uninstall   # stop + unload + remove plist
-#   scripts/openclaw-gateway-launchd.sh restart     # kickstart -k (force restart)
+#   scripts/openclaw-gateway-launchd.sh restart     # safe restart after active work drains
 #   scripts/openclaw-gateway-launchd.sh status      # launchctl print + health hint
 #   scripts/openclaw-gateway-launchd.sh generate    # render plist only (no load)
 set -euo pipefail
@@ -121,8 +121,7 @@ cmd_restart() {
     echo "Service not loaded. Run: $0 install" >&2
     exit 1
   fi
-  launchctl kickstart -k "${service_target}"
-  echo "Restarted ${service_target}"
+  exec "${script_dir}/openclaw-local-gateway" restart
 }
 
 cmd_status() {

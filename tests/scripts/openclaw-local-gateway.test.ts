@@ -14,6 +14,7 @@ async function makeFixture(options: { launchd?: "loaded" | "stopped"; supervisor
   const workspace = join(localRoot, "workspace");
   const logs = join(localRoot, "logs");
   const marker = join(root, "supervisor-started");
+  const gatewayCallMarker = join(root, "gateway-call-args");
   await mkdir(scripts, { recursive: true });
   await mkdir(bin, { recursive: true });
   await writeFile(join(scripts, "openclaw-local-gateway"), await readFile(sourceScript, "utf8"), "utf8");
@@ -40,6 +41,15 @@ export PATH='${bin}':"\${PATH}"
     "utf8"
   );
   await chmod(join(scripts, "openclaw-local-env.sh"), 0o755);
+  await writeFile(
+    join(scripts, "openclaw-local"),
+    `#!/usr/bin/env bash
+printf '%s\n' "$@" > '${gatewayCallMarker}'
+printf '%s\n' '{"status":"deferred"}'
+`,
+    "utf8"
+  );
+  await chmod(join(scripts, "openclaw-local"), 0o755);
   await writeFile(
     join(scripts, "openclaw-local-gateway-supervisor"),
     `#!/usr/bin/env bash
@@ -80,7 +90,7 @@ exit 1
     FAKE_LAUNCHD_STATE: options.launchd ?? "stopped",
     FAKE_SUPERVISOR_MODE: options.supervisor ?? "owner"
   };
-  return { root, scripts, marker, env, supervisor: join(scripts, "openclaw-local-gateway-supervisor") };
+  return { root, scripts, marker, gatewayCallMarker, env, supervisor: join(scripts, "openclaw-local-gateway-supervisor") };
 }
 
 function runWrapper(fixture: Awaited<ReturnType<typeof makeFixture>>, command: string) {
@@ -151,5 +161,21 @@ describe("openclaw-local-gateway owner guards", () => {
     const stopped = runWrapper(fixture, "stop");
     expect(stopped.status).toBe(0);
     expect(stopped.stdout).toContain("Gateway stopped");
+  });
+
+  it("requests a drain-aware restart through the configured Gateway without a force fallback", async () => {
+    const fixture = await makeFixture();
+    const result = runWrapper(fixture, "restart");
+    expect(result.status).toBe(0);
+    expect(JSON.parse(result.stdout)).toEqual({ status: "deferred" });
+    const args = (await readFile(fixture.gatewayCallMarker, "utf8")).trim().split("\n");
+    expect(args).toEqual(expect.arrayContaining([
+      "gateway.restart.request",
+      "--url",
+      "ws://127.0.0.1:43134",
+      "--params",
+      '{"reason":"artist-runtime.maintenance"}'
+    ]));
+    expect(args).not.toContain("--force");
   });
 });
