@@ -69,12 +69,13 @@ interface TelegramStub {
   close: () => Promise<void>;
 }
 
-async function telegramStub(): Promise<TelegramStub> {
+async function telegramStub(status = 200): Promise<TelegramStub> {
   const requests: Array<Record<string, unknown>> = [];
   const server = createServer(async (req, res) => {
     requests.push(await readRequestJson(req));
+    res.statusCode = status;
     res.setHeader("content-type", "application/json");
-    res.end(JSON.stringify({ ok: true }));
+    res.end(JSON.stringify({ ok: status >= 200 && status < 300, description: "stub" }));
   });
   await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
   const address = server.address();
@@ -357,6 +358,52 @@ describe("ticker external watcher", () => {
     expect(String(telegram.requests[0].text)).toContain("supervisor_wait_exceeded");
     const log = await readFile(join(root, "runtime", "ticker-watcher.log"), "utf8");
     expect(log.match(/telegram notice sent/g)).toHaveLength(1);
+  });
+
+  it("logs a failed Telegram notice on a non-2xx response without changing the watcher decision", async () => {
+    const root = workspace();
+    const deadGatewayPid = await exitedProcessPid();
+    await writeAutopilotHeartbeat(root, deadGatewayPid);
+    await writeSupervisorHeartbeat(root, process.pid, deadGatewayPid);
+    const telegram = await telegramStub(401);
+    const watcher = spawn("scripts/openclaw-ticker-watcher", [
+      "--workspace",
+      root,
+      "--gateway-url",
+      "http://127.0.0.1:9",
+      "--supervisor",
+      "scripts/openclaw-local-gateway-supervisor",
+      "--interval-ms",
+      "10",
+      "--supervisor-wait-limit-ms",
+      "20",
+      "--telegram-api-base",
+      telegram.base
+    ], {
+      cwd: process.cwd(),
+      stdio: "ignore",
+      env: { ...process.env, TELEGRAM_BOT_TOKEN: "test-token", TELEGRAM_OWNER_USER_IDS: "123" }
+    });
+
+    try {
+      await waitFor(() => telegram.requests.length >= 1, 2000);
+      await new Promise((resolve) => setTimeout(resolve, 80));
+    } finally {
+      watcher.kill("SIGTERM");
+      await once(watcher, "exit");
+      await telegram.close();
+    }
+
+    const log = await readFile(join(root, "runtime", "ticker-watcher.log"), "utf8");
+    // Failure surfaced with the status code only, never a false success.
+    expect(log.match(/telegram notice send failed http=401/g)).toHaveLength(1);
+    expect(log).not.toContain("telegram notice sent");
+    // Once-per-incident holds: exactly one delivery attempt.
+    expect(telegram.requests).toHaveLength(1);
+    // Decision unchanged: the escalation tombstone is still created.
+    expect(log).toContain("escalation supervisor wait exceeded");
+    const tombstone = JSON.parse(await readFile(join(root, "runtime", "ticker-watcher-escalation.json"), "utf8")) as Record<string, unknown>;
+    expect(tombstone).toMatchObject({ type: "ticker_watcher_supervisor_wait_exceeded" });
   });
 
   it("sends the safe-tick delivery Telegram notice only on the third consecutive failure, once", async () => {

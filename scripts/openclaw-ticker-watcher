@@ -88,13 +88,18 @@ async function sendTelegramNotice(options, text) {
   }
   const base = options.telegramApiBase.replace(/\/+$/, "");
   try {
-    await fetch(`${base}/bot${token}/sendMessage`, {
+    const response = await fetch(`${base}/bot${token}/sendMessage`, {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({ chat_id: chatId, text }),
       signal: AbortSignal.timeout(TELEGRAM_NOTICE_TIMEOUT_MS)
     });
-    await logLine(options.logPath, "telegram notice sent");
+    if (response.ok) {
+      await logLine(options.logPath, "telegram notice sent");
+    } else {
+      // Status code only: the response body could echo request details.
+      await logLine(options.logPath, `telegram notice send failed http=${response.status}`);
+    }
   } catch (error) {
     // Never log error.message / the error object: on a connect failure it can embed
     // the request URL (and therefore the bot token) via `cause`. error.code is safe.
