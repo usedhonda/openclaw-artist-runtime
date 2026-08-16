@@ -1,8 +1,8 @@
 # Handoff: gateway stability hardening
 
 Task ID: gateway-stability-20260814
-Last updated: 2026-08-14 00:18 +08:00 by solo-fallback
-Status: in-progress
+Last updated: 2026-08-16 13:02 +07:00 by solo-fallback
+Status: monitoring after corrective fix
 
 ## Objective
 Prevent routine Telegram, diagnostic, and maintenance events from terminating
@@ -20,9 +20,14 @@ the live Gateway or dropping producer replies.
 - Config schema, CAPTCHA, publishing, or distribution changes
 
 ## Current state
-Implementation and runtime reflection are complete. Existing unrelated
-prompt-pack worktree changes remain preserved and excluded. The only remaining
-completion gate is the planned 24-hour passive observation window.
+The first 24-hour observation failed with 173 non-zero Gateway child exits. The
+verified trigger was Telegram startup transport exhausting DNS/IPv4 attempts and
+then using an unreachable pinned fallback address. Commit `c548f83` removes only
+that pinned attempt and also repairs the Suno cooldown idempotent hold that made
+Telegram report progress without actually advancing the song. Runtime reflection
+and a real Telegram/Suno recovery pass are complete. Existing unrelated prompt-pack
+worktree changes remain preserved and excluded. A fresh 24-hour passive observation
+started at 2026-08-16T06:01:08Z.
 
 ## Completed
 - [x] Root-cause split — evidence: Aug 12-13 had 15 externally signaled supervisor stops and zero non-zero child exits.
@@ -34,6 +39,10 @@ completion gate is the planned 24-hour passive observation window.
 - [x] Runtime reflection — evidence: one preflight-safe launchd replacement; health recovered and Telegram connected.
 - [x] Live safe restart — evidence: supervisor and child PIDs unchanged, no forced restart, Telegram reconnected.
 - [x] Live child uptime refresh — evidence: commit `83a90ff`; focused test 3/3 and heartbeat advanced to 242385ms without restart.
+- [x] Failed observation diagnosed — evidence: 173 non-zero child exits, each recent startup crash ending on Telegram `ENETUNREACH` after the pinned-IP fallback.
+- [x] Startup crash fix — evidence: commit `c548f83`; installed dist has no pinned fallback attempt, Telegram reached `running=true, connected=true`, and no unexpected post-fix exit occurred.
+- [x] Conversation progress fix — evidence: expired non-hard-stop create cooldown now re-drives instead of idempotent-holding.
+- [x] Live recovery — evidence: real run advanced `blocked_authority` -> `accepted` -> `imported` with two real URLs and two local files; Telegram recorded `suno_human_assist_requested`, `suno_take_url_ready`, and `song_take_completed`, each with a message ID.
 
 ## Files changed
 | File | Change |
@@ -49,6 +58,8 @@ completion gate is the planned 24-hour passive observation window.
 | `src/services/supervisorHealth.ts` | Child state heartbeat type |
 | `tests/*gateway*`, `tests/supervisor-*` | Focused regression coverage |
 | `docs/LOCAL_RUNTIME_OPS.md`, `CHANGELOG.md` | Operator contract |
+| `src/services/autopilotService.ts`, `tests/autopilot-idempotent-hold-stall.test.ts` | Re-drive expired create cooldown holds |
+| `scripts/openclaw-local-telegram-pollfatal-patch.sh` | Disable the crashing pinned-IP fallback while retaining retry |
 
 ## Decided (do not relitigate)
 | Decision | Reason |
@@ -67,11 +78,12 @@ completion gate is the planned 24-hour passive observation window.
 ## Commands run
 ```
 intent-guard start -> active
-focused tests -> 14 passed
+focused tests -> 20 passed (prior 14 plus current 6)
 typecheck / lint / boundary-grep -> pass
 npm test -> 378 files, 1761 tests passed
 npm run build:runtime -> pass
-live safe restart -> scheduled, no PID replacement, Telegram connected
+live reflection -> child-only graceful reload, supervisor retained, Telegram connected
+live recovery -> accepted/imported real run, 2 paths, Telegram completion receipt
 ```
 
 ## Test results
@@ -81,12 +93,12 @@ live safe restart -> scheduled, no PID replacement, Telegram connected
 - None
 
 ## Known risks
-- A 24-hour observation window is still required before declaring stable completion.
+- The corrective 24-hour observation ends at 2026-08-17T06:01:08Z. Its initial sample is clean; stability is not yet declared.
 
 ## Next actions
-1. Keep runtime commit `83a90ff` untouched until 2026-08-15 00:18:30 +08:00.
-2. Verify zero unexpected supervisor stops, non-zero child exits, and watchdog kills.
-3. Archive this handoff and mark the goal complete only if the observation gate passes.
+1. Keep runtime commit `c548f83` and the installed Telegram patch untouched until 2026-08-17T06:01:08Z.
+2. Verify zero unexpected supervisor stops, non-zero child exits, and watchdog kills in the new observer state.
+3. Archive this handoff only if the corrective observation passes.
 
 ## Completion conditions
 - [x] Routine restart drains active work and does not replace the supervisor.
@@ -94,7 +106,7 @@ live safe restart -> scheduled, no PID replacement, Telegram connected
 - [x] Telegram transport failure does not kill the Gateway by default.
 - [x] Focused tests and one final full gate pass.
 - [x] Runtime is reflected and live verification shows Telegram connected.
-- [ ] Twenty-four hours pass with zero unexpected supervisor stops, non-zero child exits, or watchdog kills.
+- [ ] Corrective twenty-four hours pass with zero unexpected supervisor stops, non-zero child exits, or watchdog kills.
 
 ## References
 - Design doc: `docs/LOCAL_RUNTIME_OPS.md`
