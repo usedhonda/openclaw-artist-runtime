@@ -3,6 +3,11 @@
 ## [Unreleased]
 
 ### Fixed
+- Telegram startup no longer escalates a temporary API connection failure into
+  a whole-Gateway crash through the bundled unreachable pinned-IP fallback.
+  DNS/IPv4 transport attempts now fall back to the existing polling retry loop.
+  Suno create cooldown records are also re-driven after the cooldown instead of
+  leaving the current song in an idempotent hold that suppresses new proposals.
 - Gateway maintenance now uses OpenClaw's drain-aware restart request against
   the configured live endpoint instead of force-replacing the launchd process.
   Supervisor status reports its live Gateway child, Telegram network recovery

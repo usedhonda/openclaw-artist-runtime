@@ -12,6 +12,7 @@ describe("local gateway supervisor restart backoff", () => {
     const script = readFileSync("scripts/openclaw-local-gateway-supervisor", "utf8");
     const envScript = readFileSync("scripts/openclaw-local-env.sh", "utf8");
     const installer = readFileSync("scripts/openclaw-local-install.sh", "utf8");
+    const telegramPatch = readFileSync("scripts/openclaw-local-telegram-pollfatal-patch.sh", "utf8");
 
     expect(script).toContain("restart_delay_for_crashes()");
     expect(script).toContain("OPENCLAW_LOCAL_GATEWAY_RESTART_MAX_DELAY");
@@ -35,5 +36,7 @@ describe("local gateway supervisor restart backoff", () => {
     expect(envScript).toContain('OPENCLAW_TELEGRAM_WATCHDOG_ENABLED:-0');
     expect(installer).toContain('openclaw-local-telegram-ingress-patch.sh');
     expect(installer).toContain('openclaw-local-telegram-pollfatal-patch.sh');
+    expect(telegramPatch).toContain('const TELEGRAM_FALLBACK_IPS = ["149.154.167.220"];');
+    expect(telegramPatch).toContain("local stability: disable unreachable pinned Telegram fallback");
   });
 });

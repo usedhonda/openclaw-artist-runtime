@@ -1670,7 +1670,14 @@ export class ArtistAutopilotService {
       // is idempotent and spends no Suno credit, so re-drive it instead of holding.
       const stalePromptPackCarryover =
         stage === "prompt_pack" && song !== undefined && isPrePromptSongWithoutApprovalGate(song);
-      const needsCreateRedrive = latestRunForStall?.status === "failed" || stalePromptPackCarryover;
+      const retryableCreateCooldown =
+        latestRunForStall?.status === "blocked_authority"
+        && latestRunForStall.authorityDecision.hardStop !== true
+        && latestRunForStall.authorityDecision.policyDecision === "stop_create_cooldown";
+      const needsCreateRedrive =
+        latestRunForStall?.status === "failed"
+        || retryableCreateCooldown
+        || stalePromptPackCarryover;
       if (!needsCreateRedrive) {
         emitIdempotentHoldOncePerDay(song?.songId ?? existing.currentSongId, stage);
         return writeStageState(input.workspaceRoot, existing, baseState);

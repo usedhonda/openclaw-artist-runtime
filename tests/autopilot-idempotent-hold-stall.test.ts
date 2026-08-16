@@ -32,6 +32,27 @@ function seedFailedSunoRun(root: string, songId: string, runId: string): void {
   appendFileSync(join(dir, "runs.jsonl"), `${JSON.stringify(record)}\n`);
 }
 
+function seedCooldownBlockedSunoRun(root: string, songId: string, runId: string): void {
+  const dir = join(root, "songs", songId, "suno");
+  mkdirSync(dir, { recursive: true });
+  const record = {
+    runId,
+    songId,
+    createdAt: new Date(Date.now() - 30 * 60 * 1000).toISOString(),
+    mode: "background_browser_worker",
+    authorityDecision: {
+      allowed: false,
+      authority: "auto_create_and_select_take",
+      reason: "Suno create cooldown active (7 min remaining)",
+      policyDecision: "stop_create_cooldown"
+    },
+    status: "blocked_authority",
+    dryRun: false,
+    urls: [] as string[]
+  };
+  appendFileSync(join(dir, "runs.jsonl"), `${JSON.stringify(record)}\n`);
+}
+
 function subscribeIdempotentHolds(): { events: RuntimeEvent[]; unsubscribe: () => void } {
   const events: RuntimeEvent[] = [];
   const unsubscribe = getRuntimeEventBus().subscribe((event) => {
@@ -84,6 +105,38 @@ describe("autopilot idempotent-hold stall recovery", () => {
     // fix the create path runs; with the mock driver it imports takes and advances.
     expect(next.stage).toBe("take_selection");
     expect(await readSongState(root, "stall-song")).toMatchObject({ status: "takes_imported" });
+  }, 30_000);
+
+  it("re-drives a prompt-pack song after a non-hard-stop create cooldown", async () => {
+    const root = mkdtempSync(join(tmpdir(), "artist-runtime-cooldown-stall-"));
+    await ensureArtistWorkspace(root);
+    await ensureSongState(root, "cooldown-song", "Cooldown Song");
+    await updateSongState(root, "cooldown-song", { status: "suno_prompt_pack" });
+    seedCooldownBlockedSunoRun(root, "cooldown-song", "suno_cooldown");
+    await writeAutopilotRunState(root, {
+      runId: "cooldown-run",
+      currentSongId: "cooldown-song",
+      stage: "suno_generation",
+      paused: false,
+      retryCount: 0,
+      cycleCount: 0,
+      updatedAt: new Date().toISOString(),
+      lastRunAt: new Date().toISOString(),
+      lastSuccessfulStage: "suno_generation"
+    });
+
+    const next = await new ArtistAutopilotService().runCycle({
+      workspaceRoot: root,
+      config: {
+        artist: { workspaceRoot: root },
+        autopilot: { enabled: true, dryRun: false },
+        music: { suno: { driver: "mock" as const, connectionMode: "background_browser_worker" as const } },
+        telegram: { enabled: false }
+      }
+    });
+
+    expect(next.stage).toBe("take_selection");
+    expect(await readSongState(root, "cooldown-song")).toMatchObject({ status: "takes_imported" });
   }, 30_000);
 
   // Reproduces the 2026-07-29 spawn_44e162 silent stall: a fresh producer-commissioned song sat
