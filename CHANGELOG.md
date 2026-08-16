@@ -3,6 +3,12 @@
 ## [Unreleased]
 
 ### Fixed
+- Ticker self-heal now recovers after a gateway restart. The external watcher
+  derives gateway liveness from the supervisor heartbeat's `gateway.pid` and only
+  trusts the autopilot heartbeat when its pid matches, so a fresh gateway with a
+  new pid is no longer mistaken for a dead one. Safe-tick nudges are rate-limited
+  to once per 5 minutes and the "gateway dead, supervisor alive" wait is bounded
+  to 5 minutes.
 - Telegram startup no longer escalates a temporary API connection failure into
   a whole-Gateway crash through the bundled unreachable pinned-IP fallback.
   DNS/IPv4 transport attempts now fall back to the existing polling retry loop.
@@ -49,6 +55,11 @@
   Telegram. Login, payment, consent, and captcha dialogs remain fail-closed.
 
 ### Added
+- When ticker self-heal cannot recover on its own, the watcher now sends the
+  producer a single short Telegram notice: once when the bounded supervisor-wait
+  is exceeded, and once after three consecutive safe-tick delivery failures. The
+  notice posts directly to the Telegram Bot API so it arrives even when the
+  gateway is down, and it skips silently when no bot token is configured.
 - Added `music.suno.submitMode: "manual"` for producer-controlled Suno creation:
   the runtime bypasses the CLI submit, opens and autofills the visible form,
   lets the producer adjust remaining parameters, and waits for their Create

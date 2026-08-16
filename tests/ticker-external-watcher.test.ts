@@ -271,6 +271,53 @@ describe("ticker external watcher", () => {
     expect(tombstone).toMatchObject({ type: "ticker_watcher_supervisor_wait_exceeded" });
   });
 
+  it("takes no action when the ticker heartbeat is fresh and fenced to the supervisor-owned gateway", async () => {
+    const root = workspace();
+    await writeFreshAutopilotHeartbeat(root, process.pid);
+    await writeSupervisorHeartbeat(root, process.pid, process.pid);
+
+    const result = await runWatcher([
+      "--once",
+      "--workspace",
+      root,
+      "--gateway-url",
+      "http://127.0.0.1:9",
+      "--supervisor",
+      "scripts/openclaw-local-gateway-supervisor",
+      "--stale-ms",
+      "600000"
+    ]);
+
+    expect(result).toMatchObject({ action: "none", reason: "ticker_fresh" });
+    expect(await readFile(join(root, "runtime", "ticker-watcher.log"), "utf8")).toContain("ticker fresh");
+  });
+
+  it("respawns the supervisor when the supervisor heartbeat is present but both the gateway and supervisor processes are dead", async () => {
+    const root = workspace();
+    const deadGatewayPid = await exitedProcessPid();
+    const deadSupervisorPid = await exitedProcessPid();
+    await writeAutopilotHeartbeat(root, deadGatewayPid);
+    await writeSupervisorHeartbeat(root, deadSupervisorPid, deadGatewayPid);
+    const supervisor = join(root, "fake-supervisor.sh");
+    await writeFile(supervisor, "#!/usr/bin/env bash\nexit 0\n", "utf8");
+    await chmod(supervisor, 0o755);
+
+    const result = await runWatcher([
+      "--once",
+      "--workspace",
+      root,
+      "--gateway-url",
+      "http://127.0.0.1:9",
+      "--supervisor",
+      supervisor,
+      "--stale-ms",
+      "1"
+    ]);
+
+    expect(result).toMatchObject({ action: "supervisor_restart", reason: "gateway_dead_supervisor_dead" });
+    expect(typeof result.pid).toBe("number");
+  });
+
   it("sends exactly one Telegram notice when the supervisor-wait escalation tombstone is created", async () => {
     const root = workspace();
     const deadGatewayPid = await exitedProcessPid();
