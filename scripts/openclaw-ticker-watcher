@@ -54,10 +54,68 @@ function isStale(heartbeat, staleMs) {
 
 const DEFAULT_SAFE_TICK_RATE_LIMIT_MS = 5 * 60 * 1000;
 const DEFAULT_SUPERVISOR_WAIT_LIMIT_MS = 5 * 60 * 1000;
+const DEFAULT_TELEGRAM_API_BASE = "https://api.telegram.org";
+const SAFE_TICK_FAILURE_NOTICE_THRESHOLD = 3;
+const TELEGRAM_NOTICE_TIMEOUT_MS = 10 * 1000;
 
 let lastSafeTickAt = 0;
 let supervisorWaitStartedAt;
 let supervisorWaitPid;
+let consecutiveSafeTickFailures = 0;
+
+function firstTelegramChatId() {
+  const raw = process.env.TELEGRAM_OWNER_USER_IDS;
+  if (typeof raw !== "string") {
+    return undefined;
+  }
+  return raw
+    .split(",")
+    .map((entry) => entry.trim())
+    .find(Boolean);
+}
+
+// Fire-and-forget producer alert. The watcher must be able to notify even when the
+// gateway is dead, so this talks to the Telegram Bot API directly instead of the
+// gateway's notify route. The token lives only in the request URL and is never
+// logged; any failure appends a single fixed log line and never affects the
+// watcher's decision logic.
+async function sendTelegramNotice(options, text) {
+  const token = process.env.TELEGRAM_BOT_TOKEN;
+  const chatId = firstTelegramChatId();
+  if (!token || !chatId) {
+    await logLine(options.logPath, "telegram notice skipped token_missing");
+    return;
+  }
+  const base = options.telegramApiBase.replace(/\/+$/, "");
+  try {
+    await fetch(`${base}/bot${token}/sendMessage`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ chat_id: chatId, text }),
+      signal: AbortSignal.timeout(TELEGRAM_NOTICE_TIMEOUT_MS)
+    });
+    await logLine(options.logPath, "telegram notice sent");
+  } catch (error) {
+    // Never log error.message / the error object: on a connect failure it can embed
+    // the request URL (and therefore the bot token) via `cause`. error.code is safe.
+    const code = error?.code ? ` code=${error.code}` : "";
+    await logLine(options.logPath, `telegram notice send failed${code}`);
+  }
+}
+
+function resetSafeTickFailures() {
+  consecutiveSafeTickFailures = 0;
+}
+
+async function recordSafeTickFailure(options, gatewayPid) {
+  consecutiveSafeTickFailures += 1;
+  if (consecutiveSafeTickFailures === SAFE_TICK_FAILURE_NOTICE_THRESHOLD) {
+    await sendTelegramNotice(
+      options,
+      `artist-runtime self-heal escalation: safe_tick_delivery_failed (gateway pid=${gatewayPid || "unknown"}, consecutiveFailures=${consecutiveSafeTickFailures})`
+    );
+  }
+}
 
 async function triggerSafeTick(gatewayUrl, token) {
   const base = gatewayUrl.replace(/\/+$/, "");
@@ -112,6 +170,12 @@ async function escalateSupervisorWaitOnce(options, details) {
   });
   if (created) {
     await logLine(options.logPath, `escalation supervisor wait exceeded gateway pid=${details.gatewayPid || "unknown"} supervisor pid=${details.supervisorPid} waitMs=${details.waitMs}`);
+    // The `wx` write above is the once-per-incident gate (survives restarts via the
+    // on-disk tombstone), so the notice fires exactly once too.
+    await sendTelegramNotice(
+      options,
+      `artist-runtime self-heal escalation: supervisor_wait_exceeded (gateway pid=${details.gatewayPid || "unknown"}, waitMs=${details.waitMs})`
+    );
   }
   return created;
 }
@@ -142,7 +206,20 @@ async function runOnce(options) {
       return { action: "rate_limited", reason: "safe_tick_rate_limited", retryAfterMs };
     }
     lastSafeTickAt = Date.now();
-    const result = await triggerSafeTick(options.gatewayUrl, options.token);
+    let result;
+    try {
+      result = await triggerSafeTick(options.gatewayUrl, options.token);
+    } catch (error) {
+      // Count the unreachable attempt, then preserve the existing propagation so
+      // the return contract and error-path behavior are unchanged.
+      await recordSafeTickFailure(options, gatewayPid);
+      throw error;
+    }
+    if (result.httpStatus >= 200 && result.httpStatus < 300) {
+      resetSafeTickFailures();
+    } else {
+      await recordSafeTickFailure(options, gatewayPid);
+    }
     await logLine(options.logPath, `safe tick trigger gateway pid=${gatewayPid} http=${result.httpStatus} statusCode=${result.body?.statusCode ?? "unknown"} outcome=${result.body?.tickerOutcome ?? "unknown"}`);
     return { action: "safe_tick_trigger", reason: "ticker_stale_gateway_alive", result };
   }
@@ -192,6 +269,7 @@ async function main() {
   const supervisorWaitLimitMs = numberArg(args, "--supervisor-wait-limit-ms", DEFAULT_SUPERVISOR_WAIT_LIMIT_MS);
   const token = argValue(args, "--token", process.env.OPENCLAW_SAFE_TICK_TRIGGER_TOKEN ?? process.env.OPENCLAW_TICKER_WATCHER_TOKEN);
   const escalationPath = argValue(args, "--escalation-path", `${workspace}/runtime/ticker-watcher-escalation.json`);
+  const telegramApiBase = argValue(args, "--telegram-api-base", DEFAULT_TELEGRAM_API_BASE);
   const separator = args.indexOf("--");
   const supervisorArgs = separator === -1 ? [] : args.slice(separator + 1);
   const options = {
@@ -204,7 +282,8 @@ async function main() {
     token,
     safeTickRateLimitMs,
     supervisorWaitLimitMs,
-    escalationPath
+    escalationPath,
+    telegramApiBase
   };
 
   await logLine(logPath, `started pid=${process.pid} workspace=${workspace} staleMs=${staleMs}`);
@@ -213,12 +292,17 @@ async function main() {
     console.log(JSON.stringify(result));
     return;
   }
-  setInterval(() => {
-    void runOnce(options).catch((error) => {
+  const tick = () =>
+    runOnce(options).catch((error) => {
       void logLine(logPath, `error ${(error instanceof Error ? error.message : String(error))}`);
     });
+  setInterval(() => {
+    void tick();
   }, intervalMs);
-  await runOnce(options);
+  // Guard the first tick the same way the interval does: a safe-tick delivery
+  // failure rejects runOnce, and an unguarded rejection here would crash the
+  // watcher before it could ever count consecutive failures or keep self-healing.
+  await tick();
 }
 
 await main();
