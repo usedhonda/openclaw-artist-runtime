@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { readdir, readFile } from "node:fs/promises";
+import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 import type { AiReviewProvider, ArtistIdentity, CascadeTraceSource, CommissionBrief, CommissionBriefSource, ObservationSummary, SongSpawnProposal, SongState } from "../types.js";
 import { callAiProvider, isAiNotConfiguredResponse, isAiProviderMockFallbackResponse } from "./aiProviderClient.js";
@@ -13,7 +13,7 @@ import { emitRuntimeEvent } from "./runtimeEventBus.js";
 import { getArtistIdentity, readResolvedConfig } from "./runtimeConfig.js";
 import { validateAgainstVoiceContract } from "./voiceContractValidator.js";
 import { isVoiceFingerprintReady, parseVoiceFingerprint, type VoiceFingerprintBundle } from "./voiceFingerprintParser.js";
-import { readObservationsReport } from "./xObservationCollector.js";
+import { readObservationsReport, readTodayObservations } from "./xObservationCollector.js";
 import { readTodayNewsObservations } from "./newsObservationCollector.js";
 import { AGGRESSIVE_ARTIST_MOOD } from "./creativeVariationPolicy.js";
 
@@ -59,23 +59,14 @@ interface LatestObservationData {
   excerpts?: ObservationExcerpt[];
 }
 
-async function latestObservationData(root: string): Promise<LatestObservationData> {
-  const dir = join(root, "observations");
-  const entries = await readdir(dir).catch(() => []);
-  // Plan v10.38 Phase B: walk X observation files in date order; the newest
-  // X-only cache still seeds the `raw` blob that feeds prompts and brief
-  // generation. News entries are merged into the scored pool below so the
-  // top-scoring entry can come from a news source even when X is thin.
-  const xFiles = entries
-    .filter((entry) => entry.endsWith(".md") && !entry.startsWith("news-"))
-    .sort();
-  const latest = xFiles.at(-1);
-  let raw = "";
+async function latestObservationData(root: string, now: Date): Promise<LatestObservationData> {
+  // X observations are daily inputs, not an indefinite fallback. If today's
+  // collection fails, exclude older X files instead of recycling their sources
+  // into every new proposal. News remains on its existing independent path.
+  let raw = await readTodayObservations(root, now);
   let xReportEntries: Array<{ text: string; author?: string; url?: string; postedAt?: string; motifMatch?: string; motifScore?: number; sourceKind?: "x" | "x_reaction"; reactionFor?: string }> = [];
-  if (latest) {
-    raw = await readFile(join(dir, latest), "utf8").catch(() => "");
-    const dateStr = latest.replace(/\.md$/, "");
-    const report = await readObservationsReport(root, dateStr).catch(() => null);
+  if (raw) {
+    const report = await readObservationsReport(root, now).catch(() => null);
     xReportEntries = (report?.entries ?? []).map((entry) => ({
       ...entry,
       motifMatch: report?.reactionSeed?.title
@@ -816,7 +807,7 @@ export async function proposeSpawn(root: string, options: ProposeSpawnOptions = 
     readFile(join(root, "INNER.md"), "utf8").catch(() => ""),
     readFile(join(root, "PRODUCER.md"), "utf8").catch(() => ""),
     readFile(join(root, "runtime", "heartbeat-state.json"), "utf8").catch(() => ""),
-    latestObservationData(root),
+    latestObservationData(root, now),
     listSongStates(root).catch(() => []),
     recentSpawnThemes(root, now)
   ]);

@@ -25,7 +25,7 @@ vi.mock("../src/services/aiProviderClient", async (importOriginal) => {
 
 const originalSpawn = process.env.OPENCLAW_SONG_SPAWN_ENABLED;
 
-async function workspace(prefix = "artist-runtime-spawn-generator-"): Promise<string> {
+async function workspace(observationDate = "2026-05-28", prefix = "artist-runtime-spawn-generator-"): Promise<string> {
   const root = mkdtempSync(join(tmpdir(), prefix));
   await ensureArtistWorkspace(root);
   await mkdir(join(root, "observations"), { recursive: true });
@@ -33,7 +33,7 @@ async function workspace(prefix = "artist-runtime-spawn-generator-"): Promise<st
   await writeFile(join(root, "ARTIST.md"), "obsessions: コピー機、若者、夜の会社\nsound: low bass, nu-jazz\n", "utf8");
   await writeFile(join(root, "SOUL.md"), "Producer: ゆずるさん\nsentence_endings: だ。/な。/どう?\n", "utf8");
   await writeFile(join(root, "runtime", "heartbeat-state.json"), JSON.stringify({ mood: "observational" }), "utf8");
-  await writeFile(join(root, "observations", "2026-05-28.md"), "コピー機の夜に若者の疲れだけが光っていた。\n", "utf8");
+  await writeFile(join(root, "observations", `${observationDate}.md`), "コピー機の夜に若者の疲れだけが光っていた。\n", "utf8");
   return root;
 }
 
@@ -119,7 +119,8 @@ describe("spawn proposal generator queue integration", () => {
   it("marks the spawn rate limiter when autopilot appends a draft proposal", async () => {
     process.env.OPENCLAW_SONG_SPAWN_ENABLED = "on";
     callAiProviderMock.mockResolvedValue(aiOutput("夜のコピー機", "コピー機の夜を、若者の疲れとして切る。"));
-    const root = await workspace();
+    const todayJst = new Date(Date.now() + 9 * 60 * 60 * 1000).toISOString().slice(0, 10);
+    const root = await workspace(todayJst);
     getRuntimeEventBus().clearForTest();
 
     await new ArtistAutopilotService().runCycle({

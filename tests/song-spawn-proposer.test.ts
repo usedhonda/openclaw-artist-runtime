@@ -92,4 +92,13 @@ describe("song spawn proposer", () => {
     }
     expect(captured.some((event) => event.type === "theme_starvation" && event.source === "observation_empty")).toBe(true);
   });
+
+  it("does not reuse a prior day's X observation when today's collection is empty", async () => {
+    const root = await workspace();
+
+    await expect(proposeSpawn(root, {
+      aiReviewProvider: "mock",
+      now: new Date("2026-04-30T00:00:00.000Z")
+    })).resolves.toBeNull();
+  });
 });
