@@ -2,7 +2,16 @@ import { mkdtempSync } from "node:fs";
 import { mkdir, utimes, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
+
+const { execFileMock } = vi.hoisted(() => ({
+  execFileMock: vi.fn()
+}));
+
+vi.mock("node:child_process", async () => {
+  const actual = await vi.importActual<typeof import("node:child_process")>("node:child_process");
+  return { ...actual, execFile: execFileMock };
+});
 import { collectObservations, readTodayObservations } from "../src/services/xObservationCollector";
 import { readXObservationDiagnostics } from "../src/services/xObservationDiagnostics";
 import { isInCooldown, readBirdRateLimitStatus } from "../src/services/birdRateLimiter";
@@ -13,6 +22,41 @@ function workspace(): string {
 }
 
 describe("x observation collector", () => {
+  afterEach(() => {
+    execFileMock.mockReset();
+    vi.unstubAllEnvs();
+  });
+
+  it("passes the configured Firefox profile to the default Bird search runner", async () => {
+    const root = workspace();
+    vi.stubEnv("OPENCLAW_X_FIREFOX_PROFILE", "artist-x");
+    execFileMock.mockImplementationOnce((...args: unknown[]) => {
+      const callback = args.at(-1) as (error: Error | null, stdout: string, stderr: string) => void;
+      queueMicrotask(() => callback(null, JSON.stringify([{
+        id: "1111111111111111111",
+        text: "fresh city observation",
+        createdAt: "2026-04-29T00:30:00.000Z",
+        author: { username: "watcher" }
+      }]), ""));
+    });
+
+    const result = await collectObservations(root, {
+      now: new Date("2026-04-29T01:00:00.000Z"),
+      query: "city culture"
+    });
+
+    expect(result.status).toBe("collected");
+    expect(execFileMock).toHaveBeenCalledOnce();
+    expect(execFileMock.mock.calls[0]?.[0]).toBe("bird");
+    expect(execFileMock.mock.calls[0]?.[1]).toEqual([
+      "--firefox-profile",
+      "artist-x",
+      "search",
+      "city culture",
+      "--json"
+    ]);
+  });
+
   it("uses bird runner once and then reads the daily cache", async () => {
     const root = workspace();
     const runner = vi.fn(async () => ({

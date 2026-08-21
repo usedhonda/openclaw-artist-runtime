@@ -3,6 +3,10 @@
 ## [Unreleased]
 
 ### Fixed
+- X observation searches now pass the configured dedicated Firefox profile to
+  Bird, matching the probe and publishing lanes. The collector no longer burns
+  its daily search budget on unauthenticated calls while a valid artist session
+  is available.
 - Ticker self-heal now recovers after a gateway restart. The external watcher
   derives gateway liveness from the supervisor heartbeat's `gateway.pid` and only
   trusts the autopilot heartbeat when its pid matches, so a fresh gateway with a

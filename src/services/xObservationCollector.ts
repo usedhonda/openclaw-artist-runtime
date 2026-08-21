@@ -1,6 +1,7 @@
 import { appendFile, mkdir, readFile, stat, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { matchBirdBanIndication, recordBirdCall, triggerCooldown, tryAcquireBirdCall } from "./birdRateLimiter.js";
+import { buildBirdArgs } from "./birdRunner.js";
 import { emitRuntimeEvent } from "./runtimeEventBus.js";
 import { secretLikePattern } from "./personaMigrator.js";
 import { planQueryStrategy } from "./xQueryStrategyPlanner.js";
@@ -114,7 +115,7 @@ function defaultRunner(query?: string): () => Promise<{ stdout: string; stderr?:
     const args = query ? ["search", query, "--json"] : ["home", "--plain"];
     const { execFile } = await import("node:child_process");
     return new Promise((resolve, reject) => {
-      execFile("bird", args, { timeout: 30_000, maxBuffer: 512 * 1024 }, (error, stdout, stderr) => {
+      execFile("bird", buildBirdArgs(args), { timeout: 30_000, maxBuffer: 512 * 1024 }, (error, stdout, stderr) => {
         if (error) {
           reject(error);
           return;
