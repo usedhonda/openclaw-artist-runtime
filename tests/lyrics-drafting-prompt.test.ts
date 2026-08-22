@@ -77,4 +77,27 @@ describe("lyrics drafting prompt", () => {
     expect(inactivePrompt).toContain("rapid section development");
     expect(inactivePrompt).not.toContain("default spacious rap pacing");
   });
+
+  it("keeps live-sized persona rules and truncates only before a section", () => {
+    const artistMd = [
+      `## Artist Core\n${"核".repeat(4100)}`,
+      "## Avoid\n- 既存曲の焼き直しをしない。",
+      "## Anti-mannerism\n- 決まり文句で感情を説明しない。",
+      "### Signature section logic\n- フックはヴァースの景色を反転して回収する。"
+    ].join("\n\n").padEnd(10871, "余") + `\n\n## Overflow\n${"溢".repeat(1800)}`;
+
+    const prompt = buildLyricsDraftingPrompt({
+      artistMd,
+      currentState: "",
+      briefText: "brief",
+      title: "Persona Rules",
+      knowledgeDigest: ""
+    });
+
+    expect(prompt).toContain("## Avoid");
+    expect(prompt).toContain("## Anti-mannerism");
+    expect(prompt).toContain("### Signature section logic");
+    expect(prompt).toContain("[… persona truncated at section boundary …]");
+    expect(prompt).not.toContain("## Overflow");
+  });
 });

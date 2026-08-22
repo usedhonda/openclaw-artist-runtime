@@ -65,6 +65,14 @@ function truncate(value: string, max = 8000): string {
   return value.length <= max ? value : value.slice(0, max);
 }
 
+function truncateAtSection(value: string, max: number): string {
+  if (value.length <= max) return value;
+  const headings = [...value.slice(0, max).matchAll(/^(?:##|###)\s+/gm)];
+  const boundary = headings.at(-1)?.index;
+  const preserved = boundary === undefined ? "" : value.slice(0, boundary).trimEnd();
+  return `${preserved}\n[… persona truncated at section boundary …]`;
+}
+
 function sourceDigestFromBrief(briefText: string): string {
   const lines = briefText.split(/\r?\n/);
   const sourceLines = lines
@@ -163,7 +171,7 @@ export function buildLyricsDraftingPrompt(input: BuildLyricsPromptInput): string
     truncate(input.knowledgeDigest, 20000),
     "",
     "ARTIST.md (full persona — adapt voice and motifs to it):",
-    truncate(input.artistMd, 4000),
+    truncateAtSection(input.artistMd, 12000),
     "",
     "artist/CURRENT_STATE.md (recent works, avoid repeating their hooks):",
     truncate(input.currentState, 3000),
