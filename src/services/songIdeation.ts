@@ -4,7 +4,8 @@ import type { ArtistRuntimeConfig, ObservationSummary, SongIdeaResult } from "..
 import { ensureSongState, readArtistMind, updateSongState, writeSongBrief } from "./artistState.js";
 import { ensureArtistWorkspace } from "./artistWorkspace.js";
 import { appendPromptLedger, createPromptLedgerEntry, getSongPromptLedgerPath } from "./promptLedger.js";
-import { AGGRESSIVE_ARTIST_MOOD, decideDopagakiVariation } from "./creativeVariationPolicy.js";
+import { decideDopagakiVariation, emotionalModesFromArtist, pickEmotionalMode, pickTempoBand } from "./creativeVariationPolicy.js";
+import { readCreativeQualityLedger } from "./creativeQualityLedger.js";
 import type { TempoBand } from "../suno-production/durationPlan.js";
 
 function titleCase(value: string): string {
@@ -124,7 +125,15 @@ export function extractObservationSummary(observationText?: string, motivation?:
   };
 }
 
-function buildBrief(title: string, theme: string, artistReason: string, tempoBand: TempoBand, observationText?: string, observationPath?: string): string {
+function buildBrief(
+  title: string,
+  theme: string,
+  artistReason: string,
+  tempoBand: TempoBand,
+  emotionalMode: { label: string; mood: string },
+  observationText?: string,
+  observationPath?: string
+): string {
   const lines = [
     `# Brief for ${title}`,
     "",
@@ -136,7 +145,8 @@ function buildBrief(title: string, theme: string, artistReason: string, tempoBan
     "",
     `- Core theme: ${theme}`,
     `- Artist reason: ${artistReason}`,
-    `- Mood: ${AGGRESSIVE_ARTIST_MOOD}`,
+    `- Mood: ${emotionalMode.mood}`,
+    `- Emotional mode: ${emotionalMode.label}`,
     `- Tempo band: ${tempoBand}`,
     "- Keep the images concrete and the chorus short"
   ];
@@ -175,16 +185,22 @@ export interface CreateSongIdeaInput {
 // mechanical default is "up" with the dopagaki variation lifting it to the
 // high-speed "dopagaki" band. Slower bands (mid/slow) and the hyper-fast "super"
 // band are occasional changes the artist selects explicitly.
-function chooseTempoBand(input: CreateSongIdeaInput, songId: string, briefText: string): TempoBand {
+function chooseTempoBand(
+  input: CreateSongIdeaInput,
+  songId: string,
+  briefText: string,
+  recentModes: Array<"dopagaki" | "spacious">
+): TempoBand {
   if (input.tempoBand) {
     return input.tempoBand;
   }
   const decision = decideDopagakiVariation({
     songId,
     observationText: input.observationText,
-    briefText
+    briefText,
+    recentModes
   });
-  return decision.active ? "dopagaki" : "up";
+  return pickTempoBand(`${songId}:${decision.variationSeed}:${decision.active}`);
 }
 
 export async function createSongIdea(input: CreateSongIdeaInput): Promise<SongIdeaResult> {
@@ -195,8 +211,11 @@ export async function createSongIdea(input: CreateSongIdeaInput): Promise<SongId
   const title = input.title?.trim() || buildTitle(theme, sequence);
   const songId = `song-${String(sequence).padStart(3, "0")}`;
   const artistReason = artistReasonVoice(theme, input.artistReason ?? `caught on ${theme}`);
-  const tempoBand = chooseTempoBand(input, songId, `${theme}\n${artistReason}`);
-  const briefText = buildBrief(title, theme, artistReason, tempoBand, input.observationText, input.observationPath);
+  const recentModes = (await readCreativeQualityLedger(input.workspaceRoot, 3))
+    .map((entry) => entry.dopagakiActive ? "dopagaki" as const : "spacious" as const);
+  const emotionalMode = pickEmotionalMode(songId, emotionalModesFromArtist(artistMind.artist));
+  const tempoBand = chooseTempoBand(input, songId, `${theme}\n${artistReason}`, recentModes);
+  const briefText = buildBrief(title, theme, artistReason, tempoBand, emotionalMode, input.observationText, input.observationPath);
   const observationSummary = extractObservationSummary(input.observationText, artistReason);
   const observationInputRef = input.observationText?.trim() ? observationRef(input.workspaceRoot, input.observationPath) : undefined;
   const inputRefs = ["ARTIST.md", "artist/CURRENT_STATE.md", observationInputRef].filter(Boolean) as string[];

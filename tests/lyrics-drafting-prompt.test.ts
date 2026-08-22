@@ -32,7 +32,7 @@ describe("lyrics drafting prompt", () => {
     expect(digest).toContain("## master_reference.md");
   });
 
-  it("injects Shibuya anger lens and bounded dopagaki mode", () => {
+  it("injects the persona critique lens and bounded dopagaki mode", () => {
     const activePrompt = buildLyricsDraftingPrompt({
       artistMd: "## Artist Core\n渋谷への怒り。対象は人でなく都市の仕組み。",
       currentState: "",
@@ -68,7 +68,7 @@ describe("lyrics drafting prompt", () => {
       }
     });
 
-    expect(activePrompt).toContain("Shibuya anger lens");
+    expect(activePrompt).toContain("Critique lens");
     expect(activePrompt).toContain("Do not attack private individuals");
     expect(activePrompt).toContain("High-velocity progressive rap: ACTIVE / OVERT");
     expect(activePrompt).toContain("2-4 bar bursts");

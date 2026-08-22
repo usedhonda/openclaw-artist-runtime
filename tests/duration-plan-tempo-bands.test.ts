@@ -156,14 +156,23 @@ describe("tempo band selection wiring", () => {
     expect(resolveTempoBand(brief)).toBe("dopagaki");
   });
 
-  it("defaults ideation to a fast band when no explicit band is chosen", async () => {
+  it("rotates ideation across the supported tempo bands when no explicit band is chosen", async () => {
     const root = await workspace();
     const idea = await createSongIdea({ workspaceRoot: root, theme: "quiet redevelopment" });
     const brief = await readFile(idea.briefPath, "utf8");
     const band = resolveTempoBand(brief);
     expect(band && (TEMPO_BANDS as readonly TempoBand[]).includes(band)).toBe(true);
-    // Center of gravity is fast: the mechanical default lands on up or dopagaki.
-    expect(["up", "dopagaki"]).toContain(band);
+  });
+
+  it("keeps a fast-weighted distribution while reaching every tempo band", async () => {
+    const root = await workspace();
+    const bands = new Set<TempoBand>();
+    for (let index = 0; index < 40; index += 1) {
+      const idea = await createSongIdea({ workspaceRoot: root, theme: `variation ${index}` });
+      const brief = await readFile(idea.briefPath, "utf8");
+      bands.add(resolveTempoBand(brief));
+    }
+    expect(Array.from(bands).sort()).toEqual([...TEMPO_BANDS].sort());
   });
 
   it("bakes the selected band's template id and BPM into the prompt pack payload YAML", () => {

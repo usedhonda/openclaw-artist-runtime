@@ -2,7 +2,10 @@ import { describe, expect, it } from "vitest";
 import {
   DOPAGAKI_TARGET_RATE,
   decideDopagakiVariation,
-  dopagakiPromptLines
+  dopagakiPromptLines,
+  emotionalModesFromArtist,
+  pickEmotionalMode,
+  pickTempoBand
 } from "../src/services/creativeVariationPolicy";
 
 describe("creative variation policy", () => {
@@ -55,5 +58,12 @@ describe("creative variation policy", () => {
     expect(lines).toContain("metric displacement");
     expect(lines).toContain("transformed hook returns");
     expect(lines).not.toMatch(/dopagaki|dopamine|high stimulus|instant hook/i);
+  });
+
+  it("uses persona modes and rotates tempo deterministically", () => {
+    const modes = emotionalModesFromArtist("### Emotional Modes\n- 郷愁: nostalgic, warm-cold\n- 祝祭: celebratory, bright\n");
+    expect(pickEmotionalMode("song-1", modes).mood).toMatch(/nostalgic|celebratory/);
+    const bands = new Set(Array.from({ length: 40 }, (_, index) => pickTempoBand(`song-${index}`)));
+    expect(bands).toEqual(new Set(["slow", "mid", "up", "dopagaki", "super"]));
   });
 });

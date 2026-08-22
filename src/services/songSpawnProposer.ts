@@ -15,7 +15,7 @@ import { validateAgainstVoiceContract } from "./voiceContractValidator.js";
 import { isVoiceFingerprintReady, parseVoiceFingerprint, type VoiceFingerprintBundle } from "./voiceFingerprintParser.js";
 import { readObservationsReport, readTodayObservations } from "./xObservationCollector.js";
 import { readTodayNewsObservations } from "./newsObservationCollector.js";
-import { AGGRESSIVE_ARTIST_MOOD } from "./creativeVariationPolicy.js";
+import { emotionalModesFromArtist, pickEmotionalMode, pickTempoBpm } from "./creativeVariationPolicy.js";
 
 const FULL_TWEET_URL_PATTERN = /^https:\/\/(?:twitter|x)\.com\/[^/\s]+\/status\/\d+/i;
 
@@ -436,6 +436,7 @@ function buildBrief(context: { observation: string; artistMd: string; soulMd: st
       ? `${themeWord}を音にする一曲`
       : seed.slice(0, 280);
   const songId = `spawn_${shortHash(`${seed}:${context.now.toISOString()}`)}`;
+  const emotionalMode = pickEmotionalMode(songId, emotionalModesFromArtist(context.artistMd));
   const densityContext = {
     observation: context.observation,
     artistMd: context.artistMd,
@@ -447,8 +448,8 @@ function buildBrief(context: { observation: string; artistMd: string; soulMd: st
     title,
     brief: briefSentence,
     lyricsTheme: normalizePitchField("lyricsTheme", undefined, densityContext),
-    mood: AGGRESSIVE_ARTIST_MOOD,
-    tempo: "artist decides",
+    mood: emotionalMode.mood,
+    tempo: `${pickTempoBpm(songId)} BPM`,
     styleNotes: normalizePitchField("styleNotes", undefined, densityContext),
     duration: "artist decides",
     sourceText: "autopilot song spawn",
@@ -589,6 +590,7 @@ function buildPrompt(context: {
   observationExcerpts?: ObservationExcerpt[];
   cascadeSeed: string;
   activeQueueContext?: ActiveQueueContextEntry[];
+  emotionalMood: string;
 }): string {
   const lines: string[] = [
     `System: あなたは ${context.identity.artistName} 本人。 producer に新曲を提案する artist として一人称で書く。`,
@@ -597,7 +599,8 @@ function buildPrompt(context: {
     // and main material (e.g. today's LUUP incident + the X reaction around it),
     // ARTIST.md is the lens that colors the take (六本木 / 経営者 / hip-hop). The
     // ratio is ~40% observation main / 60% persona lens.
-    "Material policy: 観察 (news + X) を主素材、 ARTIST.md / SOUL.md は色付けの lens として使う。まず世間で話題の news を拾い、X の反応を確認してから、必要なら渋谷・再開発・若者退出・都市の失敗へ強引に折り返す。Shibuya は検索語の起点ではなく punchline / critique lens。lens を起点にして同じ motif を毎回繰り返さない。",
+    "Material policy: 観察 (news + X) を主素材、 ARTIST.md / SOUL.md は色付けの lens として使う。ARTIST.md の Critique Lens に従って具体的な仕組み・文化・産業を切り、同じ motif を毎回繰り返さない。",
+    `Emotional mode for this song: ${context.emotionalMood}`,
     "Avoid any subject or title already listed in recently proposed themes.",
     "Never include secrets. Keep the brief lean enough for autopilot planning.",
     "",
@@ -868,7 +871,8 @@ export async function proposeSpawn(root: string, options: ProposeSpawnOptions = 
       identity,
       observationExcerpts: obsData.excerpts,
       cascadeSeed: fallback.songId,
-      activeQueueContext: options.activeQueueContext
+      activeQueueContext: options.activeQueueContext,
+      emotionalMood: fallback.mood
     }), { provider });
   // v10.67 flood guard: a provider fallback echo ("Mock provider fallback (...)" /
   // not-configured) is not artist output. Do not parse the echoed prompt. Instead,
@@ -890,6 +894,12 @@ export async function proposeSpawn(root: string, options: ProposeSpawnOptions = 
   }
   const safeRaw = secretLikePattern.test(raw) ? "" : raw;
   const parsed = briefFromAi(safeRaw, fallback, now, pitchContext);
+  // Mood rotation is code-owned repetition control. The AI may color the scene, but
+  // it does not override the selected emotional mode with a habitual default.
+  parsed.brief.mood = fallback.mood;
+  if (/^artist decides$/i.test(parsed.brief.tempo.trim())) {
+    parsed.brief.tempo = fallback.tempo;
+  }
   if (isSimilarTheme(parsed.brief, [...recentThemes, ...queueContextAsRecentThemes(options.activeQueueContext)])) {
     return null;
   }

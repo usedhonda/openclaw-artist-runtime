@@ -18,7 +18,6 @@ import { createSongIdea } from "../src/services/songIdeation";
 import { SunoBrowserWorker } from "../src/services/sunoBrowserWorker";
 import { readTakeHistory, selectTake } from "../src/services/takeSelection";
 import { patchResolvedConfig } from "../src/services/runtimeConfig";
-import { AGGRESSIVE_ARTIST_MOOD } from "../src/services/creativeVariationPolicy";
 
 describe("artist state", () => {
   it("surfaces setup readiness for a fresh workspace", async () => {
@@ -80,7 +79,8 @@ describe("suno and social pipelines", () => {
 
     expect(idea.status).toBe("brief");
     expect(brief).toContain("Why this song exists");
-    expect(brief).toContain(`- Mood: ${AGGRESSIVE_ARTIST_MOOD}`);
+    expect(brief).toMatch(/- Mood: .+/);
+    expect(brief).toMatch(/- Emotional mode: .+/);
     expect(ledger).toContain("\"stage\":\"song_ideation\"");
     expect(ledger).toContain("\"stage\":\"song_brief_creation\"");
   });

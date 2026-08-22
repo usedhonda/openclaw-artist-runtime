@@ -8,8 +8,8 @@ import {
 } from "../suno-production/durationPlan.js";
 import type { LyricsLanguagePolicy } from "./lyricsLanguagePolicy.js";
 import {
+  critiqueLensLines,
   dopagakiPromptLines,
-  shibuyaAngerLensLines,
   type DopagakiVariationDecision
 } from "./creativeVariationPolicy.js";
 
@@ -58,6 +58,7 @@ export interface BuildLyricsPromptInput {
   languagePolicy?: LyricsLanguagePolicy;
   dopagakiVariation?: DopagakiVariationDecision;
   durationPlan?: DurationPlan;
+  recentHookTexts?: string[];
 }
 
 function truncate(value: string, max = 8000): string {
@@ -71,6 +72,10 @@ function sourceDigestFromBrief(briefText: string): string {
     .map((line) => line.trim().slice(0, 240));
   if (sourceLines.length === 0) return "none";
   return sourceLines.slice(0, 5).join("\n");
+}
+
+function moodFromBrief(briefText: string): string | undefined {
+  return briefText.match(/^\s*-\s*Mood:\s*(.+)$/im)?.[1]?.trim() || undefined;
 }
 
 // Per-file budget tuned to keep the full digest under ~120k chars while still
@@ -119,6 +124,7 @@ export function buildLyricsDraftingPrompt(input: BuildLyricsPromptInput): string
   const artistName = input.artistName?.trim() || "the configured artist";
   const languagePolicy = input.languagePolicy;
   const sourceDigest = sourceDigestFromBrief(input.briefText);
+  const emotionalMode = moodFromBrief(input.briefText);
   return [
     `Write lyrics for ${artistName} from the provided raw material.`,
     "Use the attributed lyrics-writer system source as the craft policy for this draft.",
@@ -134,8 +140,10 @@ export function buildLyricsDraftingPrompt(input: BuildLyricsPromptInput): string
     "If the brief contains both news and x_reaction sources, use both: news supplies the event, x_reaction supplies crowd temperature, irritation, irony, or sympathy. Do not merely summarize them; assign them to lyric sections.",
     "Prioritize 韻, 伏線, 情景, genre-aware flow, hook design, Suno V5.5 section tags, and singable line length.",
     "Rap density rule: for rap/trap/drill/fast social songs, produce at least two 12-16 bar verses, physical hook repeats, internal rhyme in each verse, and one punchline/perspective turn per verse. If the first draft feels short, expand verse detail before returning JSON.",
-    ...shibuyaAngerLensLines(),
+    ...critiqueLensLines(input.artistMd),
     ...dopagakiPromptLines(input.dopagakiVariation),
+    emotionalMode ? `Emotional mode for this song: ${emotionalMode}` : "",
+    input.recentHookTexts?.length ? `Avoid these recent hook phrases; invent a clearly distinct hook shape: ${input.recentHookTexts.slice(0, 8).join(" | ")}` : "",
     languagePolicy ? `Language policy: ${languagePolicy.instruction}` : "",
     "Return strict JSON only: {\"title\":\"2-4 words\",\"form\":\"duration_plan_v1 form\",\"sections\":[{\"tag\":\"Verse 1 - 16 bars, dense rap phrasing, internal rhymes, no double-time\",\"lines\":[\"line\"]}],\"bilingual_hint\":\"short note\",\"moodHint\":\"2-4 word sonic mood\"}.",
     "Use the DurationPlan section plan below as the only form source. Do not invent a shorter 7-section form.",
