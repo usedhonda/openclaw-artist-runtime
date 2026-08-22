@@ -127,4 +127,15 @@ describe("residual kanji lyrics lint", () => {
     expect(normalizeSunoRegistrationJapanese("売れるまちで 145 かぞえる")).toBe("うれるまちで ひゃくよんじゅうご かぞえる");
     expect(normalizeSunoRegistrationJapanese("たましいを売る")).toBe("たましいをうる");
   });
+
+  it("normalizes canon vocabulary from song-105 without residual kanji", () => {
+    const registrationLyrics = normalizeSunoRegistrationJapanese([
+      "スポンサー席から 見つもりを読む",
+      "白いポスターに 職業病の数字",
+      "診断、しぶや。処方、しぶや",
+      "売る側も買う側も 払いを刺す"
+    ].join("\n"));
+
+    expect(lintResidualKanji(registrationLyrics)).toEqual([]);
+  });
 });
