@@ -16,6 +16,7 @@ import { SunoBrowserWorker } from "../services/sunoBrowserWorker.js";
 import { createSongIdea } from "../services/songIdeation.js";
 import { buildSongbookLookup, syncSongbookFromITunes } from "../services/songbookSyncer.js";
 import { selectTake } from "../services/takeSelection.js";
+import { retryParkedSongPromptPack } from "../services/retryPromptPackService.js";
 import { exportWindowFromPayload, payloadPathSegments, payloadRecord, payloadRequestMethod, payloadRequestPath, platformFromSegment, sunoDiagnosticsDaysFromPayload } from "./payloadHelpers.js";
 import { INSTAGRAM_DEFAULT_TOKEN_EXPIRY_MS, appendConfigOverridesAudit, buildAlertsResponse, buildArtistMindResponse, buildAuditLogResponse, buildCallbackActionsResponse, buildConfigOverridesResponse, buildConfigResponse, buildFailedNotifyListResponse, buildFailedNotifyReplayResponse, buildInternalCallbackDispatchResponse, buildNotifyReviewResponse, buildPersonaCompleteResponse, buildPersonaProposeResponse, buildPersonaResponse, buildPersonaWriteResponse, buildPlatformDetailResponse, buildPlatformsResponse, buildProducerCallbackDispatchResponse, buildPromptLedgerResponse, buildRecoveryResponse, buildSafeTickTriggerResponse, buildSongDetailResponse, buildSongEventsResponse, buildSongLedgerResponse, buildSongsResponse, buildSpawnProposalsResponse, buildStatusExportResponse, buildStatusResponse, buildSunoDiagnosticsExportResponse, buildSunoStatusResponse, isInstagramTokenExpiringSoon, isPersonaSnapshotLayer, payloadContainsSecretLikeText, proposalFieldsFromPayload, proposalRouteError, runtimeSafetyPatchFromPayload } from "./responseBuilders.js";
 import { registerRuntimeEventStreamRoute } from "./runtimeEventStream.js";
@@ -394,6 +395,9 @@ export function registerRoutes(api: unknown): void {
             action: "prompt_pack_go",
             songId: segments[0] ?? (typeof payload.songId === "string" ? payload.songId : "song-001")
           });
+        }
+        if (segments.length === 2 && segments[1] === "retry-prompt-pack") {
+          return retryParkedSongPromptPack(config.artist.workspaceRoot, segments[0] ?? "", config);
         }
       }
 

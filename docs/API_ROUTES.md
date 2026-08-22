@@ -95,6 +95,7 @@ current OpenClaw Gateway.
 | `POST` | `/api/songs/:songId/discard` | `plugin` | Discard a completed/degraded song from Console. | optional `config` | song publish-action result | Releases the current lane where applicable. |
 | `POST` | `/api/songs/:songId/social-assets` | `plugin` | Build social asset files for a song. | optional `config` | social-asset result object | Uses the resolved workspace root. |
 | `POST` | `/api/songs/:songId/prompt-pack-go` | `plugin` | Receive-independent prompt-pack GO decision. | optional `config` | callback dispatch result | Dispatches `prompt_pack_go`; publish paths remain excluded. |
+| `POST` | `/api/songs/:songId/retry-prompt-pack` | `plugin` | Rebuild a parked failed song's existing latest lyrics prompt pack and return it to the Suno generation lane. | optional `config` | retry result with body `statusCode` | Only accepts `failed` songs parked with `parked_needs_operator:`; never creates a Suno run. |
 | `POST` | `/api/suno/budget/reset` | `plugin` | Reset Suno budget counters. | optional `config` | budget reset result | Uses configured daily/monthly credit limits. |
 | `POST` | `/api/suno/connect` | `plugin` | Move the Suno worker toward a connected state. | optional `config` | `SunoWorkerStatus` | Uses the persisted worker file, not a real browser in tests. |
 | `POST` | `/api/suno/reconnect` | `plugin` | Request a reconnect/login handoff cycle. | optional `config` | `SunoWorkerStatus` | Used after login handoff or worker loss. |
