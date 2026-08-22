@@ -70,7 +70,7 @@ async function bankWorkspace(bankMd: string): Promise<string> {
   await writeFile(join(root, "artist", "CURRENT_STATE.md"), "## Current Obsessions\n- civic rooms\n", "utf8");
   await writeFile(join(root, "artist", "SOCIAL_VOICE.md"), "short and unsentimental\n", "utf8");
   await writeFile(join(root, "songs", "song-001", "song.md"), "# Repair Night\n", "utf8");
-  await writeFile(join(root, "songs", "song-001", "brief.md"), "civic responsibility leaves the room\n", "utf8");
+  await writeFile(join(root, "songs", "song-001", "brief.md"), "civic responsibility leaves the room\n- Mood: sharp satire\n", "utf8");
   return root;
 }
 
@@ -184,5 +184,8 @@ describe("creative quality ledger", () => {
     expect(typeof record.dopagakiActive).toBe("boolean");
     expect(record.dissBankHitCount).toBeGreaterThanOrEqual(1);
     expect(record.dissBankHits).toContain("再開発ビルが作るビル風");
+    expect(record.hookText).toContain("再開発ビルの街でビル風がなる");
+    expect(record.tempoBand).toBe("mid");
+    expect(record.emotionalMode).toBe("sharp satire");
   });
 });

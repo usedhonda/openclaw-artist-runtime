@@ -5,7 +5,7 @@ import { isAiNotConfiguredResponse, isAiProviderMockFallbackResponse, callAiProv
 import { readArtistMind, updateSongState } from "./artistState.js";
 import { appendPromptLedger, createPromptLedgerEntry, getSongPromptLedgerPath } from "./promptLedger.js";
 import { repairLyricsV55 } from "./lyricsRepair.js";
-import { validateLyricsV55 } from "./lyricsValidator.js";
+import { parseLyricsSections, validateLyricsV55 } from "./lyricsValidator.js";
 import { secretLikePattern } from "./personaMigrator.js";
 import { emitRuntimeEvent } from "./runtimeEventBus.js";
 import { buildLyricsDraftingPrompt, readLyricsKnowledgeDigest } from "./lyricsDraftingPrompt.js";
@@ -13,7 +13,7 @@ import { parseLyricsLanguagePolicy } from "./lyricsLanguagePolicy.js";
 import { getArtistIdentity, getSunoLyricsLimit } from "./runtimeConfig.js";
 import { decideDopagakiVariation } from "./creativeVariationPolicy.js";
 import { getDurationPlan, minimumBareLyricsChars, minimumBareLyricsLines, resolveTempoBandFromBrief } from "../suno-production/durationPlan.js";
-import { appendCreativeQualityEntry, computeDissBankHits } from "./creativeQualityLedger.js";
+import { appendCreativeQualityEntry, computeDissBankHits, readCreativeQualityLedger } from "./creativeQualityLedger.js";
 
 export interface DraftLyricsInput {
   workspaceRoot: string;
@@ -236,6 +236,29 @@ function bareLyricsLinesForDraft(lyrics: string): number {
     .length;
 }
 
+function hookTextFromLyrics(lyrics: string): string | undefined {
+  const hook = parseLyricsSections(lyrics).find((section) => /^(?:final\s+)?hook\b/i.test(section.tag.trim()));
+  if (!hook) return undefined;
+  const text = hook.lines
+    .map((line) => line.trim())
+    .filter(Boolean)
+    .join(" / ")
+    .slice(0, 180);
+  return text || undefined;
+}
+
+function recentHookTexts(entries: Array<{ hookText?: string }>): string[] {
+  return entries
+    .map((entry) => entry.hookText?.trim())
+    .filter((hook): hook is string => Boolean(hook))
+    .filter((hook, index, hooks) => hooks.indexOf(hook) === index)
+    .slice(0, 4);
+}
+
+function emotionalModeFromBrief(briefText: string): string | undefined {
+  return briefText.match(/^\s*-\s*Mood:\s*(.+)$/im)?.[1]?.trim() || undefined;
+}
+
 async function composeLyricsDraft(input: DraftLyricsInput, title: string, briefText: string): Promise<LyricsDraft> {
   const provider = input.aiReviewProvider ?? input.config?.aiReview?.provider ?? "mock";
   const mind = await readArtistMind(input.workspaceRoot);
@@ -245,12 +268,23 @@ async function composeLyricsDraft(input: DraftLyricsInput, title: string, briefT
   const lyricsBoxLimit = getSunoLyricsLimit();
   const lyricBodyLimit = lyricBodyLimitForSunoBox(lyricsBoxLimit);
   const durationPlan = getDurationPlan(resolveTempoBandFromBrief(briefText));
+  const emotionalMode = emotionalModeFromBrief(briefText);
   const minimumBareChars = minimumBareLyricsChars(durationPlan);
   const minimumBareLines = minimumBareLyricsLines(durationPlan);
-  const dopagakiVariation = decideDopagakiVariation({
+  const recentQuality = await readCreativeQualityLedger(input.workspaceRoot, 8);
+  const dopagakiDecision = decideDopagakiVariation({
     songId: input.songId,
-    briefText
+    briefText,
+    recentModes: recentQuality.map((entry) => entry.tempoBand === "dopagaki" || entry.dopagakiActive ? "dopagaki" : "spacious")
   });
+  // DurationPlan is the resolved timing contract for this draft. Its band,
+  // rather than an independent random choice, owns whether density is active.
+  const dopagakiVariation = {
+    ...dopagakiDecision,
+    active: durationPlan.tempoBand === "dopagaki",
+    intensity: durationPlan.tempoBand === "dopagaki" ? "overt" as const : "off" as const
+  };
+  const avoidedHooks = recentHookTexts(recentQuality);
   let repairNotes: string[] = input.correctionGuidance ?? [];
   for (let attempt = 0; attempt < 3; attempt += 1) {
     const prompt = buildLyricsDraftingPrompt({
@@ -265,7 +299,8 @@ async function composeLyricsDraft(input: DraftLyricsInput, title: string, briefT
       artistName: identity.artistName,
       languagePolicy,
       dopagakiVariation,
-      durationPlan
+      durationPlan,
+      recentHookTexts: avoidedHooks
     });
     assertSafe("input", prompt);
     const raw = provider === "mock" ? mockStructuredDraft(title, briefText) : await callAiProvider(prompt, { provider });
@@ -311,6 +346,9 @@ async function composeLyricsDraft(input: DraftLyricsInput, title: string, briefT
         bareLyricsChars,
         bareLines: bareLyricsLines,
         moodHint: finalDraft.moodHint,
+        hookText: hookTextFromLyrics(repaired),
+        tempoBand: durationPlan.tempoBand,
+        emotionalMode,
         dissBankHits,
         dissBankHitCount: dissBankHits.length,
         degraded: false

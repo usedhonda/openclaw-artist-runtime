@@ -10,6 +10,11 @@ export interface CreativeQualityEntry {
   bareLyricsChars: number;
   bareLines: number;
   moodHint: string;
+  // Optional fields were added after the ledger first shipped. Readers must
+  // continue accepting earlier append-only entries without them.
+  hookText?: string;
+  tempoBand?: "slow" | "mid" | "up" | "dopagaki" | "super";
+  emotionalMode?: string;
   dissBankHits: string[];
   dissBankHitCount: number;
   degraded: boolean;
