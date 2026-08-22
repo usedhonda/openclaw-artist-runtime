@@ -376,14 +376,14 @@ function fallbackPitchLine(field: PitchField, context: PitchDensityContext, thin
     const index = Number.parseInt(shortHash(`${context.observation}:${context.artistMd}:${field}`), 16) % 3;
     const variants: Record<PitchField, string[]> = {
       lyricsTheme: [
-        `まだ言葉になってない。${slots.object}の輪郭だけ、仮で短いフックに捕まえる。`,
-        `薄い観察のまま、${slots.theme}の輪郭を仮の一節で残す。`,
-        `これから見えてくる${slots.object}を、まだ短いフックの仮にする。`
+        `まだ言葉になってない。${slots.object}の輪郭だけ、仮で短いフックに捕まえて今夜の余白に残す。`,
+        `薄い観察のまま、${slots.theme}の輪郭を仮で一節にして、明日のサビの芯として残す。`,
+        `これから見えてくる${slots.object}を、まだ短いフックの仮にして今夜の余白へ置く。`
       ],
       styleNotes: [
-        "まだ輪郭しかない。仮で sparse arrangement, low bass だけ置く。",
-        "薄い材料の仮として、restrained drums と low bass だけ残す。",
-        "これから詰める輪郭を、仮で dry vocal と sparse rhythm に置く。"
+        "まだ輪郭しかない。仮で sparse arrangement と low bass だけを今夜の空白に置く。",
+        "薄い材料を仮で、restrained drums と low bass だけ余白に残す。",
+        "これから詰める輪郭を、仮で dry vocal と sparse rhythm の余白に置く。"
       ],
       reason: [
         `${slots.callname}、まだ輪郭しかない。${slots.theme}だけ仮で捕まえて、これから詰めるな。`,
