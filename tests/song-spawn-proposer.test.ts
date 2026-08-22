@@ -101,4 +101,46 @@ describe("song spawn proposer", () => {
       now: new Date("2026-04-30T00:00:00.000Z")
     })).resolves.toBeNull();
   });
+
+  it("prefers an unused observation URL when a recent proposal already cited one", async () => {
+    const root = await workspace();
+    const usedUrl = "https://x.com/city/status/100";
+    const freshUrl = "https://x.com/city/status/200";
+    await writeFile(join(root, "observations", "2026-04-29.md"), [
+      "# X Observations 2026-04-29",
+      "",
+      `- text: "used redevelopment angle"`,
+      '  author: "city"',
+      `  url: "${usedUrl}"`,
+      "  motifScore: 12",
+      `- text: "fresh culture angle"`,
+      '  author: "culture"',
+      `  url: "${freshUrl}"`,
+      "  motifScore: 8"
+    ].join("\n"), "utf8");
+    await registerCallbackAction(root, {
+      action: "song_spawn_inject",
+      commissionBrief: {
+        songId: "spawn_recent_source",
+        title: "already cited source",
+        brief: "recent source",
+        lyricsTheme: "recent source",
+        mood: "observational",
+        tempo: "120 BPM",
+        duration: "2:50",
+        styleNotes: "restrained",
+        sourceText: "test",
+        createdAt: "2026-04-29T00:00:00.000Z",
+        sources: [{ kind: "x", url: usedUrl }]
+      },
+      chatId: 1,
+      messageId: 2,
+      userId: 3,
+      now: new Date("2026-04-29T00:10:00.000Z").getTime()
+    });
+
+    const proposal = await proposeSpawn(root, { aiReviewProvider: "mock", now: new Date("2026-04-29T01:00:00.000Z") });
+    expect(proposal?.brief.sources?.map((source) => source.url)).toContain(freshUrl);
+    expect(proposal?.brief.sources?.map((source) => source.url)).not.toContain(usedUrl);
+  });
 });

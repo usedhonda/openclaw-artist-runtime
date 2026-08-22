@@ -59,7 +59,11 @@ interface LatestObservationData {
   excerpts?: ObservationExcerpt[];
 }
 
-async function latestObservationData(root: string, now: Date): Promise<LatestObservationData> {
+async function latestObservationData(
+  root: string,
+  now: Date,
+  recentSourceUrls: ReadonlySet<string> = new Set()
+): Promise<LatestObservationData> {
   // X observations are daily inputs, not an indefinite fallback. If today's
   // collection fails, exclude older X files instead of recycling their sources
   // into every new proposal. News remains on its existing independent path.
@@ -95,6 +99,11 @@ async function latestObservationData(root: string, now: Date): Promise<LatestObs
   }));
   const pool = [...xAsObservation, ...newsAsObservation];
   if (pool.length === 0 && !raw) return { raw: "" };
+  // Keep a source only once across nearby proposals when another observation is
+  // available. If every candidate is already used, retain the pool instead of
+  // starving the artist of material altogether.
+  const freshPool = pool.filter((entry) => !entry.url || !recentSourceUrls.has(entry.url));
+  const selectedPool = freshPool.length > 0 ? freshPool : pool;
   // Stitch the news block onto raw so prompt builders that read raw text see
   // both streams even before E adds explicit excerpt sections.
   const newsRaw = newsEntries
@@ -104,7 +113,7 @@ async function latestObservationData(root: string, now: Date): Promise<LatestObs
   if (newsRaw) {
     raw = raw ? `${raw.trim()}\n\n# News Excerpts\n${newsRaw}\n` : `# News Excerpts\n${newsRaw}\n`;
   }
-  const sorted = [...pool].sort((a, b) => (b.motifScore ?? 0) - (a.motifScore ?? 0));
+  const sorted = [...selectedPool].sort((a, b) => (b.motifScore ?? 0) - (a.motifScore ?? 0));
   // Plan v10.38 Phase E: keep top-N excerpts so buildPrompt can show them to
   // the AI as "Today's Topic (main material)". Both X and news entries pass
   // through here, scored by the same persona motif rubric.
@@ -174,6 +183,7 @@ interface RecentSpawnTheme {
   title: string;
   lyricsTheme?: string;
   brief?: string;
+  sourceUrls?: string[];
 }
 
 function jaccardSimilarity(a: Set<string>, b: Set<string>): number {
@@ -235,7 +245,8 @@ async function recentSpawnThemes(root: string, now: Date): Promise<RecentSpawnTh
     seen.set(title, {
       title,
       lyricsTheme: entry.commissionBrief.lyricsTheme,
-      brief: entry.commissionBrief.brief
+      brief: entry.commissionBrief.brief,
+      sourceUrls: entry.commissionBrief.sources?.map((source) => source.url).filter(Boolean)
     });
   }
   return Array.from(seen.values()).slice(-12);
@@ -362,9 +373,25 @@ function pitchSlots(context: PitchDensityContext): { theme: string; place: strin
 function fallbackPitchLine(field: PitchField, context: PitchDensityContext, thin = isThinPitchContext(context)): string {
   const slots = pitchSlots(context);
   if (thin) {
-    if (field === "lyricsTheme") return `まだ言葉になってない。${slots.object}の輪郭だけ、仮で短いフックに捕まえる。`;
-    if (field === "styleNotes") return `まだ輪郭しかない。仮で sparse arrangement, low bass だけ置く。`;
-    return `${slots.callname}、まだ輪郭しかない。${slots.theme}だけ仮で捕まえて、これから詰めるな。`;
+    const index = Number.parseInt(shortHash(`${context.observation}:${context.artistMd}:${field}`), 16) % 3;
+    const variants: Record<PitchField, string[]> = {
+      lyricsTheme: [
+        `まだ言葉になってない。${slots.object}の輪郭だけ、仮で短いフックに捕まえる。`,
+        `薄い観察のまま、${slots.theme}の輪郭を仮の一節で残す。`,
+        `これから見えてくる${slots.object}を、まだ短いフックの仮にする。`
+      ],
+      styleNotes: [
+        "まだ輪郭しかない。仮で sparse arrangement, low bass だけ置く。",
+        "薄い材料の仮として、restrained drums と low bass だけ残す。",
+        "これから詰める輪郭を、仮で dry vocal と sparse rhythm に置く。"
+      ],
+      reason: [
+        `${slots.callname}、まだ輪郭しかない。${slots.theme}だけ仮で捕まえて、これから詰めるな。`,
+        `${slots.callname}、薄い観察だが、${slots.object}の輪郭を仮で置いてから見ていきたい。`,
+        `${slots.callname}、これから出てくる${slots.theme}を、まだ仮のフックで逃がさず持つな。`
+      ]
+    };
+    return variants[field][index];
   }
   if (field === "lyricsTheme") {
     return `${slots.theme}を${slots.place}の手触りで切る。サビは短く繰り返したくなる 1 行、ヴァースで景色を出して${slots.object}を最後に置く。言い切らずに残る違和感を、短いフックへ畳んで、最後の余白で刺す。`;
@@ -803,17 +830,18 @@ export async function proposeSpawn(root: string, options: ProposeSpawnOptions = 
     .then((config) => writeDerivedIdentityProjection(root, config, "song_spawn_identity_projection_sync"))
     .then((result) => result.text)
     .catch(() => undefined);
-  const [artistMd, soulMd, identityMd, innerMd, producerMd, heartbeat, obsData, songs, recentThemes] = await Promise.all([
+  const [artistMd, soulMd, identityMd, innerMd, producerMd, heartbeat, songs, recentThemes] = await Promise.all([
     readFile(join(root, "ARTIST.md"), "utf8").catch(() => ""),
     readFile(join(root, "SOUL.md"), "utf8").catch(() => ""),
     identityProjection ?? readFile(join(root, "IDENTITY.md"), "utf8").catch(() => ""),
     readFile(join(root, "INNER.md"), "utf8").catch(() => ""),
     readFile(join(root, "PRODUCER.md"), "utf8").catch(() => ""),
     readFile(join(root, "runtime", "heartbeat-state.json"), "utf8").catch(() => ""),
-    latestObservationData(root, now),
     listSongStates(root).catch(() => []),
     recentSpawnThemes(root, now)
   ]);
+  const recentSourceUrls = new Set(recentThemes.flatMap((theme) => theme.sourceUrls ?? []));
+  const obsData = await latestObservationData(root, now, recentSourceUrls);
   const observation = obsData.raw;
   const observationSummary = obsData.summary;
   // Plan v10.38 Phase D: surface theme starvation. When the observation pool is
