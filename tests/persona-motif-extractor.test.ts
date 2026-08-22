@@ -71,6 +71,52 @@ describe("persona motif extractor", () => {
     }
   });
 
+  it("extracts noun phrases from each exact material bank heading", () => {
+    const motifs = extractPersonaMotifs(`
+### Consumption & Face Material Bank
+- 鏡張りのラウンジ: 見栄のための内装
+### Net & Generation Material Bank
+- 通知疲れ: 既読の墓場
+### Shibuya Diss Material Bank
+- 再開発の仮囲い: 街の借り物
+`);
+    expect(motifs.themes).toEqual(expect.arrayContaining(["鏡張りのラウンジ", "通知疲れ", "再開発の仮囲い"]));
+    expect(motifs.vocabulary).toEqual(expect.arrayContaining(["鏡張りのラウンジ", "通知疲れ", "再開発の仮囲い"]));
+  });
+
+  it("keeps long material-bank nouns for scoring while excluding them from queries", () => {
+    const longNoun = "終電後のブランド看板が何本も連なる大きな歩道橋";
+    const motifs = extractPersonaMotifs(`### Consumption & Face Material Bank\n- ${longNoun}: 観察対象`);
+    expect(motifs.themes).toContain(longNoun);
+    expect(motifs.vocabulary).toContain(longNoun);
+    expect(topQueryKeywords(motifs)).not.toContain(longNoun);
+  });
+
+  it("excludes nationality labels from motifs and query candidates", () => {
+    const motifs = extractPersonaMotifs(`### Net & Generation Material Bank\n- チャイナ: label\n- 外人: label\n- 通知疲れ: material`);
+    expect(motifs.themes).not.toEqual(expect.arrayContaining(["チャイナ", "外人"]));
+    expect(motifs.vocabulary).not.toEqual(expect.arrayContaining(["チャイナ", "外人"]));
+    expect(topQueryKeywords({ ...motifs, themes: [...motifs.themes, "チャイナ"], vocabulary: [...motifs.vocabulary, "外人"] }))
+      .not.toEqual(expect.arrayContaining(["チャイナ", "外人"]));
+  });
+
+  it("deterministically rotates toward vocabulary outside the recent primary lens", () => {
+    const motifs = extractPersonaMotifs(`
+### Consumption & Face Material Bank
+- 鏡張りのラウンジ: 見栄
+### Net & Generation Material Bank
+- 通知疲れ: 既読
+### Shibuya Diss Material Bank
+- 路地裏: 再開発
+`);
+    const options = { seed: "0", recentBriefText: "通知疲れの既読地獄" };
+    const first = topQueryKeywords(motifs, 5, options);
+    const second = topQueryKeywords(motifs, 5, options);
+    expect(first).toEqual(second);
+    expect(first[0]).toBe("鏡張りのラウンジ");
+    expect(first.slice(0, 2)).not.toContain("通知疲れ");
+  });
+
   it("summarizes motifs into a one-line digest", () => {
     const motifs = extractPersonaMotifs(sampleArtistMd);
     const summary = summarizeMotifs(motifs);

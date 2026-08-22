@@ -11,6 +11,13 @@ export interface PersonaMotifBundle {
   sound: string[];
   avoid: string[];
   raw: string;
+  materialBankGroups?: PersonaMaterialBankGroups;
+}
+
+export interface PersonaMaterialBankGroups {
+  consumptionFace: string[];
+  netGeneration: string[];
+  shibuyaDiss: string[];
 }
 
 interface SectionHit {
@@ -192,6 +199,25 @@ const avoidSeeds = [
   "nft",
   "投げ銭"
 ];
+const nationalityLabels = new Set([
+  "チャイナ",
+  "外人",
+  "外国人",
+  "中国人",
+  "日本人",
+  "韓国人",
+  "アメリカ人",
+  "american",
+  "chinese",
+  "japanese",
+  "korean",
+  "foreigner"
+]);
+
+export interface TopQueryKeywordOptions {
+  seed?: string;
+  recentBriefText?: string;
+}
 
 function normalize(value: string): string {
   return value
@@ -249,6 +275,10 @@ function dedupeKeepCase(values: string[]): string[] {
   return out;
 }
 
+function isNationalityLabel(value: string): boolean {
+  return nationalityLabels.has(normalize(value).toLowerCase());
+}
+
 function findSeeds(haystack: string, seeds: string[]): string[] {
   const lower = haystack.toLowerCase();
   return seeds.filter((seed) => lower.includes(seed.toLowerCase()));
@@ -266,8 +296,23 @@ const soundHeadings = ["sound", "voice", "音楽的ルーツ", "プロダクシ�
 const lyricHeadings = ["lyrics", "歌詞", "voice"];
 const avoidHeadings = ["lyrics", "歌詞", "避ける", "avoid"];
 
+function materialBankGroups(sections: SectionHit[]): PersonaMaterialBankGroups {
+  const nounsFor = (heading: string): string[] => sections
+    .filter((section) => section.heading.toLowerCase() === heading)
+    .flatMap((section) => bulletsOf(section.body))
+    .map((bullet) => normalize(bullet.split(/[：:]/, 1)[0]))
+    .filter((value) => value.length > 0 && !isNationalityLabel(value));
+  return {
+    consumptionFace: nounsFor("consumption & face material bank"),
+    netGeneration: nounsFor("net & generation material bank"),
+    shibuyaDiss: nounsFor("shibuya diss material bank")
+  };
+}
+
 function extractFromBuckets(personaText: string): PersonaMotifBundle {
   const sections = splitSections(personaText);
+  const bankGroups = materialBankGroups(sections);
+  const bankNouns = Object.values(bankGroups).flat();
   const themeSections = pickBucket(themeHeadings, sections);
   const soundSections = pickBucket(soundHeadings, sections);
   const lyricSections = pickBucket(lyricHeadings, sections);
@@ -279,15 +324,19 @@ function extractFromBuckets(personaText: string): PersonaMotifBundle {
   const fullBody = personaText;
 
   const themes = dedupeKeepCase([
+    ...bankNouns,
     ...findSeeds(themeBody, themeSeeds),
     ...bulletsOf(themeBody)
       .map(stripObsessionPrefix)
-      .filter((value) => value.length > 0 && value.length <= 24)
+      .filter((value) => value.length > 0 && value.length <= 24 && !isNationalityLabel(value))
   ]).slice(0, 16);
 
   const vocabulary = dedupeKeepCase([
+    ...bankNouns,
     ...findSeeds(lyricBody, vocabSeeds),
-    ...bodyTokens(lyricBody).filter((token) => /[一-龠]/.test(token) && token.length >= 2 && token.length <= 8)
+    ...bodyTokens(lyricBody).filter(
+      (token) => /[一-龠]/.test(token) && token.length >= 2 && token.length <= 8 && !isNationalityLabel(token)
+    )
   ]).slice(0, 24);
 
   const sound = dedupeKeepCase([
@@ -310,7 +359,8 @@ function extractFromBuckets(personaText: string): PersonaMotifBundle {
     geographies,
     sound,
     avoid,
-    raw: personaText
+    raw: personaText,
+    materialBankGroups: bankNouns.length > 0 ? bankGroups : undefined
   };
 }
 
@@ -354,10 +404,11 @@ export function pickWeightedMotif(
   observationTopTags: string[] = [],
   rng: () => number = Math.random
 ): string | undefined {
-  if (bucket.length === 0) return undefined;
-  if (bucket.length === 1) return bucket[0];
+  const eligibleBucket = bucket.filter((entry) => !isNationalityLabel(entry));
+  if (eligibleBucket.length === 0) return undefined;
+  if (eligibleBucket.length === 1) return eligibleBucket[0];
   const obsSet = new Set(observationTopTags.map((tag) => tag.trim().toLowerCase()).filter(Boolean));
-  const weights = bucket.map((entry, idx) => {
+  const weights = eligibleBucket.map((entry, idx) => {
     let weight = 1;
     if (idx < 3) weight += 2;
     else if (idx < 6) weight += 1;
@@ -367,11 +418,11 @@ export function pickWeightedMotif(
   const total = weights.reduce((a, b) => a + b, 0);
   const target = rng() * total;
   let acc = 0;
-  for (let i = 0; i < bucket.length; i += 1) {
+  for (let i = 0; i < eligibleBucket.length; i += 1) {
     acc += weights[i];
-    if (target < acc) return bucket[i];
+    if (target < acc) return eligibleBucket[i];
   }
-  return bucket[bucket.length - 1];
+  return eligibleBucket[eligibleBucket.length - 1];
 }
 
 // Plan v10.38 Phase C helper: extract motif-level tag set from arbitrary brief
@@ -398,23 +449,65 @@ export function extractTagSet(text: string): Set<string> {
   return tags;
 }
 
-export function topQueryKeywords(motifs: PersonaMotifBundle, limit = 5): string[] {
+function deterministicOffset(seed: string | undefined, length: number): number {
+  if (!seed || length <= 1) return 0;
+  let hash = 0;
+  for (const char of seed) hash = ((hash * 31) + char.charCodeAt(0)) >>> 0;
+  return hash % length;
+}
+
+function rotate<T>(values: T[], seed: string | undefined): T[] {
+  if (values.length <= 1) return values;
+  const offset = deterministicOffset(seed, values.length);
+  return [...values.slice(offset), ...values.slice(0, offset)];
+}
+
+function matchesLens(value: string, lens: string): boolean {
+  const keyword = value.trim().toLowerCase();
+  const normalizedLens = lens.trim().toLowerCase();
+  return keyword.length > 0 && normalizedLens.length > 0 &&
+    (normalizedLens.includes(keyword) || keyword.includes(normalizedLens));
+}
+
+function alternateBankTerms(motifs: PersonaMotifBundle, recentBriefText: string): string[] {
+  const groups = motifs.materialBankGroups;
+  if (!groups) return [];
+  const groupValues = [groups.consumptionFace, groups.netGeneration, groups.shibuyaDiss];
+  const activeGroups = groupValues.filter((terms) => terms.some((term) => matchesLens(term, recentBriefText)));
+  const activeTerms = new Set(activeGroups.flat().map((term) => term.toLowerCase()));
+  return groupValues
+    .flat()
+    .filter((term) => !activeTerms.has(term.toLowerCase()) && !matchesLens(term, recentBriefText));
+}
+
+export function topQueryKeywords(
+  motifs: PersonaMotifBundle,
+  limit = 5,
+  options: TopQueryKeywordOptions = {}
+): string[] {
   // Geo and themes give the most artist-aligned signal for X queries.
   // Avoid sound (music vocabulary) and avoid bucket entirely on the way out.
   const buckets = [
-    ...motifs.geographies.map((value) => ({ value, weight: 4 })),
-    ...motifs.themes.map((value) => ({ value, weight: 3 })),
-    ...motifs.vocabulary.map((value) => ({ value, weight: 2 }))
+    ...motifs.geographies.map((value) => ({ value, source: "geography" })),
+    ...motifs.themes.map((value) => ({ value, source: "theme" })),
+    ...motifs.vocabulary.map((value) => ({ value, source: "vocabulary" }))
   ];
+  const optionsPresent = options.seed !== undefined || options.recentBriefText !== undefined;
+  if (optionsPresent && !motifs.materialBankGroups) return [];
   const seen = new Set<string>();
-  const ranked: string[] = [];
+  const ranked: Array<{ value: string; source: string }> = [];
   for (const item of buckets) {
     const key = item.value.toLowerCase();
     if (seen.has(key)) continue;
     seen.add(key);
-    if (item.value.length === 0 || item.value.length > 18) continue;
-    ranked.push(item.value);
-    if (ranked.length >= limit) break;
+    if (item.value.length === 0 || item.value.length > 18 || isNationalityLabel(item.value)) continue;
+    ranked.push(item);
   }
-  return ranked;
+  if (!optionsPresent) return ranked.slice(0, limit).map((item) => item.value);
+  const bankTerms = new Set(alternateBankTerms(motifs, options.recentBriefText ?? "").map((term) => term.toLowerCase()));
+  const alternateBank = ranked.filter((item) => bankTerms.has(item.value.toLowerCase()));
+  const rotated = alternateBank.length > 0
+    ? [...rotate(alternateBank, options.seed), ...rotate(ranked.filter((item) => !alternateBank.includes(item)), options.seed)]
+    : rotate(ranked, options.seed);
+  return rotated.slice(0, limit).map((item) => item.value);
 }
