@@ -133,7 +133,8 @@ describe("residual kanji lyrics lint", () => {
       "スポンサー席から 見つもりを読む",
       "白いポスターに 職業病の数字",
       "診断、しぶや。処方、しぶや",
-      "売る側も買う側も 払いを刺す"
+      "売る側も買う側も 払いを刺す",
+      "整形の量産ラインに 住民票と在庫"
     ].join("\n"));
 
     expect(lintResidualKanji(registrationLyrics)).toEqual([]);
