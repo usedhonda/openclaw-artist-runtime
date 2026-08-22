@@ -13,6 +13,7 @@ vi.mock("node:child_process", async () => {
   return { ...actual, execFile: execFileMock };
 });
 import { collectObservations, readTodayObservations } from "../src/services/xObservationCollector";
+import { writeSongBrief } from "../src/services/artistState";
 import { readXObservationDiagnostics } from "../src/services/xObservationDiagnostics";
 import { isInCooldown, readBirdRateLimitStatus } from "../src/services/birdRateLimiter";
 import { getRuntimeEventBus, type RuntimeEvent } from "../src/services/runtimeEventBus";
@@ -167,6 +168,36 @@ describe("x observation collector", () => {
     const cache = await readTodayObservations(root, new Date("2026-04-29T02:00:00.000Z"));
     expect(cache).toContain("Query: \"LUUP 事故\" lang:ja since:2026-04-22");
     expect(cache).toContain("便利の顔で危険を薄める街");
+  });
+
+  it("keeps a news reaction first and reserves the same query budget for an alternate lens", async () => {
+    const root = workspace();
+    await writeSongBrief(root, "spawn_recent", "## Direction\n- Lyrics theme: 整形広告で埋まる駅を切る。\n");
+    const runner = vi.fn(async (query?: string) => ({
+      stdout: query === '"news reaction"'
+        ? ""
+        : "@citywatch 街の熱が商品になる https://x.com/citywatch/status/2222222222222222222 2026-04-29T01:30:00.000Z"
+    }));
+
+    await collectObservations(root, {
+      now: new Date("2026-04-29T02:00:00.000Z"),
+      queries: ['"news reaction"', '"later reaction"', '"unused reaction"'],
+      personaText: [
+        "### Consumption & Face Material Bank",
+        "- 整形広告で埋まる駅: 顔がカタログになる。",
+        "### Net & Generation Material Bank",
+        "- 炎上の賞味期限: 熱が在庫になる。",
+        "### Shibuya Diss Material Bank",
+        "- 再開発ビルが作るビル風: 路地の空気が消える。"
+      ].join("\n"),
+      runner
+    });
+
+    const queries = runner.mock.calls.map(([query]) => query);
+    expect(queries[0]).toBe('"news reaction"');
+    expect(queries).toHaveLength(2);
+    expect(queries[1]).toMatch(/炎上の賞味期限|再開発ビルが作るビル風/);
+    expect(queries[1]).not.toContain("整形広告で埋まる駅");
   });
 
   it("persists latest search diagnostics without rejected tweet content", async () => {

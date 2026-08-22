@@ -1,11 +1,12 @@
 import { appendFile, mkdir, readFile, stat, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
+import { listSongStates } from "./artistState.js";
 import { matchBirdBanIndication, recordBirdCall, triggerCooldown, tryAcquireBirdCall } from "./birdRateLimiter.js";
 import { buildBirdArgs } from "./birdRunner.js";
 import { emitRuntimeEvent } from "./runtimeEventBus.js";
 import { secretLikePattern } from "./personaMigrator.js";
 import { planQueryStrategy } from "./xQueryStrategyPlanner.js";
-import { extractPersonaMotifs, summarizeMotifs, type PersonaMotifBundle } from "./personaMotifExtractor.js";
+import { extractPersonaMotifs, summarizeMotifs, topQueryKeywords, type PersonaMotifBundle } from "./personaMotifExtractor.js";
 import { rankObservations, summarizeMatches, type ScoredObservation } from "./xObservationScorer.js";
 import { buildXObservationDiagnosticsSnapshot, readXObservationDiagnostics, writeXObservationDiagnostics, type XObservationDiagnosticsSnapshot } from "./xObservationDiagnostics.js";
 
@@ -495,6 +496,17 @@ function uniqueQueries(values: Array<string | undefined>): string[] {
   return result;
 }
 
+async function latestSpawnBrief(root: string): Promise<{ songId: string; text: string }> {
+  const recent = (await listSongStates(root).catch(() => [])).find((song) => song.songId.startsWith("spawn_"));
+  if (!recent) return { songId: "none", text: "" };
+  const path = recent.briefPath ?? join(root, "songs", recent.songId, "brief.md");
+  return { songId: recent.songId, text: await readFile(path, "utf8").catch(() => "") };
+}
+
+function lensQueries(keywords: string[]): string[] {
+  return keywords.map((keyword) => `"${keyword.replace(/["\r\n]+/g, " ").trim()}" lang:ja`);
+}
+
 export async function readObservationsReport(root: string, dateOrNow: string | Date = new Date()): Promise<ObservationReport> {
   const now = typeof dateOrNow === "string" && isoDateOnlyPattern.test(dateOrNow)
     ? new Date(`${dateOrNow}T00:00:00+09:00`)
@@ -554,7 +566,22 @@ export async function collectObservations(root: string, context: XObservationCon
     manualSeed: context.manualSeed,
     motifs
   });
-  const targetQueries = uniqueQueries([...(context.queries ?? []), context.query ?? strategy.query]);
+  const recentBrief = await latestSpawnBrief(root);
+  const rotatingLensQueries = lensQueries(topQueryKeywords(motifs, 2, {
+    seed: `${jstDate(now)}:${recentBrief.songId}`,
+    recentBriefText: recentBrief.text
+  }));
+  const primaryQueries = context.queries?.length
+    ? context.queries
+    : [context.query ?? strategy.query];
+  // Keep news reaction queries first, but reserve the remaining existing Bird
+  // attempt budget for one or two alternate-lens phrases. The search loop and
+  // its rate-limit gate remain unchanged.
+  const primaryLimit = Math.max(1, maxObservationQueryAttempts - rotatingLensQueries.length);
+  const targetQueries = uniqueQueries([
+    ...primaryQueries.slice(0, primaryLimit),
+    ...rotatingLensQueries
+  ]).slice(0, maxObservationQueryAttempts);
   const cached = await readFile(path, "utf8").catch(() => "");
   if (cached) {
     const cachedStat = await stat(path).catch(() => undefined);

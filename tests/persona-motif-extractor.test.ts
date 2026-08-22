@@ -74,6 +74,7 @@ describe("persona motif extractor", () => {
   it("extracts noun phrases from each exact material bank heading", () => {
     const motifs = extractPersonaMotifs(`
 ### Consumption & Face Material Bank
+- 素材の扱い: 安全線の説明。
 - 鏡張りのラウンジ: 見栄のための内装
 ### Net & Generation Material Bank
 - 通知疲れ: 既読の墓場
@@ -82,6 +83,7 @@ describe("persona motif extractor", () => {
 `);
     expect(motifs.themes).toEqual(expect.arrayContaining(["鏡張りのラウンジ", "通知疲れ", "再開発の仮囲い"]));
     expect(motifs.vocabulary).toEqual(expect.arrayContaining(["鏡張りのラウンジ", "通知疲れ", "再開発の仮囲い"]));
+    expect(motifs.themes).not.toContain("素材の扱い");
   });
 
   it("keeps long material-bank nouns for scoring while excluding them from queries", () => {
@@ -93,11 +95,11 @@ describe("persona motif extractor", () => {
   });
 
   it("excludes nationality labels from motifs and query candidates", () => {
-    const motifs = extractPersonaMotifs(`### Net & Generation Material Bank\n- チャイナ: label\n- 外人: label\n- 通知疲れ: material`);
-    expect(motifs.themes).not.toEqual(expect.arrayContaining(["チャイナ", "外人"]));
-    expect(motifs.vocabulary).not.toEqual(expect.arrayContaining(["チャイナ", "外人"]));
-    expect(topQueryKeywords({ ...motifs, themes: [...motifs.themes, "チャイナ"], vocabulary: [...motifs.vocabulary, "外人"] }))
-      .not.toEqual(expect.arrayContaining(["チャイナ", "外人"]));
+    const motifs = extractPersonaMotifs(`### Net & Generation Material Bank\n- チャイナ: label\n- 外人だらけ: label\n- 通知疲れ: material`);
+    expect(motifs.themes).not.toEqual(expect.arrayContaining(["チャイナ", "外人だらけ"]));
+    expect(motifs.vocabulary).not.toEqual(expect.arrayContaining(["チャイナ", "外人だらけ"]));
+    expect(topQueryKeywords({ ...motifs, themes: [...motifs.themes, "チャイナ"], vocabulary: [...motifs.vocabulary, "外人だらけ"] }))
+      .not.toEqual(expect.arrayContaining(["チャイナ", "外人だらけ"]));
   });
 
   it("deterministically rotates toward vocabulary outside the recent primary lens", () => {

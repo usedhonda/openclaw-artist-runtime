@@ -199,7 +199,7 @@ const avoidSeeds = [
   "nft",
   "投げ銭"
 ];
-const nationalityLabels = new Set([
+const nationalityLabels = [
   "チャイナ",
   "外人",
   "外国人",
@@ -212,7 +212,7 @@ const nationalityLabels = new Set([
   "japanese",
   "korean",
   "foreigner"
-]);
+];
 
 export interface TopQueryKeywordOptions {
   seed?: string;
@@ -276,7 +276,8 @@ function dedupeKeepCase(values: string[]): string[] {
 }
 
 function isNationalityLabel(value: string): boolean {
-  return nationalityLabels.has(normalize(value).toLowerCase());
+  const normalized = normalize(value).toLowerCase();
+  return nationalityLabels.some((label) => normalized.includes(label));
 }
 
 function findSeeds(haystack: string, seeds: string[]): string[] {
@@ -301,7 +302,7 @@ function materialBankGroups(sections: SectionHit[]): PersonaMaterialBankGroups {
     .filter((section) => section.heading.toLowerCase() === heading)
     .flatMap((section) => bulletsOf(section.body))
     .map((bullet) => normalize(bullet.split(/[：:]/, 1)[0]))
-    .filter((value) => value.length > 0 && !isNationalityLabel(value));
+    .filter((value) => value.length > 0 && !/^素材の扱い/.test(value) && !isNationalityLabel(value));
   return {
     consumptionFace: nounsFor("consumption & face material bank"),
     netGeneration: nounsFor("net & generation material bank"),
