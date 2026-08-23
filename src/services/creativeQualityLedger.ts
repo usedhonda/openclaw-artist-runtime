@@ -24,6 +24,10 @@ export interface CreativeQualityEntry {
   dissBankHits: string[];
   dissBankHitCount: number;
   degraded: boolean;
+  // Set when a valid draft still carried an exculpatory ("免罪句") phrase after
+  // one regeneration attempt. The draft passes through rather than parking, but
+  // the ledger records that the fang was softened so monitoring can see it.
+  softened?: boolean;
 }
 
 export interface CreativeQualityAggregate {

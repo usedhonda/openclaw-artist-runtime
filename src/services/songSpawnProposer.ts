@@ -16,7 +16,8 @@ import { isVoiceFingerprintReady, parseVoiceFingerprint, type VoiceFingerprintBu
 import { readObservationsReport, readTodayObservations } from "./xObservationCollector.js";
 import { readTodayNewsObservations } from "./newsObservationCollector.js";
 import { decideCreative, jstDate, type CreativeDirectorObservation } from "./creativeDirector.js";
-import { readRecentCreativeDecisions } from "./creativeQualityLedger.js";
+import { readCreativeQualityLedger, readRecentCreativeDecisions } from "./creativeQualityLedger.js";
+import { hashRatio } from "./creativeVariationPolicy.js";
 import type { CreativeDecision } from "../types.js";
 
 const FULL_TWEET_URL_PATTERN = /^https:\/\/(?:twitter|x)\.com\/[^/\s]+\/status\/\d+/i;
@@ -254,11 +255,33 @@ async function recentSpawnThemes(root: string, now: Date): Promise<RecentSpawnTh
   return Array.from(seen.values()).slice(-12);
 }
 
-function titleFromSeed(
+// Kanji (incl. 々) and katakana (incl. ー) runs of >= 2 chars. Hiragana breaks
+// runs so anti-repeat compares distinctive content words, not particles.
+const TITLE_TOKEN_PATTERN = /[一-鿿々゠-ヿー]{2,}/g;
+
+function titleTokens(title: string): string[] {
+  return title.match(TITLE_TOKEN_PATTERN) ?? [];
+}
+
+function titleTokenSet(titles: string[]): Set<string> {
+  const set = new Set<string>();
+  for (const title of titles) {
+    for (const token of titleTokens(title)) set.add(token);
+  }
+  return set;
+}
+
+function sharesTitleToken(candidate: string, recentTokens: Set<string>): boolean {
+  if (recentTokens.size === 0) return false;
+  return titleTokens(candidate).some((token) => recentTokens.has(token));
+}
+
+export function titleFromSeed(
   seed: string,
   motifs?: ReturnType<typeof extractPersonaMotifs>,
   observationTopTags: string[] = [],
-  rng?: () => number
+  rng?: () => number,
+  recentTitles: string[] = []
 ): string {
   // Plan v10.38 Phase C: pickWeightedMotif replaces [0]-pinning on themes /
   // geographies so the title bucket rotates across the ARTIST.md seed instead
@@ -269,10 +292,30 @@ function titleFromSeed(
   // available to AI prompts via the raw motif bundle, but should not surface
   // as the song title.
   if (motifs) {
-    const themeWord = firstJapanesePhrase(motifs.themes, "", observationTopTags, rng);
-    const geoWord = firstJapanesePhrase(motifs.geographies, "", observationTopTags, rng);
-    if (themeWord && geoWord) return `${geoWord}の${themeWord}`.slice(0, 32);
-    if (themeWord) return themeWord.slice(0, 32);
+    // Anti-repeat: reject a candidate that shares a content word with any of the
+    // last few ledger titles (Face x2 re-occurrence guard). The seeded rng
+    // advances on each rebuild so bounded retries explore distinct picks;
+    // fallback keeps the last candidate with a degraded note.
+    const recentTokens = titleTokenSet(recentTitles);
+    const buildCandidate = (): string => {
+      const themeWord = firstJapanesePhrase(motifs.themes, "", observationTopTags, rng);
+      const geoWord = firstJapanesePhrase(motifs.geographies, "", observationTopTags, rng);
+      if (themeWord && geoWord) return `${geoWord}の${themeWord}`.slice(0, 32);
+      if (themeWord) return themeWord.slice(0, 32);
+      return "";
+    };
+    let candidate = buildCandidate();
+    if (candidate) {
+      for (let attempt = 0; attempt < 6 && sharesTitleToken(candidate, recentTokens); attempt += 1) {
+        const next = buildCandidate();
+        if (!next) break;
+        candidate = next;
+      }
+      if (sharesTitleToken(candidate, recentTokens)) {
+        console.warn(`[song-spawn] title_anti_repeat_exhausted: accepting overlapping title token (candidate=${candidate})`);
+      }
+      return candidate;
+    }
   }
   const lines = seed.split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
   const skipPrefixes = [/^#\s*X Observations/i, /^Query:/i, /^Motifs:/i, /^Source:/i, /^- text:/i, /^- author:/i, /^- url:/i, /^- postedAt:/i, /^author:/i, /^url:/i, /^postedAt:/i, /^motifMatch:/i, /^motifScore:/i];
@@ -449,25 +492,15 @@ export function dedupeStyleBpm(styleNotes: string, tempo: string): string {
     .trim();
 }
 
-function buildBrief(context: { observation: string; artistMd: string; soulMd: string; fingerprint: VoiceFingerprintBundle; now: Date; observationTopTags?: string[]; rng?: () => number; recentDecisions?: readonly CreativeDecision[]; directorObservation?: CreativeDirectorObservation | null }): CommissionBrief {
+function buildBrief(context: { observation: string; artistMd: string; soulMd: string; fingerprint: VoiceFingerprintBundle; now: Date; observationTopTags?: string[]; rng?: () => number; recentDecisions?: readonly CreativeDecision[]; recentTitles?: string[]; directorObservation?: CreativeDirectorObservation | null }): CommissionBrief {
   const seed = context.observation || context.soulMd || "観察が薄い夜に、街の温度だけ残っている。";
   const titleMotifs = extractPersonaMotifs([context.artistMd, context.soulMd].join("\n"));
   const observationTopTags = context.observationTopTags ?? [];
-  const title = titleFromSeed(seed, titleMotifs, observationTopTags, context.rng);
-  // Plan v10.38 Phase C: weighted motif pick replaces [0] fixation, japanese
-  // only because these tokens feed the producer-facing brief sentence below.
-  const themeWord = firstJapanesePhrase(titleMotifs.themes, "", observationTopTags, context.rng);
-  const placeWord = firstJapanesePhrase(titleMotifs.geographies, "", observationTopTags, context.rng);
-  const objectWord = firstJapanesePhrase(titleMotifs.vocabulary, "", observationTopTags, context.rng);
-  const briefSentence = themeWord && placeWord
-    ? `${placeWord}で見た${objectWord || "違和感"}を、${themeWord}として切る一曲`
-    : themeWord
-      ? `${themeWord}を音にする一曲`
-      : seed.slice(0, 280);
   const songId = `spawn_${shortHash(`${seed}:${context.now.toISOString()}`)}`;
   // The director decides every creative axis once. mood and tempo are sourced
   // from it here; the full decision rides on the brief so the materialization
-  // point can persist song-plan.json without re-deciding.
+  // point can persist song-plan.json without re-deciding. Decided before the
+  // title so the title rng can be seeded from the plan seed (Math.random-free).
   const decision = decideCreative({
     songId,
     jstDate: jstDate(context.now),
@@ -475,6 +508,22 @@ function buildBrief(context: { observation: string; artistMd: string; soulMd: st
     observation: context.directorObservation ?? null,
     recentDecisions: context.recentDecisions ?? []
   });
+  // Deterministic title rng derived from the plan seed. A caller-supplied rng
+  // (tests) still wins. The same rng feeds the brief sentence so the title and
+  // sentence rotate together per song instead of on Math.random.
+  let rngCounter = 0;
+  const planRng = context.rng ?? (() => hashRatio(`title:${decision.seed}:${rngCounter++}`));
+  const title = titleFromSeed(seed, titleMotifs, observationTopTags, planRng, context.recentTitles ?? []);
+  // Plan v10.38 Phase C: weighted motif pick replaces [0] fixation, japanese
+  // only because these tokens feed the producer-facing brief sentence below.
+  const themeWord = firstJapanesePhrase(titleMotifs.themes, "", observationTopTags, planRng);
+  const placeWord = firstJapanesePhrase(titleMotifs.geographies, "", observationTopTags, planRng);
+  const objectWord = firstJapanesePhrase(titleMotifs.vocabulary, "", observationTopTags, planRng);
+  const briefSentence = themeWord && placeWord
+    ? `${placeWord}で見た${objectWord || "違和感"}を、${themeWord}として切る一曲`
+    : themeWord
+      ? `${themeWord}を音にする一曲`
+      : seed.slice(0, 280);
   const densityContext = {
     observation: context.observation,
     artistMd: context.artistMd,
@@ -879,6 +928,10 @@ export async function proposeSpawn(root: string, options: ProposeSpawnOptions = 
   const identity = await getArtistIdentity(root);
   const pitchContext = { observation, artistMd, soulMd, fingerprint };
   const recentDecisions = await readRecentCreativeDecisions(root, 6);
+  // Last few drafted titles for the title anti-repeat (newest-first ledger).
+  const recentTitles = (await readCreativeQualityLedger(root, 3))
+    .map((entry) => entry.title)
+    .filter((title): title is string => Boolean(title && title.trim()));
   const directorObservation: CreativeDirectorObservation | null = observationSummary
     ? {
         url: observationSummary.url ?? "",
@@ -887,7 +940,7 @@ export async function proposeSpawn(root: string, options: ProposeSpawnOptions = 
         text: observation
       }
     : null;
-  const fallback = buildBrief({ observation, artistMd, soulMd, fingerprint, now, recentDecisions, directorObservation });
+  const fallback = buildBrief({ observation, artistMd, soulMd, fingerprint, now, recentDecisions, recentTitles, directorObservation });
   // Plan v10.38 Phase F hallucination guard: stamp the fallback brief with
   // the observation entries it was actually built from so mock / not_configured
   // paths still leave a verifiable citation trail.

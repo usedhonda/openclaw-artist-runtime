@@ -4,6 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { readSongState } from "../src/services/artistState";
+import { readCreativeQualityLedger } from "../src/services/creativeQualityLedger";
 import { getRuntimeEventBus, type RuntimeEvent } from "../src/services/runtimeEventBus";
 
 const { callAiProviderMock } = vi.hoisted(() => ({
@@ -121,6 +122,49 @@ function fortyLineDraft(): string {
     moodHint: "civic dread pulse"
   });
 }
+
+// A valid dense draft that also carries an exculpatory ("免罪句") line so the
+// softener lint fires.
+function softenedJsonDraft(): string {
+  const draft = JSON.parse(goodJsonDraft()) as { sections: Array<{ lines: string[] }> };
+  draft.sections[1].lines = [...draft.sections[1].lines, "これは個人攻撃ではない"];
+  return JSON.stringify(draft);
+}
+
+describe("lyrics drafting softener lint (F2)", () => {
+  beforeEach(() => {
+    callAiProviderMock.mockReset();
+  });
+
+  it("regenerates once when a softening phrase is detected, then passes clean", async () => {
+    const root = await workspace();
+    callAiProviderMock
+      .mockResolvedValueOnce(softenedJsonDraft())
+      .mockResolvedValueOnce(goodJsonDraft());
+
+    const result = await draftLyrics({ workspaceRoot: root, songId: "song-001", aiReviewProvider: "openai-codex" });
+
+    expect(callAiProviderMock).toHaveBeenCalledTimes(2);
+    expect(result.lyricsText).not.toContain("個人攻撃ではない");
+    expect((await readSongState(root, "song-001")).degradedLyrics).toBe(false);
+    const ledger = await readCreativeQualityLedger(root);
+    expect(ledger[0]?.softened).toBeFalsy();
+  });
+
+  it("records softened:true and passes through when the phrase survives the retry", async () => {
+    const root = await workspace();
+    callAiProviderMock.mockResolvedValue(softenedJsonDraft());
+
+    const result = await draftLyrics({ workspaceRoot: root, songId: "song-001", aiReviewProvider: "openai-codex" });
+
+    // Two calls: initial detect + one regeneration; then pass through (no park).
+    expect(callAiProviderMock).toHaveBeenCalledTimes(2);
+    expect(result.lyricsText).toContain("個人攻撃ではない");
+    expect((await readSongState(root, "song-001")).degradedLyrics).toBe(false);
+    const ledger = await readCreativeQualityLedger(root);
+    expect(ledger[0]?.softened).toBe(true);
+  });
+});
 
 describe("lyrics drafting repair-not-reject orchestration", () => {
   beforeEach(() => {

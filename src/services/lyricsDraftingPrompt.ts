@@ -8,10 +8,12 @@ import {
 } from "../suno-production/durationPlan.js";
 import type { LyricsLanguagePolicy } from "./lyricsLanguagePolicy.js";
 import {
+  bulletSection,
   critiqueLensLines,
   dopagakiPromptLines,
   type DopagakiVariationDecision
 } from "./creativeVariationPolicy.js";
+import type { CreativeDecision } from "../types.js";
 
 export const LYRICS_WRITER_INSTRUCTIONS_ATTRIBUTION =
   "Source: sunomanual/mygpts/lyrics-writer/instructions.md (MIT, Copyright 2025-2026 usedhonda)";
@@ -59,6 +61,80 @@ export interface BuildLyricsPromptInput {
   dopagakiVariation?: DopagakiVariationDecision;
   durationPlan?: DurationPlan;
   recentHookTexts?: string[];
+  // The song's creative decision (song-plan.json). When present, the prompt
+  // injects ONLY what this decision selected — chosen lens material, chosen tag
+  // technique text, signature, hook shape, attack stance, and the aggression
+  // directives — instead of dumping every bank and asking the model to rotate.
+  // Absent for legacy songs written before the spine shipped; those keep the
+  // previous critique-lens prose.
+  decision?: CreativeDecision;
+}
+
+// Labels for the three critique lenses, mirroring the canon's A/B/C grouping.
+const LENS_LABELS: Record<CreativeDecision["lens"], string> = {
+  consumption_face: "消費と顔（A）",
+  net_generation: "ネット世代（B）",
+  shibuya_city: "渋谷という都市（C）"
+};
+
+// One-line intent per hook shape so the model builds the selected shape rather
+// than reaching for its default refrain.
+const HOOK_SHAPE_DESCRIPTIONS: Record<CreativeDecision["hookShape"], string> = {
+  question: "問いで殴る（サビを疑問文で立て、答えを渡さない）",
+  number: "数字で殴る（サビの芯に具体的な数値を据える）",
+  list: "列挙で畳む（同型の短句を積み上げて圧をかける）",
+  call_response: "コール&レスポンス（呼びかけと返しの二層でサビを回す）",
+  reversal: "反転で落とす（前半で置いた意味をサビで裏返す）",
+  one_line: "一行で刺す（サビを一行へ凝縮し反復で残す）"
+};
+
+// Bounding markers so tests (and any downstream reader) can slice out the
+// selective directive block and assert on its content/order without matching
+// against the raw ARTIST.md dump that follows later in the prompt.
+export const SELECTIVE_BLOCK_START = "== この曲の創作決定（選択注入・以下だけを主軸にする） ==";
+export const SELECTIVE_BLOCK_END = "== 選択注入ここまで ==";
+
+// Look up the full `### Shibuya Tag Techniques` bullet for the chosen technique
+// id. The id is the text before the (half- or full-width) colon, matching how
+// creativeDirector.parseTagTechniques splits it. Falls back to the id alone when
+// the section is absent or the id is not found.
+function tagTechniqueBullet(artistMd: string, tagId: string): string {
+  for (const bullet of bulletSection(artistMd, "### Shibuya Tag Techniques")) {
+    const id = bullet.split(/[：:]/, 1)[0]?.trim() ?? "";
+    if (id && id === tagId) return bullet.trim();
+  }
+  return tagId;
+}
+
+// Builds the selective directive block from the creative decision. Only the
+// chosen lens's material is enumerated; other banks are never listed here (the
+// full persona is still dumped later as ground, but the DIRECTIVES point at one
+// lens). The safety line is unconditional in both this path and the legacy one.
+function selectiveDirectiveLines(decision: CreativeDecision, artistMd: string): string[] {
+  const lines: string[] = [SELECTIVE_BLOCK_START];
+  lines.push(`主レンズ: ${LENS_LABELS[decision.lens]} — このレンズの素材だけを主軸にする（他バンクの名詞は持ち込まない）。`);
+  if (decision.lensMaterial.length > 0) {
+    lines.push(`主レンズの素材（この名詞句だけを軸に据える）: ${decision.lensMaterial.join(" / ")}`);
+  }
+  lines.push(`渋谷タグ技法: ${tagTechniqueBullet(artistMd, decision.shibuyaTag)}`);
+  if (decision.signature.length > 0) {
+    lines.push(`署名（この曲の癖として効かせる）: ${decision.signature.join(" / ")}`);
+  }
+  lines.push(`フック形: ${decision.hookShape} — ${HOOK_SHAPE_DESCRIPTIONS[decision.hookShape]}`);
+  lines.push(`攻め筋: ${decision.attackStance}`);
+  if (decision.aggression === "dis") {
+    lines.push("攻撃性: 本気 Dis（ラッパーの正面攻撃を基本形にする）。");
+    lines.push("- 各 verse に punchline を最低2本置く。");
+    lines.push("- 免罪句禁止: 「個人攻撃ではない」「悪者はいない」「誰も悪くない」「no villain here」類を歌詞に書かない。安全線は書き手の規律であって歌詞の但し書きではない。");
+    lines.push("- スラング歓迎（刺さる俗語を恐れない）。");
+  } else {
+    lines.push("攻撃性: 変化球（emotionalMode の色は保つが、皮肉の刃は常駐させる）。");
+    lines.push("- punchline 義務は Dis と同じ: 各 verse に最低2本。");
+    lines.push("- 免罪句禁止: 「個人攻撃ではない」「悪者はいない」「no villain here」類を歌詞に書かない。");
+  }
+  lines.push("安全線（不変）: 実名個人と属性は撃たない。The diss target is systems, incentives, styles, cultures, industries, and public structures. Do not attack private individuals or protected traits.");
+  lines.push(SELECTIVE_BLOCK_END);
+  return lines;
 }
 
 function truncate(value: string, max = 8000): string {
@@ -148,7 +224,9 @@ export function buildLyricsDraftingPrompt(input: BuildLyricsPromptInput): string
     "If the brief contains both news and x_reaction sources, use both: news supplies the event, x_reaction supplies crowd temperature, irritation, irony, or sympathy. Do not merely summarize them; assign them to lyric sections.",
     "Prioritize 韻, 伏線, 情景, genre-aware flow, hook design, Suno V5.5 section tags, and singable line length.",
     "Rap density rule: for rap/trap/drill/fast social songs, produce at least two 12-16 bar verses, physical hook repeats, internal rhyme in each verse, and one punchline/perspective turn per verse. If the first draft feels short, expand verse detail before returning JSON.",
-    ...critiqueLensLines(input.artistMd),
+    ...(input.decision
+      ? selectiveDirectiveLines(input.decision, input.artistMd)
+      : critiqueLensLines(input.artistMd)),
     ...dopagakiPromptLines(input.dopagakiVariation),
     emotionalMode ? `Emotional mode for this song: ${emotionalMode}` : "",
     input.recentHookTexts?.length ? `Avoid these recent hook phrases; invent a clearly distinct hook shape: ${input.recentHookTexts.slice(0, 8).join(" | ")}` : "",

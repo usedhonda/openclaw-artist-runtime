@@ -55,6 +55,13 @@ function assertSafe(stage: string, value: string): void {
   }
 }
 
+// Exculpatory ("免罪句") phrases that pull the fang out of a diss by disclaiming
+// the attack inside the lyric body. The safety line is the writer's discipline,
+// not a caption the song sings, so these are lint-detected in a drafted lyric.
+const SOFTENER_PATTERN = /個人攻撃ではない|悪者はいない|誰も悪くない|no villain|not (?:an )?attack|nothing personal/i;
+const SOFTENER_REPAIR_NOTE =
+  "softener_detected: 免罪句（「個人攻撃ではない」「悪者はいない」「誰も悪くない」「no villain here」類）を歌詞から全て削除し、punchline を弱めずに書き直せ。安全線は歌詞に但し書きとして書かない。";
+
 function deriveLyrics(title: string, brief: string): string {
   const briefLines = brief
     .split("\n")
@@ -319,6 +326,37 @@ async function composeLyricsDraft(input: DraftLyricsInput, title: string, briefT
     intensity: durationPlan.tempoBand === "dopagaki" ? "overt" as const : "off" as const
   };
   const avoidedHooks = recentHookTexts(recentQuality);
+  // Telemetry only: a ledger write must never fail lyric generation. Metrics are
+  // recomputed from the passed lyrics so the stashed softened draft records its
+  // own body, not a later attempt's.
+  const recordCreativeQuality = async (draft: LyricsDraft, repairedLyrics: string, softened: boolean): Promise<void> => {
+    const dissBankHits = computeDissBankHits(mind.artist, repairedLyrics);
+    await appendCreativeQualityEntry(input.workspaceRoot, {
+      songId: input.songId,
+      title: draft.title,
+      createdAt: new Date().toISOString(),
+      dopagakiActive: dopagakiVariation.active,
+      dopagakiThreshold: dopagakiVariation.threshold,
+      bareLyricsChars: bareLyricsCharsForDraft(repairedLyrics),
+      bareLines: bareLyricsLinesForDraft(repairedLyrics),
+      moodHint: draft.moodHint,
+      hookText: hookTextFromLyrics(repairedLyrics),
+      tempoBand: durationPlan.tempoBand,
+      emotionalMode,
+      introArchetype: introVariant.id,
+      decision: plan ?? undefined,
+      dissBankHits,
+      dissBankHitCount: dissBankHits.length,
+      degraded: false,
+      ...(softened ? { softened: true } : {})
+    }).catch(() => undefined);
+  };
+  // A valid-but-softened draft is stashed rather than parked: if the single
+  // regeneration attempt does not clear the softener (or later attempts come
+  // back invalid), the stash is passed through with softened:true instead of
+  // throwing a degradation.
+  let softenerRetryUsed = false;
+  let softenedStash: { draft: LyricsDraft; repaired: string } | undefined;
   let repairNotes: string[] = input.correctionGuidance ?? [];
   for (let attempt = 0; attempt < 3; attempt += 1) {
     const prompt = buildLyricsDraftingPrompt({
@@ -334,7 +372,8 @@ async function composeLyricsDraft(input: DraftLyricsInput, title: string, briefT
       languagePolicy,
       dopagakiVariation,
       durationPlan,
-      recentHookTexts: avoidedHooks
+      recentHookTexts: avoidedHooks,
+      decision: plan ?? undefined
     });
     assertSafe("input", prompt);
     const raw = provider === "mock" ? mockStructuredDraft(title, briefText) : await callAiProvider(prompt, { provider });
@@ -369,29 +408,25 @@ async function composeLyricsDraft(input: DraftLyricsInput, title: string, briefT
     if (validation.valid) {
       const finalDraft = { ...parsed, lyrics: repaired };
       assertSafe("final", `${finalDraft.title}\n${finalDraft.lyrics}\n${finalDraft.moodHint}`);
-      const dissBankHits = computeDissBankHits(mind.artist, repaired);
-      // Telemetry only: a ledger write must never fail lyric generation.
-      await appendCreativeQualityEntry(input.workspaceRoot, {
-        songId: input.songId,
-        title: finalDraft.title,
-        createdAt: new Date().toISOString(),
-        dopagakiActive: dopagakiVariation.active,
-        dopagakiThreshold: dopagakiVariation.threshold,
-        bareLyricsChars,
-        bareLines: bareLyricsLines,
-        moodHint: finalDraft.moodHint,
-        hookText: hookTextFromLyrics(repaired),
-        tempoBand: durationPlan.tempoBand,
-        emotionalMode,
-        introArchetype: introVariant.id,
-        decision: plan ?? undefined,
-        dissBankHits,
-        dissBankHitCount: dissBankHits.length,
-        degraded: false
-      }).catch(() => undefined);
+      const softenerHit = SOFTENER_PATTERN.test(repaired);
+      // Softener lint: one regeneration attempt when a softening phrase appears.
+      if (softenerHit && !softenerRetryUsed) {
+        softenerRetryUsed = true;
+        softenedStash = { draft: finalDraft, repaired };
+        repairNotes = [SOFTENER_REPAIR_NOTE];
+        continue;
+      }
+      await recordCreativeQuality(finalDraft, repaired, softenerHit);
       return finalDraft;
     }
     repairNotes = validation.issues.map((issue) => `${issue.code}: ${issue.message}`).slice(0, 5);
+  }
+  // The regeneration attempt did not yield a clean valid draft, but a valid
+  // softened draft exists. Pass it through with softened:true rather than
+  // parking the song.
+  if (softenedStash) {
+    await recordCreativeQuality(softenedStash.draft, softenedStash.repaired, true);
+    return softenedStash.draft;
   }
   const notes = repairNotes.length > 0 ? repairNotes : ["unknown lyrics degradation"];
   const error = new Error(`lyrics_generation_degraded: ${notes.join(" | ")}`);

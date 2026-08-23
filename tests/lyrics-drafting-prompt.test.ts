@@ -2,9 +2,65 @@ import { describe, expect, it } from "vitest";
 import {
   LYRICS_KNOWLEDGE_DIGEST_FILES,
   LYRICS_WRITER_SYSTEM_PROMPT,
+  SELECTIVE_BLOCK_END,
+  SELECTIVE_BLOCK_START,
   buildLyricsDraftingPrompt,
   readLyricsKnowledgeDigest
 } from "../src/services/lyricsDraftingPrompt";
+import type { CreativeDecision } from "../src/types";
+
+// Persona with a distinct, unique noun per lens bank plus a tag-technique
+// section, so a selective-injection test can prove that only the chosen lens's
+// bank surfaces in the directive block.
+const SELECTIVE_PERSONA = [
+  "# Artist",
+  "",
+  "### Shibuya Tag Techniques",
+  "- 技法の扱い(前書き): 渋谷を貼れる住所として扱う。",
+  "- 産地表示: 製造元、渋谷と刻印する。",
+  "- 診断名: 診断、渋谷と名付ける。",
+  "",
+  "### Consumption & Face Material Bank",
+  "- 整形広告で埋まる駅: 顔のカタログ。",
+  "",
+  "### Net & Generation Material Bank",
+  "- 炎上の賞味期限ネット固有語: 三日で在庫になる怒り。",
+  "",
+  "### Shibuya Diss Material Bank",
+  "- 再開発で消える路地都市固有語: 誰のための通りか。"
+].join("\n");
+
+function decisionFixture(overrides: Partial<CreativeDecision> = {}): CreativeDecision {
+  return {
+    version: 1,
+    songId: "song-777",
+    decidedAt: "2026-08-23T00:00:00.000Z",
+    seed: "song-777\n2026-08-23\nhttps://x.com/a/status/1",
+    lens: "consumption_face",
+    lensMaterial: ["整形広告で埋まる駅"],
+    attackStance: "伝票の暴露（原価と単価の差を読み上げる）",
+    emotionalMode: { label: "本気 Dis", spec: "confrontational rap diss" },
+    aggression: "dis",
+    tempo: { band: "up", bpm: 122 },
+    dopagaki: { active: false, threshold: 0.4, variationSeed: "spacious:song-777:0.5" },
+    intro: { archetype: "scene_set", modifier: "4 bars, sparse scene", lyricInstruction: "0-1 line", styleMove: "sparse scene intro" },
+    hookShape: "number",
+    shibuyaTag: "産地表示",
+    signature: ["値段の裏側", "数字で読む癖"],
+    observation: null,
+    degradedInputs: [],
+    vocalGender: "male",
+    ...overrides
+  };
+}
+
+function selectiveBlock(prompt: string): string {
+  const start = prompt.indexOf(SELECTIVE_BLOCK_START);
+  const end = prompt.indexOf(SELECTIVE_BLOCK_END);
+  expect(start).toBeGreaterThanOrEqual(0);
+  expect(end).toBeGreaterThan(start);
+  return prompt.slice(start, end + SELECTIVE_BLOCK_END.length);
+}
 
 describe("lyrics drafting prompt", () => {
   it("embeds the attributed lyrics-writer instructions and expanded knowledge references", async () => {
@@ -99,5 +155,109 @@ describe("lyrics drafting prompt", () => {
     expect(prompt).toContain("### Signature section logic");
     expect(prompt).toContain("[… persona truncated at section boundary …]");
     expect(prompt).not.toContain("## Overflow");
+  });
+});
+
+describe("lyrics drafting prompt — selective injection (F2)", () => {
+  it("injects ONLY the chosen lens's bank nouns in the directive block", () => {
+    const prompt = buildLyricsDraftingPrompt({
+      artistMd: SELECTIVE_PERSONA,
+      currentState: "",
+      briefText: "brief",
+      title: "Ledger",
+      knowledgeDigest: "",
+      decision: decisionFixture()
+    });
+    const block = selectiveBlock(prompt);
+
+    // Chosen lens (consumption_face) material present in the block.
+    expect(block).toContain("整形広告で埋まる駅");
+    expect(block).toContain("主レンズ: 消費と顔（A）");
+    // Other banks' distinctive nouns must NOT appear inside the directive block,
+    // even though the raw ARTIST.md dump later in the prompt still contains them.
+    expect(block).not.toContain("ネット固有語");
+    expect(block).not.toContain("都市固有語");
+    expect(prompt).toContain("ネット固有語"); // raw dump keeps the full persona
+  });
+
+  it("injects the full tag-technique bullet, signature, hook shape, and stance", () => {
+    const prompt = buildLyricsDraftingPrompt({
+      artistMd: SELECTIVE_PERSONA,
+      currentState: "",
+      briefText: "brief",
+      title: "Ledger",
+      knowledgeDigest: "",
+      decision: decisionFixture()
+    });
+    const block = selectiveBlock(prompt);
+
+    expect(block).toContain("渋谷タグ技法: 産地表示: 製造元、渋谷と刻印する。");
+    expect(block).toContain("値段の裏側 / 数字で読む癖");
+    expect(block).toContain("フック形: number — 数字で殴る");
+    expect(block).toContain("攻め筋: 伝票の暴露（原価と単価の差を読み上げる）");
+    // Safety line must remain in every prompt.
+    expect(block).toContain("実名個人と属性は撃たない");
+    expect(block).toContain("Do not attack private individuals");
+  });
+
+  it("falls back to the tag id alone when the technique section is absent", () => {
+    const prompt = buildLyricsDraftingPrompt({
+      artistMd: "# Artist\n(no tag section)",
+      currentState: "",
+      briefText: "brief",
+      title: "Ledger",
+      knowledgeDigest: "",
+      decision: decisionFixture({ shibuyaTag: "住民登録" })
+    });
+    expect(selectiveBlock(prompt)).toContain("渋谷タグ技法: 住民登録");
+  });
+
+  it("emits hard dis directives for aggression=dis", () => {
+    const prompt = buildLyricsDraftingPrompt({
+      artistMd: SELECTIVE_PERSONA,
+      currentState: "",
+      briefText: "brief",
+      title: "Ledger",
+      knowledgeDigest: "",
+      decision: decisionFixture({ aggression: "dis" })
+    });
+    const block = selectiveBlock(prompt);
+
+    expect(block).toContain("攻撃性: 本気 Dis");
+    expect(block).toContain("各 verse に punchline を最低2本");
+    expect(block).toContain("免罪句禁止");
+    expect(block).toContain("スラング歓迎");
+  });
+
+  it("keeps the blade for aggression=changeup with the same punchline duty", () => {
+    const prompt = buildLyricsDraftingPrompt({
+      artistMd: SELECTIVE_PERSONA,
+      currentState: "",
+      briefText: "brief",
+      title: "Ledger",
+      knowledgeDigest: "",
+      decision: decisionFixture({
+        aggression: "changeup",
+        emotionalMode: { label: "自嘲", spec: "self-mocking" }
+      })
+    });
+    const block = selectiveBlock(prompt);
+
+    expect(block).toContain("攻撃性: 変化球");
+    expect(block).toContain("皮肉の刃は常駐");
+    expect(block).toContain("punchline 義務は Dis と同じ");
+    expect(block).toContain("免罪句禁止");
+  });
+
+  it("keeps the legacy critique-lens prose when no decision is passed", () => {
+    const prompt = buildLyricsDraftingPrompt({
+      artistMd: SELECTIVE_PERSONA,
+      currentState: "",
+      briefText: "brief",
+      title: "Ledger",
+      knowledgeDigest: ""
+    });
+    expect(prompt).toContain("Critique lens");
+    expect(prompt).not.toContain(SELECTIVE_BLOCK_START);
   });
 });
