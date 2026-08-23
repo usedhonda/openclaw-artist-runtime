@@ -1,4 +1,4 @@
-import { mkdtempSync } from "node:fs";
+import { mkdtempSync, readFileSync } from "node:fs";
 import { mkdir, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -13,6 +13,7 @@ import {
   readLatestCreativeQualityEntry,
   type CreativeQualityEntry
 } from "../src/services/creativeQualityLedger";
+import { INTRO_ARCHETYPE_IDS, resolveIntroVariant } from "../src/services/creativeVariationPolicy";
 
 const { callAiProviderMock } = vi.hoisted(() => ({
   callAiProviderMock: vi.fn()
@@ -187,5 +188,28 @@ describe("creative quality ledger", () => {
     expect(record.hookText).toContain("再開発ビルの街でビル風がなる");
     expect(record.tempoBand).toBe("mid");
     expect(record.emotionalMode).toBe("sharp satire");
+  });
+
+  it("logs the chosen intro archetype and excludes the most recent one", async () => {
+    callAiProviderMock.mockReset();
+    callAiProviderMock.mockResolvedValueOnce(denseDraftWithBankTerms());
+    const root = await bankWorkspace(BANK_MD);
+
+    // Reproduce lyricsDrafting's seed formula to find the bare-hash archetype,
+    // then seed the ledger with it so the anti-repeat shift must move off it.
+    const briefText = readFileSync(join(root, "songs", "song-001", "brief.md"), "utf8");
+    const barePick = resolveIntroVariant(`intro:song-001\n${briefText}`).id;
+    await appendCreativeQualityEntry(root, entry({ songId: "prior", introArchetype: barePick }));
+
+    await draftLyrics({ workspaceRoot: root, songId: "song-001", aiReviewProvider: "openai-codex" });
+
+    const ledger = await readCreativeQualityLedger(root);
+    expect(ledger[0].songId).toBe("song-001");
+    const chosen = ledger[0].introArchetype;
+    // Proves the archetype is recorded (logging wired) ...
+    expect(chosen).toBeDefined();
+    expect(INTRO_ARCHETYPE_IDS).toContain(chosen);
+    // ... and that the recent-history exclusion is fed back in (anti-repeat).
+    expect(chosen).not.toBe(barePick);
   });
 });

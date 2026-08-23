@@ -37,6 +37,7 @@ describe("Suno V5.5 style builder", () => {
     expect(result.total).toContain("Texture");
     expect(result.total).toContain("Performance");
     expect(result.total).toContain("Variation Move");
+    expect(result.total).toContain("Intro Move");
     expect(result.total).not.toContain("Knowledge Vocabulary");
   });
 
@@ -109,16 +110,31 @@ describe("Suno V5.5 style builder", () => {
     expect(prompt.user).not.toContain("total target <=400 characters");
   });
 
-  it("forces the dopagaki variation profile when the brief asks for it", () => {
-    const result = buildStyle({
-      genre: "alternative pop",
-      moodHint: "high-velocity progressive rap but still the same artist",
-      brief: "Keep the current style, add high-velocity progressive architecture only as variation."
-    });
+  // Regression for the arrangement collapse: because the artist profile always
+  // carries "high-velocity progressive rap" / "metric displacement", every
+  // non-overt song used to pin variationProfiles[1], flattening the six-way
+  // rotation to one profile. A non-overt progressive-identity brief must now
+  // hash-rotate across profiles. (The overt/dopagaki pin is covered by the two
+  // tests below, which retain the progressive substrings for the explicit case.)
+  it("rotates variation profiles for non-overt progressive-identity songs", () => {
+    const base = {
+      genre: "nu-jazz rap" as const,
+      artistProfile: "high-velocity progressive rap identity, metric displacement, structural density",
+      moodHint: "blue civic pressure",
+      brief: "Keep the current artist core; progressive architecture stays the identity while the arrangement rotates."
+    };
+    const variationMove = (seed: string): string => {
+      const total = buildStyle({ ...base, variationSeed: seed }).total;
+      expect(total.length).toBeLessThanOrEqual(CANONICAL_STYLE_HARD_MAX_CHARS);
+      return total.match(/Variation Move: ([^\n]+)/)?.[1] ?? "";
+    };
+    const moves = Array.from({ length: 10 }, (_, index) => variationMove(`song-seed-${index}`));
 
-    expect(result.total.length).toBeLessThanOrEqual(CANONICAL_STYLE_HARD_MAX_CHARS);
-    expect(result.total).toContain("high-velocity progressive rap");
-    expect(result.total).toContain("rapid section development");
+    // Collapse fix: several distinct Variation Move lines, not one fixed profile.
+    expect(new Set(moves).size).toBeGreaterThanOrEqual(3);
+    // Sharp proof the progressive shortcut no longer wins every non-overt song:
+    // at least one rotated profile is not a progressive one.
+    expect(moves.some((move) => move && !move.includes("progressive rap"))).toBe(true);
   });
 
   it("uses the overt dopagaki variation when the prompt asks for strong exposure", () => {

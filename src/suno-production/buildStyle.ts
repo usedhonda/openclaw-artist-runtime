@@ -138,6 +138,7 @@ interface StyleVariationProfile {
   arrangement: string[];
   mix: string[];
   texture: string[];
+  intro: string[];
 }
 
 const variationProfiles: StyleVariationProfile[] = [
@@ -146,42 +147,48 @@ const variationProfiles: StyleVariationProfile[] = [
     line: "Variation Move: overt high-velocity progressive rap; 2-4 bar technical fast-flow bursts, compressed sections, metric displacement, motivated transitions, rhythmic switch-ups, motif callbacks, transformed hook returns.",
     arrangement: ["compressed section turns", "metric displacement at boundaries", "2-4 bar technical fast-flow bursts", "transformed final hook return"],
     mix: ["dry transient definition", "bass-forward rhythmic pressure", "Rhodes and horn punctuation at turns", "controlled density without festival scale"],
-    texture: ["live-room drum grain", "Rhodes shadow detail", "tight rhythmic counter-motifs"]
+    texture: ["live-room drum grain", "Rhodes shadow detail", "tight rhythmic counter-motifs"],
+    intro: ["cold intro, immediate pocket", "hard downbeat intro, no runway", "count-in straight into the burst"]
   },
   {
     id: "progressive-core",
     line: "Variation Move: core high-velocity progressive rap; rapid but intelligible section development, rhythmic cell changes at musical boundaries, recurring motifs, jazz-rap continuity, and a final hook that returns with changed meaning while preserving the natural mid-range male lead.",
     arrangement: ["rapid section development", "rhythmic cell changes at boundaries", "recurring motif callback", "changed-meaning final hook"],
     mix: ["dry transient definition", "bass-forward pocket", "controlled density without digital gloss"],
-    texture: ["live-room drum grain", "Rhodes shadow detail"]
+    texture: ["live-room drum grain", "Rhodes shadow detail"],
+    intro: ["instrumental motif intro, short runway", "brief Rhodes intro then the pocket", "count-in into the groove"]
   },
   {
     id: "percussive-negative-space",
     line: "Variation Move: percussion-led negative space; clipped rim details, bass answered by dry room hits, hook widened by rhythm rather than extra chords, bridge drops to breath and low percussion, final hook returns with tighter drum geometry.",
     arrangement: ["clipped rim details", "bass-and-drum call response", "rhythm-widened hook", "bridge breath drop", "tighter final drum geometry"],
     mix: ["dry punch", "hard panned small percussion", "low-mid pocket discipline"],
-    texture: ["wood-and-metal transient grain", "short room reflections"]
+    texture: ["wood-and-metal transient grain", "short room reflections"],
+    intro: ["sparse percussion intro, negative space", "rim-click intro then hard downbeat", "silence then a drum hit intro"]
   },
   {
     id: "nocturnal-jazz-shift",
     line: "Variation Move: nocturnal jazz color shift; Rhodes voicings answer the vocal, sax or horn fragments appear only at section turns, chorus keeps the same pulse but changes chord color, bridge thins to bass harmonics before the final hook.",
     arrangement: ["Rhodes answer phrases", "horn fragments at section turns", "chorus chord-color shift", "bass-harmonic bridge", "final hook motif return"],
     mix: ["warm low-mid bloom", "close jazz-room depth", "soft analog glue"],
-    texture: ["brushed cymbal grain", "dim club air"]
+    texture: ["brushed cymbal grain", "dim club air"],
+    intro: ["atmospheric Rhodes fade intro", "muted horn intro, dim room", "brushed-cymbal intro, unhurried"]
   },
   {
     id: "cold-electro-pulse",
     line: "Variation Move: cold electro pulse; sub movement stays restrained, arpeggio fragments rotate every section, hook gains width through stereo automation, bridge narrows to mono pressure, final hook reopens with sharper side motion.",
     arrangement: ["rotating arp fragments", "restrained sub movement", "stereo-automated hook", "mono-pressure bridge", "reopened final hook"],
     mix: ["clean side motion", "precise low-end envelope", "cold stereo automation"],
-    texture: ["glass synth shimmer", "humid warehouse edge"]
+    texture: ["glass synth shimmer", "humid warehouse edge"],
+    intro: ["arpeggio fragment intro, cold fade-in", "sub-pulse intro, stereo widening", "glassy synth intro, sparse"]
   },
   {
     id: "dusty-live-contrast",
     line: "Variation Move: dusty live contrast; organic bass and drums carry the verses, synth or key texture appears as a shadow, hook widens without arena scale, bridge exposes room noise, final hook restores the main groove with one new countermelody.",
     arrangement: ["organic verse groove", "shadow synth or key texture", "non-arena hook width", "room-noise bridge", "final countermelody"],
     mix: ["live-room intimacy", "vocal-forward center", "unpolished transient edges"],
-    texture: ["tape dust", "small-room air"]
+    texture: ["tape dust", "small-room air"],
+    intro: ["room-noise intro, organic bass first", "spoken cue intro then the groove", "tape-dust intro, live-room air"]
   }
 ];
 
@@ -197,9 +204,10 @@ function variationProfile(input: BuildStyleInput): StyleVariationProfile {
       return variationProfiles[0];
     }
   }
-  if (legacyVariation || progressiveIdentity) {
-    return variationProfiles[1];
-  }
+  // Ordinary progressive-identity songs (the artist profile always carries
+  // "high-velocity progressive rap" / "metric displacement") must not collapse
+  // to one fixed profile. Only an explicit overt/dopagaki override above pins a
+  // progressive profile; everything else hash-rotates across all six.
   const seed = input.variationSeed ?? source;
   const hash = hashString(seed || "artist-runtime-style-variation");
   return pickOne(variationProfiles, hash);
@@ -295,6 +303,7 @@ export function buildStyle(input: BuildStyleInput): BuildStyleResult {
         `- Rhythm & Bass: ${pickOne(template.mixVision, seedHash, 11)}, ${pickOne(profile.mix, seedHash, 17)}; no double-time.`,
         `- Mix/Texture: ${compactMix.split(", ").slice(0, 2).join(", ")}; ${compactTexture.split(", ")[0]}; vocal-forward space.`,
         `- Arrangement Arc: ${template.arrangementNotes[0]}; ${profile.arrangement.slice(0, 2).join("; ")}.`,
+        `- Intro Move: ${pickOne(profile.intro, seedHash, 23)}.`,
         `- Performance: ${trimAtPhraseBoundary(direction, 52)}`,
         trimAtPhraseBoundary(profile.line, 165)
       ].filter((line): line is string => Boolean(line)).join("\n");
@@ -310,6 +319,7 @@ export function buildStyle(input: BuildStyleInput): BuildStyleResult {
       `- Mix Vision: ${mix}; vocal-forward center with enough negative space for dense lyrics.`,
       `- Texture: ${texture}.`,
       `- Arrangement Arc: ${template.arrangementNotes.join("; ")}; ${profile.arrangement.join("; ")}.`,
+      `- Intro Move: ${pickOne(profile.intro, seedHash, 23)}.`,
       `- Performance: ${direction}`,
       profile.line
     ].filter((line): line is string => Boolean(line)).join("\n");

@@ -267,12 +267,21 @@ async function composeLyricsDraft(input: DraftLyricsInput, title: string, briefT
   const languagePolicy = parseLyricsLanguagePolicy(mind.artist);
   const lyricsBoxLimit = getSunoLyricsLimit();
   const lyricBodyLimit = lyricBodyLimitForSunoBox(lyricsBoxLimit);
+  // Recent creative-quality window; reused for intro anti-repeat, the dopagaki
+  // decision, and hook avoidance so we read the ledger once.
+  const recentQuality = await readCreativeQualityLedger(input.workspaceRoot, 8);
   // Rotate the INTRO archetype deterministically so consecutive songs do not
   // all open the same way. Seed is decorrelated from the dopagaki seed via the
-  // "intro:" prefix; recentIntroArchetypes is left empty here (W3 wires ledger
-  // history). The chosen modifier flows into the drafting prompt's
-  // [Intro - <modifier>] tag through formatDurationPlanForPrompt.
-  const introVariant = resolveIntroVariant(`intro:${input.songId}\n${briefText}`);
+  // "intro:" prefix. recentIntroArchetypes carries the ledger's recent archetype
+  // ids (most-recent last) so the immediately previous archetype is excluded.
+  // The chosen modifier flows into the drafting prompt's [Intro - <modifier>]
+  // tag through formatDurationPlanForPrompt, and its id is logged below so the
+  // recorded archetype always equals the one that shaped this intro.
+  const recentIntroArchetypes = recentQuality
+    .map((entry) => entry.introArchetype)
+    .filter((id): id is string => Boolean(id))
+    .reverse();
+  const introVariant = resolveIntroVariant(`intro:${input.songId}\n${briefText}`, recentIntroArchetypes);
   const durationPlan = getDurationPlan(resolveTempoBandFromBrief(briefText), {
     intro: {
       bars: introVariant.bars,
@@ -285,7 +294,6 @@ async function composeLyricsDraft(input: DraftLyricsInput, title: string, briefT
   const emotionalMode = emotionalModeFromBrief(briefText);
   const minimumBareChars = minimumBareLyricsChars(durationPlan);
   const minimumBareLines = minimumBareLyricsLines(durationPlan);
-  const recentQuality = await readCreativeQualityLedger(input.workspaceRoot, 8);
   const dopagakiDecision = decideDopagakiVariation({
     songId: input.songId,
     briefText,
@@ -363,6 +371,7 @@ async function composeLyricsDraft(input: DraftLyricsInput, title: string, briefT
         hookText: hookTextFromLyrics(repaired),
         tempoBand: durationPlan.tempoBand,
         emotionalMode,
+        introArchetype: introVariant.id,
         dissBankHits,
         dissBankHitCount: dissBankHits.length,
         degraded: false

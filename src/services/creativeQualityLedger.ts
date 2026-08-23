@@ -15,6 +15,7 @@ export interface CreativeQualityEntry {
   hookText?: string;
   tempoBand?: "slow" | "mid" | "up" | "dopagaki" | "super";
   emotionalMode?: string;
+  introArchetype?: string;
   dissBankHits: string[];
   dissBankHitCount: number;
   degraded: boolean;
