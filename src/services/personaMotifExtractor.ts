@@ -310,10 +310,28 @@ function materialBankGroups(sections: SectionHit[]): PersonaMaterialBankGroups {
   };
 }
 
+// Interleave the material banks instead of concatenating them. Concatenating put
+// every Consumption & Face noun first, and since the motif lists are capped at 16
+// the Net & Generation and Shibuya banks never survived the cut — four songs in a
+// row came back with 整形広告 / 同じ顔 themes. Round-robin keeps all three lenses
+// inside the cap so the lens rotation the persona asks for can actually happen.
+function interleaveBanks(groups: PersonaMaterialBankGroups): string[] {
+  const lists = Object.values(groups).filter((list) => list.length > 0);
+  const interleaved: string[] = [];
+  const longest = lists.reduce((max, list) => Math.max(max, list.length), 0);
+  for (let index = 0; index < longest; index += 1) {
+    for (const list of lists) {
+      const value = list[index];
+      if (value) interleaved.push(value);
+    }
+  }
+  return interleaved;
+}
+
 function extractFromBuckets(personaText: string): PersonaMotifBundle {
   const sections = splitSections(personaText);
   const bankGroups = materialBankGroups(sections);
-  const bankNouns = Object.values(bankGroups).flat();
+  const bankNouns = interleaveBanks(bankGroups);
   const themeSections = pickBucket(themeHeadings, sections);
   const soundSections = pickBucket(soundHeadings, sections);
   const lyricSections = pickBucket(lyricHeadings, sections);

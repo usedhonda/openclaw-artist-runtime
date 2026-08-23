@@ -128,6 +128,26 @@ describe("persona motif extractor", () => {
   });
 });
 
+  it("keeps every material bank inside the motif cap", () => {
+    // A concatenated bank order let the first bank fill the 16-item cap, so the
+    // Net & Generation and Shibuya banks never reached the lyric prompt and four
+    // songs in a row came back with the same 整形広告 / 同じ顔 theme.
+    const persona = [
+      "### Consumption & Face Material Bank",
+      ...Array.from({ length: 14 }, (_, index) => `- 消費素材${index + 1}: 説明。`),
+      "### Net & Generation Material Bank",
+      "- 炎上の賞味期限: 熱が在庫になる。",
+      "- 十五秒の寿命: 一曲が切られる。",
+      "### Shibuya Diss Material Bank",
+      "- 逃げ出した若い子の空席: 最初の世代がもういない。"
+    ].join("\n");
+
+    const motifs = extractPersonaMotifs(persona);
+
+    expect(motifs.themes).toContain("炎上の賞味期限");
+    expect(motifs.themes).toContain("逃げ出した若い子の空席");
+  });
+
 describe("pickWeightedMotif", () => {
   it("returns undefined for an empty bucket", () => {
     expect(pickWeightedMotif([])).toBeUndefined();
