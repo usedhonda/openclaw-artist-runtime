@@ -83,7 +83,7 @@ export interface AutopilotTickInput {
 export interface RunAutopilotCycleInput {
   workspaceRoot: string;
   config?: Partial<ArtistRuntimeConfig>;
-  manualSeed?: { hint: string; weirdness?: number };
+  manualSeed?: { hint: string; weirdness?: number; allowNoObservation?: boolean };
   observationRunner?: XObservationContext["runner"];
 }
 
@@ -428,9 +428,10 @@ async function runIdeaQueueLane(
   existing: AutopilotRunState,
   config: ArtistRuntimeConfig,
   options: { preserveCurrentSongLane?: boolean } = {}
-): Promise<{ state?: AutopilotRunState; emitted: boolean; skippedForFullQueue: boolean }> {
+): Promise<{ state?: AutopilotRunState; emitted: boolean; skippedForFullQueue: boolean; heldForObservation: boolean }> {
   const skippedForFullQueue = false;
   let emitted = false;
+  let heldForObservation = false;
   await shouldSpawn(root, { minIntervalHours: getSongSpawnIntervalHours(process.env, config) }).then(async (allowed) => {
     if (!allowed) {
       return;
@@ -449,6 +450,18 @@ async function runIdeaQueueLane(
       ignoreRecentCompletion: options.preserveCurrentSongLane
     });
     if (!proposal) {
+      return;
+    }
+    // No news/X material tonight: the director marked the decision observation_null
+    // and the AI cited no source, so this would be a bank-only song. Producer
+    // direction is "ニュース無しはマンネリ直行" -> hold instead of materializing.
+    // markSpawned is intentionally left untouched so the next cycle retries as
+    // soon as observation exists, rather than waiting a full spawn interval.
+    if (
+      proposal.brief.creativeDecision?.degradedInputs?.includes("observation_null")
+      && !proposal.brief.sources?.length
+    ) {
+      heldForObservation = true;
       return;
     }
     const voiceTop = await composeVoiceTopOnly("propose", root, undefined, [], { runId: proposal.candidateSongId }).catch(() => undefined);
@@ -475,13 +488,14 @@ async function runIdeaQueueLane(
     console.warn(`[artist-runtime] song spawn proposal failed: ${reason}`);
   });
   if (!emitted) {
-    return { emitted, skippedForFullQueue };
+    return { emitted, skippedForFullQueue, heldForObservation };
   }
   if (!isPreGenerationApprovalEnabled()) {
     return {
       state: await readAutopilotRunState(root),
       emitted,
-      skippedForFullQueue
+      skippedForFullQueue,
+      heldForObservation
     };
   }
   if (options.preserveCurrentSongLane) {
@@ -491,7 +505,8 @@ async function runIdeaQueueLane(
         lastRunAt: nowIso()
       }),
       emitted,
-      skippedForFullQueue
+      skippedForFullQueue,
+      heldForObservation
     };
   }
   return {
@@ -505,7 +520,8 @@ async function runIdeaQueueLane(
       lastRunAt: nowIso()
     }),
     emitted,
-    skippedForFullQueue
+    skippedForFullQueue,
+    heldForObservation
   };
 }
 
@@ -1489,6 +1505,21 @@ export class ArtistAutopilotService {
       if (!afterSpawn.currentSongId && afterSpawn.suspendedAt === "spawn_proposal_ready") {
         return afterSpawn;
       }
+      // The spawn lane held because there was no news/X material. Only surface the
+      // hold when no song lane is active (an active lane keeps running); mirror the
+      // waiting_for_proposal state so the next cycle re-drives once observation exists.
+      if (ideaLane.heldForObservation && !afterSpawn.currentSongId) {
+        return writeStageState(input.workspaceRoot, existing, {
+          ...existing,
+          currentSongId: undefined,
+          stage: "planning",
+          suspendedAt: null,
+          blockedReason: "observation_unavailable",
+          lastError: undefined,
+          lastRunAt: nowIso(),
+          cycleCount: existing.cycleCount + 1
+        });
+      }
     }
     if (!config.autopilot.enabled) {
       return writeStageState(input.workspaceRoot, existing, {
@@ -1718,6 +1749,22 @@ export class ArtistAutopilotService {
             currentSongId: undefined,
             stage: "planning",
             blockedReason: "song_spawn_waiting_for_proposal",
+            lastError: undefined,
+            cycleCount: existing.cycleCount + 1
+          });
+        }
+        // No news/X material this cycle: createSongIdea would set directorObservation
+        // to null (it does so iff observationText is empty), yielding a bank-only song
+        // whose decision carries observation_null. Producer default is no observation ->
+        // no song; hold and let the next cycle retry. A manual run may opt in with
+        // manualSeed.allowNoObservation for an intentionally bank-driven song. The hold
+        // is placed before proposeTheme so no AI theme call is burned for a discarded song.
+        if (!cycleObservation.observations.trim() && !input.manualSeed?.allowNoObservation) {
+          return writeStageState(input.workspaceRoot, existing, {
+            ...baseState,
+            currentSongId: undefined,
+            stage: "planning",
+            blockedReason: "observation_unavailable",
             lastError: undefined,
             cycleCount: existing.cycleCount + 1
           });

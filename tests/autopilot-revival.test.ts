@@ -10,6 +10,7 @@ import { AutopilotTicker } from "../src/services/autopilotTicker";
 import { createAndPersistSunoPromptPack } from "../src/services/sunoPromptPackFiles";
 import { generateSunoRun } from "../src/services/sunoRuns";
 import { ensureArtistWorkspace } from "../src/services/artistWorkspace";
+import { validObservationRunner } from "./helpers/seedObservationFile";
 import { readAutopilotRunState, writeAutopilotRunState } from "../src/services/autopilotService";
 import { ArtistAutopilotService } from "../src/services/autopilotService";
 import { SunoBrowserWorker, type SunoBrowserDriver } from "../src/services/sunoBrowserWorker";
@@ -128,10 +129,10 @@ describe("autopilot revival smoke coverage", () => {
       music: { suno: { driver: "playwright" as const, submitMode: "live", authority: "auto_create_and_select_take" } }
     };
 
-    const planning = await service.runCycle({ workspaceRoot: root, config });
+    const planning = await service.runCycle({ workspaceRoot: root, config, observationRunner: validObservationRunner });
     const songId = planning.currentSongId ?? "song-001";
-    const promptPack = await service.runCycle({ workspaceRoot: root, config });
-    const suno = await service.runCycle({ workspaceRoot: root, config });
+    const promptPack = await service.runCycle({ workspaceRoot: root, config, observationRunner: validObservationRunner });
+    const suno = await service.runCycle({ workspaceRoot: root, config, observationRunner: validObservationRunner });
 
     const metadata = await readFile(join(root, "songs", songId, "prompts", "prompt-pack-v001", "metadata.json"), "utf8");
     const runLog = await readFile(join(root, "songs", songId, "suno", "runs.jsonl"), "utf8");

@@ -34,6 +34,7 @@ export type RuntimeEvent =
   | { type: "song_publish_skipped"; songId: string; timestamp: number }
   | { type: "song_archived"; songId: string; selectedTakeId?: string; timestamp: number }
   | { type: "song_discarded"; songId: string; previousSelectedTakeId?: string; fromStatus?: string; reason?: string; timestamp: number }
+  | { type: "song_abandoned"; songId: string; fromStatus?: string; reason: string; timestamp: number }
   | { type: "producer_decision_reminder"; callbackId: string; action: string; label: string; effect: string; songId?: string; pendingHours: number; timestamp: number }
   | ({ type: "artist_pulse_drafted"; timestamp: number } & DailyVoiceDraft)
   | { type: "song_spawn_proposed"; brief: CommissionBrief; reason: string; candidateSongId: string; voiceTop?: string; observationSummary?: ObservationSummary; timestamp: number }

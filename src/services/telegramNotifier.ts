@@ -1772,6 +1772,8 @@ async function formatRuntimeEventRaw(
       return artistReport(event, `Song archived for producer hold: ${event.songId}${event.selectedTakeId ? ` take=${event.selectedTakeId}` : ""}.`, options);
     case "song_discarded":
       return artistReport(event, `Song discarded after producer review: ${event.songId}${event.previousSelectedTakeId ? ` previous_take=${event.previousSelectedTakeId}` : ""}.`, options);
+    case "song_abandoned":
+      return artistReport(event, `Song abandoned by operator: ${event.songId}${event.fromStatus ? ` from=${event.fromStatus}` : ""}.`, options);
     case "producer_decision_reminder":
       return [
         "判断待ちが残っている。",

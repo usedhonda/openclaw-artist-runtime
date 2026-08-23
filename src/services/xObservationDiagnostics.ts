@@ -2,7 +2,7 @@ import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import type { XObservationAttemptDiagnostic } from "./xObservationCollector.js";
 
-export type XObservationOutcome = "collected" | "cooldown" | "error";
+export type XObservationOutcome = "collected" | "cooldown" | "error" | "skipped";
 
 export interface XObservationDiagnosticsSnapshot {
   date: string;

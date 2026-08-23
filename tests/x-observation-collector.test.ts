@@ -15,7 +15,7 @@ vi.mock("node:child_process", async () => {
 import { collectObservations, decomposeToQueryTokens, readTodayObservations } from "../src/services/xObservationCollector";
 import { writeSongBrief } from "../src/services/artistState";
 import { readXObservationDiagnostics } from "../src/services/xObservationDiagnostics";
-import { isInCooldown, readBirdRateLimitStatus } from "../src/services/birdRateLimiter";
+import { isInCooldown, readBirdRateLimitStatus, recordBirdCall, triggerCooldown } from "../src/services/birdRateLimiter";
 import { getRuntimeEventBus, type RuntimeEvent } from "../src/services/runtimeEventBus";
 
 function workspace(): string {
@@ -546,5 +546,39 @@ describe("x observation collector", () => {
         expect(String(query ?? "")).not.toContain(marker);
       }
     }
+  });
+
+  it("writes a skipped diagnostics snapshot when the rate-limit gate blocks the attempt", async () => {
+    const root = workspace();
+    const now = new Date("2026-05-01T02:00:00.000Z");
+    // One recorded call trips the 60-minute min-interval gate: allowed=false with no
+    // cooldownUntil -> outcome "skipped". The runner must never fire on this path.
+    await recordBirdCall(root, new Date("2026-05-01T01:30:00.000Z"));
+    const runner = vi.fn(async () => { throw new Error("runner should not run when gated"); });
+
+    const result = await collectObservations(root, { now, personaText: "- 顔のローン: 輪郭を分割払い。", runner });
+
+    expect(result.status).toBe("skipped");
+    expect(runner).not.toHaveBeenCalled();
+    const diagnostics = await readXObservationDiagnostics(root);
+    expect(diagnostics?.outcome).toBe("skipped");
+    expect(diagnostics?.attempts).toEqual([]);
+    expect(diagnostics?.reason).toContain("min interval");
+  });
+
+  it("writes a cooldown diagnostics snapshot when a cooldown is active", async () => {
+    const root = workspace();
+    const now = new Date("2026-05-01T02:00:00.000Z");
+    await triggerCooldown(root, "ban_indication: 429 (source: stderr)", now);
+    const runner = vi.fn(async () => { throw new Error("runner should not run when gated"); });
+
+    const result = await collectObservations(root, { now, personaText: "- 顔のローン: 輪郭を分割払い。", runner });
+
+    expect(result.status).toBe("cooldown");
+    expect(runner).not.toHaveBeenCalled();
+    const diagnostics = await readXObservationDiagnostics(root);
+    expect(diagnostics?.outcome).toBe("cooldown");
+    expect(diagnostics?.attempts).toEqual([]);
+    expect(diagnostics?.reason).toContain("429");
   });
 });

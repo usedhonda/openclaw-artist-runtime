@@ -211,9 +211,11 @@ export async function routeTelegramConversation(input: TelegramConversationalRou
       };
     }
     const hint = songCreateHint(text);
+    // An explicit producer song-create is an intentional, bank-driven request:
+    // bypass the no-observation materialization gate so it always produces a song.
     void new ArtistAutopilotService().runCycle({
       workspaceRoot: input.workspaceRoot,
-      manualSeed: { hint: hint ?? "" }
+      manualSeed: { hint: hint ?? "", allowNoObservation: true }
     }).catch((error) => {
       const reason = error instanceof Error ? error.message : String(error);
       logConversationalSideEffectFailure("manual song create runCycle", error);

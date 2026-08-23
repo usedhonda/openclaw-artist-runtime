@@ -60,7 +60,8 @@ describe("autopilot autonomous production loop", () => {
 
     const state = await service.runCycle({
       workspaceRoot: root,
-      config: { artist: { workspaceRoot: root }, autopilot: { enabled: true, dryRun: true } }
+      config: { artist: { workspaceRoot: root }, autopilot: { enabled: true, dryRun: true } },
+      observationRunner: async () => ({ stdout: "@citywatch 再開発で古いライブハウスが消え、跡地に同じ色の看板だけが増えた街の温度 https://x.com/citywatch/status/2222222222222222222 2026-05-09T08:00:00.000Z" })
     });
 
     unsubscribe();

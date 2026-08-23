@@ -13,6 +13,7 @@ import {
   loadSpawnProposalQueue
 } from "../src/services/spawnProposalQueue";
 import type { SpawnProposal } from "../src/types";
+import { seedTodayObservation } from "./helpers/seedObservationFile";
 
 const originalSpawn = process.env.OPENCLAW_SONG_SPAWN_ENABLED;
 
@@ -107,6 +108,10 @@ describe("idea queue lane separation during producer review", () => {
       }
     });
     vi.setSystemTime(new Date("2026-05-28T19:00:00.000Z"));
+    // The next cycle crosses into JST 2026-05-29; give that day real observation
+    // material so the spawn lane materializes a song instead of holding on the
+    // no-material gate (a header-only observation file would be bank-only).
+    await seedTodayObservation(root, { now: new Date("2026-05-28T19:00:00.000Z") });
     const next = await new ArtistAutopilotService().runCycle({
       workspaceRoot: root,
       config: {

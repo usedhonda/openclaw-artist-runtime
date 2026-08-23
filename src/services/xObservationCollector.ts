@@ -665,6 +665,18 @@ export async function collectObservations(root: string, context: XObservationCon
   const gate = await tryAcquireBirdCall(root, now);
   if (!gate.allowed) {
     const status = gate.cooldownUntil ? "cooldown" : "skipped";
+    // A gated early-return used to leave x-observation-diagnostics.json showing an
+    // older attempt, so two silent skip cycles looked identical to a stale success.
+    // Always overwrite the snapshot with this attempt (zero queries fired) so the
+    // file reflects the latest outcome and reason. Return shape is unchanged.
+    await writeXObservationDiagnostics(root, buildXObservationDiagnosticsSnapshot({
+      date: jstDate(now),
+      now,
+      attempts: [],
+      acceptedCount: 0,
+      outcome: status,
+      reason: gate.reason
+    }));
     return { status, path, observations: "", reason: gate.reason };
   }
   const queriesToTry = targetQueries.length > 0 ? targetQueries : [undefined];

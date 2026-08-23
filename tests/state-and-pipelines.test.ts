@@ -9,6 +9,7 @@ import { createSongSkeleton } from "../src/repositories/songRepository";
 import { readSongState, updateSongState, writeSongBrief } from "../src/services/artistState";
 import { ArtistAutopilotService, pauseAutopilot, resumeAutopilot } from "../src/services/autopilotService";
 import { ensureArtistWorkspace } from "../src/services/artistWorkspace";
+import { validObservationRunner } from "./helpers/seedObservationFile";
 import { draftLyrics } from "../src/services/lyricsDrafting";
 import { createAndPersistSunoPromptPack } from "../src/services/sunoPromptPackFiles";
 import { prepareSocialAssets } from "../src/services/socialAssets";
@@ -237,9 +238,9 @@ describe("suno and social pipelines", () => {
       }
     };
 
-    const first = await service.runCycle({ workspaceRoot: root, config });
-    const second = await service.runCycle({ workspaceRoot: root, config });
-    const third = await service.runCycle({ workspaceRoot: root, config });
+    const first = await service.runCycle({ workspaceRoot: root, config, observationRunner: validObservationRunner });
+    const second = await service.runCycle({ workspaceRoot: root, config, observationRunner: validObservationRunner });
+    const third = await service.runCycle({ workspaceRoot: root, config, observationRunner: validObservationRunner });
 
     const songId = first.currentSongId ?? "song-001";
     await importSunoResults({
@@ -248,9 +249,9 @@ describe("suno and social pipelines", () => {
       runId: "auto-import",
       urls: ["https://example.com/auto-take-1"]
     });
-    const fourth = await service.runCycle({ workspaceRoot: root, config });
-    const fifth = await service.runCycle({ workspaceRoot: root, config });
-    const sixth = await service.runCycle({ workspaceRoot: root, config });
+    const fourth = await service.runCycle({ workspaceRoot: root, config, observationRunner: validObservationRunner });
+    const fifth = await service.runCycle({ workspaceRoot: root, config, observationRunner: validObservationRunner });
+    const sixth = await service.runCycle({ workspaceRoot: root, config, observationRunner: validObservationRunner });
 
     const songs = await buildSongsResponse({ artist: { workspaceRoot: root } });
     const detail = await buildSongDetailResponse(songId, { artist: { workspaceRoot: root } });

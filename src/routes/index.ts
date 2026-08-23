@@ -17,6 +17,7 @@ import { createSongIdea } from "../services/songIdeation.js";
 import { buildSongbookLookup, syncSongbookFromITunes } from "../services/songbookSyncer.js";
 import { selectTake } from "../services/takeSelection.js";
 import { retryParkedSongPromptPack } from "../services/retryPromptPackService.js";
+import { abandonSong } from "../services/abandonSongService.js";
 import { exportWindowFromPayload, payloadPathSegments, payloadRecord, payloadRequestMethod, payloadRequestPath, platformFromSegment, sunoDiagnosticsDaysFromPayload } from "./payloadHelpers.js";
 import { INSTAGRAM_DEFAULT_TOKEN_EXPIRY_MS, appendConfigOverridesAudit, buildAlertsResponse, buildArtistMindResponse, buildAuditLogResponse, buildCallbackActionsResponse, buildConfigOverridesResponse, buildConfigResponse, buildFailedNotifyListResponse, buildFailedNotifyReplayResponse, buildInternalCallbackDispatchResponse, buildNotifyReviewResponse, buildPersonaCompleteResponse, buildPersonaProposeResponse, buildPersonaResponse, buildPersonaWriteResponse, buildPlatformDetailResponse, buildPlatformsResponse, buildProducerCallbackDispatchResponse, buildPromptLedgerResponse, buildRecoveryResponse, buildSafeTickTriggerResponse, buildSongDetailResponse, buildSongEventsResponse, buildSongLedgerResponse, buildSongsResponse, buildSpawnProposalsResponse, buildStatusExportResponse, buildStatusResponse, buildSunoDiagnosticsExportResponse, buildSunoStatusResponse, isInstagramTokenExpiringSoon, isPersonaSnapshotLayer, payloadContainsSecretLikeText, proposalFieldsFromPayload, proposalRouteError, runtimeSafetyPatchFromPayload } from "./responseBuilders.js";
 import { registerRuntimeEventStreamRoute } from "./runtimeEventStream.js";
@@ -399,6 +400,9 @@ export function registerRoutes(api: unknown): void {
         if (segments.length === 2 && segments[1] === "retry-prompt-pack") {
           return retryParkedSongPromptPack(config.artist.workspaceRoot, segments[0] ?? "", config);
         }
+        if (segments.length === 2 && segments[1] === "abandon") {
+          return abandonSong(config.artist.workspaceRoot, segments[0] ?? "");
+        }
       }
 
       return {
@@ -685,13 +689,14 @@ export function registerRoutes(api: unknown): void {
     handler: async (input) => {
       const payload = payloadRecord(input);
       const config = await resolveRuntimeConfig(payload.config as Partial<ArtistRuntimeConfig> | undefined);
-      const manualSeedPayload = payload.manualSeed as { hint?: unknown; weirdness?: unknown } | undefined;
+      const manualSeedPayload = payload.manualSeed as { hint?: unknown; weirdness?: unknown; allowNoObservation?: unknown } | undefined;
       const manualSeed = typeof manualSeedPayload?.hint === "string"
         ? {
             hint: manualSeedPayload.hint.trim(),
             ...(typeof manualSeedPayload.weirdness === "number" && Number.isFinite(manualSeedPayload.weirdness)
               ? { weirdness: manualSeedPayload.weirdness }
-              : {})
+              : {}),
+            ...(manualSeedPayload.allowNoObservation === true ? { allowNoObservation: true } : {})
           }
         : undefined;
       const result = await getAutopilotTicker().runNow(config, manualSeed);

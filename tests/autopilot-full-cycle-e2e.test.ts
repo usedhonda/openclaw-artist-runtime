@@ -11,6 +11,7 @@ import { ArtistAutopilotService, readAutopilotRunState } from "../src/services/a
 import { readSongState } from "../src/services/artistState";
 import { getRuntimeEventBus, type RuntimeEvent } from "../src/services/runtimeEventBus";
 import { importSunoResults, readLatestSunoRun } from "../src/services/sunoRuns";
+import { seedTodayObservation } from "./helpers/seedObservationFile";
 
 describe("autopilot planning to completed e2e", () => {
   beforeEach(() => spawnMock.mockReset());
@@ -18,6 +19,7 @@ describe("autopilot planning to completed e2e", () => {
   it("runs planning through take completion and releases the current song lane", async () => {
     const root = mkdtempSync(join(tmpdir(), "artist-runtime-full-cycle-e2e-"));
     await ensureArtistWorkspace(root);
+    await seedTodayObservation(root);
     vi.stubGlobal("fetch", vi.fn());
     const events: RuntimeEvent[] = [];
     const unsubscribe = getRuntimeEventBus().subscribe((event) => events.push(event));

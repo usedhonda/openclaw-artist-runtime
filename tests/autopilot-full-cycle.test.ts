@@ -16,6 +16,7 @@ import { ArtistAutopilotService, readAutopilotRunState } from "../src/services/a
 import { readSongState } from "../src/services/artistState";
 import { ensureArtistWorkspace } from "../src/services/artistWorkspace";
 import { readLatestSunoRun, importSunoResults } from "../src/services/sunoRuns";
+import { seedTodayObservation } from "./helpers/seedObservationFile";
 
 describe("ArtistAutopilotService full dry-run cycle", () => {
   beforeEach(() => {
@@ -25,6 +26,7 @@ describe("ArtistAutopilotService full dry-run cycle", () => {
   it("walks two dry-run cycles across two songs without external side effects", async () => {
     const root = mkdtempSync(join(tmpdir(), "artist-runtime-full-cycle-"));
     await ensureArtistWorkspace(root);
+    await seedTodayObservation(root);
 
     const emptyNewsRss = `<?xml version="1.0" encoding="UTF-8"?><rss version="2.0"><channel></channel></rss>`;
     const fetchMock = vi.fn().mockResolvedValue(new Response(emptyNewsRss, { status: 200 }));
