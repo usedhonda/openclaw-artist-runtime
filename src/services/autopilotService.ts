@@ -951,6 +951,7 @@ async function createPromptPackForSong(root: string, song: SongState, config?: P
     lyricsText: lyricsText || briefText || readySong.title,
     knowledgePackVersion: "local-dev",
     configSnapshot: config,
+    creativeDecision: plan ?? undefined,
     moodHint: appendDopagakiMoodHint(moodHint.trim() || undefined, dopagakiVariation),
     styleVariationSeed: dopagakiVariation.variationSeed,
     weirdnessOverride,

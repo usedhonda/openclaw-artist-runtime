@@ -23,6 +23,28 @@ export interface BuildStyleInput {
   mixKeyword?: string;
   performanceDirection?: string;
   variationSeed?: string;
+  // --- CreativeDecision-derived hints (all optional; render-only) ---
+  // These carry the song's one creative decision into the style. They are
+  // consumed ONLY when rendering the style body; they never enter the seed hash
+  // or the variationProfile source (keeping them out of those avoids an "overt"
+  // keyword in a style note silently pinning a variation profile, and keeps the
+  // no-decision path byte-identical).
+  //
+  // Role separation of the two mood strings (documented deliberately):
+  //   - moodHint      = 音色ヒント (mood-hint.txt): timbre/production color. Drives
+  //                     genre, vibe, YAML meta.vibe, and sliders — unchanged.
+  //   - emotionalModeSpec = 感情 (CreativeDecision.emotionalMode.spec): the emotional
+  //                     mode (e.g. 本気 Dis). The lyric prompt already consumes it via
+  //                     the brief "- Mood:" line; here it reaches the style too so the
+  //                     arrangement mood and the lyric mood come from one decision.
+  emotionalModeSpec?: string;
+  // Producer brief "- Style notes:" — an explicit style direction the brief writer
+  // set but that buildStyle historically dropped. Rendered as one bounded hint line.
+  styleNotes?: string;
+  // CreativeDecision.intro.styleMove — archetype-derived, so the style "Intro Move"
+  // matches the lyric intro instead of an independent rotation. Falls back to the
+  // rotation when absent/blank so the line is never empty.
+  introStyleMove?: string;
 }
 
 export interface BuildStyleResult {
@@ -253,6 +275,22 @@ function inferInstruments(input: BuildStyleInput): string[] {
   return candidates.filter(([, pattern]) => pattern.test(source)).map(([label]) => label);
 }
 
+// A bounded, English-only, sanitized hint line for the style body. Non-ASCII
+// (e.g. a fully-Japanese style note) sanitizes to empty and the line is omitted.
+function styleHintLine(label: string, value: string | undefined, max: number): string | undefined {
+  if (!value) return undefined;
+  const phrase = fitPhrase(englishStylePhrase(value, ""), max);
+  return phrase ? `- ${label}: ${phrase}.` : undefined;
+}
+
+// The decision's intro styleMove, sanitized. Undefined when absent/blank so the
+// caller falls back to the hash rotation and the Intro Move line is never empty.
+function resolveIntroMove(value: string | undefined): string | undefined {
+  if (!value) return undefined;
+  const phrase = compact(englishStylePhrase(value, ""));
+  return phrase || undefined;
+}
+
 export function buildStyle(input: BuildStyleInput): BuildStyleResult {
   const vibe = fitPhrase(englishStylePhrase(input.vibe, inferMood(input)), 40);
   const genre = inferGenre(input);
@@ -276,6 +314,13 @@ export function buildStyle(input: BuildStyleInput): BuildStyleResult {
   ]);
   const coreTags = fitTags(tags, CANONICAL_STYLE_CORE_MAX_CHARS);
   const direction = trimAtPhraseBoundary(compact(input.performanceDirection ?? "Keep performance restrained, intelligible, and image-led; no double-time vocal."), 76);
+  // CreativeDecision-derived hint lines. Placed BEFORE the Intro Move line so the
+  // tail-side length trim never removes them. Undefined lines drop via filter.
+  const emotionalModeLine = styleHintLine("Emotional Mode", input.emotionalModeSpec, 64);
+  const styleNotesLine = styleHintLine("Style Notes", input.styleNotes, 80);
+  // Single intro decision: the archetype-derived styleMove wins; only when absent
+  // (legacy songs) does the style fall back to the independent hash rotation.
+  const introMove = resolveIntroMove(input.introStyleMove) ?? pickOne(profile.intro, seedHash, 23);
   const injectedInstruments = uniq([
     ...instruments,
     ...richList(uniq([...instruments, ...templateInstruments]), seedHash, 7)
@@ -287,7 +332,12 @@ export function buildStyle(input: BuildStyleInput): BuildStyleResult {
     "bass-heavy",
     "full arrangement"
   ].filter((term) => KNOWLEDGE_BUNDLE["style_catalog.md"].toLowerCase().includes(term));
-  const render = (detailLevel: "full" | "compact") => {
+  const render = (detailLevel: "full" | "compact", includeHints: boolean) => {
+    // Decision hint lines are best-effort: they are dropped (includeHints=false)
+    // before the contract-required Variation Move / Intro Move lines are ever
+    // sacrificed to the length trim. See the render ladder below.
+    const emotionalHint = includeHints ? emotionalModeLine : undefined;
+    const styleNotesHint = includeHints ? styleNotesLine : undefined;
     const mix = uniq([...template.mixVision, ...profile.mix, ...vocabulary]).slice(0, detailLevel === "full" ? 7 : 4).join(", ");
     const texture = uniq([...template.texture, ...profile.texture]).slice(0, detailLevel === "full" ? 6 : 3).join(", ");
     if (detailLevel === "compact") {
@@ -303,7 +353,9 @@ export function buildStyle(input: BuildStyleInput): BuildStyleResult {
         `- Rhythm & Bass: ${pickOne(template.mixVision, seedHash, 11)}, ${pickOne(profile.mix, seedHash, 17)}; no double-time.`,
         `- Mix/Texture: ${compactMix.split(", ").slice(0, 2).join(", ")}; ${compactTexture.split(", ")[0]}; vocal-forward space.`,
         `- Arrangement Arc: ${template.arrangementNotes[0]}; ${profile.arrangement.slice(0, 2).join("; ")}.`,
-        `- Intro Move: ${pickOne(profile.intro, seedHash, 23)}.`,
+        emotionalHint,
+        styleNotesHint,
+        `- Intro Move: ${introMove}.`,
         `- Performance: ${trimAtPhraseBoundary(direction, 52)}`,
         trimAtPhraseBoundary(profile.line, 165)
       ].filter((line): line is string => Boolean(line)).join("\n");
@@ -319,14 +371,25 @@ export function buildStyle(input: BuildStyleInput): BuildStyleResult {
       `- Mix Vision: ${mix}; vocal-forward center with enough negative space for dense lyrics.`,
       `- Texture: ${texture}.`,
       `- Arrangement Arc: ${template.arrangementNotes.join("; ")}; ${profile.arrangement.join("; ")}.`,
-      `- Intro Move: ${pickOne(profile.intro, seedHash, 23)}.`,
+      emotionalHint,
+      styleNotesHint,
+      `- Intro Move: ${introMove}.`,
       `- Performance: ${direction}`,
       profile.line
     ].filter((line): line is string => Boolean(line)).join("\n");
   };
-  let total = render("full");
+  const hasHints = Boolean(emotionalModeLine || styleNotesLine);
+  let total = render("full", true);
   if (total.length > CANONICAL_STYLE_TARGET_MAX_CHARS) {
-    total = render("compact");
+    total = render("compact", true);
+  }
+  // Contract-required lines (Variation Move / Intro Move) must survive the length
+  // trim; the optional decision hints must not. When a hint is present and even
+  // the compact render overflows, drop the hints and re-render before the blunt
+  // tail trim runs. Guarded on hasHints so the legacy no-decision path is byte-
+  // identical (this rung never fires without a decision hint).
+  if (hasHints && total.length > CANONICAL_STYLE_TARGET_MAX_CHARS) {
+    total = render("compact", false);
   }
   if (total.length > CANONICAL_STYLE_TARGET_MAX_CHARS) {
     total = trimAtPhraseBoundary(total, CANONICAL_STYLE_TARGET_MAX_CHARS);

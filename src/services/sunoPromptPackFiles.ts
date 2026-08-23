@@ -84,6 +84,19 @@ function readBriefTempo(briefText: string): string | undefined {
   return briefText.match(/^- Tempo:\s*(.+)$/mi)?.[1]?.trim();
 }
 
+// Producer "- Style notes:" placeholders that carry no real direction; passing
+// them into the style would only add noise.
+const STYLE_NOTES_PLACEHOLDERS = new Set([
+  "artist decides",
+  "producer brief led, artist arrangement"
+]);
+
+function parseBriefStyleNotes(briefText: string): string | undefined {
+  const raw = briefText.match(/^- Style notes:\s*(.+)$/mi)?.[1]?.trim();
+  if (!raw) return undefined;
+  return STYLE_NOTES_PLACEHOLDERS.has(raw.toLowerCase()) ? undefined : raw;
+}
+
 function isLyricsBoxOverflowReason(reason: string): boolean {
   return reason.includes("payloadYaml length exceeds Suno lyrics box limit")
     || reason.includes("YAML overflow")
@@ -140,10 +153,21 @@ export async function createAndPersistSunoPromptPack(input: PersistSunoPromptPac
 
   const { artistSnapshot, currentStateSnapshot } = await readArtistSnapshots(input.workspaceRoot);
   const briefText = await readFile(join(input.workspaceRoot, "songs", input.songId, "brief.md"), "utf8").catch(() => "");
+  // BPM/band resolution, kept as a coherent pair. The brief "- Tempo:" line is an
+  // explicit AI/brief override and wins; only when it is absent does the plan's
+  // tempo fill in — and then the band must also come from the plan so form/floors
+  // stay consistent with the bpm (otherwise "artist decides" -> "up" band could
+  // disagree with a plan bpm). Legacy songs (no creativeDecision) keep today's
+  // brief-only path byte-for-byte.
+  const briefBpm = parseBpmFromBriefTempo(readBriefTempo(briefText));
+  const usePlanTempo = input.bpm === undefined && briefBpm === undefined && input.creativeDecision !== undefined;
   const promptPackInput = {
     ...input,
-    bpm: input.bpm ?? parseBpmFromBriefTempo(readBriefTempo(briefText)),
-    tempoBand: input.tempoBand ?? resolveTempoBandFromBrief(briefText),
+    bpm: input.bpm ?? briefBpm ?? input.creativeDecision?.tempo.bpm,
+    tempoBand: input.tempoBand ?? (usePlanTempo ? input.creativeDecision!.tempo.band : resolveTempoBandFromBrief(briefText)),
+    // Only thread the brief's Style notes when the song has a plan; the legacy
+    // path must reach buildStyle with styleNotes undefined (byte-identity).
+    styleNotes: input.creativeDecision ? parseBriefStyleNotes(briefText) : undefined,
     artistSnapshot: input.artistSnapshot || artistSnapshot,
     currentStateSnapshot: input.currentStateSnapshot || currentStateSnapshot
   };

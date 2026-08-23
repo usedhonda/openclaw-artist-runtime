@@ -69,6 +69,7 @@ export async function retryParkedSongPromptPack(
       lyricsText,
       knowledgePackVersion: "local-dev",
       configSnapshot: config,
+      creativeDecision: plan ?? undefined,
       moodHint: appendDopagakiMoodHint(moodHint.trim() || undefined, variation),
       styleVariationSeed: variation.variationSeed,
       observationPath: observationPath && observationPath !== "(runtime observation)"

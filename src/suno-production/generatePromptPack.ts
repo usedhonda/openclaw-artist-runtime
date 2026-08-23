@@ -123,7 +123,7 @@ export function createSunoPromptPack(input: CreateSunoPromptPackInput): SunoProm
   const acousticBassAvoidance = acousticBassAvoidanceTerms(genre);
   const durationPlan = getDurationPlan(input.tempoBand);
   const bpm = input.bpm ?? durationPlan.bpm.target;
-  const vocalGender = input.vocalGender ?? artistDefaultVocalGender(input.artistSnapshot);
+  const vocalGender = input.vocalGender ?? input.creativeDecision?.vocalGender ?? artistDefaultVocalGender(input.artistSnapshot);
   const languagePolicy = parseLyricsLanguagePolicy(input.artistSnapshot);
   const lyricsBoxLimit = getSunoLyricsLimit();
   const styleResult = buildStyleV55({
@@ -134,7 +134,12 @@ export function createSunoPromptPack(input: CreateSunoPromptPackInput): SunoProm
     vibe: input.moodHint,
     bpm,
     vocalGender,
-    variationSeed: input.styleVariationSeed
+    variationSeed: input.styleVariationSeed,
+    // variationSeed already carries plan.dopagaki.variationSeed (both pack call
+    // sites pass it as styleVariationSeed), so the variation profile is plan-seeded.
+    emotionalModeSpec: input.creativeDecision?.emotionalMode.spec,
+    styleNotes: input.styleNotes,
+    introStyleMove: input.creativeDecision?.intro.styleMove
   });
   const style = sanitizeAcousticBassStyle(enforceStyleCoreContract(styleResult.total), acousticBassAvoidance);
   const exclude = buildExcludeV55({
@@ -224,7 +229,7 @@ export async function createSunoPromptPackWithAi(
   const acousticBassAvoidance = acousticBassAvoidanceTerms(genre);
   const durationPlan = getDurationPlan(input.tempoBand);
   const bpm = input.bpm ?? durationPlan.bpm.target;
-  const vocalGender = input.vocalGender ?? artistDefaultVocalGender(input.artistSnapshot);
+  const vocalGender = input.vocalGender ?? input.creativeDecision?.vocalGender ?? artistDefaultVocalGender(input.artistSnapshot);
   const languagePolicy = parseLyricsLanguagePolicy(input.artistSnapshot);
   const lyricsBoxLimit = getSunoLyricsLimit();
   const styleResult = await synthesizeStyle({
@@ -235,7 +240,12 @@ export async function createSunoPromptPackWithAi(
     vibe: input.moodHint,
     bpm,
     vocalGender,
-    variationSeed: input.styleVariationSeed
+    variationSeed: input.styleVariationSeed,
+    // variationSeed already carries plan.dopagaki.variationSeed (both pack call
+    // sites pass it as styleVariationSeed), so the variation profile is plan-seeded.
+    emotionalModeSpec: input.creativeDecision?.emotionalMode.spec,
+    styleNotes: input.styleNotes,
+    introStyleMove: input.creativeDecision?.intro.styleMove
   }, { provider: input.aiReviewProvider });
   const excludeResult = await synthesizeExclude({
     genre,
