@@ -74,6 +74,14 @@ export function sanitizeAcousticBassStyle(style: string, acousticBassAvoidance: 
     .trim();
 }
 
+export function sanitizeAcousticBassExclude(exclude: string, acousticBassAvoidance: string[]): string {
+  if (acousticBassAvoidance.length === 0) return exclude;
+  const items = [...acousticBassAvoidance, ...exclude.split(",")]
+    .map((item) => item.trim().replace(/\s+/g, " "))
+    .filter(Boolean);
+  return [...new Set(items)].join(", ").slice(0, 240);
+}
+
 export function classifyLyricsZoneForPromptCounts(
   lyricsLength: number,
   markerChars: number,
@@ -274,9 +282,10 @@ export async function createSunoPromptPackWithAi(
   });
   const sliders = buildSlidersV55({ genre, moodHint: input.moodHint, weirdnessOverride: input.weirdnessOverride });
   const style = sanitizeAcousticBassStyle(enforceStyleCoreContract(styleResult.total), acousticBassAvoidance);
-  const payload = buildPayload({ ...input, lyricsText, bpm, vocalGender }, style, excludeResult.text, yamlLyrics, sliders, lyricsBoxLimit);
+  const exclude = sanitizeAcousticBassExclude(excludeResult.text, acousticBassAvoidance);
+  const payload = buildPayload({ ...input, lyricsText, bpm, vocalGender }, style, exclude, yamlLyrics, sliders, lyricsBoxLimit);
   const payloadHash = hashText(JSON.stringify(payload));
-  const promptHash = hashText(`${style}\n${excludeResult.text}\n${yamlLyrics}`);
+  const promptHash = hashText(`${style}\n${exclude}\n${yamlLyrics}`);
   const artistSnapshotHash = hashText(input.artistSnapshot);
   const currentStateHash = hashText(input.currentStateSnapshot);
   const knowledgePackHash = hashText(input.knowledgePackVersion ?? "knowledge-pack:unknown");
@@ -291,7 +300,7 @@ export async function createSunoPromptPackWithAi(
       moodHint: input.moodHint
     },
     style,
-    exclude: excludeResult.text,
+    exclude,
     yamlLyrics,
     sliders,
     payload,

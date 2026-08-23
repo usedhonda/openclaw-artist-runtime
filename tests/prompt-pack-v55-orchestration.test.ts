@@ -3,7 +3,11 @@ import { mkdir, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
-import { createSunoPromptPack, sanitizeAcousticBassStyle } from "../src/suno-production/generatePromptPack";
+import {
+  createSunoPromptPack,
+  sanitizeAcousticBassExclude,
+  sanitizeAcousticBassStyle
+} from "../src/suno-production/generatePromptPack";
 import { CANONICAL_STYLE_TARGET_MAX_CHARS } from "../src/suno-production/buildStyle";
 import { createAndPersistSunoPromptPack } from "../src/services/sunoPromptPackFiles";
 import { validateNoCommandLeak } from "../src/services/lyricsValidator";
@@ -107,6 +111,17 @@ describe("Suno V5.5 prompt pack orchestration", () => {
 
     expect(style).toContain("hard-pick solid-body electric bass");
     expect(style).not.toMatch(/\b(upright|acoustic|wood)\s+bass\b/i);
+  });
+
+  it("keeps acoustic bass avoidance in AI-synthesized exclude text", () => {
+    const exclude = sanitizeAcousticBassExclude(
+      "generic EDM drop, fake crowd noise",
+      ["upright bass", "acoustic double bass", "wood bass", "walking acoustic jazz bass", "muddy round bass", "acoustic bass"]
+    );
+
+    expect(exclude).toContain("upright bass");
+    expect(exclude).toContain("acoustic bass");
+    expect(exclude).toContain("generic EDM drop");
   });
 
   it("persists style, exclude, yaml-suno, and lyrics-suno under the song Suno directory", async () => {
