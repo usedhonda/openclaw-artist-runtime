@@ -3,6 +3,15 @@
 ## [Unreleased]
 
 ### Changed
+- Per-song diversity below the axis layer: lens material is now a seeded sample
+  of 6 phrases that pushes back phrases used by the previous two songs; drafts
+  that share more than four 8-character runs with the last three songs, or that
+  leak the punchline directive as a literal label, are regenerated once (ledger
+  `repeated:true` on residue); the artist's catchphrases (全員渋谷 / ドンキ /
+  "same X, same Y") are budgeted so one used in the previous song is banned in the
+  next, with a monotony-watchdog streak for two-in-a-row; and a `structure` axis
+  rotates the section order (standard / hook_first / no_bridge_double_verse),
+  never repeating the previous song.
 - Creative pipeline redesign: every song now records one structured creative
   decision (lens, attack stance, emotional mode, tempo, dopagaki, intro, hook
   shape, tag technique, signature) as `song-plan.json`, decided once and read by
