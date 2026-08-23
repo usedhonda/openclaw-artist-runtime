@@ -67,7 +67,7 @@ const BUILTIN_TAG_TECHNIQUES: readonly string[] = [
 ];
 
 // The 5 canonical signature elements.
-const BUILTIN_SIGNATURES: readonly string[] = [
+export const BUILTIN_SIGNATURES: readonly string[] = [
   "値段の裏側",
   "舞台裏の視界",
   "高さと時間帯",
@@ -144,7 +144,7 @@ function bankForLens(
 
 // Parse `### Shibuya Tag Techniques` bullets. Each bullet is `技法名: 説明`; the
 // id is the text before the colon. The preface bullet (技法の扱い) is skipped.
-function parseTagTechniques(personaText: string): string[] {
+export function parseTagTechniques(personaText: string): string[] {
   return bulletSection(personaText, "### Shibuya Tag Techniques")
     .map((bullet) => bullet.split(/[：:]/, 1)[0]?.trim() ?? "")
     .filter((id) => id.length > 0 && !/^技法の扱い/.test(id) && !/^素材の扱い/.test(id));
@@ -154,7 +154,7 @@ function parseTagTechniques(personaText: string): string[] {
 // into a per-lens map. The section does not exist yet, so this returns an empty
 // map today; it is implemented so F4 can populate the canon without a code
 // change. Lens labels are matched to lens ids by keyword.
-function parseAttackStances(personaText: string): Partial<Record<LensId, string[]>> {
+export function parseAttackStances(personaText: string): Partial<Record<LensId, string[]>> {
   const result: Partial<Record<LensId, string[]>> = {};
   for (const bullet of bulletSection(personaText, "### Attack Stances")) {
     const separator = bullet.indexOf(":") >= 0 ? bullet.indexOf(":") : bullet.indexOf("：");

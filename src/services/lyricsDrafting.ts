@@ -14,7 +14,7 @@ import { getArtistIdentity, getSunoLyricsLimit } from "./runtimeConfig.js";
 import { buildIntroVariantById, decideDopagakiVariation, resolveIntroVariant, type IntroVariant } from "./creativeVariationPolicy.js";
 import { readSongPlan } from "./songPlan.js";
 import { getDurationPlan, minimumBareLyricsChars, minimumBareLyricsLines, resolveTempoBandFromBrief } from "../suno-production/durationPlan.js";
-import { appendCreativeQualityEntry, computeDissBankHits, readCreativeQualityLedger } from "./creativeQualityLedger.js";
+import { appendCreativeQualityEntry, computeDissBankHits, evaluateCreativeMonotony, readCreativeQualityLedger } from "./creativeQualityLedger.js";
 
 export interface DraftLyricsInput {
   workspaceRoot: string;
@@ -350,6 +350,10 @@ async function composeLyricsDraft(input: DraftLyricsInput, title: string, briefT
       degraded: false,
       ...(softened ? { softened: true } : {})
     }).catch(() => undefined);
+    // Monotony watchdog: runs once per drafted song, after the ledger append so
+    // the just-drafted song is included in the streak window. Telemetry only —
+    // it must never fail lyric generation.
+    await evaluateCreativeMonotony(input.workspaceRoot).catch(() => undefined);
   };
   // A valid-but-softened draft is stashed rather than parked: if the single
   // regeneration attempt does not clear the softener (or later attempts come

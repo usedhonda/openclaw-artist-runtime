@@ -1,6 +1,7 @@
-import { appendFile, mkdir, readFile } from "node:fs/promises";
+import { appendFile, mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import type { CreativeDecision } from "../types.js";
+import { emitRuntimeEvent } from "./runtimeEventBus.js";
 
 export interface CreativeQualityEntry {
   songId: string;
@@ -44,6 +45,17 @@ export interface CreativeQualityAggregate {
   attackStanceCounts: Record<string, number>;
   disRate: number;
   decisionSampleSize: number;
+  // Active creative streaks detected over the head (newest) of the window. Empty
+  // when no monotony run is currently running. See detectCreativeStreaks.
+  streaks: CreativeStreak[];
+}
+
+// A run of consecutive most-recent songs that repeat the same creative choice.
+// `length` is how many newest songs currently share `value` for `kind`.
+export interface CreativeStreak {
+  kind: "lens" | "aggression_changeup" | "attack_stance" | "intro_archetype" | "title_word";
+  value: string;
+  length: number;
 }
 
 export function creativeQualityLedgerPath(root: string): string {
@@ -65,7 +77,8 @@ export function aggregateCreativeQuality(entries: CreativeQualityEntry[]): Creat
       emotionalModeCounts: {},
       attackStanceCounts: {},
       disRate: 0,
-      decisionSampleSize: 0
+      decisionSampleSize: 0,
+      streaks: []
     };
   }
   const dopagakiCount = entries.filter((entry) => entry.dopagakiActive).length;
@@ -106,8 +119,183 @@ export function aggregateCreativeQuality(entries: CreativeQualityEntry[]): Creat
     emotionalModeCounts,
     attackStanceCounts,
     disRate: decisions.length > 0 ? round(disCount / decisions.length, 4) : 0,
-    decisionSampleSize: decisions.length
+    decisionSampleSize: decisions.length,
+    streaks: detectCreativeStreaks(entries)
   };
+}
+
+// Length of the run of consecutive newest entries that share the same non-empty
+// key. `entries` are newest-first, so the run starts at index 0. Returns the
+// shared value and its run length, or undefined when the newest entry has no key
+// (an undefined key breaks the run rather than matching another undefined).
+function headRun(
+  entries: CreativeQualityEntry[],
+  keyFn: (entry: CreativeQualityEntry) => string | undefined
+): { value: string; length: number } | undefined {
+  const first = keyFn(entries[0]);
+  if (!first) return undefined;
+  let length = 1;
+  for (let index = 1; index < entries.length; index += 1) {
+    if (keyFn(entries[index]) === first) length += 1;
+    else break;
+  }
+  return { value: first, length };
+}
+
+function introArchetypeOf(entry: CreativeQualityEntry): string | undefined {
+  return entry.decision?.intro.archetype ?? entry.introArchetype;
+}
+
+// >=2-char kanji/katakana content words in a title. Reuses the module's existing
+// key-term pattern so titles and diss-bank items are tokenized the same way.
+function titleTerms(title: string): string[] {
+  return title.match(KEY_TERM_PATTERN) ?? [];
+}
+
+// Detects the "Face x4" class of monotony from the newest entries. Each detector
+// measures a run at the head of the window; a run at or over its threshold is a
+// live streak. Entries are expected newest-first.
+export function detectCreativeStreaks(entries: CreativeQualityEntry[]): CreativeStreak[] {
+  if (entries.length === 0) return [];
+  const streaks: CreativeStreak[] = [];
+
+  const lens = headRun(entries, (entry) => entry.decision?.lens);
+  if (lens && lens.length >= 3) streaks.push({ kind: "lens", value: lens.value, length: lens.length });
+
+  const changeup = headRun(entries, (entry) =>
+    entry.decision?.aggression === "changeup" ? "changeup" : undefined
+  );
+  if (changeup && changeup.length >= 2) {
+    streaks.push({ kind: "aggression_changeup", value: "changeup", length: changeup.length });
+  }
+
+  const stance = headRun(entries, (entry) => entry.decision?.attackStance);
+  if (stance && stance.length >= 2) {
+    streaks.push({ kind: "attack_stance", value: stance.value, length: stance.length });
+  }
+
+  const intro = headRun(entries, introArchetypeOf);
+  if (intro && intro.length >= 2) {
+    streaks.push({ kind: "intro_archetype", value: intro.value, length: intro.length });
+  }
+
+  // Title word: a term shared by the two newest titles, then extended downward
+  // while consecutive titles keep it. When several terms qualify, the one with
+  // the longest run wins (ties resolved by the newest title's term order).
+  if (entries.length >= 2) {
+    const newestTerms = titleTerms(entries[0].title);
+    const secondTerms = new Set(titleTerms(entries[1].title));
+    let best: { value: string; length: number } | undefined;
+    for (const term of newestTerms) {
+      if (!secondTerms.has(term)) continue;
+      let length = 2;
+      for (let index = 2; index < entries.length; index += 1) {
+        if (titleTerms(entries[index].title).includes(term)) length += 1;
+        else break;
+      }
+      if (!best || length > best.length) best = { value: term, length };
+    }
+    if (best) streaks.push({ kind: "title_word", value: best.value, length: best.length });
+  }
+
+  return streaks;
+}
+
+// Signature of a streak set for once-per-incident dedup. Deliberately EXCLUDES
+// length: a streak growing 3 -> 4 -> 5 is the same incident, so notifying again
+// on each new song would spam. The incident is the (kind, value) set.
+export function creativeStreakSignature(streaks: CreativeStreak[]): string {
+  return streaks
+    .map((streak) => `${streak.kind}:${streak.value}`)
+    .sort()
+    .join("|");
+}
+
+const STREAK_KIND_LABELS: Record<CreativeStreak["kind"], string> = {
+  lens: "レンズ",
+  aggression_changeup: "アグレッション(changeup)",
+  attack_stance: "攻め筋",
+  intro_archetype: "イントロ型",
+  title_word: "タイトル語"
+};
+
+// Short Japanese description naming the streaks, for the Telegram notice and the
+// runtime event detail.
+export function describeCreativeStreaks(streaks: CreativeStreak[]): string {
+  return streaks
+    .map((streak) => `${STREAK_KIND_LABELS[streak.kind]}「${streak.value}」が${streak.length}曲連続`)
+    .join("、");
+}
+
+export function creativeMonotonyTombstonePath(root: string): string {
+  return join(root, "runtime", "creative-monotony-tombstone.json");
+}
+
+interface CreativeMonotonyTombstone {
+  signature: string;
+  detail: string;
+  notifiedAt: string;
+}
+
+async function readMonotonyTombstone(root: string): Promise<CreativeMonotonyTombstone | undefined> {
+  const raw = await readFile(creativeMonotonyTombstonePath(root), "utf8").catch(() => "");
+  if (!raw.trim()) return undefined;
+  try {
+    const parsed = JSON.parse(raw) as CreativeMonotonyTombstone;
+    return typeof parsed?.signature === "string" ? parsed : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+export interface CreativeMonotonyEvaluation {
+  streaks: CreativeStreak[];
+  notified: boolean;
+}
+
+// The monotony watchdog. Reads the ledger tail, detects streaks, and on a NEW
+// incident emits `creative_monotony_warning` (which the subscribed Telegram
+// notifier turns into one producer notice) exactly once. The tombstone keyed by
+// the streak signature enforces once-per-incident across process restarts; it is
+// cleared when the streak breaks so a later recurrence notifies again.
+export async function evaluateCreativeMonotony(
+  root: string,
+  windowSize = 20
+): Promise<CreativeMonotonyEvaluation> {
+  const entries = await readCreativeQualityLedger(root, windowSize);
+  const streaks = detectCreativeStreaks(entries);
+  const tombstonePath = creativeMonotonyTombstonePath(root);
+
+  if (streaks.length === 0) {
+    // Streak broken (or never started): clear any tombstone so the next
+    // occurrence is treated as a fresh incident.
+    await rm(tombstonePath, { force: true }).catch(() => undefined);
+    return { streaks, notified: false };
+  }
+
+  const signature = creativeStreakSignature(streaks);
+  const existing = await readMonotonyTombstone(root);
+  if (existing?.signature === signature) {
+    return { streaks, notified: false };
+  }
+
+  const detail = describeCreativeStreaks(streaks);
+  emitRuntimeEvent({
+    type: "creative_monotony_warning",
+    streaks,
+    signature,
+    detail,
+    songId: entries[0]?.songId,
+    timestamp: Date.now()
+  });
+
+  await mkdir(dirname(tombstonePath), { recursive: true });
+  await writeFile(
+    tombstonePath,
+    `${JSON.stringify({ signature, detail, notifiedAt: new Date().toISOString() } satisfies CreativeMonotonyTombstone)}\n`,
+    "utf8"
+  );
+  return { streaks, notified: true };
 }
 
 export async function appendCreativeQualityEntry(root: string, entry: CreativeQualityEntry): Promise<CreativeQualityEntry> {

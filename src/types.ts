@@ -1091,6 +1091,15 @@ export interface CreateSunoPromptPackInput {
   vocalGender?: "male" | "female" | "neutral";
   styleVariationSeed?: string;
   weirdnessOverride?: number;
+  // The song's one-time creative decision (song-plan.json). When present the
+  // style/pack stage reads intro.styleMove, emotionalMode.spec, tempo.bpm, and
+  // vocalGender from it instead of re-deriving. Absent (legacy songs) -> the
+  // pack behaves byte-identically to before the CreativeDecision spine.
+  creativeDecision?: CreativeDecision;
+  // Producer "- Style notes:" from the brief, threaded into style synthesis as
+  // an additional hint. Only populated when a creativeDecision is present so the
+  // legacy no-plan path stays byte-identical.
+  styleNotes?: string;
 }
 
 export interface PersistSunoPromptPackInput extends Omit<CreateSunoPromptPackInput, "artistSnapshot" | "currentStateSnapshot"> {
@@ -1295,6 +1304,11 @@ export interface StatusResponse {
       averageBareLines: number;
       averageDissBankHits: number;
     };
+  };
+  personaContract?: {
+    ok: boolean;
+    checks: Array<{ id: string; ok: boolean; detail: string }>;
+    degraded: string[];
   };
   distribution?: {
     detected: {

@@ -71,7 +71,8 @@ const TELEGRAM_SIGNAL_EVENT_TYPES: ReadonlySet<RuntimeEvent["type"]> = new Set([
   "asset_generation_stalled",
   "suno_generate_failed",
   "suno_human_assist_requested",
-  "autopilot_auto_paused"
+  "autopilot_auto_paused",
+  "creative_monotony_warning"
 ]);
 
 const HARD_STOP_REASON_PATTERNS: Array<{ category: string; pattern: RegExp; message: string }> = [
@@ -1868,6 +1869,13 @@ async function formatRuntimeEventRaw(
       return `Failed-notify ledger append failed: ${event.eventType}${event.songId ? ` (${event.songId})` : ""} ${event.reason}`;
     case "failed_notify_aged_out":
       return `Failed notification aged out: ${event.eventType}${event.songId ? ` (${event.songId})` : ""} ${event.maxAgeMs}ms`;
+    case "creative_monotony_warning":
+      return [
+        `⚠️ 作風が単調になってる: ${event.detail}。`,
+        "次の曲で軸を変えて。"
+      ].join("\n");
+    case "persona_contract_degraded":
+      return `Persona contract degraded: ${event.degraded.join(", ")} — ${event.detail}`;
     case "error":
       if (event.source === "telegram_manual_song_create") {
         return [

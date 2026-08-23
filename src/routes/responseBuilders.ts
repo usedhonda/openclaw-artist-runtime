@@ -50,6 +50,7 @@ import type { TelegramClient } from "../services/telegramClient.js";
 import { TelegramNotifier } from "../services/telegramNotifier.js";
 import { readXObservationDiagnostics } from "../services/xObservationDiagnostics.js";
 import { aggregateCreativeQuality, readCreativeQualityLedger } from "../services/creativeQualityLedger.js";
+import { diagnoseAndReportPersonaContract } from "../services/personaContractDoctor.js";
 import { integerFromPayloadOrQuery, isLocalRoutePayload, optionalInteger, payloadInteger, payloadRecord, queryValueFromPayload } from "./payloadHelpers.js";
 import { serializeRuntimeEventForSse } from "./runtimeEventStream.js";
 import type {
@@ -1280,14 +1281,19 @@ export async function buildStatusResponse(config?: Partial<ArtistRuntimeConfig>)
     buildDistributionSummary(mergedConfig, platforms),
     buildAwaitingSunoTakeUrlReady(mergedConfig.artist.workspaceRoot)
   ]);
-  const [recentDistributionEvents, platformStats, runtimeEventsLedger, telegramInbound, observationDiagnostics, creativeQualityEntries] = await Promise.all([
+  const [recentDistributionEvents, platformStats, runtimeEventsLedger, telegramInbound, observationDiagnostics, creativeQualityEntries, artistMind] = await Promise.all([
     readDistributionEvents(mergedConfig.artist.workspaceRoot, 20),
     buildPlatformStats(mergedConfig.artist.workspaceRoot),
     readRuntimeEvents(mergedConfig.artist.workspaceRoot, 20),
     readReceiveHealth(mergedConfig.artist.workspaceRoot),
     readXObservationDiagnostics(mergedConfig.artist.workspaceRoot),
-    readCreativeQualityLedger(mergedConfig.artist.workspaceRoot, 20)
+    readCreativeQualityLedger(mergedConfig.artist.workspaceRoot, 20),
+    readArtistMind(mergedConfig.artist.workspaceRoot)
   ]);
+  // Persona contract doctor: diagnose the live ARTIST.md the pipeline parses and
+  // surface it. Emits persona_contract_degraded once per gateway process per
+  // distinct failing-check set when any check fails.
+  const personaContract = diagnoseAndReportPersonaContract(artistMind.artist);
   const creativeQuality = {
     recent: creativeQualityEntries.slice(0, 10).map((entry) => ({
       songId: entry.songId,
@@ -1340,6 +1346,7 @@ export async function buildStatusResponse(config?: Partial<ArtistRuntimeConfig>)
     },
     observationDiagnostics,
     creativeQuality,
+    personaContract,
     distribution: {
       detected: distributionDetection.detected
     },

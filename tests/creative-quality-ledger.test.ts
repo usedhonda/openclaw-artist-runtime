@@ -165,7 +165,8 @@ describe("creative quality ledger", () => {
       emotionalModeCounts: {},
       attackStanceCounts: {},
       disRate: 0,
-      decisionSampleSize: 0
+      decisionSampleSize: 0,
+      streaks: []
     });
 
     const rolling = aggregateCreativeQuality([
