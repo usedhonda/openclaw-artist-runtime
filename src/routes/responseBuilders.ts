@@ -1297,7 +1297,13 @@ export async function buildStatusResponse(config?: Partial<ArtistRuntimeConfig>)
       bareLyricsChars: entry.bareLyricsChars,
       bareLines: entry.bareLines,
       dissBankHitCount: entry.dissBankHitCount,
-      degraded: entry.degraded
+      degraded: entry.degraded,
+      lens: entry.decision?.lens,
+      emotionalMode: entry.decision?.emotionalMode.label ?? entry.emotionalMode,
+      aggression: entry.decision?.aggression,
+      tempoBand: entry.decision?.tempo.band ?? entry.tempoBand,
+      introArchetype: entry.decision?.intro.archetype ?? entry.introArchetype,
+      attackStance: entry.decision?.attackStance
     })),
     rolling: aggregateCreativeQuality(creativeQualityEntries)
   };

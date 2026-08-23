@@ -14,6 +14,8 @@ import {
   type CreativeQualityEntry
 } from "../src/services/creativeQualityLedger";
 import { INTRO_ARCHETYPE_IDS, resolveIntroVariant } from "../src/services/creativeVariationPolicy";
+import { writeSongPlan } from "../src/services/songPlan";
+import type { CreativeDecision } from "../src/types";
 
 const { callAiProviderMock } = vi.hoisted(() => ({
   callAiProviderMock: vi.fn()
@@ -153,7 +155,18 @@ describe("creative quality ledger", () => {
 
   it("aggregates dopagaki rate and average density over a window", () => {
     const empty = aggregateCreativeQuality([]);
-    expect(empty).toEqual({ sampleSize: 0, dopagakiRate: 0, averageBareChars: 0, averageBareLines: 0, averageDissBankHits: 0 });
+    expect(empty).toEqual({
+      sampleSize: 0,
+      dopagakiRate: 0,
+      averageBareChars: 0,
+      averageBareLines: 0,
+      averageDissBankHits: 0,
+      lensCounts: {},
+      emotionalModeCounts: {},
+      attackStanceCounts: {},
+      disRate: 0,
+      decisionSampleSize: 0
+    });
 
     const rolling = aggregateCreativeQuality([
       entry({ dopagakiActive: true, bareLyricsChars: 1200, bareLines: 52, dissBankHitCount: 2 }),
@@ -188,6 +201,51 @@ describe("creative quality ledger", () => {
     expect(record.hookText).toContain("再開発ビルの街でビル風がなる");
     expect(record.tempoBand).toBe("mid");
     expect(record.emotionalMode).toBe("sharp satire");
+  });
+
+  it("consumes the persisted plan: intro, tempo band, mode label, and decision come from song-plan.json", async () => {
+    callAiProviderMock.mockReset();
+    callAiProviderMock.mockResolvedValue(denseDraftWithBankTerms());
+    const root = await bankWorkspace(BANK_MD);
+
+    // The brief says "sharp satire" / no tempo band (resolveTempoBandFromBrief
+    // would default to mid); the plan must win on band and mode both.
+    const decision: CreativeDecision = {
+      version: 1,
+      songId: "song-001",
+      decidedAt: "2026-08-23T00:00:00.000Z",
+      seed: "song-001\n2026-08-23\n",
+      lens: "consumption_face",
+      lensMaterial: ["整形広告で埋まる駅"],
+      attackStance: "数字で殴る",
+      emotionalMode: { label: "本気 Dis", spec: "confrontational rap diss" },
+      aggression: "dis",
+      tempo: { band: "slow", bpm: 88 },
+      dopagaki: { active: false, threshold: 0.4, variationSeed: "spacious:song-001:0.9999" },
+      intro: {
+        archetype: "cold_open",
+        modifier: "2 bars, cold open, hard entry, no runway",
+        lyricInstruction: "0 lines; enter immediately at full energy with no setup.",
+        styleMove: "cold intro, immediate pocket"
+      },
+      hookShape: "number",
+      shibuyaTag: "産地表示",
+      signature: ["数字で読む癖"],
+      observation: null,
+      degradedInputs: [],
+      vocalGender: "male"
+    };
+    await writeSongPlan(root, decision);
+
+    await draftLyrics({ workspaceRoot: root, songId: "song-001", aiReviewProvider: "openai-codex" });
+
+    const ledger = await readCreativeQualityLedger(root);
+    expect(ledger).toHaveLength(1);
+    const record = ledger[0];
+    expect(record.introArchetype).toBe("cold_open"); // buildIntroVariantById path
+    expect(record.tempoBand).toBe("slow"); // plan.tempo.band, not the brief's mid default
+    expect(record.emotionalMode).toBe("本気 Dis"); // plan label, not the brief's "sharp satire"
+    expect(record.decision).toEqual(decision); // full decision recorded
   });
 
   it("logs the chosen intro archetype and excludes the most recent one", async () => {

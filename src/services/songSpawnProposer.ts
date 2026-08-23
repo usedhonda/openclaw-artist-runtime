@@ -15,7 +15,9 @@ import { validateAgainstVoiceContract } from "./voiceContractValidator.js";
 import { isVoiceFingerprintReady, parseVoiceFingerprint, type VoiceFingerprintBundle } from "./voiceFingerprintParser.js";
 import { readObservationsReport, readTodayObservations } from "./xObservationCollector.js";
 import { readTodayNewsObservations } from "./newsObservationCollector.js";
-import { emotionalModesFromArtist, pickEmotionalMode, pickTempoBpm } from "./creativeVariationPolicy.js";
+import { decideCreative, jstDate, type CreativeDirectorObservation } from "./creativeDirector.js";
+import { readRecentCreativeDecisions } from "./creativeQualityLedger.js";
+import type { CreativeDecision } from "../types.js";
 
 const FULL_TWEET_URL_PATTERN = /^https:\/\/(?:twitter|x)\.com\/[^/\s]+\/status\/\d+/i;
 
@@ -447,7 +449,7 @@ export function dedupeStyleBpm(styleNotes: string, tempo: string): string {
     .trim();
 }
 
-function buildBrief(context: { observation: string; artistMd: string; soulMd: string; fingerprint: VoiceFingerprintBundle; now: Date; observationTopTags?: string[]; rng?: () => number }): CommissionBrief {
+function buildBrief(context: { observation: string; artistMd: string; soulMd: string; fingerprint: VoiceFingerprintBundle; now: Date; observationTopTags?: string[]; rng?: () => number; recentDecisions?: readonly CreativeDecision[]; directorObservation?: CreativeDirectorObservation | null }): CommissionBrief {
   const seed = context.observation || context.soulMd || "観察が薄い夜に、街の温度だけ残っている。";
   const titleMotifs = extractPersonaMotifs([context.artistMd, context.soulMd].join("\n"));
   const observationTopTags = context.observationTopTags ?? [];
@@ -463,7 +465,16 @@ function buildBrief(context: { observation: string; artistMd: string; soulMd: st
       ? `${themeWord}を音にする一曲`
       : seed.slice(0, 280);
   const songId = `spawn_${shortHash(`${seed}:${context.now.toISOString()}`)}`;
-  const emotionalMode = pickEmotionalMode(songId, emotionalModesFromArtist(context.artistMd));
+  // The director decides every creative axis once. mood and tempo are sourced
+  // from it here; the full decision rides on the brief so the materialization
+  // point can persist song-plan.json without re-deciding.
+  const decision = decideCreative({
+    songId,
+    jstDate: jstDate(context.now),
+    personaText: context.artistMd,
+    observation: context.directorObservation ?? null,
+    recentDecisions: context.recentDecisions ?? []
+  });
   const densityContext = {
     observation: context.observation,
     artistMd: context.artistMd,
@@ -475,12 +486,13 @@ function buildBrief(context: { observation: string; artistMd: string; soulMd: st
     title,
     brief: briefSentence,
     lyricsTheme: normalizePitchField("lyricsTheme", undefined, densityContext),
-    mood: emotionalMode.mood,
-    tempo: `${pickTempoBpm(songId)} BPM`,
+    mood: decision.emotionalMode.spec,
+    tempo: `${decision.tempo.bpm} BPM`,
     styleNotes: normalizePitchField("styleNotes", undefined, densityContext),
     duration: "artist decides",
     sourceText: "autopilot song spawn",
-    createdAt: context.now.toISOString()
+    createdAt: context.now.toISOString(),
+    creativeDecision: decision
   };
 }
 
@@ -866,7 +878,16 @@ export async function proposeSpawn(root: string, options: ProposeSpawnOptions = 
   const fingerprint = parseVoiceFingerprint(soulMd);
   const identity = await getArtistIdentity(root);
   const pitchContext = { observation, artistMd, soulMd, fingerprint };
-  const fallback = buildBrief({ observation, artistMd, soulMd, fingerprint, now });
+  const recentDecisions = await readRecentCreativeDecisions(root, 6);
+  const directorObservation: CreativeDirectorObservation | null = observationSummary
+    ? {
+        url: observationSummary.url ?? "",
+        author: observationSummary.author ?? "",
+        motifScore: obsData.excerpts?.[0]?.motifScore ?? 0,
+        text: observation
+      }
+    : null;
+  const fallback = buildBrief({ observation, artistMd, soulMd, fingerprint, now, recentDecisions, directorObservation });
   // Plan v10.38 Phase F hallucination guard: stamp the fallback brief with
   // the observation entries it was actually built from so mock / not_configured
   // paths still leave a verifiable citation trail.

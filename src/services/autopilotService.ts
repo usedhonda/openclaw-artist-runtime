@@ -11,6 +11,7 @@ import {
   writeAutopilotState
 } from "./autopilotRecovery.js";
 import { listSongStates, readArtistMind, readSongState, updateSongState } from "./artistState.js";
+import { readSongPlan } from "./songPlan.js";
 import { createSongIdea } from "./songIdeation.js";
 import { draftLyrics } from "./lyricsDrafting.js";
 import { prepareSocialAssets } from "./socialAssets.js";
@@ -925,11 +926,22 @@ async function createPromptPackForSong(root: string, song: SongState, config?: P
     readFile(join(root, "songs", readySong.songId, "brief.md"), "utf8").catch(() => ""),
     readFile(join(root, "songs", readySong.songId, "mood-hint.txt"), "utf8").catch(() => "")
   ]);
-  const dopagakiVariation = decideDopagakiVariation({
-    songId: readySong.songId,
-    date: readySong.createdAt,
-    briefText
-  });
+  // Read the single dopagaki decision from the persisted plan. Only legacy songs
+  // without a plan fall back to recomputing it here.
+  const plan = await readSongPlan(root, readySong.songId);
+  const dopagakiVariation = plan
+    ? {
+        active: plan.dopagaki.active,
+        intensity: (plan.dopagaki.active ? "overt" : "off") as "overt" | "off",
+        score: 0,
+        threshold: plan.dopagaki.threshold,
+        variationSeed: plan.dopagaki.variationSeed
+      }
+    : decideDopagakiVariation({
+        songId: readySong.songId,
+        date: readySong.createdAt,
+        briefText
+      });
   const observationPath = briefText.match(/^- Path:\s*(.+)$/m)?.[1]?.trim();
   await createAndPersistSunoPromptPack({
     workspaceRoot: root,

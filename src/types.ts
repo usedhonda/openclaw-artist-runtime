@@ -379,6 +379,37 @@ export interface CommissionBrief {
   sourceText: string;
   createdAt: string;
   sources?: CommissionBriefSource[];
+  // The full creative decision computed by the director when this brief was
+  // built. Carried so the materialization point (injectCommissionSong) can
+  // persist song-plan.json without re-deciding. Optional because reconstructed
+  // briefs (approval round-trip, legacy) may not carry it; the writer then
+  // recomputes deterministically from the brief's own fields.
+  creativeDecision?: CreativeDecision;
+}
+
+// The single creative decision for one song. One module (creativeDirector)
+// decides every axis once, seeded deterministically, with cross-axis anti-repeat
+// from the ledger. Persisted as songs/<id>/song-plan.json; downstream stages
+// READ this instead of re-hashing each axis independently.
+export interface CreativeDecision {
+  version: 1;
+  songId: string;
+  decidedAt: string;
+  seed: string; // songId + JST date + observation URL
+  lens: "consumption_face" | "net_generation" | "shibuya_city";
+  lensMaterial: string[]; // noun phrases from the chosen lens's material bank only
+  attackStance: string;
+  emotionalMode: { label: string; spec: string };
+  aggression: "dis" | "changeup";
+  tempo: { band: TempoBand; bpm: number };
+  dopagaki: { active: boolean; threshold: number; variationSeed: string };
+  intro: { archetype: string; modifier: string; lyricInstruction: string; styleMove: string };
+  hookShape: "question" | "number" | "list" | "call_response" | "reversal" | "one_line";
+  shibuyaTag: string;
+  signature: string[];
+  observation: { url: string; author: string; motifScore: number } | null;
+  degradedInputs: string[];
+  vocalGender: "male" | "female" | "neutral";
 }
 
 export interface CascadeTraceSource {

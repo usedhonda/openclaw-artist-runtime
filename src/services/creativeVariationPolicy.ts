@@ -33,12 +33,12 @@ export interface DopagakiVariationInput {
   targetRate?: number;
 }
 
-function hashRatio(value: string): number {
+export function hashRatio(value: string): number {
   const hash = createHash("sha256").update(value).digest("hex").slice(0, 8);
   return Number.parseInt(hash, 16) / 0xffffffff;
 }
 
-function bulletSection(artistMd: string, heading: string): string[] {
+export function bulletSection(artistMd: string, heading: string): string[] {
   const lines = artistMd.split(/\r?\n/);
   const start = lines.findIndex((line) => line.trim().toLowerCase() === heading.toLowerCase());
   if (start < 0) return [];
@@ -101,6 +101,12 @@ export function pickTempoBand(seed: string): RotatingTempoBand {
 export function pickTempoBpm(seed: string): number {
   const band = pickTempoBand(seed);
   return TEMPO_BANDS.find((entry) => entry.band === band)!.bpm;
+}
+
+// Canonical BPM for a named tempo band. Used when an explicit band override
+// (operator/API) must be reflected in the creative decision's tempo.
+export function bpmForTempoBand(band: RotatingTempoBand): number {
+  return TEMPO_BANDS.find((entry) => entry.band === band)?.bpm ?? TEMPO_BANDS[1].bpm;
 }
 
 function clampRate(value: number): number {
@@ -288,6 +294,15 @@ export function resolveIntroVariant(seed: string, recentArchetypes: readonly str
   const latest = recentArchetypes.at(-1);
   const index = count > 1 && INTRO_ARCHETYPES[start].id === latest ? (start + 1) % count : start;
   return INTRO_ARCHETYPES[index].build(seed);
+}
+
+// Rebuilds the full IntroVariant for a known archetype id and seed. Used by
+// downstream stages to reconstruct the director's intro (bars / lineFloor /
+// lineTarget) from the persisted plan, which stores only the archetype id plus
+// the prompt-visible modifier and lyricInstruction. Passing the same seed the
+// director used (`intro:${plan.seed}`) reproduces the identical variant.
+export function buildIntroVariantById(id: string, seed: string): IntroVariant | undefined {
+  return INTRO_ARCHETYPES.find((entry) => entry.id === id)?.build(seed);
 }
 
 export function critiqueLensLines(artistMd: string): string[] {

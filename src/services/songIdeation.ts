@@ -4,8 +4,10 @@ import type { ArtistRuntimeConfig, ObservationSummary, SongIdeaResult } from "..
 import { ensureSongState, readArtistMind, updateSongState, writeSongBrief } from "./artistState.js";
 import { ensureArtistWorkspace } from "./artistWorkspace.js";
 import { appendPromptLedger, createPromptLedgerEntry, getSongPromptLedgerPath } from "./promptLedger.js";
-import { decideDopagakiVariation, emotionalModesFromArtist, pickEmotionalMode, pickTempoBand } from "./creativeVariationPolicy.js";
-import { readCreativeQualityLedger } from "./creativeQualityLedger.js";
+import { decideCreative, jstDate } from "./creativeDirector.js";
+import { bpmForTempoBand } from "./creativeVariationPolicy.js";
+import { readRecentCreativeDecisions } from "./creativeQualityLedger.js";
+import { writeSongPlan } from "./songPlan.js";
 import type { TempoBand } from "../suno-production/durationPlan.js";
 
 function titleCase(value: string): string {
@@ -185,42 +187,51 @@ export interface CreateSongIdeaInput {
 // mechanical default is "up" with the dopagaki variation lifting it to the
 // high-speed "dopagaki" band. Slower bands (mid/slow) and the hyper-fast "super"
 // band are occasional changes the artist selects explicitly.
-function chooseTempoBand(
-  input: CreateSongIdeaInput,
-  songId: string,
-  briefText: string,
-  recentModes: Array<"dopagaki" | "spacious">
-): TempoBand {
-  if (input.tempoBand) {
-    return input.tempoBand;
-  }
-  const decision = decideDopagakiVariation({
-    songId,
-    observationText: input.observationText,
-    briefText,
-    recentModes
-  });
-  return pickTempoBand(`${songId}:${decision.variationSeed}:${decision.active}`);
-}
 
 export async function createSongIdea(input: CreateSongIdeaInput): Promise<SongIdeaResult> {
   await ensureArtistWorkspace(input.workspaceRoot);
+  const now = new Date();
+  const date = jstDate(now);
   const artistMind = await readArtistMind(input.workspaceRoot);
   const sequence = await nextSongNumber(input.workspaceRoot);
   const theme = input.theme?.trim() || chooseTheme(artistMind.artist, artistMind.currentState);
   const title = input.title?.trim() || buildTitle(theme, sequence);
   const songId = `song-${String(sequence).padStart(3, "0")}`;
   const artistReason = artistReasonVoice(theme, input.artistReason ?? `caught on ${theme}`);
-  const recentModes = (await readCreativeQualityLedger(input.workspaceRoot, 3))
-    .map((entry) => entry.dopagakiActive ? "dopagaki" as const : "spacious" as const);
-  const emotionalMode = pickEmotionalMode(songId, emotionalModesFromArtist(artistMind.artist));
-  const tempoBand = chooseTempoBand(input, songId, `${theme}\n${artistReason}`, recentModes);
-  const briefText = buildBrief(title, theme, artistReason, tempoBand, emotionalMode, input.observationText, input.observationPath);
   const observationSummary = extractObservationSummary(input.observationText, artistReason);
+  // The director decides every creative axis once. Its values feed the brief and
+  // are persisted as song-plan.json so downstream stages read the decision rather
+  // than re-hashing mood/tempo/dopagaki independently.
+  const recentDecisions = await readRecentCreativeDecisions(input.workspaceRoot, 6);
+  const directorObservation = input.observationText?.trim()
+    ? {
+        url: observationSummary?.url ?? "",
+        author: observationSummary?.author ?? "",
+        motifScore: 0,
+        text: input.observationText
+      }
+    : null;
+  const decision = decideCreative({
+    songId,
+    jstDate: date,
+    personaText: artistMind.artist,
+    observation: directorObservation,
+    recentDecisions
+  });
+  // An explicit tempo band (operator/API) wins over the director's choice. Fold
+  // it into the decision so the persisted plan — which downstream stages read —
+  // reflects the override rather than silently dropping it.
+  if (input.tempoBand && input.tempoBand !== decision.tempo.band) {
+    decision.tempo = { band: input.tempoBand, bpm: bpmForTempoBand(input.tempoBand) };
+  }
+  const emotionalMode = { label: decision.emotionalMode.label, mood: decision.emotionalMode.spec };
+  const tempoBand = decision.tempo.band;
+  const briefText = buildBrief(title, theme, artistReason, tempoBand, emotionalMode, input.observationText, input.observationPath);
   const observationInputRef = input.observationText?.trim() ? observationRef(input.workspaceRoot, input.observationPath) : undefined;
   const inputRefs = ["ARTIST.md", "artist/CURRENT_STATE.md", observationInputRef].filter(Boolean) as string[];
 
   await ensureSongState(input.workspaceRoot, songId, title);
+  await writeSongPlan(input.workspaceRoot, decision);
   const state = await writeSongBrief(input.workspaceRoot, songId, briefText);
   await updateSongState(input.workspaceRoot, songId, {
     title,

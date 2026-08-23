@@ -6,6 +6,7 @@ import { appendAuditLog, createAuditEvent } from "./auditLog.js";
 import { readAutopilotRunState, writeAutopilotRunState } from "./autopilotService.js";
 import { readSongState, updateSongState } from "./artistState.js";
 import { createAndPersistSunoPromptPack } from "./sunoPromptPackFiles.js";
+import { readSongPlan } from "./songPlan.js";
 
 export type RetryPromptPackResult =
   | { retried: false; statusCode: 409; reason: string }
@@ -44,7 +45,18 @@ export async function retryParkedSongPromptPack(
     readFile(join(workspaceRoot, "songs", songId, "brief.md"), "utf8").catch(() => ""),
     readFile(join(workspaceRoot, "songs", songId, "mood-hint.txt"), "utf8").catch(() => "")
   ]);
-  const variation = decideDopagakiVariation({ songId, date: song.createdAt, briefText });
+  // Read the single dopagaki decision from the persisted plan; legacy songs
+  // without a plan fall back to recomputing it here.
+  const plan = await readSongPlan(workspaceRoot, songId);
+  const variation = plan
+    ? {
+        active: plan.dopagaki.active,
+        intensity: (plan.dopagaki.active ? "overt" : "off") as "overt" | "off",
+        score: 0,
+        threshold: plan.dopagaki.threshold,
+        variationSeed: plan.dopagaki.variationSeed
+      }
+    : decideDopagakiVariation({ songId, date: song.createdAt, briefText });
   const observationPath = briefText.match(/^- Path:\s*(.+)$/m)?.[1]?.trim();
 
   let persisted;

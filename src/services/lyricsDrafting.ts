@@ -11,7 +11,8 @@ import { emitRuntimeEvent } from "./runtimeEventBus.js";
 import { buildLyricsDraftingPrompt, readLyricsKnowledgeDigest } from "./lyricsDraftingPrompt.js";
 import { parseLyricsLanguagePolicy } from "./lyricsLanguagePolicy.js";
 import { getArtistIdentity, getSunoLyricsLimit } from "./runtimeConfig.js";
-import { decideDopagakiVariation, resolveIntroVariant } from "./creativeVariationPolicy.js";
+import { buildIntroVariantById, decideDopagakiVariation, resolveIntroVariant, type IntroVariant } from "./creativeVariationPolicy.js";
+import { readSongPlan } from "./songPlan.js";
 import { getDurationPlan, minimumBareLyricsChars, minimumBareLyricsLines, resolveTempoBandFromBrief } from "../suno-production/durationPlan.js";
 import { appendCreativeQualityEntry, computeDissBankHits, readCreativeQualityLedger } from "./creativeQualityLedger.js";
 
@@ -267,22 +268,31 @@ async function composeLyricsDraft(input: DraftLyricsInput, title: string, briefT
   const languagePolicy = parseLyricsLanguagePolicy(mind.artist);
   const lyricsBoxLimit = getSunoLyricsLimit();
   const lyricBodyLimit = lyricBodyLimitForSunoBox(lyricsBoxLimit);
-  // Recent creative-quality window; reused for intro anti-repeat, the dopagaki
-  // decision, and hook avoidance so we read the ledger once.
+  // Recent creative-quality window; reused for intro anti-repeat (legacy songs),
+  // the dopagaki decision, and hook avoidance so we read the ledger once.
   const recentQuality = await readCreativeQualityLedger(input.workspaceRoot, 8);
-  // Rotate the INTRO archetype deterministically so consecutive songs do not
-  // all open the same way. Seed is decorrelated from the dopagaki seed via the
-  // "intro:" prefix. recentIntroArchetypes carries the ledger's recent archetype
-  // ids (most-recent last) so the immediately previous archetype is excluded.
-  // The chosen modifier flows into the drafting prompt's [Intro - <modifier>]
-  // tag through formatDurationPlanForPrompt, and its id is logged below so the
-  // recorded archetype always equals the one that shaped this intro.
-  const recentIntroArchetypes = recentQuality
-    .map((entry) => entry.introArchetype)
-    .filter((id): id is string => Boolean(id))
-    .reverse();
-  const introVariant = resolveIntroVariant(`intro:${input.songId}\n${briefText}`, recentIntroArchetypes);
-  const durationPlan = getDurationPlan(resolveTempoBandFromBrief(briefText), {
+  // The creative decision was made once by the director and persisted as
+  // song-plan.json. This stage READS it — the intro, dopagaki, tempo band, and
+  // emotional-mode label all come from the plan rather than being re-hashed here.
+  // Songs created before the spine shipped have no plan; those fall back to the
+  // previous per-axis computation.
+  const plan = await readSongPlan(input.workspaceRoot, input.songId);
+  let introVariant: IntroVariant;
+  if (plan) {
+    introVariant =
+      buildIntroVariantById(plan.intro.archetype, `intro:${plan.seed}`) ??
+      resolveIntroVariant(`intro:${input.songId}\n${briefText}`);
+  } else {
+    // Legacy: rotate the archetype from the ledger history (most-recent last so
+    // the immediately previous archetype is excluded).
+    const recentIntroArchetypes = recentQuality
+      .map((entry) => entry.introArchetype)
+      .filter((id): id is string => Boolean(id))
+      .reverse();
+    introVariant = resolveIntroVariant(`intro:${input.songId}\n${briefText}`, recentIntroArchetypes);
+  }
+  const tempoBand = plan ? plan.tempo.band : resolveTempoBandFromBrief(briefText);
+  const durationPlan = getDurationPlan(tempoBand, {
     intro: {
       bars: introVariant.bars,
       lineFloor: introVariant.lineFloor,
@@ -291,14 +301,16 @@ async function composeLyricsDraft(input: DraftLyricsInput, title: string, briefT
       lyricInstruction: introVariant.lyricInstruction
     }
   });
-  const emotionalMode = emotionalModeFromBrief(briefText);
+  const emotionalMode = plan ? plan.emotionalMode.label : emotionalModeFromBrief(briefText);
   const minimumBareChars = minimumBareLyricsChars(durationPlan);
   const minimumBareLines = minimumBareLyricsLines(durationPlan);
-  const dopagakiDecision = decideDopagakiVariation({
-    songId: input.songId,
-    briefText,
-    recentModes: recentQuality.map((entry) => entry.tempoBand === "dopagaki" || entry.dopagakiActive ? "dopagaki" : "spacious")
-  });
+  const dopagakiDecision = plan
+    ? { threshold: plan.dopagaki.threshold, variationSeed: plan.dopagaki.variationSeed, active: plan.dopagaki.active, intensity: (plan.dopagaki.active ? "overt" : "off") as "overt" | "off", score: 0 }
+    : decideDopagakiVariation({
+        songId: input.songId,
+        briefText,
+        recentModes: recentQuality.map((entry) => entry.tempoBand === "dopagaki" || entry.dopagakiActive ? "dopagaki" : "spacious")
+      });
   // DurationPlan is the resolved timing contract for this draft. Its band,
   // rather than an independent random choice, owns whether density is active.
   const dopagakiVariation = {
@@ -372,6 +384,7 @@ async function composeLyricsDraft(input: DraftLyricsInput, title: string, briefT
         tempoBand: durationPlan.tempoBand,
         emotionalMode,
         introArchetype: introVariant.id,
+        decision: plan ?? undefined,
         dissBankHits,
         dissBankHitCount: dissBankHits.length,
         degraded: false

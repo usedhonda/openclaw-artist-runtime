@@ -1,5 +1,6 @@
 import { appendFile, mkdir, readFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
+import type { CreativeDecision } from "../types.js";
 
 export interface CreativeQualityEntry {
   songId: string;
@@ -16,6 +17,10 @@ export interface CreativeQualityEntry {
   tempoBand?: "slow" | "mid" | "up" | "dopagaki" | "super";
   emotionalMode?: string;
   introArchetype?: string;
+  // The full creative decision that shaped this song, when available. Carried so
+  // the director's per-axis history (lens, stance, hook, tag, aggression) can be
+  // read back for cross-axis anti-repeat and status distributions.
+  decision?: CreativeDecision;
   dissBankHits: string[];
   dissBankHitCount: number;
   degraded: boolean;
@@ -27,6 +32,14 @@ export interface CreativeQualityAggregate {
   averageBareChars: number;
   averageBareLines: number;
   averageDissBankHits: number;
+  // Per-axis distributions over the window. Empty when no entry carries a
+  // decision (older ledgers). disRate is the share of decisions with
+  // aggression === "dis".
+  lensCounts: Record<string, number>;
+  emotionalModeCounts: Record<string, number>;
+  attackStanceCounts: Record<string, number>;
+  disRate: number;
+  decisionSampleSize: number;
 }
 
 export function creativeQualityLedgerPath(root: string): string {
@@ -38,7 +51,18 @@ export function creativeQualityLedgerPath(root: string): string {
 export function aggregateCreativeQuality(entries: CreativeQualityEntry[]): CreativeQualityAggregate {
   const sampleSize = entries.length;
   if (sampleSize === 0) {
-    return { sampleSize: 0, dopagakiRate: 0, averageBareChars: 0, averageBareLines: 0, averageDissBankHits: 0 };
+    return {
+      sampleSize: 0,
+      dopagakiRate: 0,
+      averageBareChars: 0,
+      averageBareLines: 0,
+      averageDissBankHits: 0,
+      lensCounts: {},
+      emotionalModeCounts: {},
+      attackStanceCounts: {},
+      disRate: 0,
+      decisionSampleSize: 0
+    };
   }
   const dopagakiCount = entries.filter((entry) => entry.dopagakiActive).length;
   const totals = entries.reduce(
@@ -54,12 +78,31 @@ export function aggregateCreativeQuality(entries: CreativeQualityEntry[]): Creat
     const factor = 10 ** decimals;
     return Math.round(value * factor) / factor;
   };
+  const decisions = entries
+    .map((entry) => entry.decision)
+    .filter((decision): decision is CreativeDecision => Boolean(decision));
+  const lensCounts: Record<string, number> = {};
+  const emotionalModeCounts: Record<string, number> = {};
+  const attackStanceCounts: Record<string, number> = {};
+  let disCount = 0;
+  for (const decision of decisions) {
+    lensCounts[decision.lens] = (lensCounts[decision.lens] ?? 0) + 1;
+    emotionalModeCounts[decision.emotionalMode.label] =
+      (emotionalModeCounts[decision.emotionalMode.label] ?? 0) + 1;
+    attackStanceCounts[decision.attackStance] = (attackStanceCounts[decision.attackStance] ?? 0) + 1;
+    if (decision.aggression === "dis") disCount += 1;
+  }
   return {
     sampleSize,
     dopagakiRate: round(dopagakiCount / sampleSize, 4),
     averageBareChars: round(totals.chars / sampleSize, 1),
     averageBareLines: round(totals.lines / sampleSize, 1),
-    averageDissBankHits: round(totals.hits / sampleSize, 2)
+    averageDissBankHits: round(totals.hits / sampleSize, 2),
+    lensCounts,
+    emotionalModeCounts,
+    attackStanceCounts,
+    disRate: decisions.length > 0 ? round(disCount / decisions.length, 4) : 0,
+    decisionSampleSize: decisions.length
   };
 }
 
@@ -95,6 +138,21 @@ export async function readCreativeQualityLedger(root: string, limit?: number): P
 export async function readLatestCreativeQualityEntry(root: string, songId: string): Promise<CreativeQualityEntry | undefined> {
   const entries = await readCreativeQualityLedger(root);
   return entries.find((entry) => entry.songId === songId);
+}
+
+// Reads the most recent creative decisions from the ledger for the director's
+// cross-axis anti-repeat. Returns up to `limit` decisions ordered MOST-RECENT
+// LAST (the order the director expects), skipping ledger entries that predate the
+// decision field.
+export async function readRecentCreativeDecisions(root: string, limit = 6): Promise<CreativeDecision[]> {
+  const entries = await readCreativeQualityLedger(root);
+  const decisions: CreativeDecision[] = [];
+  for (const entry of entries) {
+    // entries are newest-first; collect newest `limit` then reverse
+    if (entry.decision) decisions.push(entry.decision);
+    if (decisions.length >= limit) break;
+  }
+  return decisions.reverse();
 }
 
 const DISS_BANK_HEADING = /^#{1,6}\s+Shibuya Diss Material Bank\s*$/i;
