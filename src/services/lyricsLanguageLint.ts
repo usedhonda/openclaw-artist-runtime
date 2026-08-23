@@ -83,6 +83,7 @@ export function normalizeAsciiNumbersToHiragana(lyrics: string): string {
 // dependency is deliberately not added here.
 const SUNO_KANJI_REPAIRS: Array<[string, string]> = [
   // 3+ char compounds
+  ["免罪句", "めんざいく"],
   ["安全圏", "あんぜんけん"],
   ["再開発", "さいかいはつ"],
   ["路地裏", "ろじうら"],
@@ -97,6 +98,18 @@ const SUNO_KANJI_REPAIRS: Array<[string, string]> = [
   ["鳴らす", "ならす"],
   ["売れる", "うれる"],
   // 2 char compounds
+  ["伝票", "でんぴょう"],
+  ["査定", "さてい"],
+  ["点呼", "てんこ"],
+  ["啖呵", "たんか"],
+  ["挑発", "ちょうはつ"],
+  ["実況", "じっきょう"],
+  ["中継", "ちゅうけい"],
+  ["独白", "どくはく"],
+  ["説教", "せっきょう"],
+  ["亡霊", "ぼうれい"],
+  ["施術", "せじゅつ"],
+  ["業界", "ぎょうかい"],
   ["診断", "しんだん"],
   ["処方", "しょほう"],
   ["数字", "すうじ"],

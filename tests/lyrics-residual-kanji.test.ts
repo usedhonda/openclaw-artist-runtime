@@ -139,4 +139,21 @@ describe("residual kanji lyrics lint", () => {
 
     expect(lintResidualKanji(registrationLyrics)).toEqual([]);
   });
+
+  it("normalizes the F4 attack-stance vocabulary without residual kanji", () => {
+    const registrationLyrics = normalizeSunoRegistrationJapanese([
+      "免罪句はいらない 伝票をひらく",
+      "査定と点呼のこえ 啖呵をきる",
+      "挑発の実況 中継のむこう",
+      "独白と説教 亡霊のまち",
+      "施術の業界 うりばにならぶ"
+    ].join("\n"));
+
+    expect(lintResidualKanji(registrationLyrics)).toEqual([]);
+    // pin a few exact readings so a wrong entry cannot pass silently
+    expect(registrationLyrics).toContain("めんざいく");
+    expect(registrationLyrics).toContain("でんぴょう");
+    expect(registrationLyrics).toContain("たんか");
+    expect(registrationLyrics).toContain("ぎょうかい");
+  });
 });
