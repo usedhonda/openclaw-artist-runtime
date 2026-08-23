@@ -1,6 +1,6 @@
 import type { NewsObservationEntry } from "./newsObservationCollector.js";
-import { extractPersonaMotifs, topQueryKeywords } from "./personaMotifExtractor.js";
-import type { XObservationContext } from "./xObservationCollector.js";
+import { extractPersonaMotifs } from "./personaMotifExtractor.js";
+import { decomposeToQueryTokens, type XObservationContext } from "./xObservationCollector.js";
 
 export interface NewsReactionQueryPlan {
   queries: string[];
@@ -8,19 +8,24 @@ export interface NewsReactionQueryPlan {
 }
 
 interface NewsReactionQueryOptions {
-  now?: Date;
   personaText?: string;
 }
 
-const ignoredTokens = /^(?:https?|www|com|news|google|rss)$/i;
+// News aggregators append the outlet name to the headline; it is never search
+// material. Cut it whether it follows a separator or (after upstream space
+// cleaning) trails as bare text such as "… ダイヤモンド オン".
+const newsSourceSeparatorPattern = /[|｜/／].*$/;
+const newsSourceTailPattern =
+  /(?:ダイヤモンド|東洋経済|現代ビジネス|プレジデント|朝日新聞|読売新聞|毎日新聞|日本経済新聞|日経|産経新聞|共同通信|時事通信|ロイター|ブルームバーグ|PR\s?TIMES|ITmedia|NHK|フォーブス|Forbes|オリコン|ハフポスト|ねとらぼ|マイナビ)[\s\S]*$/i;
 
-function cleanNewsSearchToken(value: string): string {
-  return value
-    .replace(/https?:\/\/\S+/g, " ")
-    .replace(/[^\p{Letter}\p{Number}一-龠ぁ-んァ-ヶー]+/gu, " ")
-    .replace(/\s+/g, " ")
-    .trim();
-}
+// Counter phrases (58社, 8割超) read as noise in a tweet search.
+const numericCounterPattern = /[0-9０-９]+(?:社|割超?|%|％|人|円|年|万|億|件|位|台|個|名|軒)?/g;
+
+// Common headline framing that nobody repeats verbatim in a tweet.
+const leadHookPattern = /^[^、。！!？?]{0,10}?まさか[^、。！!？?]*?[！!]\s*/;
+const tailFramingPattern = /(?:のワケ|ワケ|とは|なのか)\s*$/;
+
+const ignoredTokens = /^(?:https?|www|com|news|google|rss|オン)$/i;
 
 function unique(values: string[]): string[] {
   const seen = new Set<string>();
@@ -35,45 +40,36 @@ function unique(values: string[]): string[] {
   return result;
 }
 
-function quotePhrase(value: string): string {
-  return `"${value.replace(/["\\]/g, " ").replace(/\s+/g, " ").trim()}"`;
+// Strip URLs, the outlet-name suffix, numeric counters and headline framing so
+// what reaches decomposeToQueryTokens is content words, not boilerplate.
+function normalizeHeadline(text: string): string {
+  return text
+    .replace(/https?:\/\/\S+/g, " ")
+    .replace(newsSourceSeparatorPattern, " ")
+    .replace(newsSourceTailPattern, " ")
+    .replace(/[…]+|\.{2,}/g, " ")
+    .replace(leadHookPattern, " ")
+    .replace(numericCounterPattern, " ")
+    .replace(tailFramingPattern, " ")
+    .replace(/\s+/g, " ")
+    .trim();
 }
 
-function sinceDate(now: Date): string {
-  return new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
+// A geography token (渋谷) buried inside a proper noun (西武渋谷店) is dropped by
+// decomposeToQueryTokens' >4-char coinage rule. Space-padding the persona geo
+// terms rescues the geo-anchored pair (西武 渋谷) without re-tokenizing.
+function padGeographies(text: string, geographies: string[]): string {
+  let padded = text;
+  for (const geo of geographies) {
+    if (geo.length >= 2 && padded.includes(geo)) {
+      padded = padded.split(geo).join(` ${geo} `);
+    }
+  }
+  return padded.replace(/\s+/g, " ").trim();
 }
 
-function splitTokens(text: string): string[] {
-  return cleanNewsSearchToken(text)
-    .split(/\s+/)
-    .filter((token) => Array.from(token).length >= 2)
-    .filter((token) => !ignoredTokens.test(token));
-}
-
-function headlinePhrases(text: string): string[] {
-  const noUrls = text.replace(/https?:\/\/\S+/g, " ");
-  const firstClause = noUrls
-    .split(/[。!?！？\n]| - |｜|\|/)
-    .map((part) => part.replace(/\s+/g, " ").trim())
-    .find((part) => Array.from(part).length >= 4);
-  const compact = cleanNewsSearchToken(firstClause ?? noUrls);
-  const tokens = splitTokens(text);
-  const adjacentPairs = tokens.slice(0, 4).flatMap((token, index) => {
-    const next = tokens[index + 1];
-    return next ? [`${token} ${next}`] : [];
-  });
-  return unique([
-    compact.slice(0, 48),
-    ...adjacentPairs,
-    ...tokens.filter((token) => /[A-Z0-9]{2,}/.test(token) || /[一-龠ぁ-んァ-ヶー]{3,}/.test(token)).slice(0, 4)
-  ]).filter((phrase) => Array.from(phrase).length >= 2);
-}
-
-function motifQueryVariant(personaText: string | undefined, basePhrase: string | undefined): string | undefined {
-  if (!personaText || !basePhrase) return undefined;
-  const motifs = topQueryKeywords(extractPersonaMotifs(personaText), 3);
-  if (motifs.length === 0) return undefined;
-  return `${quotePhrase(basePhrase)} (${motifs.map(quotePhrase).join(" OR ")})`;
+function usableTokens(tokens: string[]): string[] {
+  return tokens.filter((token) => token.length > 0 && !ignoredTokens.test(token));
 }
 
 export function buildNewsReactionQueries(
@@ -82,22 +78,39 @@ export function buildNewsReactionQueries(
 ): NewsReactionQueryPlan {
   const top = entries.find((entry) => entry.url || entry.text.trim().length > 0);
   if (!top) return { queries: [] };
-  const tokens = splitTokens(top.text).slice(0, 6);
-  const phrases = headlinePhrases(top.text);
-  if (tokens.length === 0 && phrases.length === 0) return { queries: [] };
-  const now = options.now ?? new Date();
-  const exactPhrase = phrases[0] ?? tokens[0];
-  const entityPhrase = phrases.find((phrase) => phrase !== exactPhrase) ?? tokens.slice(0, 2).join(" ");
-  const broadFallback = tokens.length > 0 ? tokens.join(" OR ") : undefined;
-  const datedNewsQuery = exactPhrase ? `${quotePhrase(exactPhrase)} lang:ja since:${sinceDate(now)}` : undefined;
-  return {
-    queries: unique([
-      exactPhrase ? quotePhrase(exactPhrase) : undefined,
-      entityPhrase ? quotePhrase(entityPhrase) : undefined,
-      datedNewsQuery,
-      motifQueryVariant(options.personaText, exactPhrase),
+
+  const geographies = extractPersonaMotifs(options.personaText).geographies;
+  const geoSet = new Set(geographies.map((geo) => geo.toLowerCase()));
+  const normalized = normalizeHeadline(top.text);
+
+  // Rung a: the most specific pair. Geo-padding surfaces the geo-anchored proper
+  // noun (西武 渋谷) that would otherwise be dropped as a >4-char coinage.
+  const pairTokens = usableTokens(decomposeToQueryTokens(padGeographies(normalized, geographies)));
+  const pair = pairTokens.slice(0, 2).join(" ");
+
+  // Rung c: broader fallback = strongest single topic token + a geo term. The
+  // topic token comes from the un-padded headline so it is a topic word (閉店),
+  // not the proper noun rung a already covers.
+  const topicTokens = usableTokens(decomposeToQueryTokens(normalized));
+  const topicToken = topicTokens.find((token) => !geoSet.has(token.toLowerCase())) ?? topicTokens[0];
+  const geoToken = geographies.find((geo) => normalized.includes(geo));
+  const broadFallback = topicToken
+    ? geoToken && geoToken.toLowerCase() !== topicToken.toLowerCase()
+      ? `${topicToken} ${geoToken}`
+      : topicToken
+    : undefined;
+
+  const queries = unique(
+    [
+      pair || undefined,
+      pair ? `${pair} lang:ja` : undefined,
       broadFallback
-    ].filter((query): query is string => Boolean(query))),
+    ].filter((query): query is string => Boolean(query))
+  );
+
+  if (queries.length === 0) return { queries: [] };
+  return {
+    queries,
     seed: {
       title: top.text.slice(0, 140),
       url: top.url,
