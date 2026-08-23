@@ -33,14 +33,24 @@ function motifDrivenQuery(motifs: PersonaMotifBundle): { query: string; keywords
 
 const defaultTopicalQuery = "ニュース OR 話題 OR 速報 OR トレンド";
 
-function fromHint(hint: string): XQueryStrategy | undefined {
+// A free-text operator hint is an instruction, not search material: it does not
+// match any real tweet and can leak instruction text into the query. The hint may
+// classify the observation mode, but it never becomes the literal query string.
+function classifyHintMode(hint: string): Pick<XQueryStrategy, "mode" | "recencyWindow"> | undefined {
   if (/最新|ニュース|いま|今|today|news|current/i.test(hint)) {
-    return { mode: "topical", query: sanitizeQuery(hint), recencyWindow: 24 };
+    return { mode: "topical", recencyWindow: 24 };
   }
   if (/普遍|永遠|evergreen|timeless/i.test(hint)) {
-    return { mode: "evergreen", query: sanitizeQuery(hint) };
+    return { mode: "evergreen" };
   }
   return undefined;
+}
+
+// Guard the AI-provider path: never let a model echo an instruction-like hint back
+// as the query. Instruction markers or over-long strings fall back to the default.
+const instructionMarkerPattern = /新曲|canon|してください|ください|レンズ|感情モード|作って|作曲|signature/i;
+function looksLikeInstruction(text: string): boolean {
+  return text.length > 40 || instructionMarkerPattern.test(text);
 }
 
 function parseResponse(raw: string, fallbackQuery: string): XQueryStrategy {
@@ -62,11 +72,18 @@ export async function planQueryStrategy(input: XQueryStrategyInput = {}): Promis
   const motifs = input.motifs ?? extractPersonaMotifs(input.personaText);
   const motifQuery = motifDrivenQuery(motifs);
   const hint = input.manualSeed?.hint?.trim() ?? "";
-  const hinted = hint ? fromHint(hint) : undefined;
-  if (hinted) {
-    return motifQuery ? { ...hinted, motifKeywords: motifQuery.keywords } : hinted;
+  // The query slot stays broad news terms; persona motifs are exposed as lens
+  // context (motifKeywords) and searched separately via the collector's rotating
+  // lens queries, never injected here as the default search term.
+  const fallbackQuery = defaultTopicalQuery;
+  const classified = hint ? classifyHintMode(hint) : undefined;
+  if (classified) {
+    return {
+      ...classified,
+      query: fallbackQuery,
+      ...(motifQuery ? { motifKeywords: motifQuery.keywords } : {})
+    };
   }
-  const fallbackQuery = sanitizeQuery(hint || defaultTopicalQuery) || defaultTopicalQuery;
   const provider = input.aiReviewProvider ?? "mock";
   if (provider === "mock") {
     return {
@@ -93,5 +110,7 @@ export async function planQueryStrategy(input: XQueryStrategyInput = {}): Promis
     throw new Error("x_query_strategy_response_contains_secret_like_text");
   }
   const parsed = parseResponse(raw, fallbackQuery);
-  return motifQuery ? { ...parsed, motifKeywords: motifQuery.keywords } : parsed;
+  const safeQuery = looksLikeInstruction(parsed.query) ? fallbackQuery : parsed.query;
+  const guarded = { ...parsed, query: safeQuery };
+  return motifQuery ? { ...guarded, motifKeywords: motifQuery.keywords } : guarded;
 }

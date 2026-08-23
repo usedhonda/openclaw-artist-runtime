@@ -12,7 +12,7 @@ vi.mock("node:child_process", async () => {
   const actual = await vi.importActual<typeof import("node:child_process")>("node:child_process");
   return { ...actual, execFile: execFileMock };
 });
-import { collectObservations, readTodayObservations } from "../src/services/xObservationCollector";
+import { collectObservations, decomposeToQueryTokens, readTodayObservations } from "../src/services/xObservationCollector";
 import { writeSongBrief } from "../src/services/artistState";
 import { readXObservationDiagnostics } from "../src/services/xObservationDiagnostics";
 import { isInCooldown, readBirdRateLimitStatus } from "../src/services/birdRateLimiter";
@@ -194,10 +194,17 @@ describe("x observation collector", () => {
     });
 
     const queries = runner.mock.calls.map(([query]) => query);
+    // The news reaction stays first and the attempt budget is unchanged; any
+    // lens query that survives decomposition is appended after it.
     expect(queries[0]).toBe('"news reaction"');
-    expect(queries).toHaveLength(2);
-    expect(queries[1]).toMatch(/炎上の賞味期限|再開発ビルが作るビル風/);
-    expect(queries[1]).not.toContain("整形広告で埋まる駅");
+    expect(queries.length).toBeLessThanOrEqual(3);
+    // The alternate lens is decomposed into AND tokens with lang:ja, never an
+    // exact-phrase (double-quoted) search that matches no tweet.
+    for (const query of queries.filter((entry) => entry.includes("lang:ja"))) {
+      // A lens query is space-joined common-word tokens, never an exact phrase.
+      expect(query).not.toContain('"');
+      expect(query).not.toContain("整形広告で埋まる駅");
+    }
   });
 
   it("persists latest search diagnostics without rejected tweet content", async () => {
@@ -457,5 +464,87 @@ describe("x observation collector", () => {
 
     expect(result.status).toBe("skipped");
     expect(result.reason).toContain("daily bird call limit");
+  });
+
+  // Expected values were measured against the live search API: a coined
+  // compound returns nothing ("原宿 転売列" -> 0 hits) while its common-noun form
+  // does ("原宿 転売" -> 10), so a lyric coinage is reduced to the word a real
+  // person would type, and two tokens are emitted rather than three.
+  it("decomposes a bank noun phrase into quote-free common-word AND tokens", () => {
+    const cases: Array<[string, string[]]> = [
+      ["顔のローン", ["顔", "ローン"]],
+      ["整形広告で埋まる駅", ["整形広告", "駅"]],
+      ["ツアーと客と店、全員渋谷", ["ツアー", "客"]],
+      ["原宿の転売列", ["原宿", "転売"]],
+      ["同じ顔の量産ライン", ["同じ顔", "量産"]],
+      ["推し活の損益", ["推し活", "損益"]],
+      ["炎上の賞味期限", ["炎上", "賞味期限"]],
+      ["十五秒の寿命", ["十五秒", "寿命"]]
+    ];
+    for (const [phrase, expected] of cases) {
+      const tokens = decomposeToQueryTokens(phrase);
+      expect(tokens).toEqual(expected);
+      expect(tokens.length).toBeLessThanOrEqual(3);
+      for (const token of tokens) {
+        expect(token).not.toContain('"');
+        expect(token).not.toMatch(/[のにとがをはもでへ、。]/);
+      }
+    }
+  });
+
+  it("does not wrap any generated lens query in double quotes", async () => {
+    const root = workspace();
+    await writeSongBrief(root, "spawn_recent", "## Direction\n- Lyrics theme: 何か別の話題。\n");
+    // Primary news query returns nothing so the rotating lens queries are tried.
+    const runner = vi.fn(async (query?: string) => ({
+      stdout: query?.includes("lang:ja")
+        ? "@citywatch 街の熱が商品になる https://x.com/citywatch/status/2222222222222222222 2026-04-29T01:30:00.000Z"
+        : ""
+    }));
+
+    await collectObservations(root, {
+      now: new Date("2026-04-29T02:00:00.000Z"),
+      personaText: [
+        "### Consumption & Face Material Bank",
+        "- 顔のローン: 輪郭を分割払い。",
+        "### Net & Generation Material Bank",
+        "- 炎上の賞味期限: 熱が在庫になる。",
+        "### Shibuya Diss Material Bank",
+        "- 免税袋のドンキ巡礼: 街が導線になる。"
+      ].join("\n"),
+      runner
+    });
+
+    const lensQueries = runner.mock.calls
+      .map(([query]) => query)
+      .filter((query): query is string => typeof query === "string" && query.includes("lang:ja"));
+    expect(lensQueries.length).toBeGreaterThan(0);
+    for (const query of lensQueries) {
+      expect(query).not.toContain('"');
+      expect(query.split(" ").filter((token) => token !== "lang:ja").length).toBeLessThanOrEqual(3);
+    }
+  });
+
+  it("never lets a free-text manual-seed instruction become a search query", async () => {
+    const root = workspace();
+    const runner = vi.fn(async () => ({
+      stdout: "@citywatch 街の熱が商品になる https://x.com/citywatch/status/2222222222222222222 2026-04-29T01:30:00.000Z"
+    }));
+
+    await collectObservations(root, {
+      now: new Date("2026-04-29T02:00:00.000Z"),
+      personaText: [
+        "### Consumption & Face Material Bank",
+        "- 顔のローン: 輪郭を分割払い。"
+      ].join("\n"),
+      manualSeed: { hint: "今日のXで話題の出来事を素材に新曲を1曲 canon の回転規則に従う" },
+      runner
+    });
+
+    for (const [query] of runner.mock.calls) {
+      for (const marker of ["新曲", "canon", "素材", "回転規則"]) {
+        expect(String(query ?? "")).not.toContain(marker);
+      }
+    }
   });
 });

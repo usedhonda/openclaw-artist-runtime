@@ -2,11 +2,26 @@ import { describe, expect, it } from "vitest";
 import { planQueryStrategy } from "../src/services/xQueryStrategyPlanner";
 
 describe("x query strategy planner", () => {
-  it("classifies news-like hints as topical", async () => {
+  it("classifies news-like hints as topical without leaking the hint into the query", async () => {
     const strategy = await planQueryStrategy({ manualSeed: { hint: "最新ニュースから曲作って" } });
 
     expect(strategy).toMatchObject({ mode: "topical", recencyWindow: 24 });
-    expect(strategy.query).toContain("最新ニュース");
+    // The free-text hint steers mode only; it never becomes the search query.
+    expect(strategy.query).toBe("ニュース OR 話題 OR 速報 OR トレンド");
+    expect(strategy.query).not.toContain("曲作って");
+  });
+
+  it("never turns an instruction-like manual seed into the search query", async () => {
+    const strategy = await planQueryStrategy({
+      manualSeed: {
+        hint: "今日のXで話題になっている出来事を素材に新曲を1曲 主レンズと感情モードは canon の回転規則に従い Signature を一つ残す"
+      }
+    });
+
+    expect(strategy.query).toBe("ニュース OR 話題 OR 速報 OR トレンド");
+    for (const marker of ["新曲", "canon", "レンズ", "感情モード", "Signature"]) {
+      expect(strategy.query).not.toContain(marker);
+    }
   });
 
   it("classifies evergreen hints as evergreen", async () => {

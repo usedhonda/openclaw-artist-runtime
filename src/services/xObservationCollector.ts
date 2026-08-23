@@ -503,8 +503,77 @@ async function latestSpawnBrief(root: string): Promise<{ songId: string; text: s
   return { songId: recent.songId, text: await readFile(path, "utf8").catch(() => "") };
 }
 
+// Split a persona bank noun phrase on the nine common Japanese particles and
+// punctuation so it becomes 2-3 AND-searchable tokens instead of an exact phrase.
+// An exact-phrase search (double-quoted) matches no real tweet; space-joined tokens
+// are AND semantics and do return posts. Fragments are not split on internal
+// hiragana (that shreds real words like 推し活 / 埋まる駅), so a fragment stays whole.
+const queryTokenSplitPattern = /[のにとがをはもでへ、。，．,.・「」『』【】（）()\s]+/;
+const queryTokenKanjiPattern = /[一-龠]/;
+const pureHiraganaPattern = /^[ぁ-ん]+$/;
+
+// Persona bank phrases are lyric coinages: 転売列, 埋まる駅, 量産ライン, 向かう巡礼団.
+// Searching those verbatim returns nothing because nobody writes them. Measured
+// against the live API: "原宿 転売列" -> 0 hits, "原宿 転売" -> 10; "炎上 賞味期限"
+// -> 0, "炎上 切り抜き" -> 10. So reduce a coined compound to the common noun a
+// real person would type: drop a leading verb/adjective clause, then strip a
+// decorative suffix.
+const coinedSuffixPattern = /(?:列|団|群|ライン|バンク|ゾーン|タイム)$/;
+// Only strip a leading verb clause when it is long enough to be a clause rather
+// than part of a compound word: 埋まる駅 / 向かう巡礼団 lose their verb, but a short
+// kanji+kana word such as 推し活 (one kanji + one kana) stays whole.
+const leadingClausePattern = /^[一-龠]{1,2}[ぁ-ん]{2,}(?=[一-龠])/;
+
+function toCommonToken(token: string): string | undefined {
+  let value = token;
+  // 埋まる駅 -> 駅, 向かう巡礼団 -> 巡礼団, 同じ顔 -> 顔
+  const withoutClause = value.replace(leadingClausePattern, "");
+  if (withoutClause.length >= 1) value = withoutClause;
+  // 転売列 -> 転売, 巡礼団 -> 巡礼, 量産ライン -> 量産
+  const withoutSuffix = value.replace(coinedSuffixPattern, "");
+  if (withoutSuffix.length >= 2) value = withoutSuffix;
+  // A long kanji run with no common boundary is still a coinage; drop it and let
+  // the caller fall back to a geo/theme keyword.
+  if (value.length > 4) return undefined;
+  return value.length >= 1 ? value : undefined;
+}
+
+export function decomposeToQueryTokens(phrase: string): string[] {
+  const cleaned = phrase.replace(/["\r\n]+/g, " ");
+  const seen = new Set<string>();
+  const tokens: string[] = [];
+  for (const piece of cleaned.split(queryTokenSplitPattern)) {
+    const token = piece.trim();
+    if (!token) continue;
+    // Keep a token when it is 2-8 chars, or a single kanji (a lone kanji such as
+    // 顔 or 客 is a valid search term). Drop pure-hiragana fragments (particles /
+    // stray okurigana) and single kana/latin characters.
+    const usable = (token.length >= 2 && token.length <= 8)
+      || (token.length === 1 && queryTokenKanjiPattern.test(token));
+    if (!usable || pureHiraganaPattern.test(token)) continue;
+    const common = toCommonToken(token);
+    if (!common || pureHiraganaPattern.test(common)) continue;
+    const key = common.toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    tokens.push(common);
+    // Two tokens AND together loosely enough to still match real posts; a third
+    // narrows the search until it returns nothing.
+    if (tokens.length >= 2) break;
+  }
+  return tokens;
+}
+
 function lensQueries(keywords: string[]): string[] {
-  return keywords.map((keyword) => `"${keyword.replace(/["\r\n]+/g, " ").trim()}" lang:ja`);
+  const queries: string[] = [];
+  for (const keyword of keywords) {
+    const tokens = decomposeToQueryTokens(keyword);
+    // Fewer than two usable tokens cannot form a meaningful lens search; skip it
+    // rather than emit an unmatchable query.
+    if (tokens.length < 2) continue;
+    queries.push(`${tokens.join(" ")} lang:ja`);
+  }
+  return queries;
 }
 
 export async function readObservationsReport(root: string, dateOrNow: string | Date = new Date()): Promise<ObservationReport> {
