@@ -303,12 +303,74 @@ export interface DurationPlanIntroOverride {
   lyricInstruction: string;
 }
 
+// Section-order variant, decided once per song by the creative director so that
+// consecutive songs do not all follow the identical arc. "standard" is exactly
+// today's 10-section order (byte-identical, the default); the two variants reorder
+// / drop / add sections while keeping the band's tempo and duration window.
+export type StructureVariant = "standard" | "hook_first" | "no_bridge_double_verse";
+
+// Form-string SoT per variant. The section list and this label must agree, or the
+// drafting model sees a section plan that contradicts the "Form SoT" line and
+// reverts to the familiar shape. Standard keeps the exact SHARED_FORM constant.
+const STRUCTURE_FORM: Record<StructureVariant, string> = {
+  standard: SHARED_FORM,
+  hook_first: "intro-hook-v1-prehook-hook-v2-bridge-finalhook-outro",
+  no_bridge_double_verse: "intro-v1-prehook-hook-v2-v3-hook-finalhook-outro"
+};
+
 export interface GetDurationPlanOptions {
   // When provided, replaces ONLY the intro section's variable fields
   // (bars / lineFloor / lineTarget / modifier / lyricInstruction). The section
   // key ("intro") and label ("Intro") are preserved so the lyrics-box
   // [Intro - <modifier>] tag contract and findDurationPlanSection stay intact.
   intro?: DurationPlanIntroOverride;
+  // When set to a non-"standard" variant, reorders the section plan (and derives a
+  // matching `form` string). "standard"/undefined leaves the arc untouched.
+  structure?: StructureVariant;
+}
+
+function requireSection(sections: DurationPlanSection[], key: string): DurationPlanSection {
+  const section = sections.find((candidate) => candidate.key === key);
+  if (!section) {
+    throw new Error(`durationPlan: missing section "${key}" while building a structure variant`);
+  }
+  return section;
+}
+
+// Reorders a band's sections into the requested variant. Reused sections are carried
+// verbatim (same bars / floors / instructions), so per-band tempo and density stay
+// consistent; only "verse3" is newly derived from verse1 as a shorter breather verse.
+function buildStructureVariant(structure: StructureVariant, sections: DurationPlanSection[]): DurationPlanSection[] {
+  if (structure === "hook_first") {
+    // Open on the hook, then build the verses around it; prehook2 is dropped.
+    return ["intro", "hook1", "verse1", "prehook1", "hook2", "verse2", "bridge", "finalhook", "outro"].map((key) =>
+      requireSection(sections, key)
+    );
+  }
+  // no_bridge_double_verse: drop prehook2 and the bridge, add a shorter Verse 3.
+  const verse1 = requireSection(sections, "verse1");
+  const bars = Math.max(2, Math.round(verse1.bars / 2));
+  const lineFloor = Math.min(Math.max(4, Math.round(verse1.lineFloor / 2)), 8);
+  const verse3 = mk(
+    "verse3",
+    "Verse 3",
+    bars,
+    lineFloor,
+    `${lineFloor}-${lineFloor + 1} lines`,
+    `${bars} bars, consequence turn, breather density`,
+    "Land the consequence of Verses 1-2 in a shorter, lower-density breather verse before the final hook."
+  );
+  return [
+    requireSection(sections, "intro"),
+    requireSection(sections, "verse1"),
+    requireSection(sections, "prehook1"),
+    requireSection(sections, "hook1"),
+    requireSection(sections, "verse2"),
+    verse3,
+    requireSection(sections, "hook2"),
+    requireSection(sections, "finalhook"),
+    requireSection(sections, "outro")
+  ];
 }
 
 // No opts -> returns the shared band constant by reference (callers and tests
@@ -318,13 +380,18 @@ export interface GetDurationPlanOptions {
 // (the bar-sum invariant is only asserted on the no-opts default plans).
 export function getDurationPlan(band: TempoBand = "mid", opts?: GetDurationPlanOptions): DurationPlan {
   const base = PLANS_BY_BAND[band] ?? MID_PLAN;
-  if (!opts?.intro) return base;
-  const intro = opts.intro;
+  const structure = opts?.structure ?? "standard";
+  // Fast path: no intro override and the default structure return the shared band
+  // constant by reference (callers and tests rely on reference identity).
+  if (!opts?.intro && structure === "standard") return base;
+  const withIntro = opts?.intro
+    ? base.sectionPlan.map((section) => (section.key === "intro" ? { ...section, ...opts.intro } : section))
+    : base.sectionPlan.slice();
+  const sectionPlan = structure === "standard" ? withIntro : buildStructureVariant(structure, withIntro);
   return {
     ...base,
-    sectionPlan: base.sectionPlan.map((section) =>
-      section.key === "intro" ? { ...section, ...intro } : section
-    )
+    form: STRUCTURE_FORM[structure],
+    sectionPlan
   };
 }
 

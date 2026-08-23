@@ -1,4 +1,4 @@
-import type { TempoBand } from "./suno-production/durationPlan.js";
+import type { StructureVariant, TempoBand } from "./suno-production/durationPlan.js";
 
 export const producerDigestModes = ["off", "daily", "important_events", "high_touch"] as const;
 export const sunoConnectionModes = ["manual_copy", "background_browser_worker", "api_provider"] as const;
@@ -398,12 +398,21 @@ export interface CreativeDecision {
   seed: string; // songId + JST date + observation URL
   lens: "consumption_face" | "net_generation" | "shibuya_city";
   lensMaterial: string[]; // noun phrases from the chosen lens's material bank only
+  // Phrases from this song's lensMaterial that actually landed in the final
+  // lyrics. Annotated at ledger-read time (readRecentCreativeDecisions) for the
+  // director's material anti-repeat; never set by decideCreative and never
+  // persisted in song-plan.json.
+  usedMaterial?: string[];
   attackStance: string;
   emotionalMode: { label: string; spec: string };
   aggression: "dis" | "changeup";
   tempo: { band: TempoBand; bpm: number };
   dopagaki: { active: boolean; threshold: number; variationSeed: string };
   intro: { archetype: string; modifier: string; lyricInstruction: string; styleMove: string };
+  // Section-order variant for this song. Optional so legacy persisted plans (written
+  // before this field shipped) decode as undefined; every consumer reads it as
+  // `?? "standard"`.
+  structure?: StructureVariant;
   hookShape: "question" | "number" | "list" | "call_response" | "reversal" | "one_line";
   shibuyaTag: string;
   signature: string[];

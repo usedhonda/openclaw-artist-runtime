@@ -23,6 +23,11 @@ export interface CreativeQualityEntry {
   // the director's per-axis history (lens, stance, hook, tag, aggression) can be
   // read back for cross-axis anti-repeat and status distributions.
   decision?: CreativeDecision;
+  // Phrases from this song's decision.lensMaterial that appeared in the final
+  // lyrics. Added after the ledger first shipped; older entries lack it. Read
+  // back by the director to keep the next same-lens song off recently-used
+  // material.
+  usedMaterial?: string[];
   dissBankHits: string[];
   dissBankHitCount: number;
   degraded: boolean;
@@ -342,7 +347,14 @@ export async function readRecentCreativeDecisions(root: string, limit = 6): Prom
   const decisions: CreativeDecision[] = [];
   for (const entry of entries) {
     // entries are newest-first; collect newest `limit` then reverse
-    if (entry.decision) decisions.push(entry.decision);
+    if (entry.decision) {
+      // Annotate the decision with the material that actually landed in this
+      // song's lyrics so the director can keep the next same-lens song off it.
+      // Conditional spread avoids creating an own `usedMaterial: undefined`.
+      decisions.push(
+        entry.usedMaterial ? { ...entry.decision, usedMaterial: entry.usedMaterial } : entry.decision
+      );
+    }
     if (decisions.length >= limit) break;
   }
   return decisions.reverse();
@@ -377,6 +389,28 @@ export function extractDissBankItems(artistMd: string): string[] {
 
 function keyTermsForItem(nounPhrase: string): string[] {
   return nounPhrase.match(KEY_TERM_PATTERN) ?? [];
+}
+
+// Which of `phrases` actually landed in `lyrics`. Uses the same AI-free
+// inclusion approximation as computeDissBankHits: a phrase counts as used when
+// the whole phrase appears verbatim OR any of its 2+-char key terms
+// (kanji/katakana runs) appears — the AI is told to weave the noun phrases in,
+// not transcribe them, so a term-level match avoids silently recording nothing.
+// Deterministic; input order preserved.
+export function materialPhrasesUsed(phrases: readonly string[], lyrics: string): string[] {
+  const used: string[] = [];
+  for (const phrase of phrases) {
+    if (!phrase) continue;
+    if (lyrics.includes(phrase)) {
+      used.push(phrase);
+      continue;
+    }
+    const terms = keyTermsForItem(phrase);
+    if (terms.length > 0 && terms.some((term) => lyrics.includes(term))) {
+      used.push(phrase);
+    }
+  }
+  return used;
 }
 
 // Deterministic, AI-free inclusion approximation: a bank item counts as a hit

@@ -132,7 +132,7 @@ describe("creativeDirector.decideCreative", () => {
   it("only uses material from the chosen lens's bank", () => {
     const decision = decideCreative(baseInput());
     expect(decision.lensMaterial.length).toBeGreaterThan(0);
-    expect(decision.lensMaterial.length).toBeLessThanOrEqual(12);
+    expect(decision.lensMaterial.length).toBeLessThanOrEqual(6);
     // preface bullets (素材の扱い) are never treated as material
     expect(decision.lensMaterial.some((noun) => noun.startsWith("素材の扱い"))).toBe(false);
   });
@@ -156,6 +156,89 @@ describe("creativeDirector.decideCreative", () => {
 
   it("reads vocalGender from the persona", () => {
     expect(decideCreative(baseInput()).vocalGender).toBe("male");
+  });
+});
+
+// A persona with ONLY the Consumption & Face bank populated (12 items), so the
+// director always resolves to consumption_face and a same-lens consecutive pair
+// is reachable (rotatePick falls back to the full pool when the only lens is
+// excluded). Lets the material-sampling anti-repeat be exercised in isolation.
+const FACE_PHRASES = Array.from({ length: 12 }, (_, index) => `顔素材${String(index).padStart(2, "0")}の駅`);
+function personaOneBank(phrases: readonly string[]): string {
+  const bullets = phrases.map((phrase) => `- ${phrase}: 顔のカタログ。`).join("\n");
+  return `# Artist
+
+### Emotional Modes
+
+- 本気 Dis: confrontational rap diss, head-on, sharp, dry menace
+- 郷愁: nostalgic, warm-cold, late-night recall
+
+### Shibuya Tag Techniques
+
+- 一言タグ: どこか一行だけ渋谷を貼る。
+- 産地表示: 製造元、渋谷。
+
+### Consumption & Face Material Bank
+
+- 素材の扱い(前書き): 撃つのは仕組み。
+${bullets}
+`;
+}
+
+function decideFace(songId: string, recentDecisions: readonly CreativeDecision[], phrases = FACE_PHRASES): CreativeDecision {
+  return decideCreative({
+    songId,
+    jstDate: "2026-08-23",
+    personaText: personaOneBank(phrases),
+    observation: null,
+    recentDecisions
+  });
+}
+
+describe("creativeDirector material sampling", () => {
+  it("samples 6 material phrases from the bank", () => {
+    const decision = decideFace("song-m0", []);
+    expect(decision.lens).toBe("consumption_face");
+    expect(decision.lensMaterial).toHaveLength(6);
+    expect(decision.lensMaterial.every((phrase) => FACE_PHRASES.includes(phrase))).toBe(true);
+  });
+
+  it("a same-lens follow-up drops phrases the previous song used and overlaps at most 2", () => {
+    const first = decideFace("song-m1", []);
+    // Simulate 4 of the first song's 6 material phrases landing in its lyrics.
+    const usedMaterial = first.lensMaterial.slice(0, 4);
+    const second = decideFace("song-m2", [{ ...first, usedMaterial }]);
+    expect(second.lens).toBe(first.lens); // same lens, so exclusion is the only differentiator
+    // None of the 4 used phrases reappear (8 non-excluded remain, >= 6 needed).
+    for (const phrase of usedMaterial) expect(second.lensMaterial).not.toContain(phrase);
+    // Overlap with the first song's full list is bounded by its 2 unused phrases.
+    const overlap = second.lensMaterial.filter((phrase) => first.lensMaterial.includes(phrase));
+    expect(overlap.length).toBeLessThanOrEqual(2);
+  });
+
+  it("backfills least-recently-used first when exclusion leaves fewer than 6", () => {
+    // Exclude 9 of 12: 2 from two songs ago (recency 1), 7 from the previous song
+    // (recency 2). Only 3 non-excluded remain, so 3 backfill slots must fill with
+    // the recency-1 pair first, then a single recency-2 phrase.
+    const recency1 = FACE_PHRASES.slice(0, 2); // used two songs ago (least recent)
+    const recency2 = FACE_PHRASES.slice(2, 9); // used in the immediately previous song
+    const nonExcluded = FACE_PHRASES.slice(9); // 3 items
+    const prev2 = { ...decideFace("song-p0", []), usedMaterial: recency1 };
+    const prev = { ...decideFace("song-p1", []), usedMaterial: recency2 };
+    const target = decideFace("song-p2", [prev2, prev]);
+    // The 3 never-recently-used phrases are always in.
+    for (const phrase of nonExcluded) expect(target.lensMaterial).toContain(phrase);
+    // LRU-first: both recency-1 phrases backfill before any recency-2 phrase.
+    for (const phrase of recency1) expect(target.lensMaterial).toContain(phrase);
+    const recency2Present = target.lensMaterial.filter((phrase) => recency2.includes(phrase));
+    expect(recency2Present).toHaveLength(1);
+  });
+
+  it("is deterministic across the exclusion path: same input yields the same material", () => {
+    const previous = [{ ...decideFace("song-d0", []), usedMaterial: FACE_PHRASES.slice(0, 3) }];
+    const a = decideFace("song-d1", previous);
+    const b = decideFace("song-d1", previous);
+    expect(a.lensMaterial).toEqual(b.lensMaterial);
   });
 });
 
@@ -220,3 +303,44 @@ async function appendEntry(root: string, songId: string, decision: CreativeDecis
   };
   await appendCreativeQualityEntry(root, entry);
 }
+
+describe("creativeDirector.decideCreative structure axis", () => {
+  it("always assigns a defined structure variant", () => {
+    const decision = decideCreative(baseInput());
+    expect(["standard", "hook_first", "no_bridge_double_verse"]).toContain(decision.structure);
+  });
+
+  it("never repeats the previous song's structure", () => {
+    const history = simulate(200);
+    for (let index = 1; index < history.length; index += 1) {
+      expect(history[index].structure).not.toBe(history[index - 1].structure);
+    }
+  });
+
+  it("weights standard ~1/2 when there is no previous song", () => {
+    let standard = 0;
+    const total = 600;
+    for (let index = 0; index < total; index += 1) {
+      const decision = decideCreative(
+        baseInput({ songId: `struct-${index}`, recentDecisions: [] })
+      );
+      if (decision.structure === "standard") standard += 1;
+    }
+    const ratio = standard / total;
+    expect(ratio).toBeGreaterThan(0.4);
+    expect(ratio).toBeLessThan(0.6);
+  });
+
+  it("decodes a legacy previous song (missing structure) as standard and never repeats it", () => {
+    const legacy = { ...decideCreative(baseInput()) } as CreativeDecision;
+    delete (legacy as { structure?: unknown }).structure;
+    for (let index = 0; index < 200; index += 1) {
+      const decision = decideCreative(
+        baseInput({ songId: `legacy-${index}`, recentDecisions: [legacy] })
+      );
+      // undefined previous decodes to "standard" and is excluded -> must be a variant.
+      expect(decision.structure).not.toBe("standard");
+      expect(["hook_first", "no_bridge_double_verse"]).toContain(decision.structure);
+    }
+  });
+});

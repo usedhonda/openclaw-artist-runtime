@@ -8,7 +8,7 @@
 // Pure: no I/O, no Date.now(), no Math.random. Same input -> same decision.
 
 import type { CreativeDecision } from "../types.js";
-import type { TempoBand } from "../suno-production/durationPlan.js";
+import type { StructureVariant, TempoBand } from "../suno-production/durationPlan.js";
 import {
   bulletSection,
   decideDopagakiVariation,
@@ -133,6 +133,26 @@ function rotatePick<T>(pool: readonly T[], subSeed: string, excluded: ReadonlySe
   return source[index];
 }
 
+// Weighted section-order pick: standard 1/2, each variant 1/4, never repeating the
+// previous song's structure. Deterministic (hashRatio, no Math.random). A legacy
+// previous song (structure undefined) is decoded as "standard" by the caller, so it
+// is excluded here and can never repeat as standard-in-a-row.
+const STRUCTURE_WEIGHTED_POOL: readonly StructureVariant[] = [
+  "standard",
+  "standard",
+  "hook_first",
+  "no_bridge_double_verse"
+];
+
+function pickStructure(subSeed: string, previous: StructureVariant | undefined): StructureVariant {
+  const pool = previous
+    ? STRUCTURE_WEIGHTED_POOL.filter((value) => value !== previous)
+    : STRUCTURE_WEIGHTED_POOL;
+  const source = pool.length > 0 ? pool : STRUCTURE_WEIGHTED_POOL;
+  const index = Math.floor(hashRatio(subSeed) * source.length) % source.length;
+  return source[index];
+}
+
 function bankForLens(
   banks: { consumptionFace: string[]; netGeneration: string[]; shibuyaDiss: string[] } | undefined,
   lens: LensId
@@ -214,7 +234,25 @@ export function decideCreative(input: CreativeDirectorInput): CreativeDecision {
     }
     lens = rotatePick(nonEmptyLenses, `lens:${seed}`, lensExcluded);
   }
-  const lensMaterial = bankForLens(banks, lens).slice(0, 12);
+  // Deterministic per-song sample of 6 phrases from the whole lens bank, sub-seed
+  // `material:${seed}`. Phrases used by the previous 2 songs (any lens) are pushed
+  // to the back so a same-lens follow-up stops receiving the identical list; when
+  // fewer than 6 non-excluded remain, the excluded ones backfill least-recently-used
+  // first. `recency` 2 = used by the immediately previous song, 1 = two songs ago,
+  // 0 = not recently used. hashRatio only — no Math.random.
+  const prevUsed = previous?.usedMaterial ?? [];
+  const prev2Used = beforePrevious?.usedMaterial ?? [];
+  const recencyOf = (phrase: string): number =>
+    prevUsed.includes(phrase) ? 2 : prev2Used.includes(phrase) ? 1 : 0;
+  const lensMaterial = bankForLens(banks, lens)
+    .map((phrase, index) => ({
+      phrase,
+      recency: recencyOf(phrase),
+      rank: hashRatio(`material:${seed}:${index}`)
+    }))
+    .sort((a, b) => a.recency - b.recency || a.rank - b.rank)
+    .slice(0, 6)
+    .map((entry) => entry.phrase);
 
   // --- Emotional mode + aggression (near-every-song Dis) ---
   const modes: EmotionalMode[] = emotionalModesFromArtist(personaText);
@@ -273,6 +311,12 @@ export function decideCreative(input: CreativeDirectorInput): CreativeDecision {
   if (previous) hookExcluded.add(previous.hookShape);
   const hookShape = rotatePick(HOOK_SHAPES, `hook:${seed}`, hookExcluded);
 
+  // --- Structure (section-order variant; never repeats the previous song) ---
+  const structure = pickStructure(
+    `structure:${seed}`,
+    previous ? (previous.structure ?? "standard") : undefined
+  );
+
   // --- Shibuya tag technique ---
   let tagPool = parseTagTechniques(personaText);
   if (tagPool.length === 0) {
@@ -321,6 +365,7 @@ export function decideCreative(input: CreativeDirectorInput): CreativeDecision {
       lyricInstruction: introVariant.lyricInstruction,
       styleMove
     },
+    structure,
     hookShape,
     shibuyaTag,
     signature,

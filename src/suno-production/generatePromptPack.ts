@@ -121,7 +121,9 @@ export function createSunoPromptPack(input: CreateSunoPromptPackInput): SunoProm
   const lyricsText = normalizeSunoRegistrationJapanese(originalLyricsText);
   const genre = `${input.artistReason} ${input.moodHint ?? ""}`;
   const acousticBassAvoidance = acousticBassAvoidanceTerms(genre);
-  const durationPlan = getDurationPlan(input.tempoBand);
+  const durationPlan = getDurationPlan(input.tempoBand, {
+    structure: input.creativeDecision?.structure ?? "standard"
+  });
   const bpm = input.bpm ?? durationPlan.bpm.target;
   const vocalGender = input.vocalGender ?? input.creativeDecision?.vocalGender ?? artistDefaultVocalGender(input.artistSnapshot);
   const languagePolicy = parseLyricsLanguagePolicy(input.artistSnapshot);
@@ -227,7 +229,9 @@ export async function createSunoPromptPackWithAi(
   const lyricsText = normalizeSunoRegistrationJapanese(originalLyricsText);
   const genre = `${input.artistReason} ${input.moodHint ?? ""}`;
   const acousticBassAvoidance = acousticBassAvoidanceTerms(genre);
-  const durationPlan = getDurationPlan(input.tempoBand);
+  const durationPlan = getDurationPlan(input.tempoBand, {
+    structure: input.creativeDecision?.structure ?? "standard"
+  });
   const bpm = input.bpm ?? durationPlan.bpm.target;
   const vocalGender = input.vocalGender ?? input.creativeDecision?.vocalGender ?? artistDefaultVocalGender(input.artistSnapshot);
   const languagePolicy = parseLyricsLanguagePolicy(input.artistSnapshot);

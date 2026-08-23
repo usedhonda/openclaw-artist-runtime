@@ -115,7 +115,7 @@ function selectiveDirectiveLines(decision: CreativeDecision, artistMd: string): 
   const lines: string[] = [SELECTIVE_BLOCK_START];
   lines.push(`主レンズ: ${LENS_LABELS[decision.lens]} — このレンズの素材だけを主軸にする（他バンクの名詞は持ち込まない）。`);
   if (decision.lensMaterial.length > 0) {
-    lines.push(`主レンズの素材（この名詞句だけを軸に据える）: ${decision.lensMaterial.join(" / ")}`);
+    lines.push(`主レンズの素材（この中から 2〜3 句だけ選んで使う。全部は使わない）: ${decision.lensMaterial.join(" / ")}`);
     // The observation does not need to fit the lens. The forced fold-back is the
     // artist's signature move: the further the news is from the lens, the better
     // the leap lands. Never wait for perfectly on-theme material.

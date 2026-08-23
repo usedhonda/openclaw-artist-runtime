@@ -14,7 +14,7 @@ import { getArtistIdentity, getSunoLyricsLimit } from "./runtimeConfig.js";
 import { buildIntroVariantById, decideDopagakiVariation, resolveIntroVariant, type IntroVariant } from "./creativeVariationPolicy.js";
 import { readSongPlan } from "./songPlan.js";
 import { getDurationPlan, minimumBareLyricsChars, minimumBareLyricsLines, resolveTempoBandFromBrief } from "../suno-production/durationPlan.js";
-import { appendCreativeQualityEntry, computeDissBankHits, evaluateCreativeMonotony, readCreativeQualityLedger } from "./creativeQualityLedger.js";
+import { appendCreativeQualityEntry, computeDissBankHits, evaluateCreativeMonotony, materialPhrasesUsed, readCreativeQualityLedger } from "./creativeQualityLedger.js";
 
 export interface DraftLyricsInput {
   workspaceRoot: string;
@@ -306,7 +306,9 @@ async function composeLyricsDraft(input: DraftLyricsInput, title: string, briefT
       lineTarget: introVariant.lineTarget,
       modifier: introVariant.modifier,
       lyricInstruction: introVariant.lyricInstruction
-    }
+    },
+    // Section-order variant from the persisted plan; legacy songs decode as standard.
+    structure: plan?.structure ?? "standard"
   });
   const emotionalMode = plan ? plan.emotionalMode.label : emotionalModeFromBrief(briefText);
   const minimumBareChars = minimumBareLyricsChars(durationPlan);
@@ -331,6 +333,13 @@ async function composeLyricsDraft(input: DraftLyricsInput, title: string, briefT
   // own body, not a later attempt's.
   const recordCreativeQuality = async (draft: LyricsDraft, repairedLyrics: string, softened: boolean): Promise<void> => {
     const dissBankHits = computeDissBankHits(mind.artist, repairedLyrics);
+    // Which of the plan's lens material actually landed in the lyrics, so the
+    // director can steer the next same-lens song off it. Note: `repairedLyrics`
+    // here is repairLyricsV55 output — kanji is still intact (the hiragana
+    // conversion happens later in generatePromptPack), so match the kanji form
+    // directly. Recorded whenever a plan exists, including `[]` (real telemetry
+    // that the AI ignored the material).
+    const usedMaterial = plan ? materialPhrasesUsed(plan.lensMaterial, repairedLyrics) : undefined;
     await appendCreativeQualityEntry(input.workspaceRoot, {
       songId: input.songId,
       title: draft.title,
@@ -345,6 +354,7 @@ async function composeLyricsDraft(input: DraftLyricsInput, title: string, briefT
       emotionalMode,
       introArchetype: introVariant.id,
       decision: plan ?? undefined,
+      ...(usedMaterial ? { usedMaterial } : {}),
       dissBankHits,
       dissBankHitCount: dissBankHits.length,
       degraded: false,

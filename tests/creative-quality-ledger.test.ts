@@ -9,8 +9,10 @@ import {
   computeDissBankHits,
   creativeQualityLedgerPath,
   extractDissBankItems,
+  materialPhrasesUsed,
   readCreativeQualityLedger,
   readLatestCreativeQualityEntry,
+  readRecentCreativeDecisions,
   type CreativeQualityEntry
 } from "../src/services/creativeQualityLedger";
 import { INTRO_ARCHETYPE_IDS, resolveIntroVariant } from "../src/services/creativeVariationPolicy";
@@ -270,5 +272,64 @@ describe("creative quality ledger", () => {
     expect(INTRO_ARCHETYPE_IDS).toContain(chosen);
     // ... and that the recent-history exclusion is fed back in (anti-repeat).
     expect(chosen).not.toBe(barePick);
+  });
+});
+
+function decisionFixture(overrides: Partial<CreativeDecision> = {}): CreativeDecision {
+  return {
+    version: 1,
+    songId: "song-001",
+    decidedAt: "2026-08-23T00:00:00.000Z",
+    seed: "song-001\n2026-08-23\n",
+    lens: "consumption_face",
+    lensMaterial: ["整形広告で埋まる駅", "同じ顔の量産ライン"],
+    attackStance: "伝票の暴露（原価と単価の差を読み上げる）",
+    emotionalMode: { label: "本気 Dis", spec: "confrontational rap diss" },
+    aggression: "dis",
+    tempo: { band: "up", bpm: 122 },
+    dopagaki: { active: false, threshold: 0.4, variationSeed: "spacious:song-001:0.5" },
+    intro: { archetype: "scene_set", modifier: "sparse", lyricInstruction: "0-1 line", styleMove: "sparse scene intro" },
+    hookShape: "number",
+    shibuyaTag: "産地表示",
+    signature: ["値段の裏側"],
+    observation: null,
+    degradedInputs: [],
+    vocalGender: "male",
+    ...overrides
+  };
+}
+
+describe("materialPhrasesUsed", () => {
+  it("returns phrases that appear verbatim in the lyrics", () => {
+    const lyrics = "整形広告で埋まる駅を抜けて\nまだ夜は終わらない";
+    expect(materialPhrasesUsed(["整形広告で埋まる駅", "顔のローン"], lyrics)).toEqual(["整形広告で埋まる駅"]);
+  });
+
+  it("counts a phrase used when the AI weaves in a key term rather than the whole phrase", () => {
+    // "整形広告" is a 2+-char kanji key term (maximal run) of "整形広告で埋まる駅";
+    // a term-level hit still counts so usedMaterial is not silently empty when the
+    // AI paraphrases instead of quoting the whole noun phrase.
+    const lyrics = "整形広告の列に並んで\n数字だけが残る";
+    expect(materialPhrasesUsed(["整形広告で埋まる駅"], lyrics)).toEqual(["整形広告で埋まる駅"]);
+  });
+
+  it("excludes phrases with no verbatim or key-term match", () => {
+    expect(materialPhrasesUsed(["顔のローン"], "まちのノイズがまだきえない")).toEqual([]);
+  });
+});
+
+describe("readRecentCreativeDecisions material annotation", () => {
+  it("annotates decisions with the entry's usedMaterial and leaves older entries unchanged", async () => {
+    const root = mkdtempSync(join(tmpdir(), "artist-runtime-recent-used-"));
+    await appendCreativeQualityEntry(root, entry({ songId: "old", decision: decisionFixture({ songId: "old" }) }));
+    await appendCreativeQualityEntry(
+      root,
+      entry({ songId: "new", decision: decisionFixture({ songId: "new" }), usedMaterial: ["整形広告で埋まる駅"] })
+    );
+    const recent = await readRecentCreativeDecisions(root, 6);
+    const byId = Object.fromEntries(recent.map((decision) => [decision.songId, decision]));
+    expect(byId.new.usedMaterial).toEqual(["整形広告で埋まる駅"]);
+    // Older entry lacked usedMaterial; the reader must not fabricate the field.
+    expect("usedMaterial" in byId.old).toBe(false);
   });
 });
