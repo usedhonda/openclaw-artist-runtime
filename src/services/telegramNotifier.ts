@@ -1691,11 +1691,15 @@ async function formatRuntimeEventRaw(
         event.songId ? `song: ${event.songId}` : undefined,
         `reason: ${event.reason}`
       ].filter(Boolean).join("\n");
-    case "suno_human_assist_requested":
+    case "suno_human_assist_requested": {
+      // 0 (or a non-finite value) is the "no time limit" sentinel: wait indefinitely.
+      const noTimeLimit = !event.timeoutMinutes || !Number.isFinite(event.timeoutMinutes);
       if (event.mode === "manual_submit") {
         return [
           `「${event.title}」の入力は済ませた。残りを調整して「Create」を押して。`,
-          `最大 ${event.timeoutMinutes} 分待つ。押した後は取込と選曲まで自動で続ける。`,
+          noTimeLimit
+            ? "時間制限なし、押されるまで待つ。押した後は取込と選曲まで自動で続ける。"
+            : `最大 ${event.timeoutMinutes} 分待つ。押した後は取込と選曲まで自動で続ける。`,
           "このモードでは、こちらから Create は押さない。"
         ].join("\n");
       }
@@ -1705,9 +1709,12 @@ async function formatRuntimeEventRaw(
         TELEGRAM_SECTION_DIVIDER,
         `song: ${event.songId}`,
         `title: ${event.title}`,
-        `待機: 最大 ${event.timeoutMinutes} 分。押せば自動で続きに進む。`,
+        noTimeLimit
+          ? "待機: 上限なし。押せば自動で続きに進む。"
+          : `待機: 最大 ${event.timeoutMinutes} 分。押せば自動で続きに進む。`,
         "注: captcha は自動で解かない。ブラウザは開いたまま前面に出してある。"
       ].join("\n");
+    }
     case "take_select_pending":
       return hybridEventReport(
         event,

@@ -2,11 +2,30 @@ import { describe, expect, it, vi } from "vitest";
 import {
   HumanAssistSunoConnector,
   createHumanAssistNotifier,
+  createHumanAssistSunoConnector,
   CLI_BLOCKED_CAPTCHA_REASON,
   HUMAN_ASSIST_CREATED_REASON,
   HUMAN_ASSIST_CROSS_SONG_REJECTED_REASON,
   resolveHumanAssistBrowserConfig
 } from "../src/connectors/suno/humanAssistSunoConnector";
+
+// Capture the timeoutMs that createHumanAssistSunoConnector wires into the driver.
+const driverMock = vi.hoisted(() => ({ capturedTimeoutMs: undefined as number | undefined }));
+vi.mock("../src/services/cdpHumanAssistDriver", () => ({
+  CdpHumanAssistDriver: class {
+    async openAndFill(): Promise<void> {}
+    async attemptMachineSubmit(): Promise<{ kind: "captcha_challenge" }> {
+      return { kind: "captcha_challenge" };
+    }
+    async closeChallengeOverlay(): Promise<void> {}
+    async bringToFront(): Promise<void> {}
+    async waitForHumanSubmit(timeoutMs: number): Promise<{ kind: "accepted"; urls: string[] }> {
+      driverMock.capturedTimeoutMs = timeoutMs;
+      return { kind: "accepted", urls: ["https://suno.com/song/eeeeeeeeeeeeeeee"] };
+    }
+    async close(): Promise<void> {}
+  }
+}));
 import { HUMAN_ASSIST_TIMEOUT_REASON, type HumanAssistBrowserDriver } from "../src/services/sunoHumanAssist";
 import { getRuntimeEventBus, type RuntimeEvent } from "../src/services/runtimeEventBus";
 import type { SunoConnector } from "../src/connectors/suno/SunoConnector";
@@ -216,6 +235,32 @@ describe("createHumanAssistNotifier", () => {
       title: "Neon Alley",
       timeoutMinutes: 45
     });
+  });
+});
+
+describe("createHumanAssistSunoConnector timeout mapping", () => {
+  it("maps humanAssistTimeoutMinutes 0 to an unbounded (Infinity) driver wait", async () => {
+    driverMock.capturedTimeoutMs = undefined;
+    const { connector } = innerReturning({ accepted: false, runId: "run-1", reason: CLI_BLOCKED_CAPTCHA_REASON, urls: [] });
+    const decorated = createHumanAssistSunoConnector(connector, {
+      music: { suno: { submitMode: "manual", humanAssistTimeoutMinutes: 0 } }
+    } as never);
+
+    await decorated.create(request);
+
+    expect(driverMock.capturedTimeoutMs).toBe(Infinity);
+  });
+
+  it("maps a finite humanAssistTimeoutMinutes to milliseconds", async () => {
+    driverMock.capturedTimeoutMs = undefined;
+    const { connector } = innerReturning({ accepted: false, runId: "run-1", reason: CLI_BLOCKED_CAPTCHA_REASON, urls: [] });
+    const decorated = createHumanAssistSunoConnector(connector, {
+      music: { suno: { submitMode: "manual", humanAssistTimeoutMinutes: 2 } }
+    } as never);
+
+    await decorated.create(request);
+
+    expect(driverMock.capturedTimeoutMs).toBe(120_000);
   });
 });
 

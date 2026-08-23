@@ -237,10 +237,10 @@
               },
               "humanAssistTimeoutMinutes": {
                 "type": "integer",
-                "minimum": 1,
+                "minimum": 0,
                 "maximum": 240,
-                "default": 60,
-                "description": "Minutes to keep the human-assist browser window open awaiting a manual Create click before giving up and returning the song to the pipeline for a later retry."
+                "default": 0,
+                "description": "Minutes to keep the human-assist browser window open awaiting a manual Create click before giving up and returning the song to the pipeline for a later retry. 0 = no time limit (wait indefinitely for the manual Create click)."
               },
               "authority": {
                 "type": "string",
@@ -777,7 +777,7 @@
     },
     "music.suno.humanAssistTimeoutMinutes": {
       "label": "Human-assist wait (minutes)",
-      "help": "How long the human-assist browser window stays open awaiting your manual Create click before it gives up and retries on a later cycle."
+      "help": "How long the human-assist browser window stays open awaiting your manual Create click before it gives up and retries on a later cycle. 0 = no time limit (wait indefinitely)."
     },
     "music.suno.authority": {
       "label": "Suno authority",

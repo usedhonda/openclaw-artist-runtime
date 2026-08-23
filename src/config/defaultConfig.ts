@@ -28,7 +28,7 @@ export const defaultArtistRuntimeConfig: ArtistRuntimeConfig = {
       driver: "mock",
       submitMode: "skip",
       captchaFallback: "off",
-      humanAssistTimeoutMinutes: 60,
+      humanAssistTimeoutMinutes: 0,
       authority: "auto_create_and_select_take",
       dailyCreditLimit: 60,
       monthlyCreditLimit: 0,

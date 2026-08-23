@@ -105,6 +105,24 @@ describe("config schema", () => {
     expect(result.errors).toContain("config.distribution.platforms.instagram.liveGoArmed must be a boolean");
   });
 
+  it("accepts humanAssistTimeoutMinutes 0 as the no-time-limit sentinel", () => {
+    const result = validateConfig({
+      music: { suno: { humanAssistTimeoutMinutes: 0 } }
+    });
+    expect(result.ok).toBe(true);
+    expect(result.value.music.suno.humanAssistTimeoutMinutes).toBe(0);
+  });
+
+  it("rejects humanAssistTimeoutMinutes above the supported range", () => {
+    const result = validateConfig({
+      music: { suno: { humanAssistTimeoutMinutes: 241 } }
+    });
+    expect(result.ok).toBe(false);
+    expect(result.errors).toContain(
+      "config.music.suno.humanAssistTimeoutMinutes must be an integer between 0 and 240"
+    );
+  });
+
   it("keeps manifest schema and schema copy aligned", () => {
     const manifest = readJson("./openclaw.plugin.json") as { configSchema: unknown };
     const schemaCopy = readJson("./schemas/config.schema.json");

@@ -201,7 +201,7 @@ export function createHumanAssistSunoConnector(
   config?: Partial<ArtistRuntimeConfig>,
   workspaceRootOverride?: string
 ): HumanAssistSunoConnector {
-  const timeoutMinutes = config?.music?.suno?.humanAssistTimeoutMinutes ?? 60;
+  const timeoutMinutes = config?.music?.suno?.humanAssistTimeoutMinutes ?? 0;
   const workspaceRoot = workspaceRootOverride ?? config?.artist?.workspaceRoot;
   const browserConfig = resolveHumanAssistBrowserConfig(config, workspaceRoot);
   // The suno-cli session.json (Clerk cookie -> JWT) lives under the workspace runtime dir
@@ -209,7 +209,8 @@ export function createHumanAssistSunoConnector(
   // known, in which case the driver stays DOM-only.
   const sessionFile = workspaceRoot ? join(workspaceRoot, "runtime", "suno", "cli", "session.json") : undefined;
   return new HumanAssistSunoConnector(inner, {
-    timeoutMs: timeoutMinutes * 60_000,
+    // 0 is the "no time limit" sentinel: wait indefinitely for the manual Create click.
+    timeoutMs: timeoutMinutes === 0 ? Infinity : timeoutMinutes * 60_000,
     submitMode: config?.music?.suno?.submitMode,
     driverFactory: ({ payload }) => new CdpHumanAssistDriver({ payload, config: browserConfig, sessionFile }),
     notifier: createHumanAssistNotifier(

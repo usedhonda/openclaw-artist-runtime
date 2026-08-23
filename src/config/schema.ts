@@ -298,8 +298,8 @@ export function validateConfig(config: unknown): ValidationResult<ArtistRuntimeC
           if ("captchaFallback" in config.music.suno) {
             validateEnum("config.music.suno.captchaFallback", config.music.suno.captchaFallback, sunoCaptchaFallbackModes, errors);
           }
-          if ("humanAssistTimeoutMinutes" in config.music.suno && !isIntegerInRange(config.music.suno.humanAssistTimeoutMinutes, 1, 240)) {
-            errors.push("config.music.suno.humanAssistTimeoutMinutes must be an integer between 1 and 240");
+          if ("humanAssistTimeoutMinutes" in config.music.suno && !isIntegerInRange(config.music.suno.humanAssistTimeoutMinutes, 0, 240)) {
+            errors.push("config.music.suno.humanAssistTimeoutMinutes must be an integer between 0 and 240");
           }
           if ("authority" in config.music.suno) {
             validateEnum("config.music.suno.authority", config.music.suno.authority, sunoAuthorityModes, errors);
