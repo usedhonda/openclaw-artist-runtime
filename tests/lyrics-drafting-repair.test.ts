@@ -161,7 +161,11 @@ describe("lyrics drafting repair-not-reject orchestration", () => {
     expect(callAiProviderMock).toHaveBeenCalledTimes(3);
     const repairNotes = (thrown as { repairNotes?: string[] } | undefined)?.repairNotes ?? [];
     expect(repairNotes.some((note) => /lyrics_too_short_for_duration_plan/.test(note))).toBe(true);
-    expect(repairNotes.some((note) => /lines 40\/52/.test(note))).toBe(true);
+    // The deterministic INTRO archetype for song-001 resolves to "silence_hit"
+    // (0 lyric lines), which lowers the mid band's 52-line floor by 1 to 51. A
+    // 40-line draft is still rejected on the line floor; the floor is the plan's
+    // summed section lineFloor and reflects the chosen intro.
+    expect(repairNotes.some((note) => /lines 40\/51/.test(note))).toBe(true);
     expect((await readSongState(root, "song-001")).degradedLyrics).toBe(true);
   });
 

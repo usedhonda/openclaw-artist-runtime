@@ -295,8 +295,37 @@ const PLANS_BY_BAND: Record<TempoBand, DurationPlan> = {
   super: SUPER_PLAN
 };
 
-export function getDurationPlan(band: TempoBand = "mid"): DurationPlan {
-  return PLANS_BY_BAND[band] ?? MID_PLAN;
+export interface DurationPlanIntroOverride {
+  bars: number;
+  lineFloor: number;
+  lineTarget: string;
+  modifier: string;
+  lyricInstruction: string;
+}
+
+export interface GetDurationPlanOptions {
+  // When provided, replaces ONLY the intro section's variable fields
+  // (bars / lineFloor / lineTarget / modifier / lyricInstruction). The section
+  // key ("intro") and label ("Intro") are preserved so the lyrics-box
+  // [Intro - <modifier>] tag contract and findDurationPlanSection stay intact.
+  intro?: DurationPlanIntroOverride;
+}
+
+// No opts -> returns the shared band constant by reference (callers and tests
+// rely on reference identity). With opts.intro, returns a fresh plan whose intro
+// section is swapped and all other sections left untouched; the shared constant
+// is never mutated. totalPlannedBars is intentionally left as-is on the opts path
+// (the bar-sum invariant is only asserted on the no-opts default plans).
+export function getDurationPlan(band: TempoBand = "mid", opts?: GetDurationPlanOptions): DurationPlan {
+  const base = PLANS_BY_BAND[band] ?? MID_PLAN;
+  if (!opts?.intro) return base;
+  const intro = opts.intro;
+  return {
+    ...base,
+    sectionPlan: base.sectionPlan.map((section) =>
+      section.key === "intro" ? { ...section, ...intro } : section
+    )
+  };
 }
 
 export function getDurationPlanByTemplateId(templateId: string | undefined): DurationPlan {

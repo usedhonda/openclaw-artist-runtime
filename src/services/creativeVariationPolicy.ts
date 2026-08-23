@@ -162,6 +162,134 @@ export function dopagakiPromptLines(decision?: DopagakiVariationDecision): strin
   ];
 }
 
+// Deterministic INTRO archetype rotation. The intro modifier is the strongest
+// arrangement signal Suno reads from the lyrics-box [Intro - ...] tag, so rather
+// than shipping every song with the same fixed "sparse scene" intro we rotate a
+// seven-archetype pool by a stable hash of the song seed. Pure function: same
+// seed -> same variant, no Math.random, no I/O.
+export interface IntroVariant {
+  id: string;
+  bars: number;
+  lineFloor: number;
+  lineTarget: string;
+  modifier: string;
+  lyricInstruction: string;
+}
+
+const INTRO_MOTIFS = [
+  "piano motif",
+  "Rhodes motif",
+  "muted horn stab",
+  "drum pickup",
+  "upright bass walk"
+] as const;
+
+const INTRO_METERS = ["straight 4/4", "7/8", "triplet", "half-time"] as const;
+
+// Ordered pool; index selection is a stable hash over this list. Each builder
+// may pull an independent sub-seed (":motif" / ":meter") so a rotating detail
+// does not correlate with the archetype choice or the tempo/dopagaki seeds.
+const INTRO_ARCHETYPES: ReadonlyArray<{ id: string; build: (seed: string) => IntroVariant }> = [
+  {
+    id: "scene_set",
+    build: (seed) => {
+      const variants = [
+        { modifier: "4 bars, sparse scene, no rush", lyricInstruction: "0-1 line; establish the scene and do not start rushing." },
+        { modifier: "4 bars, sparse scene, room to breathe", lyricInstruction: "0-1 line; sketch the opening scene with space around it and no rush." },
+        { modifier: "4 bars, low-lit scene set, unhurried", lyricInstruction: "0-1 line; set a low-lit scene and hold back before the verse." }
+      ];
+      const pick = variants[Math.floor(hashRatio(`${seed}:scene`) * variants.length) % variants.length];
+      return { id: "scene_set", bars: 4, lineFloor: 1, lineTarget: "0-1 line", ...pick };
+    }
+  },
+  {
+    id: "cold_open",
+    build: () => ({
+      id: "cold_open",
+      bars: 2,
+      lineFloor: 0,
+      lineTarget: "0 lines",
+      modifier: "2 bars, cold open, hard entry, no runway",
+      lyricInstruction: "0 lines; enter immediately at full energy with no setup."
+    })
+  },
+  {
+    id: "instrumental",
+    build: (seed) => {
+      const motif = INTRO_MOTIFS[Math.floor(hashRatio(`${seed}:motif`) * INTRO_MOTIFS.length) % INTRO_MOTIFS.length];
+      const meter = INTRO_METERS[Math.floor(hashRatio(`${seed}:meter`) * INTRO_METERS.length) % INTRO_METERS.length];
+      return {
+        id: "instrumental",
+        bars: 4,
+        lineFloor: 0,
+        lineTarget: "0 lines",
+        modifier: `4 bars, instrumental, ${motif}, ${meter} feel`,
+        lyricInstruction: "0 lines; no vocals, establish the motif."
+      };
+    }
+  },
+  {
+    id: "count_in",
+    build: (seed) => {
+      const meter = INTRO_METERS[Math.floor(hashRatio(`${seed}:meter`) * INTRO_METERS.length) % INTRO_METERS.length];
+      return {
+        id: "count_in",
+        bars: 2,
+        lineFloor: 0,
+        lineTarget: "0 lines",
+        modifier: `2 bars, count-in, ${meter} feel`,
+        lyricInstruction: "0 lines; count-in then drop straight into the verse."
+      };
+    }
+  },
+  {
+    id: "atmospheric",
+    build: () => ({
+      id: "atmospheric",
+      bars: 4,
+      lineFloor: 0,
+      lineTarget: "0 lines",
+      modifier: "4 bars, fade in, atmospheric pads, sparse",
+      lyricInstruction: "0 lines; ambient fade in, minimal, let the pads breathe."
+    })
+  },
+  {
+    id: "spoken_cue",
+    build: () => ({
+      id: "spoken_cue",
+      bars: 2,
+      lineFloor: 1,
+      lineTarget: "1 line",
+      modifier: "2 bars, spoken word, single line",
+      lyricInstruction: "1 line; one spoken line, dry, then the beat enters."
+    })
+  },
+  {
+    id: "silence_hit",
+    build: () => ({
+      id: "silence_hit",
+      bars: 2,
+      lineFloor: 0,
+      lineTarget: "0 lines",
+      modifier: "2 bars, silence then hard downbeat",
+      lyricInstruction: "0 lines; negative space, then a hard entry on the downbeat."
+    })
+  }
+];
+
+export const INTRO_ARCHETYPE_IDS: readonly string[] = INTRO_ARCHETYPES.map((entry) => entry.id);
+
+// Picks one INTRO archetype for the given seed. When recentArchetypes is
+// provided, the most recent one is excluded so consecutive songs do not open the
+// same way (mirrors pickEmotionalMode's shift-by-one avoidance).
+export function resolveIntroVariant(seed: string, recentArchetypes: readonly string[] = []): IntroVariant {
+  const count = INTRO_ARCHETYPES.length;
+  const start = Math.floor(hashRatio(seed) * count) % count;
+  const latest = recentArchetypes.at(-1);
+  const index = count > 1 && INTRO_ARCHETYPES[start].id === latest ? (start + 1) % count : start;
+  return INTRO_ARCHETYPES[index].build(seed);
+}
+
 export function critiqueLensLines(artistMd: string): string[] {
   const lens = bulletSection(artistMd, "### Critique Lens");
   return [

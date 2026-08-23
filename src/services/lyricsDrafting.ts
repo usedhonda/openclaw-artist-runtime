@@ -11,7 +11,7 @@ import { emitRuntimeEvent } from "./runtimeEventBus.js";
 import { buildLyricsDraftingPrompt, readLyricsKnowledgeDigest } from "./lyricsDraftingPrompt.js";
 import { parseLyricsLanguagePolicy } from "./lyricsLanguagePolicy.js";
 import { getArtistIdentity, getSunoLyricsLimit } from "./runtimeConfig.js";
-import { decideDopagakiVariation } from "./creativeVariationPolicy.js";
+import { decideDopagakiVariation, resolveIntroVariant } from "./creativeVariationPolicy.js";
 import { getDurationPlan, minimumBareLyricsChars, minimumBareLyricsLines, resolveTempoBandFromBrief } from "../suno-production/durationPlan.js";
 import { appendCreativeQualityEntry, computeDissBankHits, readCreativeQualityLedger } from "./creativeQualityLedger.js";
 
@@ -267,7 +267,21 @@ async function composeLyricsDraft(input: DraftLyricsInput, title: string, briefT
   const languagePolicy = parseLyricsLanguagePolicy(mind.artist);
   const lyricsBoxLimit = getSunoLyricsLimit();
   const lyricBodyLimit = lyricBodyLimitForSunoBox(lyricsBoxLimit);
-  const durationPlan = getDurationPlan(resolveTempoBandFromBrief(briefText));
+  // Rotate the INTRO archetype deterministically so consecutive songs do not
+  // all open the same way. Seed is decorrelated from the dopagaki seed via the
+  // "intro:" prefix; recentIntroArchetypes is left empty here (W3 wires ledger
+  // history). The chosen modifier flows into the drafting prompt's
+  // [Intro - <modifier>] tag through formatDurationPlanForPrompt.
+  const introVariant = resolveIntroVariant(`intro:${input.songId}\n${briefText}`);
+  const durationPlan = getDurationPlan(resolveTempoBandFromBrief(briefText), {
+    intro: {
+      bars: introVariant.bars,
+      lineFloor: introVariant.lineFloor,
+      lineTarget: introVariant.lineTarget,
+      modifier: introVariant.modifier,
+      lyricInstruction: introVariant.lyricInstruction
+    }
+  });
   const emotionalMode = emotionalModeFromBrief(briefText);
   const minimumBareChars = minimumBareLyricsChars(durationPlan);
   const minimumBareLines = minimumBareLyricsLines(durationPlan);
