@@ -2,6 +2,22 @@
 
 ## [Unreleased]
 
+### Changed
+- Creative pipeline redesign: every song now records one structured creative
+  decision (lens, attack stance, emotional mode, tempo, dopagaki, intro, hook
+  shape, tag technique, signature) as `song-plan.json`, decided once and read by
+  every downstream stage instead of re-derived from brief strings. Operator-visible
+  effects: `/api/status` shows the lens/mode/tempo/intro/stance distributions and
+  persona-contract health; a monotony watchdog sends one Telegram notice when a
+  song repeats the previous lens/stance/title-word streak; the artist now attacks
+  in almost every song (本気 Dis is the default posture, other modes are occasional
+  changeups) with an absolution-phrase ban keeping the teeth in. The persona
+  contract doctor loudly flags a degraded `ARTIST.md` (renamed or gutted section)
+  instead of silently falling back to generic material. The song brief is now
+  written by one renderer with one schema, and the section-heading parsers tolerate
+  ordinary hand edits (trailing space, case, full-width space) via a shared
+  contract the doctor validates against.
+
 ### Fixed
 - X observation searches now pass the configured dedicated Firefox profile to
   Bird, matching the probe and publishing lanes. The collector no longer burns

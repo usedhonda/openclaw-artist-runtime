@@ -4,6 +4,13 @@
 // observation -> lyric -> music chain to the artist's persona instead of falling
 // back to surface-word soup.
 
+import {
+  CONSUMPTION_FACE_MATERIAL_BANK_HEADING,
+  NET_GENERATION_MATERIAL_BANK_HEADING,
+  SHIBUYA_DISS_MATERIAL_BANK_HEADING,
+  headingMatches
+} from "./personaHeadings.js";
+
 export interface PersonaMotifBundle {
   themes: string[];
   vocabulary: string[];
@@ -299,14 +306,14 @@ const avoidHeadings = ["lyrics", "歌詞", "避ける", "avoid"];
 
 function materialBankGroups(sections: SectionHit[]): PersonaMaterialBankGroups {
   const nounsFor = (heading: string): string[] => sections
-    .filter((section) => section.heading.toLowerCase() === heading)
+    .filter((section) => headingMatches(section.heading, heading))
     .flatMap((section) => bulletsOf(section.body))
     .map((bullet) => normalize(bullet.split(/[：:]/, 1)[0]))
     .filter((value) => value.length > 0 && !/^素材の扱い/.test(value) && !isNationalityLabel(value));
   return {
-    consumptionFace: nounsFor("consumption & face material bank"),
-    netGeneration: nounsFor("net & generation material bank"),
-    shibuyaDiss: nounsFor("shibuya diss material bank")
+    consumptionFace: nounsFor(CONSUMPTION_FACE_MATERIAL_BANK_HEADING),
+    netGeneration: nounsFor(NET_GENERATION_MATERIAL_BANK_HEADING),
+    shibuyaDiss: nounsFor(SHIBUYA_DISS_MATERIAL_BANK_HEADING)
   };
 }
 

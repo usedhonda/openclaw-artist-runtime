@@ -1,6 +1,7 @@
 import { appendFile, mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import type { CreativeDecision } from "../types.js";
+import { SHIBUYA_DISS_MATERIAL_BANK_HEADING, headingMatches } from "./personaHeadings.js";
 import { emitRuntimeEvent } from "./runtimeEventBus.js";
 
 export interface CreativeQualityEntry {
@@ -347,16 +348,18 @@ export async function readRecentCreativeDecisions(root: string, limit = 6): Prom
   return decisions.reverse();
 }
 
-const DISS_BANK_HEADING = /^#{1,6}\s+Shibuya Diss Material Bank\s*$/i;
 // Kanji (incl. 々), katakana (incl. ー). Hiragana particles break runs so key
 // terms stay on distinctive content words.
 const KEY_TERM_PATTERN = /[一-鿿々゠-ヿ]{2,}/g;
 
 // Parse the noun phrases of the "### Shibuya Diss Material Bank" bullet items.
-// Returns [] when the section is absent (older workspaces must not break).
+// Returns [] when the section is absent (older workspaces must not break). The
+// heading is matched tolerantly (trim/case/full-width/whitespace) via the shared
+// personaHeadings contract so a hand edit to the canon heading cannot silently
+// zero out diss-bank telemetry.
 export function extractDissBankItems(artistMd: string): string[] {
   const lines = artistMd.split(/\r?\n/);
-  const start = lines.findIndex((line) => DISS_BANK_HEADING.test(line.trim()));
+  const start = lines.findIndex((line) => headingMatches(line, SHIBUYA_DISS_MATERIAL_BANK_HEADING));
   if (start < 0) return [];
   const items: string[] = [];
   for (let index = start + 1; index < lines.length; index += 1) {

@@ -21,6 +21,7 @@ import {
   type EmotionalMode
 } from "./creativeVariationPolicy.js";
 import { extractPersonaMotifs } from "./personaMotifExtractor.js";
+import { ATTACK_STANCES_HEADING, SHIBUYA_TAG_TECHNIQUES_HEADING } from "./personaHeadings.js";
 
 export interface CreativeDirectorObservation {
   url: string;
@@ -145,7 +146,7 @@ function bankForLens(
 // Parse `### Shibuya Tag Techniques` bullets. Each bullet is `技法名: 説明`; the
 // id is the text before the colon. The preface bullet (技法の扱い) is skipped.
 export function parseTagTechniques(personaText: string): string[] {
-  return bulletSection(personaText, "### Shibuya Tag Techniques")
+  return bulletSection(personaText, SHIBUYA_TAG_TECHNIQUES_HEADING)
     .map((bullet) => bullet.split(/[：:]/, 1)[0]?.trim() ?? "")
     .filter((id) => id.length > 0 && !/^技法の扱い/.test(id) && !/^素材の扱い/.test(id));
 }
@@ -156,7 +157,7 @@ export function parseTagTechniques(personaText: string): string[] {
 // change. Lens labels are matched to lens ids by keyword.
 export function parseAttackStances(personaText: string): Partial<Record<LensId, string[]>> {
   const result: Partial<Record<LensId, string[]>> = {};
-  for (const bullet of bulletSection(personaText, "### Attack Stances")) {
+  for (const bullet of bulletSection(personaText, ATTACK_STANCES_HEADING)) {
     const separator = bullet.indexOf(":") >= 0 ? bullet.indexOf(":") : bullet.indexOf("：");
     if (separator < 1) continue;
     const label = bullet.slice(0, separator);

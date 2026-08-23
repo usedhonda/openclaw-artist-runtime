@@ -9,6 +9,7 @@ import { extractPersonaMotifs } from "./personaMotifExtractor.js";
 import { bulletSection, emotionalModesFromArtist } from "./creativeVariationPolicy.js";
 import { critiqueLensLines } from "./creativeVariationPolicy.js";
 import { BUILTIN_SIGNATURES, parseAttackStances, parseTagTechniques } from "./creativeDirector.js";
+import { CRITIQUE_LENS_HEADING } from "./personaHeadings.js";
 import { emitRuntimeEvent } from "./runtimeEventBus.js";
 
 export interface PersonaContractCheck {
@@ -69,7 +70,7 @@ export function diagnosePersonaContract(personaText: string): PersonaContractRep
   // 3. Critique lens — critiqueLensLines pads a generic fallback when the section
   // is absent, so the doctor checks the raw canon bullets directly (via the same
   // exported parser the pipeline uses underneath) to detect the degraded case.
-  const critiqueBullets = bulletSection(personaText, "### Critique Lens");
+  const critiqueBullets = bulletSection(personaText, CRITIQUE_LENS_HEADING);
   const critiqueLines = critiqueLensLines(personaText);
   const critiqueOk = critiqueBullets.length > 0;
   checks.push({

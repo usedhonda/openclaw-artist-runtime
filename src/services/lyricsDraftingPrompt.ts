@@ -14,6 +14,7 @@ import {
   type DopagakiVariationDecision
 } from "./creativeVariationPolicy.js";
 import type { CreativeDecision } from "../types.js";
+import { SHIBUYA_TAG_TECHNIQUES_HEADING } from "./personaHeadings.js";
 
 export const LYRICS_WRITER_INSTRUCTIONS_ATTRIBUTION =
   "Source: sunomanual/mygpts/lyrics-writer/instructions.md (MIT, Copyright 2025-2026 usedhonda)";
@@ -99,7 +100,7 @@ export const SELECTIVE_BLOCK_END = "== 選択注入ここまで ==";
 // creativeDirector.parseTagTechniques splits it. Falls back to the id alone when
 // the section is absent or the id is not found.
 function tagTechniqueBullet(artistMd: string, tagId: string): string {
-  for (const bullet of bulletSection(artistMd, "### Shibuya Tag Techniques")) {
+  for (const bullet of bulletSection(artistMd, SHIBUYA_TAG_TECHNIQUES_HEADING)) {
     const id = bullet.split(/[：:]/, 1)[0]?.trim() ?? "";
     if (id && id === tagId) return bullet.trim();
   }
@@ -208,7 +209,10 @@ export function buildLyricsDraftingPrompt(input: BuildLyricsPromptInput): string
   const artistName = input.artistName?.trim() || "the configured artist";
   const languagePolicy = input.languagePolicy;
   const sourceDigest = sourceDigestFromBrief(input.briefText);
-  const emotionalMode = moodFromBrief(input.briefText);
+  // Plan-first: when the song has a creative decision, its emotionalMode.spec is
+  // the source of truth for the mood the prompt injects. Fall back to the brief's
+  // `- Mood:` string only for legacy songs written before the spine shipped.
+  const emotionalMode = input.decision?.emotionalMode.spec || moodFromBrief(input.briefText);
   return [
     `Write lyrics for ${artistName} from the provided raw material.`,
     "Use the attributed lyrics-writer system source as the craft policy for this draft.",

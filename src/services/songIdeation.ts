@@ -8,6 +8,12 @@ import { decideCreative, jstDate } from "./creativeDirector.js";
 import { bpmForTempoBand } from "./creativeVariationPolicy.js";
 import { readRecentCreativeDecisions } from "./creativeQualityLedger.js";
 import { writeSongPlan } from "./songPlan.js";
+import {
+  CURRENT_ARTIST_CORE_HEADING,
+  CURRENT_OBSESSIONS_HEADING,
+  headingMatches
+} from "./personaHeadings.js";
+import { renderBrief, type BriefModel } from "./briefRenderer.js";
 import type { TempoBand } from "../suno-production/durationPlan.js";
 
 function titleCase(value: string): string {
@@ -20,7 +26,7 @@ function titleCase(value: string): string {
 
 function firstBulletSection(source: string, header: string): string[] {
   const lines = source.split("\n");
-  const startIndex = lines.findIndex((line) => line.trim().toLowerCase() === header.toLowerCase());
+  const startIndex = lines.findIndex((line) => headingMatches(line, header));
   if (startIndex === -1) {
     return [];
   }
@@ -44,11 +50,11 @@ async function nextSongNumber(root: string): Promise<number> {
 }
 
 function chooseTheme(artist: string, currentState: string): string {
-  const obsessions = firstBulletSection(currentState, "## Current Obsessions");
+  const obsessions = firstBulletSection(currentState, CURRENT_OBSESSIONS_HEADING);
   if (obsessions.length > 0) {
     return obsessions[0];
   }
-  const core = firstBulletSection(artist, "## Current Artist Core");
+  const core = firstBulletSection(artist, CURRENT_ARTIST_CORE_HEADING);
   if (core.length > 0) {
     return core[0];
   }
@@ -132,43 +138,37 @@ function buildBrief(
   theme: string,
   artistReason: string,
   tempoBand: TempoBand,
+  tempoBpm: number,
   emotionalMode: { label: string; mood: string },
   observationText?: string,
   observationPath?: string
 ): string {
-  const lines = [
-    `# Brief for ${title}`,
-    "",
-    "## Why this song exists",
-    "",
-    `A public-facing song grown from ${theme}.`,
-    "",
-    "## Direction",
-    "",
-    `- Core theme: ${theme}`,
-    `- Artist reason: ${artistReason}`,
-    `- Mood: ${emotionalMode.mood}`,
-    `- Emotional mode: ${emotionalMode.label}`,
-    `- Tempo band: ${tempoBand}`,
-    "- Keep the images concrete and the chorus short"
-  ];
-  const observation = excerpt(observationText);
-  if (observation) {
+  const excerptText = excerpt(observationText);
+  const model: BriefModel = {
+    title,
+    whyExists: `A public-facing song grown from ${theme}.`,
+    coreTheme: theme,
+    artistReason,
+    mood: emotionalMode.mood,
+    emotionalModeLabel: emotionalMode.label,
+    tempoBand,
+    // The bpm line is what fixes inventory bug #1: readBriefTempo matches only
+    // `- Tempo:`, so before this the ideation brief carried a band but no bpm.
+    tempoLine: `${tempoBpm} BPM`,
+    directionExtras: ["Keep the images concrete and the chorus short"]
+  };
+  if (excerptText) {
     const summary = extractObservationSummary(observationText, artistReason);
-    lines.push(
-      "",
-      "## Observation source",
-      "",
-      `- Path: ${observationPath ?? "(runtime observation)"}`,
-      `- Author: ${summary?.author ?? "unknown"}`,
-      `- URL: ${summary?.url ?? ""}`,
-      `- Quote: ${summary?.quote ?? observation.replace(/\s+/g, " ")}`,
-      `- Motivation: ${summary?.motivation ?? artistReason}`,
-      "- Extract:",
-      observation
-    );
+    model.observation = {
+      path: observationPath ?? "(runtime observation)",
+      author: summary?.author ?? "unknown",
+      url: summary?.url ?? "",
+      quote: summary?.quote ?? excerptText.replace(/\s+/g, " "),
+      motivation: summary?.motivation ?? artistReason,
+      extract: excerptText
+    };
   }
-  return lines.join("\n");
+  return renderBrief(model);
 }
 
 export interface CreateSongIdeaInput {
@@ -226,7 +226,7 @@ export async function createSongIdea(input: CreateSongIdeaInput): Promise<SongId
   }
   const emotionalMode = { label: decision.emotionalMode.label, mood: decision.emotionalMode.spec };
   const tempoBand = decision.tempo.band;
-  const briefText = buildBrief(title, theme, artistReason, tempoBand, emotionalMode, input.observationText, input.observationPath);
+  const briefText = buildBrief(title, theme, artistReason, tempoBand, decision.tempo.bpm, emotionalMode, input.observationText, input.observationPath);
   const observationInputRef = input.observationText?.trim() ? observationRef(input.workspaceRoot, input.observationPath) : undefined;
   const inputRefs = ["ARTIST.md", "artist/CURRENT_STATE.md", observationInputRef].filter(Boolean) as string[];
 

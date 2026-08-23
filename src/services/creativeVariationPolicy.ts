@@ -1,4 +1,9 @@
 import { createHash } from "node:crypto";
+import {
+  CRITIQUE_LENS_HEADING,
+  EMOTIONAL_MODES_HEADING,
+  headingMatches
+} from "./personaHeadings.js";
 
 export const DOPAGAKI_TARGET_RATE = 0.4;
 
@@ -40,7 +45,7 @@ export function hashRatio(value: string): number {
 
 export function bulletSection(artistMd: string, heading: string): string[] {
   const lines = artistMd.split(/\r?\n/);
-  const start = lines.findIndex((line) => line.trim().toLowerCase() === heading.toLowerCase());
+  const start = lines.findIndex((line) => headingMatches(line, heading));
   if (start < 0) return [];
   const values: string[] = [];
   for (const line of lines.slice(start + 1)) {
@@ -52,7 +57,7 @@ export function bulletSection(artistMd: string, heading: string): string[] {
 }
 
 export function emotionalModesFromArtist(artistMd: string): EmotionalMode[] {
-  const parsed = bulletSection(artistMd, "### Emotional Modes")
+  const parsed = bulletSection(artistMd, EMOTIONAL_MODES_HEADING)
     .map((line) => {
       const separator = line.indexOf(":");
       if (separator < 1) return undefined;
@@ -306,7 +311,7 @@ export function buildIntroVariantById(id: string, seed: string): IntroVariant | 
 }
 
 export function critiqueLensLines(artistMd: string): string[] {
-  const lens = bulletSection(artistMd, "### Critique Lens");
+  const lens = bulletSection(artistMd, CRITIQUE_LENS_HEADING);
   return [
     "Critique lens:",
     ...(lens.length > 0

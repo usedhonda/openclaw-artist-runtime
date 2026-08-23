@@ -80,7 +80,11 @@ export function parseBpmFromBriefTempo(value: string | undefined): number | unde
   return Number.isInteger(bpm) && bpm >= 40 && bpm <= 220 ? bpm : undefined;
 }
 
-function readBriefTempo(briefText: string): string | undefined {
+// Exported so the F6 round-trip test can prove the unified brief renderer emits a
+// `- Tempo:` line this reader parses (inventory bug #1: the pre-F6 ideation brief
+// carried a band but no bpm, so this reader silently returned undefined and the
+// bpm fell back to the mid default).
+export function readBriefTempo(briefText: string): string | undefined {
   return briefText.match(/^- Tempo:\s*(.+)$/mi)?.[1]?.trim();
 }
 

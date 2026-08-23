@@ -8,6 +8,8 @@ import { secretLikePattern } from "./personaMigrator.js";
 import { decideCreative, jstDate } from "./creativeDirector.js";
 import { readRecentCreativeDecisions } from "./creativeQualityLedger.js";
 import { writeSongPlan } from "./songPlan.js";
+import { renderBrief, type BriefModel } from "./briefRenderer.js";
+import { bandForBpm } from "../suno-production/durationPlan.js";
 
 export interface SongCommissionInjectionResult {
   songId: string;
@@ -15,31 +17,42 @@ export interface SongCommissionInjectionResult {
   backups: BackupChangeSet;
 }
 
-function renderBrief(brief: CommissionBrief): string {
-  const sources = brief.sources?.length
-    ? [
-      "",
-      "## Frozen sources",
-      "",
-      ...brief.sources.map((source) => `- ${source.kind}: ${source.url}${source.author ? ` (${source.author})` : ""}${source.quote ? ` — ${source.quote}` : ""}`)
-    ]
-    : [];
-  return [
-    `# Brief for ${brief.title}`,
-    "",
-    "## Producer commission",
-    "",
-    brief.brief,
-    "",
-    "## Direction",
-    "",
-    `- Lyrics theme: ${brief.lyricsTheme}`,
-    `- Mood: ${brief.mood}`,
-    `- Tempo: ${brief.tempo}`,
-    `- Duration: ${brief.duration}`,
-    `- Style notes: ${brief.styleNotes}`,
-    ...sources
-  ].join("\n");
+// Parse an explicit bpm out of the commission tempo string, matching
+// parseBpmFromBriefTempo's semantics (no bpm for "artist decides"; 40-220 range).
+// Used only to derive an agreeing `- Tempo band:` line from the same string, so a
+// single tempo source drives both lines.
+function parseCommissionBpm(tempo: string): number | undefined {
+  if (/artist\s+decides/i.test(tempo)) return undefined;
+  const match = tempo.match(/\b(\d{2,3})\b/);
+  if (!match) return undefined;
+  const bpm = Number(match[1]);
+  return Number.isInteger(bpm) && bpm >= 40 && bpm <= 220 ? bpm : undefined;
+}
+
+// Build the shared BriefModel for a producer commission. The `- Tempo band:` and
+// `- Emotional mode:` lines are new (the old commission renderer omitted them);
+// the band is derived from the same tempo string when it carries a bpm, otherwise
+// from the persisted decision, so the band and the bpm in one brief always agree.
+function commissionBriefModel(brief: CommissionBrief, decision: CreativeDecision): BriefModel {
+  const bpm = parseCommissionBpm(brief.tempo);
+  const tempoBand = (bpm !== undefined ? bandForBpm(bpm) : undefined) ?? decision.tempo.band;
+  return {
+    title: brief.title,
+    commission: brief.brief,
+    lyricsTheme: brief.lyricsTheme,
+    mood: brief.mood,
+    emotionalModeLabel: decision.emotionalMode.label,
+    tempoBand,
+    tempoLine: brief.tempo,
+    duration: brief.duration,
+    styleNotes: brief.styleNotes,
+    frozenSources: brief.sources?.map((source) => ({
+      kind: source.kind,
+      url: source.url,
+      author: source.author,
+      quote: source.quote
+    }))
+  };
 }
 
 function renderLyricsSeed(brief: CommissionBrief): string {
@@ -101,8 +114,8 @@ export async function injectCommissionSong(
   const backups = await ensureBackupChangeSet([songPath, briefPath, lyricsPath, songbookPath, autopilotPath], `commission-${songId}`);
 
   await ensureSongState(root, songId, commissionBrief.title);
-  await persistSongPlan(root, songId, commissionBrief);
-  await writeSongBrief(root, songId, renderBrief(commissionBrief));
+  const decision = await persistSongPlan(root, songId, commissionBrief);
+  await writeSongBrief(root, songId, renderBrief(commissionBriefModel(commissionBrief, decision)));
   await mkdir(dirname(lyricsPath), { recursive: true });
   await writeFile(lyricsPath, `${renderLyricsSeed(commissionBrief).trim()}\n`, "utf8");
   await updateSongState(root, songId, {
