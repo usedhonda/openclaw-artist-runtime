@@ -116,6 +116,11 @@ function selectiveDirectiveLines(decision: CreativeDecision, artistMd: string): 
   lines.push(`主レンズ: ${LENS_LABELS[decision.lens]} — このレンズの素材だけを主軸にする（他バンクの名詞は持ち込まない）。`);
   if (decision.lensMaterial.length > 0) {
     lines.push(`主レンズの素材（この名詞句だけを軸に据える）: ${decision.lensMaterial.join(" / ")}`);
+    // The observation does not need to fit the lens. The forced fold-back is the
+    // artist's signature move: the further the news is from the lens, the better
+    // the leap lands. Never wait for perfectly on-theme material.
+    lines.push("観測の扱い: 素材のニュースがレンズから遠くても構わない。遠いほど、強引に折り返す飛距離が芸になる。観測の具体的事実を保ったまま、主レンズの舞台裏へ着地させる。");
+
   }
   lines.push(`渋谷タグ技法: ${tagTechniqueBullet(artistMd, decision.shibuyaTag)}`);
   if (decision.signature.length > 0) {
