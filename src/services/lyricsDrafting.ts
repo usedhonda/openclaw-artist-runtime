@@ -15,6 +15,7 @@ import { buildIntroVariantById, decideDopagakiVariation, resolveIntroVariant, ty
 import { readSongPlan } from "./songPlan.js";
 import { getDurationPlan, minimumBareLyricsChars, minimumBareLyricsLines, resolveTempoBandFromBrief } from "../suno-production/durationPlan.js";
 import { appendCreativeQualityEntry, computeDissBankHits, evaluateCreativeMonotony, materialPhrasesUsed, readCreativeQualityLedger } from "./creativeQualityLedger.js";
+import { detectCatchphrases } from "./creativeDirector.js";
 
 export interface DraftLyricsInput {
   workspaceRoot: string;
@@ -61,6 +62,124 @@ function assertSafe(stage: string, value: string): void {
 const SOFTENER_PATTERN = /個人攻撃ではない|悪者はいない|誰も悪くない|no villain|not (?:an )?attack|nothing personal/i;
 const SOFTENER_REPAIR_NOTE =
   "softener_detected: 免罪句（「個人攻撃ではない」「悪者はいない」「誰も悪くない」「no villain here」類）を歌詞から全て削除し、punchline を弱めずに書き直せ。安全線は歌詞に但し書きとして書かない。";
+
+// The "each verse needs punchlines" directive must shape the lyric's content, not
+// be transcribed into it as a literal label. Songs shipped "Punch one, …" and
+// "punchline, …" as sung lines. Detected on the header-stripped lyric body (never
+// the section-tag annotations, which legitimately name punchline craft).
+const LABEL_LEAK_PATTERN = /\bpunch\s*(?:line|one|two|three|\d)\b/i;
+
+// One shared 8-char run threshold above which the draft is treated as reusing a
+// recent song's phrasing verbatim. Regenerate once past this, mirroring the
+// softener lint.
+const PHRASE_OVERLAP_THRESHOLD = 4;
+
+// Content lines only: section headers `[...]` dropped, blank lines dropped. The
+// unit of both lints so tag annotations never trip them.
+function contentLyricLines(lyrics: string): string[] {
+  return lyrics
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter((line) => line.length > 0 && !/^\[[^\]]+\]$/.test(line));
+}
+
+// Whitespace and punctuation removed so "same nose, same pose" and "same nose  same pose"
+// compare equal. Kana/kanji are left intact; slicing by UTF-16 code unit is fine here.
+function normalizeForOverlap(line: string): string {
+  return line.replace(/[\s、。，．,.!?！？…‥・「」『』（）()［］{}〈〉《》【】\-—–~〜"'`｜|/]/g, "");
+}
+
+// Counts distinct 8+-char substrings the new lyrics share with previous songs.
+// Each previous song is scored separately and summed, so reusing the same line
+// across two prior songs counts twice. Within one previous song, overlapping
+// windows collapse into maximal runs and identical runs (e.g. a physically
+// repeated hook) dedupe, so one shared line counts once.
+export function phraseOverlapCount(lyrics: string, previousLyrics: string[]): number {
+  const windowSize = 8;
+  const newLines = contentLyricLines(lyrics)
+    .map(normalizeForOverlap)
+    .filter((line) => line.length >= windowSize);
+  if (newLines.length === 0) return 0;
+  let total = 0;
+  for (const previous of previousLyrics) {
+    const prevText = contentLyricLines(previous).map(normalizeForOverlap).filter(Boolean).join("\n");
+    if (!prevText) continue;
+    const distinctRuns = new Set<string>();
+    for (const line of newLines) {
+      let start = -1;
+      for (let index = 0; index + windowSize <= line.length; index += 1) {
+        const present = prevText.includes(line.slice(index, index + windowSize));
+        if (present && start < 0) {
+          start = index;
+        } else if (!present && start >= 0) {
+          distinctRuns.add(line.slice(start, index + windowSize - 1));
+          start = -1;
+        }
+      }
+      if (start >= 0) distinctRuns.add(line.slice(start));
+    }
+    total += distinctRuns.size;
+  }
+  return total;
+}
+
+// Whether the draft leaks a punchline label or reuses recent phrasing. The label
+// pattern reads only the header-stripped body so tag annotations are exempt.
+function evaluatePhraseRepeat(
+  repaired: string,
+  previousLyrics: string[]
+): { hit: boolean; labelLeak: boolean; overlap: number } {
+  const labelLeak = LABEL_LEAK_PATTERN.test(contentLyricLines(repaired).join("\n"));
+  const overlap = phraseOverlapCount(repaired, previousLyrics);
+  return { hit: labelLeak || overlap > PHRASE_OVERLAP_THRESHOLD, labelLeak, overlap };
+}
+
+function repeatedRepairNote(labelLeak: boolean, overlap: number): string {
+  const triggers: string[] = [];
+  if (labelLeak) {
+    triggers.push(
+      "punchline という語や番号ラベル（Punch one 等）が歌詞本文に露出している。全て削除し、punchline は内容で示せ"
+    );
+  }
+  if (overlap > PHRASE_OVERLAP_THRESHOLD) {
+    triggers.push(
+      `直近曲と重複するフレーズ（8文字以上の共有部分文字列）が ${overlap} 箇所ある。重複する行を書き直し、既出の言い回しを避けよ`
+    );
+  }
+  return `repeated_detected: ${triggers.join(" / ")}`;
+}
+
+// The header-stripped latest lyrics of the most recent songs (excluding the
+// current one) so the overlap lint has something to compare against. Reads the
+// ledger's recent songIds and each song's newest lyrics/lyrics.v*.md via the same
+// path lyricsDrafting already writes. Every read is guarded — the lint must never
+// be able to fail drafting.
+async function loadRecentLyricsBodies(
+  root: string,
+  entries: Array<{ songId: string }>,
+  currentSongId: string,
+  limit = 3
+): Promise<string[]> {
+  const songIds: string[] = [];
+  for (const entry of entries) {
+    if (entry.songId === currentSongId || songIds.includes(entry.songId)) continue;
+    songIds.push(entry.songId);
+    if (songIds.length >= limit) break;
+  }
+  const bodies: string[] = [];
+  for (const songId of songIds) {
+    const dir = join(root, "songs", songId, "lyrics");
+    const files = await readdir(dir, { withFileTypes: true }).catch(() => []);
+    const versions = files
+      .filter((entry) => entry.isFile() && /^lyrics\.v\d+\.md$/.test(entry.name))
+      .map((entry) => Number.parseInt(entry.name.replace("lyrics.v", "").replace(".md", ""), 10))
+      .filter((value) => Number.isFinite(value));
+    if (versions.length === 0) continue;
+    const text = await readFile(join(dir, `lyrics.v${Math.max(...versions)}.md`), "utf8").catch(() => "");
+    if (text.trim()) bodies.push(text);
+  }
+  return bodies;
+}
 
 function deriveLyrics(title: string, brief: string): string {
   const briefLines = brief
@@ -331,7 +450,7 @@ async function composeLyricsDraft(input: DraftLyricsInput, title: string, briefT
   // Telemetry only: a ledger write must never fail lyric generation. Metrics are
   // recomputed from the passed lyrics so the stashed softened draft records its
   // own body, not a later attempt's.
-  const recordCreativeQuality = async (draft: LyricsDraft, repairedLyrics: string, softened: boolean): Promise<void> => {
+  const recordCreativeQuality = async (draft: LyricsDraft, repairedLyrics: string, softened: boolean, repeated: boolean): Promise<void> => {
     const dissBankHits = computeDissBankHits(mind.artist, repairedLyrics);
     // Which of the plan's lens material actually landed in the lyrics, so the
     // director can steer the next same-lens song off it. Note: `repairedLyrics`
@@ -340,6 +459,11 @@ async function composeLyricsDraft(input: DraftLyricsInput, title: string, briefT
     // directly. Recorded whenever a plan exists, including `[]` (real telemetry
     // that the AI ignored the material).
     const usedMaterial = plan ? materialPhrasesUsed(plan.lensMaterial, repairedLyrics) : undefined;
+    // Catchphrase ids present in the final lyrics, so the director bans the
+    // previous song's catchphrases and the watchdog sees a 2-in-a-row. Detection
+    // is plan-independent; recorded always (including `[]`) so a measured zero is
+    // distinct from a legacy entry that predates the field.
+    const usedCatchphrases = detectCatchphrases(repairedLyrics);
     await appendCreativeQualityEntry(input.workspaceRoot, {
       songId: input.songId,
       title: draft.title,
@@ -355,10 +479,12 @@ async function composeLyricsDraft(input: DraftLyricsInput, title: string, briefT
       introArchetype: introVariant.id,
       decision: plan ?? undefined,
       ...(usedMaterial ? { usedMaterial } : {}),
+      usedCatchphrases,
       dissBankHits,
       dissBankHitCount: dissBankHits.length,
       degraded: false,
-      ...(softened ? { softened: true } : {})
+      ...(softened ? { softened: true } : {}),
+      ...(repeated ? { repeated: true } : {})
     }).catch(() => undefined);
     // Monotony watchdog: runs once per drafted song, after the ledger append so
     // the just-drafted song is included in the streak window. Telemetry only —
@@ -371,6 +497,12 @@ async function composeLyricsDraft(input: DraftLyricsInput, title: string, briefT
   // throwing a degradation.
   let softenerRetryUsed = false;
   let softenedStash: { draft: LyricsDraft; repaired: string } | undefined;
+  // Same stash-and-pass-through shape as the softener, for verbatim phrase reuse
+  // and leaked punchline labels. Independent single-regen budget; on residual the
+  // stash passes through with repeated:true rather than parking the song.
+  let repeatedRetryUsed = false;
+  let repeatedStash: { draft: LyricsDraft; repaired: string } | undefined;
+  const previousLyrics = await loadRecentLyricsBodies(input.workspaceRoot, recentQuality, input.songId, 3);
   let repairNotes: string[] = input.correctionGuidance ?? [];
   for (let attempt = 0; attempt < 3; attempt += 1) {
     const prompt = buildLyricsDraftingPrompt({
@@ -430,7 +562,17 @@ async function composeLyricsDraft(input: DraftLyricsInput, title: string, briefT
         repairNotes = [SOFTENER_REPAIR_NOTE];
         continue;
       }
-      await recordCreativeQuality(finalDraft, repaired, softenerHit);
+      // Phrase-repeat lint: one regeneration attempt when the draft leaks a
+      // punchline label or reuses recent phrasing. Independent of the softener
+      // budget; both share the loop's three attempts.
+      const repeat = evaluatePhraseRepeat(repaired, previousLyrics);
+      if (repeat.hit && !repeatedRetryUsed) {
+        repeatedRetryUsed = true;
+        repeatedStash = { draft: finalDraft, repaired };
+        repairNotes = [repeatedRepairNote(repeat.labelLeak, repeat.overlap)];
+        continue;
+      }
+      await recordCreativeQuality(finalDraft, repaired, softenerHit, repeat.hit);
       return finalDraft;
     }
     repairNotes = validation.issues.map((issue) => `${issue.code}: ${issue.message}`).slice(0, 5);
@@ -439,8 +581,24 @@ async function composeLyricsDraft(input: DraftLyricsInput, title: string, briefT
   // softened draft exists. Pass it through with softened:true rather than
   // parking the song.
   if (softenedStash) {
-    await recordCreativeQuality(softenedStash.draft, softenedStash.repaired, true);
+    await recordCreativeQuality(
+      softenedStash.draft,
+      softenedStash.repaired,
+      true,
+      evaluatePhraseRepeat(softenedStash.repaired, previousLyrics).hit
+    );
     return softenedStash.draft;
+  }
+  // Same pass-through for an unresolved phrase-repeat: record its real softener
+  // status (a repeated stash can still carry a softener) and repeated:true.
+  if (repeatedStash) {
+    await recordCreativeQuality(
+      repeatedStash.draft,
+      repeatedStash.repaired,
+      SOFTENER_PATTERN.test(repeatedStash.repaired),
+      true
+    );
+    return repeatedStash.draft;
   }
   const notes = repairNotes.length > 0 ? repairNotes : ["unknown lyrics degradation"];
   const error = new Error(`lyrics_generation_degraded: ${notes.join(" | ")}`);

@@ -261,3 +261,64 @@ describe("lyrics drafting prompt — selective injection (F2)", () => {
     expect(prompt).not.toContain(SELECTIVE_BLOCK_START);
   });
 });
+
+describe("lyrics drafting prompt — catchphrase budget", () => {
+  it("renders allowed and banned catchphrase names when the previous song used some", () => {
+    const prompt = buildLyricsDraftingPrompt({
+      artistMd: SELECTIVE_PERSONA,
+      currentState: "",
+      briefText: "brief",
+      title: "Ledger",
+      knowledgeDigest: "",
+      decision: decisionFixture({
+        catchphraseBudget: { allowed: ["donki", "same_same"], banned: ["zenin_shibuya"] }
+      })
+    });
+    const block = selectiveBlock(prompt);
+    expect(block).toContain("決め句の予算: 今回使ってよい=ドンキ/免税袋・same X, same Y の定型");
+    expect(block).toContain("今回は使わない=全員渋谷（前の曲で使った）");
+  });
+
+  it("says 今回は制限なし when nothing was banned", () => {
+    const prompt = buildLyricsDraftingPrompt({
+      artistMd: SELECTIVE_PERSONA,
+      currentState: "",
+      briefText: "brief",
+      title: "Ledger",
+      knowledgeDigest: "",
+      decision: decisionFixture({
+        catchphraseBudget: { allowed: ["zenin_shibuya", "donki", "same_same"], banned: [] }
+      })
+    });
+    const block = selectiveBlock(prompt);
+    expect(block).toContain("決め句の予算: 今回使ってよい=全員渋谷・ドンキ/免税袋・same X, same Y の定型 / 今回は制限なし");
+  });
+
+  it("renders 使ってよい=なし when every catchphrase is banned", () => {
+    const prompt = buildLyricsDraftingPrompt({
+      artistMd: SELECTIVE_PERSONA,
+      currentState: "",
+      briefText: "brief",
+      title: "Ledger",
+      knowledgeDigest: "",
+      decision: decisionFixture({
+        catchphraseBudget: { allowed: [], banned: ["zenin_shibuya", "donki", "same_same"] }
+      })
+    });
+    const block = selectiveBlock(prompt);
+    expect(block).toContain("決め句の予算: 今回使ってよい=なし");
+    expect(block).toContain("今回は使わない=全員渋谷・ドンキ/免税袋・same X, same Y の定型（前の曲で使った）");
+  });
+
+  it("omits the budget line for a legacy decision without a catchphraseBudget", () => {
+    const prompt = buildLyricsDraftingPrompt({
+      artistMd: SELECTIVE_PERSONA,
+      currentState: "",
+      briefText: "brief",
+      title: "Ledger",
+      knowledgeDigest: "",
+      decision: decisionFixture()
+    });
+    expect(prompt).not.toContain("決め句の予算");
+  });
+});

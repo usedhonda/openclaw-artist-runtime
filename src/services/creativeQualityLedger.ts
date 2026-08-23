@@ -28,6 +28,10 @@ export interface CreativeQualityEntry {
   // back by the director to keep the next same-lens song off recently-used
   // material.
   usedMaterial?: string[];
+  // Catchphrase ids (see creativeDirector.CATCHPHRASES) detected in the final
+  // lyrics. Added after the ledger first shipped; older entries lack it. Read
+  // back by the director's catchphrase budget and by the monotony watchdog.
+  usedCatchphrases?: string[];
   dissBankHits: string[];
   dissBankHitCount: number;
   degraded: boolean;
@@ -35,6 +39,10 @@ export interface CreativeQualityEntry {
   // one regeneration attempt. The draft passes through rather than parking, but
   // the ledger records that the fang was softened so monitoring can see it.
   softened?: boolean;
+  // Set when a valid draft still leaked a punchline label or reused a recent
+  // song's phrasing after one regeneration attempt. Same pass-through semantics
+  // as `softened`: the draft ships but the ledger records the residual.
+  repeated?: boolean;
 }
 
 export interface CreativeQualityAggregate {
@@ -59,7 +67,7 @@ export interface CreativeQualityAggregate {
 // A run of consecutive most-recent songs that repeat the same creative choice.
 // `length` is how many newest songs currently share `value` for `kind`.
 export interface CreativeStreak {
-  kind: "lens" | "aggression_changeup" | "attack_stance" | "intro_archetype" | "title_word";
+  kind: "lens" | "aggression_changeup" | "attack_stance" | "intro_archetype" | "title_word" | "catchphrase";
   value: string;
   length: number;
 }
@@ -204,6 +212,26 @@ export function detectCreativeStreaks(entries: CreativeQualityEntry[]): Creative
     if (best) streaks.push({ kind: "title_word", value: best.value, length: best.length });
   }
 
+  // Catchphrase: a catchphrase id shared by the two newest songs' usedCatchphrases,
+  // extended downward while consecutive songs keep it. The director bans the
+  // previous song's ids, so a 2-in-a-row here means the ban was ignored (or the
+  // older song predates the budget). Same shape as the title-word detector.
+  if (entries.length >= 2) {
+    const newestIds = entries[0].usedCatchphrases ?? [];
+    const secondIds = new Set(entries[1].usedCatchphrases ?? []);
+    let best: { value: string; length: number } | undefined;
+    for (const id of newestIds) {
+      if (!secondIds.has(id)) continue;
+      let length = 2;
+      for (let index = 2; index < entries.length; index += 1) {
+        if ((entries[index].usedCatchphrases ?? []).includes(id)) length += 1;
+        else break;
+      }
+      if (!best || length > best.length) best = { value: id, length };
+    }
+    if (best) streaks.push({ kind: "catchphrase", value: best.value, length: best.length });
+  }
+
   return streaks;
 }
 
@@ -222,7 +250,8 @@ const STREAK_KIND_LABELS: Record<CreativeStreak["kind"], string> = {
   aggression_changeup: "アグレッション(changeup)",
   attack_stance: "攻め筋",
   intro_archetype: "イントロ型",
-  title_word: "タイトル語"
+  title_word: "タイトル語",
+  catchphrase: "決め句"
 };
 
 // Short Japanese description naming the streaks, for the Telegram notice and the
@@ -348,11 +377,18 @@ export async function readRecentCreativeDecisions(root: string, limit = 6): Prom
   for (const entry of entries) {
     // entries are newest-first; collect newest `limit` then reverse
     if (entry.decision) {
-      // Annotate the decision with the material that actually landed in this
-      // song's lyrics so the director can keep the next same-lens song off it.
-      // Conditional spread avoids creating an own `usedMaterial: undefined`.
+      // Annotate the decision with the material and catchphrases that actually
+      // landed in this song's lyrics so the director can keep the next song off
+      // recently-used material and ban the previous song's catchphrases.
+      // Conditional spread avoids creating own `undefined` annotation fields.
       decisions.push(
-        entry.usedMaterial ? { ...entry.decision, usedMaterial: entry.usedMaterial } : entry.decision
+        entry.usedMaterial || entry.usedCatchphrases
+          ? {
+              ...entry.decision,
+              ...(entry.usedMaterial ? { usedMaterial: entry.usedMaterial } : {}),
+              ...(entry.usedCatchphrases ? { usedCatchphrases: entry.usedCatchphrases } : {})
+            }
+          : entry.decision
       );
     }
     if (decisions.length >= limit) break;

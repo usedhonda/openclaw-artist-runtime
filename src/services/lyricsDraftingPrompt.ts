@@ -14,6 +14,7 @@ import {
   type DopagakiVariationDecision
 } from "./creativeVariationPolicy.js";
 import type { CreativeDecision } from "../types.js";
+import { catchphraseLabel } from "./creativeDirector.js";
 import { SHIBUYA_TAG_TECHNIQUES_HEADING } from "./personaHeadings.js";
 
 export const LYRICS_WRITER_INSTRUCTIONS_ATTRIBUTION =
@@ -128,14 +129,26 @@ function selectiveDirectiveLines(decision: CreativeDecision, artistMd: string): 
   }
   lines.push(`フック形: ${decision.hookShape} — ${HOOK_SHAPE_DESCRIPTIONS[decision.hookShape]}`);
   lines.push(`攻め筋: ${decision.attackStance}`);
+  if (decision.catchphraseBudget) {
+    const allowed = decision.catchphraseBudget.allowed;
+    const banned = decision.catchphraseBudget.banned;
+    const allowedNames = allowed.length > 0 ? allowed.map(catchphraseLabel).join("・") : "なし";
+    const bannedClause =
+      banned.length > 0
+        ? `今回は使わない=${banned.map(catchphraseLabel).join("・")}（前の曲で使った）`
+        : "今回は制限なし";
+    lines.push(`決め句の予算: 今回使ってよい=${allowedNames} / ${bannedClause}`);
+  }
   if (decision.aggression === "dis") {
     lines.push("攻撃性: 本気 Dis（ラッパーの正面攻撃を基本形にする）。");
     lines.push("- 各 verse に punchline を最低2本置く。");
+    lines.push("- punchline という語や番号ラベル（Punch one 等）を歌詞に書かない。punchline は内容で示す。");
     lines.push("- 免罪句禁止: 「個人攻撃ではない」「悪者はいない」「誰も悪くない」「no villain here」類を歌詞に書かない。安全線は書き手の規律であって歌詞の但し書きではない。");
     lines.push("- スラング歓迎（刺さる俗語を恐れない）。");
   } else {
     lines.push("攻撃性: 変化球（emotionalMode の色は保つが、皮肉の刃は常駐させる）。");
     lines.push("- punchline 義務は Dis と同じ: 各 verse に最低2本。");
+    lines.push("- punchline という語や番号ラベル（Punch one 等）を歌詞に書かない。punchline は内容で示す。");
     lines.push("- 免罪句禁止: 「個人攻撃ではない」「悪者はいない」「no villain here」類を歌詞に書かない。");
   }
   lines.push("安全線（不変）: 実名個人と属性は撃たない。The diss target is systems, incentives, styles, cultures, industries, and public structures. Do not attack private individuals or protected traits.");

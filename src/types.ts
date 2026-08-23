@@ -403,6 +403,11 @@ export interface CreativeDecision {
   // director's material anti-repeat; never set by decideCreative and never
   // persisted in song-plan.json.
   usedMaterial?: string[];
+  // Catchphrase ids (see creativeDirector.CATCHPHRASES) that actually landed in
+  // the final lyrics. Annotated at ledger-read time (readRecentCreativeDecisions)
+  // for the director's catchphrase budget; never set by decideCreative and never
+  // persisted in song-plan.json.
+  usedCatchphrases?: string[];
   attackStance: string;
   emotionalMode: { label: string; spec: string };
   aggression: "dis" | "changeup";
@@ -415,6 +420,10 @@ export interface CreativeDecision {
   structure?: StructureVariant;
   hookShape: "question" | "number" | "list" | "call_response" | "reversal" | "one_line";
   shibuyaTag: string;
+  // Per-song catchphrase budget: `banned` are catchphrase ids the previous song
+  // used (kept off this song); `allowed` are the rest. Optional so legacy plans
+  // written before this field shipped decode as undefined.
+  catchphraseBudget?: { allowed: string[]; banned: string[] };
   signature: string[];
   observation: { url: string; author: string; motifScore: number } | null;
   degradedInputs: string[];

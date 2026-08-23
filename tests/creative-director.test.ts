@@ -2,7 +2,7 @@ import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
-import { decideCreative, type CreativeDirectorInput } from "../src/services/creativeDirector.js";
+import { CATCHPHRASES, decideCreative, detectCatchphrases, type CreativeDirectorInput } from "../src/services/creativeDirector.js";
 import { readSongPlan, writeSongPlan } from "../src/services/songPlan.js";
 import {
   appendCreativeQualityEntry,
@@ -342,5 +342,76 @@ describe("creativeDirector.decideCreative structure axis", () => {
       expect(decision.structure).not.toBe("standard");
       expect(["hook_first", "no_bridge_double_verse"]).toContain(decision.structure);
     }
+  });
+});
+
+describe("detectCatchphrases", () => {
+  it("collapses aliases to ids for ぜんいんしぶや / 全員渋谷 / ドンキ / 免税袋 / same X, same Y", () => {
+    expect(detectCatchphrases("hook: ぜんいんしぶや だ")).toEqual(["zenin_shibuya"]);
+    expect(detectCatchphrases("全員渋谷 と刻む")).toEqual(["zenin_shibuya"]);
+    expect(detectCatchphrases("免税袋 を提げて")).toEqual(["donki"]);
+    expect(detectCatchphrases("ドンキ の袋")).toEqual(["donki"]);
+    expect(detectCatchphrases("same nose, same pose")).toEqual(["same_same"]);
+    expect(detectCatchphrases("same shine, same line")).toEqual(["same_same"]);
+  });
+
+  it("returns [] for clean lyrics and preserves CATCHPHRASES order for multiples", () => {
+    expect(detectCatchphrases("just some clean lyrics")).toEqual([]);
+    expect(detectCatchphrases("ドンキ で 全員渋谷 same nose, same pose")).toEqual([
+      "zenin_shibuya",
+      "donki",
+      "same_same"
+    ]);
+  });
+});
+
+describe("creativeDirector catchphrase budget", () => {
+  const allIds = CATCHPHRASES.map((catchphrase) => catchphrase.id);
+
+  it("bans the previous song's catchphrase ids and allows the rest", () => {
+    const previous = { ...decideCreative(baseInput()), usedCatchphrases: ["zenin_shibuya", "donki"] };
+    const decision = decideCreative(baseInput({ songId: "song-cb", recentDecisions: [previous] }));
+    expect(decision.catchphraseBudget?.banned).toEqual(["zenin_shibuya", "donki"]);
+    expect(decision.catchphraseBudget?.allowed).toEqual(allIds.filter((id) => id === "same_same"));
+  });
+
+  it("allows every catchphrase when there is no previous song", () => {
+    const decision = decideCreative(baseInput({ recentDecisions: [] }));
+    expect(decision.catchphraseBudget?.banned).toEqual([]);
+    expect(decision.catchphraseBudget?.allowed).toEqual(allIds);
+  });
+
+  it("drops unknown ids from a stale previous entry and keeps CATCHPHRASES order", () => {
+    const previous = {
+      ...decideCreative(baseInput()),
+      usedCatchphrases: ["donki", "bogus", "zenin_shibuya"]
+    };
+    const decision = decideCreative(baseInput({ songId: "song-cb2", recentDecisions: [previous] }));
+    expect(decision.catchphraseBudget?.banned).toEqual(["zenin_shibuya", "donki"]);
+  });
+});
+
+describe("readRecentCreativeDecisions catchphrase annotation", () => {
+  it("merges usedCatchphrases from the ledger entry onto the decision", async () => {
+    const root = mkdtempSync(join(tmpdir(), "artist-runtime-catchphrase-"));
+    const decision = decideCreative(baseInput());
+    const entry: CreativeQualityEntry = {
+      songId: decision.songId,
+      title: "t",
+      createdAt: new Date().toISOString(),
+      dopagakiActive: false,
+      dopagakiThreshold: 0.4,
+      bareLyricsChars: 0,
+      bareLines: 0,
+      moodHint: "",
+      decision,
+      usedCatchphrases: ["zenin_shibuya"],
+      dissBankHits: [],
+      dissBankHitCount: 0,
+      degraded: false
+    };
+    await appendCreativeQualityEntry(root, entry);
+    const [recent] = await readRecentCreativeDecisions(root, 6);
+    expect(recent.usedCatchphrases).toEqual(["zenin_shibuya"]);
   });
 });

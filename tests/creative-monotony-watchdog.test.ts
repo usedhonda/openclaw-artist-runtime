@@ -258,3 +258,40 @@ describe("evaluateCreativeMonotony", () => {
     await vi.waitFor(() => expect(monotonyCalls()).toHaveLength(1));
   });
 });
+
+describe("detectCreativeStreaks — catchphrase", () => {
+  it("flags a catchphrase id used by the two newest songs", () => {
+    const streaks = detectCreativeStreaks([
+      entry({ usedCatchphrases: ["zenin_shibuya", "donki"] }),
+      entry({ usedCatchphrases: ["zenin_shibuya"] }),
+      entry({ usedCatchphrases: [] })
+    ]);
+    expect(streaks).toContainEqual({ kind: "catchphrase", value: "zenin_shibuya", length: 2 });
+  });
+
+  it("extends the run downward while consecutive songs keep the id", () => {
+    const streaks = detectCreativeStreaks([
+      entry({ usedCatchphrases: ["donki"] }),
+      entry({ usedCatchphrases: ["donki"] }),
+      entry({ usedCatchphrases: ["donki"] }),
+      entry({ usedCatchphrases: [] })
+    ]);
+    expect(streaks).toContainEqual({ kind: "catchphrase", value: "donki", length: 3 });
+  });
+
+  it("does not flag when only the newest song used a catchphrase", () => {
+    const streaks = detectCreativeStreaks([
+      entry({ usedCatchphrases: ["zenin_shibuya"] }),
+      entry({ usedCatchphrases: [] })
+    ]);
+    expect(streaks.some((streak) => streak.kind === "catchphrase")).toBe(false);
+  });
+
+  it("does not flag when the two newest songs used different catchphrases", () => {
+    const streaks = detectCreativeStreaks([
+      entry({ usedCatchphrases: ["zenin_shibuya"] }),
+      entry({ usedCatchphrases: ["donki"] })
+    ]);
+    expect(streaks.some((streak) => streak.kind === "catchphrase")).toBe(false);
+  });
+});

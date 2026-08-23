@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { readSongState } from "../src/services/artistState";
-import { readCreativeQualityLedger } from "../src/services/creativeQualityLedger";
+import { appendCreativeQualityEntry, readCreativeQualityLedger, type CreativeQualityEntry } from "../src/services/creativeQualityLedger";
 import { getRuntimeEventBus, type RuntimeEvent } from "../src/services/runtimeEventBus";
 
 const { callAiProviderMock } = vi.hoisted(() => ({
@@ -19,7 +19,7 @@ vi.mock("../src/services/aiProviderClient", async (importOriginal) => {
   };
 });
 
-const { draftLyrics } = await import("../src/services/lyricsDrafting");
+const { draftLyrics, phraseOverlapCount } = await import("../src/services/lyricsDrafting");
 
 async function workspace(): Promise<string> {
   const root = mkdtempSync(join(tmpdir(), "artist-runtime-lyrics-repair-"));
@@ -255,5 +255,119 @@ describe("lyrics drafting repair-not-reject orchestration", () => {
       expect(thrown?.message).toContain(degraded.detail);
     }
     unsubscribe();
+  });
+});
+
+// A valid dense draft that leaks a punchline label into a sung verse line. The
+// label is prepended to an existing line (verse stays within the 16-line cap and
+// keeps its Japanese content so validation still passes).
+function labelLeakJsonDraft(): string {
+  const draft = JSON.parse(goodJsonDraft()) as { sections: Array<{ lines: string[] }> };
+  draft.sections[1].lines = [`Punch one, ${draft.sections[1].lines[0]}`, ...draft.sections[1].lines.slice(1)];
+  return JSON.stringify(draft);
+}
+
+// Render a JSON draft's sections into a lyrics-file body (section headers + lines)
+// so a previous song file shares verbatim phrasing with a new draft built from
+// the same source.
+function renderLyricsBody(jsonDraft: string): string {
+  const draft = JSON.parse(jsonDraft) as { sections: Array<{ tag: string; lines: string[] }> };
+  return draft.sections.map((section) => [`[${section.tag}]`, ...section.lines].join("\n")).join("\n\n");
+}
+
+// Seed a prior song: a ledger entry (so the loader discovers its id) plus its
+// latest lyrics file (so the overlap lint has text to compare against).
+async function seedPreviousSong(root: string, songId: string, lyricsBody: string): Promise<void> {
+  await mkdir(join(root, "songs", songId, "lyrics"), { recursive: true });
+  await writeFile(join(root, "songs", songId, "lyrics", "lyrics.v1.md"), `${lyricsBody}\n`, "utf8");
+  const entry: CreativeQualityEntry = {
+    songId,
+    title: "Prior Song",
+    createdAt: new Date().toISOString(),
+    dopagakiActive: false,
+    dopagakiThreshold: 0,
+    bareLyricsChars: lyricsBody.length,
+    bareLines: lyricsBody.split(/\r?\n/).length,
+    moodHint: "prior mood",
+    dissBankHits: [],
+    dissBankHitCount: 0,
+    degraded: false
+  };
+  await appendCreativeQualityEntry(root, entry);
+}
+
+describe("lyrics drafting phrase-repeat lint (S2)", () => {
+  beforeEach(() => {
+    callAiProviderMock.mockReset();
+  });
+
+  it("regenerates once when a punchline label leaks, then passes the clean regen", async () => {
+    const root = await workspace();
+    callAiProviderMock
+      .mockResolvedValueOnce(labelLeakJsonDraft())
+      .mockResolvedValueOnce(goodJsonDraft());
+
+    const result = await draftLyrics({ workspaceRoot: root, songId: "song-001", aiReviewProvider: "openai-codex" });
+
+    expect(callAiProviderMock).toHaveBeenCalledTimes(2);
+    expect(result.lyricsText).not.toContain("Punch one");
+    expect((await readSongState(root, "song-001")).degradedLyrics).toBe(false);
+    const ledger = await readCreativeQualityLedger(root);
+    expect(ledger[0]?.repeated).toBeFalsy();
+  });
+
+  it("regenerates once when overlap with a recent song exceeds the threshold, then passes clean", async () => {
+    const root = await workspace();
+    await seedPreviousSong(root, "song-000", renderLyricsBody(goodJsonDraft()));
+    callAiProviderMock
+      .mockResolvedValueOnce(goodJsonDraft())
+      .mockResolvedValueOnce(denseBelowOldFloorDraft());
+
+    const result = await draftLyrics({ workspaceRoot: root, songId: "song-001", aiReviewProvider: "openai-codex" });
+
+    expect(callAiProviderMock).toHaveBeenCalledTimes(2);
+    // The regen draft's lines do not appear in the prior song, so it is accepted.
+    expect(result.lyricsText).toContain("しぶやのよるにさびたひかりがのこる");
+    expect((await readSongState(root, "song-001")).degradedLyrics).toBe(false);
+    const ledger = await readCreativeQualityLedger(root);
+    expect(ledger[0]?.repeated).toBeFalsy();
+  });
+
+  it("does not regenerate a clean draft with no recent overlap and no label leak", async () => {
+    const root = await workspace();
+    callAiProviderMock.mockResolvedValueOnce(goodJsonDraft());
+
+    await draftLyrics({ workspaceRoot: root, songId: "song-001", aiReviewProvider: "openai-codex" });
+
+    expect(callAiProviderMock).toHaveBeenCalledTimes(1);
+    expect((await readSongState(root, "song-001")).degradedLyrics).toBe(false);
+    const ledger = await readCreativeQualityLedger(root);
+    expect(ledger[0]?.repeated).toBeFalsy();
+  });
+
+  it("records repeated:true and passes through when the overlap survives the retry", async () => {
+    const root = await workspace();
+    await seedPreviousSong(root, "song-000", renderLyricsBody(goodJsonDraft()));
+    callAiProviderMock.mockResolvedValue(goodJsonDraft());
+
+    const result = await draftLyrics({ workspaceRoot: root, songId: "song-001", aiReviewProvider: "openai-codex" });
+
+    // Initial detect + one regen; then pass through (no park).
+    expect(callAiProviderMock).toHaveBeenCalledTimes(2);
+    expect(result.lyricsText).toContain("[Verse 1 - tight civic flow]");
+    expect((await readSongState(root, "song-001")).degradedLyrics).toBe(false);
+    const ledger = await readCreativeQualityLedger(root);
+    expect(ledger[0]?.repeated).toBe(true);
+  });
+});
+
+describe("phraseOverlapCount", () => {
+  it("counts a shared 20-char line as one run and unrelated text as zero", () => {
+    const shared = "しぶやのまよなかにさびたひかりがのこるよる";
+    const newLyrics = `[Verse 1 - a]\n${shared}\nみじかいぎょう`;
+    const previous = `[Verse 1 - b]\n${shared}\nまったくちがうくだり`;
+
+    expect(phraseOverlapCount(newLyrics, [previous])).toBe(1);
+    expect(phraseOverlapCount(`[Verse 1 - a]\nぜんぜんちがうながいくだりをここにおく`, [previous])).toBe(0);
   });
 });

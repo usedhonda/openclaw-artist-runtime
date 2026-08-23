@@ -117,6 +117,44 @@ const INTRO_STYLE_MOVE: Record<string, string> = {
   silence_hit: "silence then hard downbeat entry"
 };
 
+// The artist's recurring catchphrases. Budgeted per song (a catchphrase used in
+// the previous song is banned in the next) so hooks like "ぜんいんしぶや" and
+// "ドンキ/免税袋" stop appearing in every track. Aliases collapse spelling
+// variants to one id; `same_same` is a shape ("same X, same Y") caught by regex.
+// Fixed here, not parsed from canon — this is a code-level anti-repeat guard.
+interface CatchphraseSpec {
+  id: string;
+  label: string; // Japanese display name for the prompt directive
+  aliases: readonly string[]; // exact substrings; any match records the id
+  regex?: RegExp; // optional shape match (no /g so .test is stateless)
+}
+
+export const CATCHPHRASES: readonly CatchphraseSpec[] = [
+  { id: "zenin_shibuya", label: "全員渋谷", aliases: ["全員渋谷", "ぜんいんしぶや"] },
+  { id: "donki", label: "ドンキ/免税袋", aliases: ["ドンキ", "免税袋"] },
+  { id: "same_same", label: "same X, same Y の定型", aliases: [], regex: /\bsame\s+\w+,\s*same\s+\w+/i }
+];
+
+const CATCHPHRASE_IDS: readonly string[] = CATCHPHRASES.map((spec) => spec.id);
+
+// The catchphrase ids that appear in `lyrics` (exact alias match or the shape
+// regex). Deterministic, AI-free; input order preserved. Reused by the ledger
+// writer to record usedCatchphrases and by the director indirectly via that.
+export function detectCatchphrases(lyrics: string): string[] {
+  const ids: string[] = [];
+  for (const spec of CATCHPHRASES) {
+    const hit = spec.aliases.some((alias) => lyrics.includes(alias)) || (spec.regex?.test(lyrics) ?? false);
+    if (hit) ids.push(spec.id);
+  }
+  return ids;
+}
+
+// Japanese display name for a catchphrase id, for the prompt directive. Unknown
+// ids fall back to the id itself so a stale ledger value never renders blank.
+export function catchphraseLabel(id: string): string {
+  return CATCHPHRASES.find((spec) => spec.id === id)?.label ?? id;
+}
+
 // JST calendar date (YYYY-MM-DD). Kept here so every director call site derives
 // the seed date the same way. Matches the existing observation-collector helpers.
 export function jstDate(now: Date): string {
@@ -338,6 +376,11 @@ export function decideCreative(input: CreativeDirectorInput): CreativeDecision {
   if (previous) stanceExcluded.add(previous.attackStance);
   const attackStance = rotatePick(stancePool, `stance:${seed}`, stanceExcluded);
 
+  // --- Catchphrase budget (ban the previous song's catchphrase ids) ---
+  const previousCatchphrases = previous?.usedCatchphrases ?? [];
+  const bannedCatchphrases = CATCHPHRASE_IDS.filter((id) => previousCatchphrases.includes(id));
+  const allowedCatchphrases = CATCHPHRASE_IDS.filter((id) => !bannedCatchphrases.includes(id));
+
   // --- Signature (1 of 5, exclude previous) ---
   const signatureExcluded = new Set<string>();
   if (previous) previous.signature.forEach((value) => signatureExcluded.add(value));
@@ -368,6 +411,7 @@ export function decideCreative(input: CreativeDirectorInput): CreativeDecision {
     structure,
     hookShape,
     shibuyaTag,
+    catchphraseBudget: { allowed: allowedCatchphrases, banned: bannedCatchphrases },
     signature,
     observation: observation
       ? { url: observation.url, author: observation.author, motifScore: observation.motifScore }
