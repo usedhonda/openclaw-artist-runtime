@@ -14,6 +14,7 @@ import {
   type HumanAssistNotifier
 } from "../../services/sunoHumanAssist.js";
 import { emitRuntimeEvent } from "../../services/runtimeEventBus.js";
+import { removeHumanAssistPending, writeHumanAssistPending } from "../../services/humanAssistPending.js";
 import { CdpHumanAssistDriver } from "../../services/cdpHumanAssistDriver.js";
 import { findTakeAttributionCollisions } from "../../services/takeAttributionGuard.js";
 import type { SunoBrowserConfigView } from "../../services/runtimeConfig.js";
@@ -38,6 +39,11 @@ export interface HumanAssistConnectorDeps {
   submitMode?: "skip" | "manual" | "live";
   driverFactory: (input: HumanAssistDriverInput) => HumanAssistBrowserDriver;
   notifier: HumanAssistNotifier;
+  // Workspace root for the durable single-flight marker. When set, one outstanding
+  // human-assist attempt writes runtime/suno/human-assist-pending.json for its whole
+  // duration so the create choke point refuses a concurrent attempt. Omitted by unit
+  // tests that don't exercise the marker.
+  workspaceRoot?: string;
   // Given the harvested take URLs, return only those NOT already attributed to another
   // song. When omitted, all harvested URLs pass through (used by tests without workspace
   // state). The production wiring backs this with findTakeAttributionCollisions so a
@@ -96,14 +102,30 @@ export class HumanAssistSunoConnector implements SunoConnector {
     const songId = input.songId ?? result.runId;
     const title = readText(payload.songName) ?? songId;
     const driver = this.deps.driverFactory({ payload, songId, title });
-    const outcome = await runHumanAssistCreate({
-      driver,
-      notifier: this.deps.notifier,
-      songId,
-      title,
-      timeoutMs: this.deps.timeoutMs,
-      manualSubmit
-    });
+    const workspaceRoot = this.deps.workspaceRoot;
+    if (workspaceRoot) {
+      await writeHumanAssistPending(workspaceRoot, {
+        songId,
+        runId: result.runId,
+        pid: process.pid,
+        startedAt: new Date().toISOString()
+      });
+    }
+    let outcome;
+    try {
+      outcome = await runHumanAssistCreate({
+        driver,
+        notifier: this.deps.notifier,
+        songId,
+        title,
+        timeoutMs: this.deps.timeoutMs,
+        manualSubmit
+      });
+    } finally {
+      if (workspaceRoot) {
+        await removeHumanAssistPending(workspaceRoot);
+      }
+    }
 
     if (outcome.status === "accepted") {
       const harvested = outcome.urls ?? [];
@@ -212,6 +234,7 @@ export function createHumanAssistSunoConnector(
     // 0 is the "no time limit" sentinel: wait indefinitely for the manual Create click.
     timeoutMs: timeoutMinutes === 0 ? Infinity : timeoutMinutes * 60_000,
     submitMode: config?.music?.suno?.submitMode,
+    workspaceRoot,
     driverFactory: ({ payload }) => new CdpHumanAssistDriver({ payload, config: browserConfig, sessionFile }),
     notifier: createHumanAssistNotifier(
       timeoutMinutes,

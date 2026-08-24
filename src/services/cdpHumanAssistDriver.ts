@@ -38,6 +38,21 @@ import type {
  * HumanAssistBrowserDriver interface.
  */
 
+// Distinct wait failure: the tab/browser the producer was to press Create on is gone.
+export const HUMAN_ASSIST_BROWSER_GONE_REASON = "human_assist_browser_gone";
+
+/**
+ * Throw the browser-gone failure when the create page is missing or closed. A closed
+ * Playwright page also reports isClosed()=true when its context/browser disconnects, so
+ * this covers both a manually closed tab and a browser exit. Called each wait iteration
+ * so a dead target ends the wait instead of polling forever.
+ */
+export function assertBrowserAlive(page: Pick<Page, "isClosed"> | undefined): void {
+  if (!page || page.isClosed()) {
+    throw new Error(HUMAN_ASSIST_BROWSER_GONE_REASON);
+  }
+}
+
 const CAPTCHA_MARKERS = 'iframe[src*="hcaptcha"], iframe[title*="hCaptcha"], iframe[src*="turnstile"], [id*="hcaptcha"]';
 
 const FORM_READY_TIMEOUT_MS = 25_000;
@@ -279,6 +294,13 @@ export class CdpHumanAssistDriver implements HumanAssistBrowserDriver {
   async waitForHumanSubmit(timeoutMs: number): Promise<HumanAssistWaitOutcome> {
     const deadline = Date.now() + timeoutMs;
     while (Date.now() < deadline) {
+      // If the producer closed the tab (or the browser disconnected) there is no live
+      // target left to submit on. Reject with a distinct reason instead of polling a
+      // dead page forever: freshTakeUrls swallows the closed-target error to [], so
+      // without this the wait would never resolve and the single-flight marker would
+      // block every future attempt. Rejecting lets the flow's finally clear the marker
+      // and the autopilot start a fresh attempt.
+      assertBrowserAlive(this.page);
       // Only a NEW title-scoped take (the producer's manual Create actually starting a
       // generation) counts as success. Workspace bleed / over-count is rejected inside
       // freshTakeUrls, so this never accepts unrelated existing songs.

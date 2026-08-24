@@ -28,6 +28,7 @@ import { extractSunoTakeId } from "./takeAttributionGuard.js";
 import { collectSunoTakeUrls, EXPECTED_SUNO_TAKE_URLS } from "./sunoTakeUrls.js";
 import { getDurationPlan, resolveTempoBandFromBrief } from "../suno-production/durationPlan.js";
 import { readSongPlan } from "./songPlan.js";
+import { evaluateHumanAssistPending } from "./humanAssistPending.js";
 
 export interface GenerateSunoRunInput {
   workspaceRoot: string;
@@ -130,6 +131,19 @@ export async function evaluateSunoGenerationLimits(
   config: ArtistRuntimeConfig,
   now = new Date()
 ): Promise<AuthorityDecision | undefined> {
+  // Single-flight: while a human-assist attempt is still waiting for the producer in
+  // this gateway process, refuse a new create for any song. Without this, the ticker's
+  // stall-reset starts a fresh attempt every cycle (a new filled tab + a new alert)
+  // while the previous one waits. A stale marker (dead/other pid) self-heals inside
+  // evaluateHumanAssistPending, which deletes it and reports no pending attempt.
+  const pending = await evaluateHumanAssistPending(root);
+  if (pending) {
+    return {
+      allowed: false,
+      reason: `human_assist_pending:${pending.songId}`,
+      policyDecision: "stop_human_assist_pending"
+    };
+  }
   const songs = await listSongStates(root);
   const runs = (
     await Promise.all(songs.map((song) => readAllSunoRuns(root, song.songId).catch(() => [])))
