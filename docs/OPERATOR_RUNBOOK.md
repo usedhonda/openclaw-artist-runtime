@@ -502,7 +502,9 @@ Use this sequence after changing the autopilot or Telegram control surface. Keep
 real Suno create and social publish disabled unless a separate operator GO says
 otherwise.
 
-Default production flow: Telegram is a post-generation review surface. Autopilot
+Default production flow: Telegram is a post-generation review surface. Song proposals
+are written as a free-form artist pitch grounded in the selected observation; the
+source URL is retained as a footer for producer audit. Autopilot
 does not stop at `spawn_proposal_ready`, `planning_skeleton_pending`, or
 `prompt_pack_ready` unless `OPENCLAW_PRE_GENERATION_APPROVAL=on` is set. With
 the default, X/news observations can flow straight into song creation; the

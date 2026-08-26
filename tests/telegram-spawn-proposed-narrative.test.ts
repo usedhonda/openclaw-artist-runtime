@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it, vi } from "vitest";
 import { readCallbackActionEntries } from "../src/services/callbackActionRegistry";
-import { formatRuntimeEvent, TelegramNotifier } from "../src/services/telegramNotifier";
+import { buildSongSpawnPitchPrompt, formatRuntimeEvent, TelegramNotifier } from "../src/services/telegramNotifier";
 import type { CommissionBrief } from "../src/types";
 
 function telegramResponse(result: unknown): Response {
@@ -47,6 +47,21 @@ function brief(): CommissionBrief {
 }
 
 describe("telegram spawn proposed narrative", () => {
+  it("gives the artist a free-form, source-grounded pitch prompt instead of a notification template", () => {
+    const prompt = buildSongSpawnPitchPrompt({
+      type: "song_spawn_proposed",
+      candidateSongId: "spawn_story",
+      brief: brief(),
+      reason: "この観察から曲に入る。",
+      timestamp: 1
+    });
+
+    expect(prompt).toContain("Do not summarize a workflow or use a card, headings, labels, or bullet points.");
+    expect(prompt).toContain("https://example.com/city");
+    expect(prompt).toContain("地下鉄のコピー機が深夜も動いている");
+    expect(prompt).toContain("地下鉄のコピー機");
+  });
+
   it("renders a readable compact card and removes the old trace-heavy body", async () => {
     const workspaceRoot = await root();
     const text = await formatRuntimeEvent({

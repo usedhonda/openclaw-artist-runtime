@@ -1,5 +1,8 @@
 # Changelog
 
+- Telegram song proposals now use a free-form artist pitch grounded in the selected
+  observation instead of a fixed status card; the source URL remains attached for audit.
+
 - fix: use OpenClaw's configured primary model as the only model authority for Artist Runtime OpenAI calls; the plugin no longer silently falls back to an obsolete hard-coded model.
 
 ## [Unreleased]

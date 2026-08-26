@@ -516,7 +516,7 @@ export class TelegramNotifier {
   private async notifySongSpawnBatch(events: Array<Extract<RuntimeEvent, { type: "song_spawn_proposed" }>>): Promise<void> {
     if (events.length === 0) return;
     const event = events.at(-1)!;
-    const text = await formatRuntimeEvent(event, {
+    const text = await formatSongSpawnPitch(event, {
       workspaceRoot: this.options.workspaceRoot,
       aiReviewProvider: this.options.aiReviewProvider,
       dashboardBaseUrl: this.options.dashboardBaseUrl
@@ -1228,6 +1228,65 @@ function formatSongSpawnCard(event: Extract<RuntimeEvent, { type: "song_spawn_pr
     "作る曲:",
     formatSpawnSongShape(event.brief)
   ], 2200);
+}
+
+function selectedSpawnSource(event: Extract<RuntimeEvent, { type: "song_spawn_proposed" }>): CommissionBriefSource | undefined {
+  const summary = event.observationSummary;
+  if (summary?.url && /^https:\/\//.test(summary.url)) {
+    return { kind: "news", url: summary.url, author: summary.author, quote: summary.quote };
+  }
+  return event.brief.sources?.find((source) => /^https:\/\//.test(source.url));
+}
+
+function formatSpawnSourceFooter(source: CommissionBriefSource | undefined): string {
+  if (!source || isGoogleNewsIntermediateUrl(source.url)) return "";
+  return `↗ 読んだ記事: ${source.url}`;
+}
+
+export function buildSongSpawnPitchPrompt(event: Extract<RuntimeEvent, { type: "song_spawn_proposed" }>): string {
+  const source = selectedSpawnSource(event);
+  return [
+    "Write the final Telegram message proposing this new song to the producer.",
+    "This is the artist's own production pitch. Do not summarize a workflow or use a card, headings, labels, or bullet points.",
+    "Start wherever the artist's voice naturally begins. Make the producer feel why this observation has to become this song now.",
+    "Use only the observation facts below. Let the artist's interpretation, the lyric direction, and the musical bet connect freely in prose.",
+    `Selected observation URL: ${source?.url ?? "(no URL recorded)"}`,
+    `Selected observation excerpt: ${source?.quote ?? formatSpawnObservationLine(event)}`,
+    `Proposed title: ${event.brief.title}`,
+    `Song direction: ${event.brief.lyricsTheme}`,
+    `Sound direction: ${formatSpawnSongShape(event.brief)}`,
+    `Existing artistic reason: ${event.reason}`
+  ].join("\n");
+}
+
+async function formatSongSpawnPitch(
+  event: Extract<RuntimeEvent, { type: "song_spawn_proposed" }>,
+  options: Pick<TelegramNotifierOptions, "workspaceRoot" | "aiReviewProvider" | "dashboardBaseUrl">
+): Promise<string> {
+  const fallback = formatSongSpawnCard(event);
+  if (!options.workspaceRoot) return fallback;
+  const sourceFooter = formatSpawnSourceFooter(selectedSpawnSource(event));
+  const work = (async () => {
+    const context = await readArtistVoiceContext(options.workspaceRoot!, {
+      topic: "song_spawn_proposal",
+      recentHistory: [event.reason]
+    });
+    const response = await generateArtistResponse(buildSongSpawnPitchPrompt(event), context, {
+      intent: "propose",
+      aiReviewProvider: options.aiReviewProvider
+    });
+    const prose = response.text.trim();
+    return prose ? [prose, sourceFooter].filter(Boolean).join("\n\n") : fallback;
+  })();
+  const deadline = new Promise<typeof ARTIST_REPORT_TIMEOUT_SENTINEL>((resolve) => {
+    setTimeout(() => resolve(ARTIST_REPORT_TIMEOUT_SENTINEL), artistReportTimeoutMs());
+  });
+  const result = await Promise.race([work, deadline]);
+  if (result === ARTIST_REPORT_TIMEOUT_SENTINEL) {
+    console.error(`[telegram-notify] song spawn pitch timed out after ${artistReportTimeoutMs()}ms; using deterministic fallback`);
+    return fallback;
+  }
+  return result;
 }
 
 async function readSongCompletionContext(event: Extract<RuntimeEvent, { type: "song_take_completed" }>, workspaceRoot?: string): Promise<{ title: string; observationSummary?: ObservationSummary }> {
