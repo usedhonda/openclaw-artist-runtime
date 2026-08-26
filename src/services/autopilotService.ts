@@ -84,6 +84,8 @@ export interface RunAutopilotCycleInput {
   workspaceRoot: string;
   config?: Partial<ArtistRuntimeConfig>;
   manualSeed?: { hint: string; weirdness?: number; allowNoObservation?: boolean };
+  /** Direct producer request: bypass only the autonomous recent-completion spawn cooldown. */
+  operatorRequestedSpawn?: boolean;
   observationRunner?: XObservationContext["runner"];
 }
 
@@ -427,7 +429,7 @@ async function runIdeaQueueLane(
   root: string,
   existing: AutopilotRunState,
   config: ArtistRuntimeConfig,
-  options: { preserveCurrentSongLane?: boolean } = {}
+  options: { preserveCurrentSongLane?: boolean; ignoreRecentCompletion?: boolean } = {}
 ): Promise<{ state?: AutopilotRunState; emitted: boolean; skippedForFullQueue: boolean; heldForObservation: boolean }> {
   const skippedForFullQueue = false;
   let emitted = false;
@@ -447,7 +449,7 @@ async function runIdeaQueueLane(
     const proposal = await proposeSpawn(root, {
       aiReviewProvider: config.aiReview.provider,
       activeQueueContext: activeQueueContextFromProposals(pendingProposals),
-      ignoreRecentCompletion: options.preserveCurrentSongLane
+      ignoreRecentCompletion: options.ignoreRecentCompletion === true || options.preserveCurrentSongLane === true
     });
     if (!proposal) {
       return;
@@ -1491,7 +1493,8 @@ export class ArtistAutopilotService {
     if (isSongSpawnConfigured(config)) {
       const producerReviewOnly = isProducerReviewOnlyLane(existing);
       const ideaLane = await runIdeaQueueLane(input.workspaceRoot, existing, config, {
-        preserveCurrentSongLane: producerReviewOnly
+        preserveCurrentSongLane: producerReviewOnly,
+        ignoreRecentCompletion: input.operatorRequestedSpawn === true
       });
       if (producerReviewOnly) {
         return ideaLane.state ?? writeStageState(input.workspaceRoot, existing, {

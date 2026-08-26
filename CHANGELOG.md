@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased
+
+- Explicit `POST /api/run-cycle` requests can set `operatorRequestedSpawn: true` to bypass only the autonomous recent-completion proposal cooldown; automatic cycles retain that protection.
+
 - Telegram song proposals now use a free-form artist pitch grounded in the selected
   observation instead of a fixed status card; the source URL remains attached for audit.
 

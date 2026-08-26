@@ -699,7 +699,8 @@ export function registerRoutes(api: unknown): void {
             ...(manualSeedPayload.allowNoObservation === true ? { allowNoObservation: true } : {})
           }
         : undefined;
-      const result = await getAutopilotTicker().runNow(config, manualSeed);
+      const operatorRequestedSpawn = payload.operatorRequestedSpawn === true;
+      const result = await getAutopilotTicker().runNow(config, manualSeed, operatorRequestedSpawn);
       return {
         ...result.state,
         tickerOutcome: result.outcome,

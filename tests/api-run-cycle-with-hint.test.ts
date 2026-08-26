@@ -118,4 +118,37 @@ describe("run-cycle route manual seed", () => {
     expect(response.readStatus()).toBe(200);
     expect(spy).toHaveBeenCalledWith(expect.not.objectContaining({ manualSeed: expect.anything() }));
   });
+
+  it("passes an explicit producer-requested spawn flag", async () => {
+    const root = mkdtempSync(join(tmpdir(), "artist-runtime-run-cycle-operator-spawn-"));
+    await ensureArtistWorkspace(root);
+    const spy = vi.spyOn(ArtistAutopilotService.prototype, "runCycle").mockResolvedValue(state());
+    const registered = new Map<string, (req: IncomingMessage, res: ServerResponse) => Promise<boolean | void> | boolean | void>();
+    registerRoutes({
+      registerHttpRoute(definition: { path: string; handler: (req: IncomingMessage, res: ServerResponse) => Promise<boolean | void> | boolean | void }) {
+        registered.set(definition.path, definition.handler);
+      }
+    });
+
+    const handler = registered.get("/plugins/artist-runtime/api/run-cycle");
+    const response = createMockResponse();
+    await handler?.(
+      createMockRequest(
+        "POST",
+        "/plugins/artist-runtime/api/run-cycle",
+        JSON.stringify({
+          config: { artist: { workspaceRoot: root }, autopilot: { enabled: true, dryRun: true } },
+          operatorRequestedSpawn: true
+        }),
+        { "content-type": "application/json" }
+      ),
+      response.res
+    );
+
+    expect(response.readStatus()).toBe(200);
+    expect(spy).toHaveBeenCalledWith(expect.objectContaining({
+      workspaceRoot: root,
+      operatorRequestedSpawn: true
+    }));
+  });
 });
