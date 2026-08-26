@@ -33,6 +33,7 @@ function brief(): CommissionBrief {
     songId: "spawn_story",
     title: "地下鉄のコピー機",
     brief: "駅の明るさを社会風刺として見る。",
+    artistObservation: "深夜までコピー機が動くことが、誰も帰れない仕事を静かに肯定しているようで嫌だ。",
     lyricsTheme: "地下鉄のコピー機の白さで、働く人の疲れを描く。",
     mood: "tense",
     tempo: "142 BPM",
@@ -57,6 +58,11 @@ describe("telegram spawn proposed narrative", () => {
     });
 
     expect(prompt).toContain("Do not summarize a workflow or use a card, headings, labels, or bullet points.");
+    expect(prompt).toContain("Start with one checkable fact from the selected observation");
+    expect(prompt).toContain("may not add an unrelated city, industry, object, event, or social claim");
+    expect(prompt).toContain("material is not enough instead of forcing a song proposal");
+    expect(prompt).toContain("Artist's personal observation:");
+    expect(prompt).toContain("誰も帰れない仕事を静かに肯定しているようで嫌だ");
     expect(prompt).toContain("https://example.com/city");
     expect(prompt).toContain("地下鉄のコピー機が深夜も動いている");
     expect(prompt).toContain("地下鉄のコピー機");

@@ -25,6 +25,16 @@ Downstream stages **read the plan** instead of re-hashing each axis on their own
 `brief.md` remains as a human-readable summary, but the machine source of truth is
 the plan.
 
+## Source, observation, and artistic response
+
+A source is not yet an artistic observation. For a new proposal, a resolved news
+article is preferred over a surrounding X reaction. The proposal must keep one
+source as its factual anchor, record the artist's own `artistObservation` about
+that fact, then derive the lyric and musical choice from that response. Persona
+material controls the critical voice and sound; it cannot introduce an unrelated
+second subject. If the connection cannot be stated plainly, the runtime declines
+to force a proposal.
+
 ### Decision axes
 
 | Axis | Field | Decided by | Notes |

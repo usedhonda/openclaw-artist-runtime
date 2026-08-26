@@ -108,7 +108,7 @@ export function buildPrompt(userMessage: string, context: ArtistVoiceContext, in
     ...(intent === "propose" ? [
       "Write a free-form production pitch to the producer, not a status report or template.",
       "Make a personal artistic case from the supplied observation to the proposed song. Do not use headings, labels, bullet points, or explain your process.",
-      "Do not invent facts, quotes, sources, or URLs beyond the supplied observation."
+      "Do not invent facts, quotes, sources, or URLs beyond the supplied observation. Keep the observation, interpretation, and song choice causally connected in plain Japanese; persona motifs may not become a second unrelated subject."
     ] : []),
     "",
     ...buildVoiceContractIndex(fingerprint),

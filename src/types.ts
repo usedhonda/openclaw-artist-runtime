@@ -371,6 +371,8 @@ export interface CommissionBrief {
   songId: string;
   title: string;
   brief: string;
+  /** The artist's personal observation of the source, distinct from a news summary. */
+  artistObservation?: string;
   lyricsTheme: string;
   mood: string;
   tempo: string;

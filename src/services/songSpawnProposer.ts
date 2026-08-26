@@ -116,7 +116,12 @@ async function latestObservationData(
   if (newsRaw) {
     raw = raw ? `${raw.trim()}\n\n# News Excerpts\n${newsRaw}\n` : `# News Excerpts\n${newsRaw}\n`;
   }
-  const sorted = [...selectedPool].sort((a, b) => (b.motifScore ?? 0) - (a.motifScore ?? 0));
+  // A resolved news article is the primary material when available. X remains
+  // useful as surrounding reaction, but an unrelated high-scoring post must not
+  // displace the article the artist is meant to be responding to.
+  const articlePool = selectedPool.filter((entry) => entry.sourceKind === "news" && Boolean(entry.url));
+  const primaryPool = articlePool.length > 0 ? articlePool : selectedPool;
+  const sorted = [...primaryPool].sort((a, b) => (b.motifScore ?? 0) - (a.motifScore ?? 0));
   // Plan v10.38 Phase E: keep top-N excerpts so buildPrompt can show them to
   // the AI as "Today's Topic (main material)". Both X and news entries pass
   // through here, scored by the same persona motif rubric.
@@ -683,11 +688,7 @@ function buildPrompt(context: {
   const lines: string[] = [
     `System: あなたは ${context.identity.artistName} 本人。 producer に新曲を提案する artist として一人称で書く。`,
     "Decision: 観察と heartbeat から、 今 新曲を始めるべきか判断する。 不十分なら spawn: no。",
-    // Plan v10.38 Phase E: explicit material policy. Observation is the trigger
-    // and main material (e.g. today's LUUP incident + the X reaction around it),
-    // ARTIST.md is the lens that colors the take (六本木 / 経営者 / hip-hop). The
-    // ratio is ~40% observation main / 60% persona lens.
-    "Material policy: 観察 (news + X) を主素材、 ARTIST.md / SOUL.md は色付けの lens として使う。ARTIST.md の Critique Lens に従って具体的な仕組み・文化・産業を切り、同じ motif を毎回繰り返さない。",
+    "Material policy: 1つの観察 entry を主素材として選ぶ。title / brief / lyricsTheme の中心に置く事実・対象・仕組みは、その entry の quote から直接たどれるものだけにする。ARTIST.md / SOUL.md は口調・音・批評の角度を決める lens であり、観察にない別の街・産業・物・事件を並列の主題として足してはいけない。観察から普通の日本語で因果を説明できないなら spawn: no。",
     `Emotional mode for this song: ${context.emotionalMood}`,
     "Avoid any subject or title already listed in recently proposed themes.",
     "Never include secrets. Keep the brief lean enough for autopilot planning.",
@@ -700,13 +701,14 @@ function buildPrompt(context: {
     "spawn: <yes/no>",
     "title: <artistic title> (漢字 / カタカナ / 平仮名は元表記のまま。 タイトルだけは hiragana 化しない。 hiragana 化は歌詞 Suno 誤読対策に限る)",
     "brief: <280 chars 以内、 楽曲の中身要約>",
+    "artistObservation: <1-2 文、日本語。この artist が source のどの事実に反応して、何に怒り・怖さ・寂しさ・可笑しさ・執着を感じたか。記事の要約や楽曲仕様ではなく、事実から導かれる個人的な判断を書く>",
     "lyricsTheme: <2-4 文、 日本語、 sub 構造込み。最低 2 文。例: \"六本木で見た経営者を社会風刺として切る。サビは短く 1 行のリフレインだけ、ヴァースで景色を出してサビでそれを 1 行に畳む。\">",
     "mood: <english spec keywords e.g. 'tense, late-night, urban pressure'>",
     "tempo: <'artist decides' or '142 BPM'>",
     "duration: <'2:45' 等>",
     "style: <english spec keywords + instrumentation roles. 最低 3 要素。例: \"thick bass on low register, restrained hi-hats, vocals nestled between instruments, sparse arrangement, breathing space\">",
     "reason: <**日本語のみ**、 artist 一人称口語、 producer に話しかける 1 行 (e.g. \"" + (context.identity.producerCallname ?? context.fingerprint.producerCallname) + "、 〜の街を切るやつ、 刺さる\")>",
-    "sources: <Today's Topic から実際に使った観察 entry を最低 1 件、 最大 5 件、 改行区切りで列挙。 各行は `- kind:<news|x_reaction|x> url:<https://...> author:<@user or source label> quote:<本文を 60 字以内で抜粋>` の形式。 news と x_reaction が両方ある時は両方を使う。 use していない entry は書かない、 捏造禁止>",
+    "sources: <Today's Topic から実際に使った観察 entry を 1 件だけ列挙。 各行は `- kind:<news|x_reaction|x> url:<https://...> author:<@user or source label> quote:<本文を 60 字以内で抜粋>` の形式。brief / lyricsTheme の中心はこの quote に直接根拠を置く。捏造禁止>",
     "",
     ...buildVoiceContractLines(context.fingerprint),
     "",
@@ -725,8 +727,8 @@ function buildPrompt(context: {
     "Heartbeat:",
     context.heartbeat.slice(0, 500),
     "",
-    "## Artist Lens (ARTIST.md / SOUL.md persona — 60% color):",
-    "下記の persona block は歌詞の起点ではない。 観察に色を付ける lens として使い、 主題は Today's Topic から取る。",
+    "## Artist Lens (ARTIST.md / SOUL.md persona):",
+    "下記の persona block は歌詞の起点ではない。観察に対する言い方・音の決め方として使い、主題の名詞と事実は Today's Topic から取る。",
     "",
     ...buildPersonaBody(context)
   ];
@@ -744,6 +746,7 @@ function briefFromAi(raw: string, fallback: CommissionBrief, now: Date, context:
   const title = parseDirective(raw, "title") || fallback.title;
   const brief = parseDirective(raw, "brief") || fallback.brief;
   const sources = parseSourcesFromAi(raw);
+  const artistObservation = parseDirective(raw, "artistObservation")?.trim();
   const tempo = parseDirective(raw, "tempo") || fallback.tempo;
   const styleNotes = dedupeStyleBpm(normalizePitchField("styleNotes", parseDirective(raw, "style"), context), tempo);
   return {
@@ -753,6 +756,7 @@ function briefFromAi(raw: string, fallback: CommissionBrief, now: Date, context:
       ...fallback,
       title,
       brief,
+      artistObservation: artistObservation || undefined,
       lyricsTheme: normalizePitchField("lyricsTheme", parseDirective(raw, "lyricsTheme") || parseDirective(raw, "lyrics"), context),
       mood: parseDirective(raw, "mood") || fallback.mood,
       tempo,
@@ -996,6 +1000,9 @@ export async function proposeSpawn(root: string, options: ProposeSpawnOptions = 
   }
   const safeRaw = secretLikePattern.test(raw) ? "" : raw;
   const parsed = briefFromAi(safeRaw, fallback, now, pitchContext);
+  if (provider !== "mock" && !parsed.brief.artistObservation) {
+    return null;
+  }
   // Mood rotation is code-owned repetition control. The AI may color the scene, but
   // it does not override the selected emotional mode with a habitual default.
   parsed.brief.mood = fallback.mood;
