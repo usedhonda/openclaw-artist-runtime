@@ -11,6 +11,10 @@
   require the artist's personal observation of the source before Telegram turns it
   into a producer pitch.
 
+- Telegram song proposals now give the producer a longer song-birth story: the
+  observation and emotional response lead into an explanation of the planned lyric
+  world, hook, and musical movement.
+
 - fix: use OpenClaw's configured primary model as the only model authority for Artist Runtime OpenAI calls; the plugin no longer silently falls back to an obsolete hard-coded model.
 
 ## [Unreleased]

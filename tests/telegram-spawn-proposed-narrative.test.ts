@@ -58,7 +58,10 @@ describe("telegram spawn proposed narrative", () => {
     });
 
     expect(prompt).toContain("Do not summarize a workflow or use a card, headings, labels, or bullet points.");
-    expect(prompt).toContain("Start with one checkable fact from the selected observation");
+    expect(prompt).toContain("birth story of the song");
+    expect(prompt).toContain("roughly 500-900 Japanese characters");
+    expect(prompt).toContain("planned lyric world");
+    expect(prompt).toContain("start with one checkable fact from the selected observation");
     expect(prompt).toContain("may not add an unrelated city, industry, object, event, or social claim");
     expect(prompt).toContain("material is not enough instead of forcing a song proposal");
     expect(prompt).toContain("Artist's personal observation:");

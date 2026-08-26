@@ -1248,15 +1248,16 @@ export function buildSongSpawnPitchPrompt(event: Extract<RuntimeEvent, { type: "
   return [
     "Write the final Telegram message proposing this new song to the producer.",
     "This is the artist's own production pitch. Do not summarize a workflow or use a card, headings, labels, or bullet points.",
-    "Write one natural paragraph of 3-5 sentences. Start with one checkable fact from the selected observation, then state the artist's interpretation that follows from that fact, then state the lyric and musical choice it requires.",
+    "Write 2-4 natural short paragraphs, roughly 500-900 Japanese characters. This is the birth story of the song, not a sales pitch or a status update.",
+    "In the first half, start with one checkable fact from the selected observation and say what the artist personally saw, felt, or could not let pass. In the second half, explain the planned lyric world: whose voice it is, which concrete scene or image opens it, what the hook keeps returning to, and how the musical movement carries that feeling.",
     "Keep the causal link explicit in ordinary Japanese. The persona may shape the voice and sound, but may not add an unrelated city, industry, object, event, or social claim. Do not stack abstract nouns merely because they fit the persona.",
     "If the link cannot be explained plainly from the observation, say the material is not enough instead of forcing a song proposal.",
     `Selected observation URL: ${source?.url ?? "(no URL recorded)"}`,
     `Selected observation excerpt: ${source?.quote ?? formatSpawnObservationLine(event)}`,
     `Artist's personal observation: ${event.brief.artistObservation ?? "(missing: do not invent one)"}`,
     `Proposed title: ${event.brief.title}`,
-    `Song direction: ${event.brief.lyricsTheme}`,
-    `Sound direction: ${formatSpawnSongShape(event.brief)}`,
+    `Planned lyric world: ${event.brief.lyricsTheme}`,
+    `Planned musical movement: ${formatSpawnSongShape(event.brief)}`,
     `Existing artistic reason: ${event.reason}`
   ].join("\n");
 }
