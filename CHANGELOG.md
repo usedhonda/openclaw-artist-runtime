@@ -1,5 +1,7 @@
 # Changelog
 
+- fix: use OpenClaw's configured primary model as the only model authority for Artist Runtime OpenAI calls; the plugin no longer silently falls back to an obsolete hard-coded model.
+
 ## [Unreleased]
 
 ### Changed

@@ -49,7 +49,7 @@ async function writeOpenClawAuthFixture(
   await writeFile(
     configPath,
     `${JSON.stringify({
-      agents: { defaults: { model: { primary: "openai-codex/gpt-5.5" } } },
+      agents: { defaults: { model: { primary: "openai/gpt-5.6" } } },
       auth: { profiles: { "openai-codex:test@example.invalid": {} } }
     })}\n`,
     "utf8"
@@ -116,11 +116,35 @@ describe("ai provider client", () => {
     });
     const body = JSON.parse(fetchImpl.mock.calls[0][1]?.body as string);
     expect(body).toMatchObject({
-      model: "gpt-5.5",
+      model: "gpt-5.6",
       stream: true,
       store: false
     });
     expect(body.input[0].content[0].text).toBe("artistName: draft this");
+  });
+
+  it("does not invent a plugin model when OpenClaw has no primary model", async () => {
+    const root = makeRoot();
+    const configPath = join(root, "openclaw.json");
+    const authProfilesPath = join(root, "auth-profiles.json");
+    await writeFile(configPath, "{}\n", "utf8");
+    await writeFile(authProfilesPath, `${JSON.stringify({
+      profiles: {
+        "openai-codex:test@example.invalid": {
+          provider: "openai-codex",
+          access: "placeholder-access"
+        }
+      }
+    })}\n`, "utf8");
+    const fetchImpl = vi.fn();
+
+    await expect(callAiProvider("artistName: draft this", {
+      provider: "openai-codex",
+      configPath,
+      authProfilesPath,
+      fetchImpl
+    })).resolves.toBe("AI provider 'openai-codex' is not configured. No external model call was made.");
+    expect(fetchImpl).not.toHaveBeenCalled();
   });
 
   it("prefers fresh Codex CLI auth over a local OpenClaw auth profile", async () => {

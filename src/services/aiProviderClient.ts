@@ -10,7 +10,6 @@ export interface AiProviderCallOptions {
   timeoutMs?: number;
   authProfilesPath?: string;
   configPath?: string;
-  model?: string;
 }
 
 interface OpenClawConfigShape {
@@ -50,7 +49,6 @@ interface CodexCliAuthShape {
 }
 
 const openAiCodexResponsesUrl = "https://chatgpt.com/backend-api/codex/responses";
-const defaultCodexModel = "gpt-5.5";
 const providerPromptSecretPattern = /(bot\d+:[A-Za-z0-9_-]{30,}|(?:API[_ -]?KEY|COOKIE|CREDENTIAL|PASSWORD|SECRET)\s*[=:]\s*\S+)/i;
 
 function truncate(value: string, maxLength: number): string {
@@ -191,15 +189,12 @@ export async function readCodexCliAccess(): Promise<ResolvedCodexProfile | undef
   };
 }
 
-function resolveModel(config: OpenClawConfigShape | undefined, explicit?: string): string {
-  if (explicit) {
-    return explicit.includes("/") ? explicit.split("/").pop() ?? defaultCodexModel : explicit;
-  }
+function resolveModel(config: OpenClawConfigShape | undefined): string | undefined {
   const primary = config?.agents?.defaults?.model?.primary;
   if (typeof primary === "string" && primary.trim()) {
-    return primary.includes("/") ? primary.split("/").pop() ?? defaultCodexModel : primary;
+    return primary.includes("/") ? primary.split("/").pop() : primary;
   }
-  return defaultCodexModel;
+  return undefined;
 }
 
 function profileKeysFromConfig(config: OpenClawConfigShape | undefined): string[] {
@@ -240,14 +235,14 @@ function selectCodexProfile(
 }
 
 async function resolveCodexAuth(options: AiProviderCallOptions): Promise<{
-  model: string;
+  model?: string;
   profile?: ResolvedCodexProfile;
 }> {
   const configRead = await readFirstJson<OpenClawConfigShape>(candidateConfigPaths(options.configPath));
   const cliProfile = await readCodexCliAccess();
   if (cliProfile && (!cliProfile.expires || cliProfile.expires > Date.now())) {
     return {
-      model: resolveModel(configRead?.value, options.model),
+      model: resolveModel(configRead?.value),
       profile: cliProfile
     };
   }
@@ -255,7 +250,7 @@ async function resolveCodexAuth(options: AiProviderCallOptions): Promise<{
     candidateAuthProfilePaths(options.authProfilesPath, configRead?.path)
   );
   return {
-    model: resolveModel(configRead?.value, options.model),
+    model: resolveModel(configRead?.value),
     profile: selectCodexProfile(authRead?.value, configRead?.value)
   };
 }
@@ -385,7 +380,7 @@ export async function callAiProvider(prompt: string, options: AiProviderCallOpti
     return mockResponse(prompt, "Mock provider fallback (secret-like prompt blocked)");
   }
   const auth = await resolveCodexAuth(options);
-  if (!auth.profile) {
+  if (!auth.profile || !auth.model) {
     return notConfigured(options.provider);
   }
   if (auth.profile.expires && auth.profile.expires <= Date.now()) {
