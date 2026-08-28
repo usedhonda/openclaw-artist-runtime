@@ -231,7 +231,18 @@ export class CdpHumanAssistDriver implements HumanAssistBrowserDriver {
     }
     const title = readText(payload.songName);
     if (title) {
-      await this.fillCandidates(SUNO_CREATE_FALLBACKS.titleInput, "title", title);
+      // The current homepage composer does not expose a title field. Song title is
+      // optional metadata, so its absence must not prevent the producer from seeing
+      // the fully prepared lyrics and style form before the manual Create boundary.
+      const titleField = await resolveFirstVisibleLocator(
+        page,
+        SUNO_CREATE_FALLBACKS.titleInput,
+        FORM_READY_TIMEOUT_MS,
+        "title"
+      ).catch(() => undefined);
+      if (titleField) {
+        await titleField.fill(title, { timeout: FORM_READY_TIMEOUT_MS });
+      }
     }
     const exclude = readText(payload.excludeStyles);
     if (exclude) {
