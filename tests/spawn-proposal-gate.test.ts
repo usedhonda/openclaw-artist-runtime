@@ -7,6 +7,7 @@ import { ensureArtistWorkspace } from "../src/services/artistWorkspace";
 import { ensureSongState, readSongState, writeSongBrief } from "../src/services/artistState";
 import { ArtistAutopilotService, readAutopilotRunState, writeAutopilotRunState } from "../src/services/autopilotService";
 import { registerCallbackAction } from "../src/services/callbackActionRegistry";
+import { readSongSpawnState } from "../src/services/songSpawnRateLimiter";
 import { getRuntimeEventBus, type RuntimeEvent } from "../src/services/runtimeEventBus";
 import { routeTelegramCallback } from "../src/services/telegramCallbackHandler";
 import type { TelegramClient } from "../src/services/telegramClient";
@@ -108,6 +109,7 @@ describe("spawn proposal approval gate", () => {
     expect(next).toMatchObject({ stage: "planning", suspendedAt: "spawn_proposal_ready", blockedReason: "spawn_proposal_ready" });
     expect(events.filter((event) => event.type === "song_spawn_proposed")).toHaveLength(eventCount);
     expect(eventCount).toBe(1);
+    expect((await readSongSpawnState(root)).lastSpawnAt).toBeUndefined();
   });
 
   it("auto-injects spawn proposals and advances toward Suno by default", async () => {
@@ -128,6 +130,7 @@ describe("spawn proposal approval gate", () => {
     expect(events.some((event) => event.type === "song_spawn_proposed")).toBe(false);
     const song = await readSongState(root, state.currentSongId ?? "");
     expect(song.status).toBe("suno_prompt_pack");
+    expect((await readSongSpawnState(root)).lastSpawnAt).toBeTruthy();
   });
 
   it("does not create a spawn proposal while the artist template still needs setup", async () => {

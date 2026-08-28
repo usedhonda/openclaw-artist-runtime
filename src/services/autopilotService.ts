@@ -470,12 +470,12 @@ async function runIdeaQueueLane(
     }
     const voiceTop = await composeVoiceTopOnly("propose", root, undefined, [], { runId: proposal.candidateSongId }).catch(() => undefined);
     const record = await appendSpawnProposal(root, spawnProposalRecordFromGenerated(proposal, voiceTop));
-    await markSpawned(root);
     emitted = true;
     if (!isPreGenerationApprovalEnabled()) {
       await markSpawnProposalBuilding(root, record.proposalId);
       await injectCommissionSong(root, proposal.brief);
       await markSpawnProposalDone(root, record.proposalId);
+      await markSpawned(root);
       return;
     }
     emitRuntimeEvent({
