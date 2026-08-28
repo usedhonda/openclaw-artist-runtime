@@ -76,6 +76,27 @@ describe("AutopilotControlService", () => {
     expect(resumed.retryCount).toBe(0);
   });
 
+  it("returns a failed Suno handoff to suno_generation instead of idling its current song", async () => {
+    const root = tempWorkspace();
+    await writeState(root, {
+      runId: "auto-suno",
+      currentSongId: "song-001",
+      stage: "paused",
+      paused: true,
+      blockedReason: "suno_generate_failed:suno_create_dom_missing",
+      lastSuccessfulStage: "prompt_pack",
+      retryCount: 2,
+      cycleCount: 3,
+      updatedAt: "2026-04-27T08:00:00.000Z"
+    });
+
+    const resumed = await new AutopilotControlService(fixedClock()).resume(root);
+
+    expect(resumed.stage).toBe("suno_generation");
+    expect(resumed.currentSongId).toBe("song-001");
+    expect(resumed.retryCount).toBe(0);
+  });
+
   it("clears blockedReason + user_paused suspension but preserves GO-gate suspension on resume (Plan v10.56 Phase 2)", async () => {
     const root = tempWorkspace();
     await writeState(root, {

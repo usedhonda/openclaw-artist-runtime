@@ -48,6 +48,11 @@ export class AutopilotControlService {
     // prompt_pack_ready / planning_skeleton_pending) are producer decisions and must
     // survive resume (cleared only by the corresponding GO, not by /resume).
     const clearsSuspension = current.suspendedAt === "user_paused";
+    const resumesSunoGeneration =
+      current.currentSongId !== undefined &&
+      current.lastSuccessfulStage === "prompt_pack" &&
+      typeof current.blockedReason === "string" &&
+      current.blockedReason.startsWith("suno_generate_");
     const next = await writeAutopilotState(root, {
       ...current,
       paused: false,
@@ -61,7 +66,7 @@ export class AutopilotControlService {
       // make a Telegram /resume look like it did nothing.
       retryCount: 0,
       suspendedAt: clearsSuspension ? undefined : current.suspendedAt,
-      stage: "idle"
+      stage: resumesSunoGeneration ? "suno_generation" : "idle"
     });
     emitRuntimeEvent({
       type: "autopilot_state_changed",
