@@ -101,7 +101,7 @@ describe("spawn proposal notification", () => {
     const markup = requestBody(fetchImpl.mock.calls[1]).reply_markup as { inline_keyboard: Array<Array<{ text: string }>> };
     expect(markup.inline_keyboard).toHaveLength(1);
     expect(markup.inline_keyboard.map((row) => row.map((button) => button.text))).toEqual([
-      ["作る", "保留する", "修正する"]
+      ["作る", "却下", "修正する"]
     ]);
     expect((await readCallbackActionEntries(root)).map((entry) => entry.action).sort()).toEqual([
       "song_spawn_edit",
@@ -129,7 +129,7 @@ describe("spawn proposal notification", () => {
     const markup = requestBody(fetchImpl.mock.calls[1]).reply_markup as { inline_keyboard: Array<Array<{ text: string }>> };
     expect(markup.inline_keyboard).toEqual([[
       expect.objectContaining({ text: "作る" }),
-      expect.objectContaining({ text: "保留する" }),
+      expect.objectContaining({ text: "却下" }),
       expect.objectContaining({ text: "修正する" })
     ]]);
   });
@@ -152,7 +152,7 @@ describe("spawn proposal notification", () => {
     );
 
     expect(response.count).toBe(2);
-    expect(response.proposals[0].actions.map((action) => action.label)).toEqual(["作る", "保留する", "修正する"]);
+    expect(response.proposals[0].actions.map((action) => action.label)).toEqual(["作る", "却下", "修正する"]);
     expect(html).toContain("草稿箱");
     expect(html).toContain("ハンズ前、解散");
     expect(html).toContain("この草稿で曲を完成まで作る。外部公開はしない。");
@@ -165,8 +165,8 @@ describe("spawn proposal notification", () => {
       effect: "この草稿で曲を完成まで作る。外部公開はしない。"
     });
     expect(describeCallbackActionEffect("song_spawn_skip")).toMatchObject({
-      label: "保留する",
-      effect: "この着想を保留する。"
+      label: "却下",
+      effect: "この着想を却下し、次の観測から別の曲案を探す。"
     });
     expect(describeCallbackActionEffect("song_spawn_edit")).toMatchObject({
       label: "修正する",

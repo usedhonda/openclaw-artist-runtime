@@ -292,6 +292,27 @@ describe("x observation collector", () => {
     expect(runner).toHaveBeenCalledTimes(2);
   });
 
+  it("refreshes an otherwise cached observation on producer rejection", async () => {
+    const root = workspace();
+    await mkdir(join(root, "runtime"), { recursive: true });
+    await writeFile(join(root, "runtime", "config-overrides.json"), JSON.stringify({ bird: { rateLimits: { dailyMax: 5, minIntervalMinutes: 1 } } }), "utf8");
+    const runner = vi.fn(async () => ({
+      stdout: "@watch_a 新しい観測 https://x.com/watch_a/status/1111111111111111111 2026-04-29T00:30:00.000Z"
+    }));
+    const now = new Date("2026-04-29T01:00:00.000Z");
+
+    await collectObservations(root, { now, query: "新しい観測", runner });
+    const refreshed = await collectObservations(root, {
+      now: new Date("2026-04-29T01:02:00.000Z"),
+      query: "新しい観測",
+      runner,
+      forceRefresh: true
+    });
+
+    expect(refreshed.status).toBe("collected");
+    expect(runner).toHaveBeenCalledTimes(2);
+  });
+
   it("emits query attempt diagnostics without rejected tweet body or URL", async () => {
     const root = workspace();
     const bus = getRuntimeEventBus();

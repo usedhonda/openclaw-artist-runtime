@@ -21,6 +21,8 @@ export interface XObservationContext {
   };
   observationHistory?: string;
   manualSeed?: { hint?: string };
+  /** Producer rejected a proposal: refresh within the existing Bird rate limit. */
+  forceRefresh?: boolean;
   now?: Date;
   runner?: (query?: string) => Promise<{ stdout: string; stderr?: string }>;
 }
@@ -652,7 +654,7 @@ export async function collectObservations(root: string, context: XObservationCon
     ...rotatingLensQueries
   ]).slice(0, maxObservationQueryAttempts);
   const cached = await readFile(path, "utf8").catch(() => "");
-  if (cached) {
+  if (cached && !context.forceRefresh) {
     const cachedStat = await stat(path).catch(() => undefined);
     if (
       cachedStat

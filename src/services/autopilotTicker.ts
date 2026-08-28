@@ -171,7 +171,8 @@ export class AutopilotTicker {
   async runNow(
     configOverride?: PartialDeep<ArtistRuntimeConfig>,
     manualSeed?: { hint: string; weirdness?: number; allowNoObservation?: boolean },
-    operatorRequestedSpawn = false
+    operatorRequestedSpawn = false,
+    forceObservationRefresh = false
   ): Promise<AutopilotManualRunResult> {
     const baseConfig = configOverride ?? this.options.getConfig?.();
     let resolved: ArtistRuntimeConfig;
@@ -229,7 +230,8 @@ export class AutopilotTicker {
         workspaceRoot,
         config: resolved,
         manualSeed,
-        operatorRequestedSpawn
+        operatorRequestedSpawn,
+        forceObservationRefresh
       });
       this.maybeScheduleFastChain(state, nextState);
       return {

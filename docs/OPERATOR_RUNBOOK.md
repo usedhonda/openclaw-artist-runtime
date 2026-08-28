@@ -729,6 +729,8 @@ AI (Telegram):
 
 autopilot が observations / heartbeat / 直近完成曲 / SOUL から「次に何作る?」AI 判定 → デフォルトではそのまま autopilot inject。生成前に Telegram 確認したい検証運用だけ `OPENCLAW_PRE_GENERATION_APPROVAL=on` を使う。
 
+承認カードでは「作る」は通常 lane を Suno Create 手前まで進める（Create は人が押す）。「却下」はその案を捨て、作曲間隔を消費せず、既存の取得上限の範囲でニュースと X の観測を取り直して次案を出す。
+
 退路 flag:
 - `OPENCLAW_SONG_SPAWN_ENABLED` (default `off`、`on` で発火開始)
 - `OPENCLAW_SONG_SPAWN_HOURS` (default `24`、最短 12h)

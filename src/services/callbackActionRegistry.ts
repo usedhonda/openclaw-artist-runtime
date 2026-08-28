@@ -180,7 +180,7 @@ const callbackActionEffects: Record<string, Omit<CallbackActionEffect, "action">
   daily_voice_edit: { label: "編集", effect: "草案を直すための返信待ちにします。" },
   daily_voice_cancel: { label: "キャンセル", effect: "草案投稿を破棄します。" },
   song_spawn_inject: { label: "作る", effect: "この草稿で曲を完成まで作る。外部公開はしない。" },
-  song_spawn_skip: { label: "保留する", effect: "この着想を保留する。" },
+  song_spawn_skip: { label: "却下", effect: "この着想を却下し、次の観測から別の曲案を探す。" },
   song_spawn_edit: { label: "修正する", effect: "この commission を編集する。" },
   prompt_pack_go: { label: "Suno 生成へ", effect: "prompt_pack の停止を解除し、次 cycle で Suno 生成へ進めます。" },
   prompt_pack_edit: { label: "lyrics-suno.md を編集", effect: "planning に戻し、歌詞をもう一度作り直します。" },

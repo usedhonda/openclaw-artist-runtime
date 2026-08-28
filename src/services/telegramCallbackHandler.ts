@@ -41,8 +41,8 @@ function logCallbackDeliveryFailure(context: string, error: unknown): void {
 // Mirror the v10.66 /resume kick: fire one operator-initiated cycle; every
 // downstream gate (spawn GO, dryRun, Suno budget/live flags) re-applies inside
 // runCycle, so this never bypasses an approval.
-function kickAutopilotCycleAfterProducerDecision(context: string): void {
-  void getAutopilotTicker().runNow().catch((error) => {
+function kickAutopilotCycleAfterProducerDecision(context: string, forceObservationRefresh = false): void {
+  void getAutopilotTicker().runNow(undefined, undefined, false, forceObservationRefresh).catch((error) => {
     console.error(`[telegram-callback] post-decision cycle kick (${context}) failed: ${errorMessage(error)}`);
   });
 }
@@ -575,7 +575,6 @@ export async function routeTelegramCallback(ctx: TelegramCallbackContext): Promi
           lastRunAt: new Date(now).toISOString()
         });
       }
-      await markSpawned(ctx.root, new Date(now));
       await markCallbackResolved(ctx.root, callbackId, { status: "discarded", reason: "song_spawn_skipped", now });
       await markPendingCallbacksForSongResolved(ctx.root, {
         songId: entry.songId ?? entry.proposalId ?? "",
@@ -585,8 +584,8 @@ export async function routeTelegramCallback(ctx: TelegramCallbackContext): Promi
         actions: SONG_SPAWN_SIBLING_ACTIONS
       });
       await appendCallbackAudit(ctx.root, auditBase(ctx, callbackId, entry, "discarded", "song_spawn_skipped"));
-      await clearButtonsAndReply(ctx, entry, "今は見送った。次の spawn 候補はまた間隔を置いて見る。");
-      kickAutopilotCycleAfterProducerDecision("song_spawn_skip");
+      await clearButtonsAndReply(ctx, entry, "却下した。今の観測キャッシュを使わず、次のニュースとXの観測から別の曲案を探す。");
+      kickAutopilotCycleAfterProducerDecision("song_spawn_skip", true);
       return { processed: true, result: "discarded", reason: "song_spawn_skipped", callbackId };
     }
     if (!entry.commissionBrief) {

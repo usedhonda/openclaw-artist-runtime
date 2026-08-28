@@ -61,7 +61,7 @@ describe("buttonVoiceLabels", () => {
     expect(buttonVoiceLabels.dailyVoice.edit).toBe("編集");
     expect(buttonVoiceLabels.dailyVoice.cancel).toBe("キャンセル");
     expect(buttonVoiceLabels.songSpawn.inject).toBe("作る");
-    expect(buttonVoiceLabels.songSpawn.skip).toBe("保留する");
+    expect(buttonVoiceLabels.songSpawn.skip).toBe("却下");
     expect(buttonVoiceLabels.songSpawn.edit).toBe("修正する");
     expect(buttonVoiceLabels.takeSelect.accept).toBe("採用");
     expect(buttonVoiceLabels.takeSelect.regenerate).toBe("再生成");

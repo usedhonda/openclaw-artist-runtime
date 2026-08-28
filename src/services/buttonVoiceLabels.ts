@@ -23,7 +23,7 @@ export const buttonVoiceLabels = {
   },
   songSpawn: {
     inject: "作る",
-    skip: "保留する",
+    skip: "却下",
     edit: "修正する"
   },
   promptPackReady: {

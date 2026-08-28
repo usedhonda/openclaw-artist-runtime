@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- fix: rejecting a Telegram song proposal now refreshes the next news/X observation without consuming the song-spawn cooldown; the button is labeled `却下`.
+
 - Suno manual-submit opens the authenticated `/create` workspace directly, then
   selects `Write Lyrics` before locating the lyrics editor, preserving the
   producer-only Create click boundary.

@@ -86,6 +86,8 @@ export interface RunAutopilotCycleInput {
   manualSeed?: { hint: string; weirdness?: number; allowNoObservation?: boolean };
   /** Direct producer request: bypass only the autonomous recent-completion spawn cooldown. */
   operatorRequestedSpawn?: boolean;
+  /** Producer rejected a proposal: collect fresh material within existing source limits. */
+  forceObservationRefresh?: boolean;
   observationRunner?: XObservationContext["runner"];
 }
 
@@ -1409,7 +1411,8 @@ export class ArtistAutopilotService {
     const artistMind = await readArtistMind(input.workspaceRoot);
     const newsObservation = await collectNewsObservations(input.workspaceRoot, {
       personaText: `${artistMind.artist}\n${artistMind.socialVoice}`,
-      config
+      config,
+      forceRefresh: input.forceObservationRefresh
     }).catch((error) => {
       const reason = error instanceof Error ? error.message : String(error);
       emitRuntimeEvent({ type: "error", source: "news_observation", reason, timestamp: Date.now() });
@@ -1422,6 +1425,7 @@ export class ArtistAutopilotService {
       queries: input.manualSeed?.hint ? undefined : reactionQuery.queries.length > 0 ? reactionQuery.queries : ["music OR society OR culture"],
       reactionSeed: reactionQuery.seed,
       manualSeed: input.manualSeed,
+      forceRefresh: input.forceObservationRefresh,
       runner: input.observationRunner
     }).catch((error) => {
       const reason = error instanceof Error ? error.message : String(error);

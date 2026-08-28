@@ -6,7 +6,9 @@ import { describe, expect, it, vi } from "vitest";
 import { ensureArtistWorkspace } from "../src/services/artistWorkspace";
 import { readSongState, updateSongState } from "../src/services/artistState";
 import { readAutopilotRunState, writeAutopilotRunState } from "../src/services/autopilotService";
+import { getAutopilotTicker } from "../src/services/autopilotTicker";
 import { markCallbackResolved, registerCallbackAction } from "../src/services/callbackActionRegistry";
+import { readSongSpawnState } from "../src/services/songSpawnRateLimiter";
 import { routeTelegramCallback, STALE_CALLBACK_JA_REPLY } from "../src/services/telegramCallbackHandler";
 import type { TelegramClient } from "../src/services/telegramClient";
 
@@ -29,6 +31,46 @@ async function auditLines(workspace: string): Promise<Array<Record<string, unkno
 }
 
 describe("telegram callback handler", () => {
+  it("rejects a spawn proposal without consuming its cooldown and refreshes observations", async () => {
+    const workspace = root();
+    const client = clientMock();
+    const previous = process.env.OPENCLAW_SONG_SPAWN_ENABLED;
+    process.env.OPENCLAW_SONG_SPAWN_ENABLED = "on";
+    const runNow = vi.spyOn(getAutopilotTicker(), "runNow").mockResolvedValue({
+      outcome: "ran",
+      state: await readAutopilotRunState(workspace)
+    });
+    try {
+      const entry = await registerCallbackAction(workspace, {
+        action: "song_spawn_skip",
+        proposalId: "proposal-rejected",
+        songId: "proposal-rejected",
+        chatId: 100,
+        messageId: 200,
+        userId: 300
+      });
+
+      const result = await routeTelegramCallback({
+        root: workspace,
+        client,
+        callbackQueryId: "query-spawn-skip",
+        data: `cb:${entry.callbackId}`,
+        fromUserId: 300,
+        chatId: 100,
+        messageId: 200
+      });
+
+      expect(result).toMatchObject({ result: "discarded", reason: "song_spawn_skipped" });
+      expect((await readSongSpawnState(workspace)).lastSpawnAt).toBeUndefined();
+      expect(runNow).toHaveBeenCalledWith(undefined, undefined, false, true);
+      expect(client.sendMessage).toHaveBeenCalledWith(100, expect.stringContaining("却下した"), undefined);
+    } finally {
+      if (previous === undefined) delete process.env.OPENCLAW_SONG_SPAWN_ENABLED;
+      else process.env.OPENCLAW_SONG_SPAWN_ENABLED = previous;
+      vi.restoreAllMocks();
+    }
+  });
+
   it("acks synchronously and fails unsupported pending actions with button cleanup", async () => {
     const workspace = root();
     const client = clientMock();

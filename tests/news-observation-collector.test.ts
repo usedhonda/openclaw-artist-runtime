@@ -280,6 +280,25 @@ describe("news observation collector", () => {
     expect(second.entries.length).toBe(first.entries.length);
   });
 
+  it("refreshes the news cache when a producer rejects a proposal", async () => {
+    const root = workspace();
+    process.env.OPENCLAW_NEWS_RSS_URLS = "https://example.test/rss.xml";
+    const fetcher = vi.fn(async () => rssSample);
+
+    await collectNewsObservations(root, {
+      now: new Date("2026-05-23T01:00:00.000Z"),
+      fetcher
+    });
+    const refreshed = await collectNewsObservations(root, {
+      now: new Date("2026-05-23T02:00:00.000Z"),
+      fetcher,
+      forceRefresh: true
+    });
+
+    expect(refreshed.status).toBe("collected");
+    expect(fetcher).toHaveBeenCalledTimes(2);
+  });
+
   it("scores entries against persona motifs so news related to ARTIST.md rises", async () => {
     const root = workspace();
     const fetcher = vi.fn(async (url: string) => {

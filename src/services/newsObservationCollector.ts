@@ -56,6 +56,8 @@ export interface NewsObservationContext {
   fetcher?: (url: string) => Promise<string>;
   articleResolver?: NewsArticleResolver;
   config?: Pick<ArtistRuntimeConfig, "observation">;
+  /** Producer rejected a proposal: bypass only the local cache for this cycle. */
+  forceRefresh?: boolean;
 }
 
 export interface NewsObservationResult {
@@ -643,7 +645,7 @@ export async function collectNewsObservations(
     return { status: "skipped", path, entries: [], reason: "news_motifs_unavailable_and_OPENCLAW_NEWS_RSS_URLS_unset" };
   }
   const cached = await readFile(path, "utf8").catch(() => "");
-  if (cached) {
+  if (cached && !context.forceRefresh) {
     const cachedStat = await stat(path).catch(() => undefined);
     if (cachedStat && now.getTime() - cachedStat.mtime.getTime() < newsCacheTtlMs) {
       return {

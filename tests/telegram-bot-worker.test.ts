@@ -685,7 +685,7 @@ describe("telegram bot worker", () => {
     const markup = JSON.parse(fetchImpl.mock.calls[2][1].body as string) as {
       reply_markup: { inline_keyboard: Array<Array<{ text: string; callback_data: string }>> };
     };
-    expect(markup.reply_markup.inline_keyboard.flat().map((button) => button.text)).toEqual(["作る", "保留する", "修正する"]);
+    expect(markup.reply_markup.inline_keyboard.flat().map((button) => button.text)).toEqual(["作る", "却下", "修正する"]);
     const pending = await listPendingCallbackActionSummaries(root, { category: "producer_decision" });
     expect(pending.recent.map((entry) => entry.action).sort()).toEqual(["song_spawn_edit", "song_spawn_inject", "song_spawn_skip"].sort());
     const entries = await readCallbackActionEntries(root);
@@ -734,7 +734,7 @@ describe("telegram bot worker", () => {
       const markup = JSON.parse(fetchImpl.mock.calls[2][1].body as string) as {
         reply_markup: { inline_keyboard: Array<Array<{ text: string; callback_data: string }>> };
       };
-      expect(markup.reply_markup.inline_keyboard.flat().map((button) => button.text)).toEqual(["作る", "保留する", "修正する"]);
+      expect(markup.reply_markup.inline_keyboard.flat().map((button) => button.text)).toEqual(["作る", "却下", "修正する"]);
       const entries = await readCallbackActionEntries(root);
       const inject = entries.find((entry) => entry.action === "song_spawn_inject" && entry.songId === "spawn-status");
       expect(inject?.commissionBrief).toMatchObject({
