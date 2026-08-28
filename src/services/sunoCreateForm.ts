@@ -197,9 +197,16 @@ export async function ensureSunoLyricsMode(page: Page, timeoutMs: number): Promi
   if (existingEditor) {
     return existingEditor;
   }
+  // Current Suno mounts the lyrics textarea asynchronously after Write Lyrics. Do
+  // not fall through to the legacy Custom control before that mount has settled.
+  const writeLyrics = page.locator(SUNO_CREATE_SELECTORS.writeLyricsTab).first();
+  if (await writeLyrics.isVisible().catch(() => false)) {
+    await clickVisibleLocatorWithRetry(page, [SUNO_CREATE_SELECTORS.writeLyricsTab], timeoutMs, "Write Lyrics mode");
+    return resolveFirstVisibleLocator(page, SUNO_CREATE_FALLBACKS.lyricsEditor, timeoutMs, "lyrics editor");
+  }
   const advancedTab = await resolveFirstVisibleLocator(
     page,
-    SUNO_CREATE_FALLBACKS.advancedTab,
+    SUNO_CREATE_FALLBACKS.advancedTab.slice(1),
     timeoutMs,
     "Write Lyrics or Advanced create tab"
   ).catch(() => undefined);
@@ -208,7 +215,7 @@ export async function ensureSunoLyricsMode(page: Page, timeoutMs: number): Promi
     if (!alreadySelected) {
       await clickVisibleLocatorWithRetry(
         page,
-        SUNO_CREATE_FALLBACKS.advancedTab,
+        SUNO_CREATE_FALLBACKS.advancedTab.slice(1),
         timeoutMs,
         "Write Lyrics or Advanced create tab"
       );
@@ -236,7 +243,7 @@ export async function ensureSunoLyricsMode(page: Page, timeoutMs: number): Promi
 }
 
 /**
- * The current homepage keeps Styles in a collapsed section. Return a visible style
+ * The current Create workspace keeps Styles in a collapsed section. Return a visible style
  * textarea, opening that section when required, without touching the Create action.
  */
 export async function ensureSunoStyleMode(page: Page, timeoutMs: number): Promise<Locator> {
