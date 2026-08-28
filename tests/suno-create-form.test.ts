@@ -142,6 +142,23 @@ describe("ensureSunoLyricsMode", () => {
     expect(clicks).toHaveLength(0);
   });
 
+  it("selects Write Lyrics in the current homepage Create workspace before resolving the editor", async () => {
+    const editorState: SelectorState = { visible: false };
+    const { page, clicks } = makePage({
+      [SUNO_CREATE_SELECTORS.lyricsEditor]: editorState,
+      [SUNO_CREATE_SELECTORS.writeLyricsTab]: {
+        visible: true,
+        onClick: () => {
+          editorState.visible = true;
+        }
+      }
+    });
+
+    const locator = await ensureSunoLyricsMode(page, 50);
+    expect(clicks).toEqual([SUNO_CREATE_SELECTORS.writeLyricsTab]);
+    expect(await locator.isVisible()).toBe(true);
+  });
+
   it("selects the Advanced tab to reveal the lyrics editor when it is hidden", async () => {
     const editorState: SelectorState = { visible: false };
     const { page, clicks } = makePage({

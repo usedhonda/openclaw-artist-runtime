@@ -27,7 +27,9 @@ import {
 } from "./sunoCreateForm.js";
 
 export const DEFAULT_SUNO_PROFILE_PATH = ".openclaw-browser-profiles/suno";
-export const SUNO_CREATE_URL = "https://suno.com/create";
+// Suno's former /create route now redirects to its homepage Create workspace.
+// Navigate directly to the current entry point so the driver does not race that redirect.
+export const SUNO_CREATE_URL = "https://suno.com/";
 export const SUNO_LIBRARY_URL = "https://suno.com/me";
 export const PLAYWRIGHT_DRIVER_NOT_INSTALLED_DETAIL =
   "playwright module not installed — run `npm install` in project root";
@@ -402,6 +404,13 @@ export class PlaywrightSunoDriver implements SunoBrowserDriver {
   private findPageByUrl(pages: Page[], expectedUrl: string): Page | undefined {
     return pages.find((page) => {
       try {
+        const expected = new URL(expectedUrl);
+        const actual = new URL(page.url());
+        // The current Create workspace is the Suno homepage. Match its pathname
+        // exactly so /explore and /me do not masquerade as an existing Create tab.
+        if (expected.pathname === "/") {
+          return actual.origin === expected.origin && actual.pathname === "/";
+        }
         return page.url().startsWith(expectedUrl);
       } catch {
         return false;

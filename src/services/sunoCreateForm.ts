@@ -29,6 +29,7 @@ export const SUNO_CREATE_SELECTORS = {
   // The lyrics editor lives in the "Advanced" create tab. Selecting it reveals the editor
   // (the older "Add your own lyrics" custom-mode toggle is gone from v5.5).
   advancedTab: 'button[role="tab"][aria-label="Advanced"]',
+  writeLyricsTab: 'button:has-text("Write Lyrics")',
   addLyricsButton: 'button[aria-label="Add your own lyrics"]',
   stylesWrapper: '[data-testid="create-form-styles-wrapper"]',
   titleInput: 'input[placeholder="Song Title (Optional)"]:visible',
@@ -55,8 +56,10 @@ export const SUNO_CREATE_FALLBACKS = {
     '[role="textbox"][aria-label*="Lyric" i]',
     SUNO_CREATE_SELECTORS.lyricsTextarea
   ],
-  // Reveal the lyrics editor. v5.5 Advanced tab first, legacy custom-mode toggle last.
+  // The current homepage Create workspace starts in "Describe your lyrics" mode.
+  // Select "Write Lyrics" first; older Advanced/custom entry points remain fallbacks.
   advancedTab: [
+    SUNO_CREATE_SELECTORS.writeLyricsTab,
     SUNO_CREATE_SELECTORS.advancedTab,
     '[role="tab"][aria-label="Advanced"]',
     'button:has-text("Advanced")',
@@ -171,9 +174,9 @@ async function clickVisibleLocatorWithRetry(
 /**
  * Ensure the lyrics editor is present before any lyrics fill and return it.
  *
- * The v5.5 lyrics editor lives in the "Advanced" create tab. If the editor is not
- * already visible, select the Advanced tab (older builds: click "Add your own
- * lyrics") to reveal it, then resolve the editor. The resolved locator is the
+ * The current homepage workspace exposes the lyrics editor through "Write Lyrics";
+ * older builds use Advanced or "Add your own lyrics". If the editor is not already
+ * visible, select that entry point, then resolve the editor. The resolved locator is the
  * contenteditable lyrics body — never the "Cowriter prompt" co-writer chat box.
  */
 export async function ensureSunoLyricsMode(page: Page, timeoutMs: number): Promise<Locator> {
@@ -192,7 +195,7 @@ export async function ensureSunoLyricsMode(page: Page, timeoutMs: number): Promi
     page,
     SUNO_CREATE_FALLBACKS.advancedTab,
     timeoutMs,
-    "Advanced create tab"
+    "Write Lyrics or Advanced create tab"
   ).catch(() => undefined);
   if (advancedTab) {
     const alreadySelected = (await advancedTab.getAttribute("aria-selected").catch(() => null)) === "true";
@@ -201,7 +204,7 @@ export async function ensureSunoLyricsMode(page: Page, timeoutMs: number): Promi
         page,
         SUNO_CREATE_FALLBACKS.advancedTab,
         timeoutMs,
-        "Advanced create tab"
+        "Write Lyrics or Advanced create tab"
       );
     }
   }

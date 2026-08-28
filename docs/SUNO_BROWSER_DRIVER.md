@@ -147,7 +147,7 @@ advanced/emergency override (see the CDP endpoint section above).
 
 Flow when a live create returns `suno_cli_blocked_captcha`:
 
-1. open the plugin-owned browser at `suno.com/create` and auto-fill the form from
+1. open the plugin-owned browser at `suno.com/` and auto-fill the form from
    the saved `suno-payload.json` (lyrics/style/title/exclude);
 2. close non-transactional site-news or upsell dialogs through an explicit
    accessible `Close` control. Dialogs containing form/challenge controls or
@@ -179,8 +179,9 @@ Safety invariants:
 Selector note: current Suno builds can render `Advanced` and `Create` as plain
 text buttons without the older ARIA metadata. Form readiness and mode switching
 accept both the semantic selectors and these observed text-button fallbacks. In
-Advanced, the driver selects the visible `Custom` mode before waiting for the
-lyrics editor; the editor is not mounted in the default Advanced sub-mode. A
+the homepage workspace, the driver first selects the visible `Write Lyrics` mode.
+For older Advanced surfaces it selects the visible `Custom` mode before waiting for
+the lyrics editor; the editor is not mounted in the default Advanced sub-mode. A
 transient detached-element click is re-resolved and retried because the current
 React surface can replace the mode button while Advanced mounts.
 
@@ -387,7 +388,7 @@ the library if the card view stays silent.
 - `driver: "playwright"` + `dryRun: true` is the current probe-only / no-credit
   lane
 - `driver: "playwright"` + `submitMode: "skip"` fills lyrics/style/instrumental
-  fields on `/create` but still never clicks the `Create` button
+  fields on the homepage Create workspace but still never clicks the `Create` button
 - `driver: "playwright"` + `submitMode: "live"` clicks `Create` and polls
   `https://suno.com/me` until new song URLs appear or the timeout is hit
 
@@ -396,7 +397,7 @@ the library if the card view stays silent.
 The live create lane now performs the following:
 
 1. snapshots the current song URLs from `https://suno.com/me`;
-2. opens `https://suno.com/create` in the dedicated persistent profile;
+2. opens `https://suno.com/` in the dedicated persistent profile;
 3. fills lyrics, style, exclude styles, and the instrumental toggle when the
    payload includes them;
 4. clicks `button[aria-label="Create song"]` only when
