@@ -19,6 +19,10 @@ import { PLAYWRIGHT_EXPECTED_CREATE_CARD_COUNT } from "./sunoTakeConstants.js";
  */
 
 export const SUNO_CREATE_SELECTORS = {
+  // The authenticated management workspace, not the transient compact composer.
+  // All three controls are present together on the current /create page.
+  createNav: 'a[href="/create"]',
+  advancedMode: 'button[aria-label="Advanced"]',
   createButton: 'button[aria-label="Create song"]',
   // Suno v5.5 replaced the plain lyrics <textarea data-testid="lyrics-textarea"> with a
   // rich contenteditable editor (role=textbox, aria-label="Lyrics editor"). The old
@@ -104,6 +108,12 @@ export const SUNO_STYLE_SELECTOR = SUNO_CREATE_FALLBACKS.style.join(", ");
 
 export const SUNO_CREATE_FORM_MISSING_REASON = "suno_create_dom_missing";
 
+const SUNO_CREATE_WORKSPACE_SELECTORS: readonly string[] = [
+  SUNO_CREATE_SELECTORS.createNav,
+  SUNO_CREATE_SELECTORS.advancedMode,
+  SUNO_CREATE_SELECTORS.createButton
+];
+
 /**
  * Resolve the first candidate selector whose first match becomes visible within
  * `timeoutMs`. Candidates race concurrently so a hidden-but-present element does
@@ -143,6 +153,14 @@ export async function resolveFirstVisibleLocator(
  */
 export async function waitForSunoCreateFormReady(page: Page, timeoutMs: number): Promise<void> {
   try {
+    // `/create` can paint the compact composer before the authenticated workspace
+    // hydrates. Do not fill that partial UI: wait for the Create navigation, mode
+    // picker, and producer Create boundary that make up the full workspace.
+    await Promise.all(
+      SUNO_CREATE_WORKSPACE_SELECTORS.map((selector) =>
+        page.locator(selector).first().waitFor({ state: "visible", timeout: timeoutMs })
+      )
+    );
     await Promise.any(
       SUNO_CREATE_FORM_READY_SELECTORS.map((selector) =>
         page.locator(selector).first().waitFor({ state: "visible", timeout: timeoutMs })
@@ -150,7 +168,7 @@ export async function waitForSunoCreateFormReady(page: Page, timeoutMs: number):
     );
   } catch {
     throw new Error(
-      `${SUNO_CREATE_FORM_MISSING_REASON}: create form not found within ${timeoutMs}ms; none of [${SUNO_CREATE_FORM_READY_SELECTORS.join(", ")}] became visible after Clerk handshake`
+      `${SUNO_CREATE_FORM_MISSING_REASON}: authenticated Create workspace not ready within ${timeoutMs}ms; missing one of [${SUNO_CREATE_WORKSPACE_SELECTORS.join(", ")}] or form controls [${SUNO_CREATE_FORM_READY_SELECTORS.join(", ")}] after Clerk handshake`
     );
   }
 }

@@ -81,19 +81,21 @@ describe("resolveFirstVisibleLocator", () => {
 });
 
 describe("waitForSunoCreateFormReady", () => {
-  it("resolves when any single form-ready selector is visible", async () => {
+  it("waits for the authenticated Create workspace before accepting form controls", async () => {
     const { page } = makePage({
+      [SUNO_CREATE_SELECTORS.createNav]: { visible: true },
+      [SUNO_CREATE_SELECTORS.advancedMode]: { visible: true },
       [SUNO_CREATE_SELECTORS.createButton]: { visible: true }
     });
     await expect(waitForSunoCreateFormReady(page, 50)).resolves.toBeUndefined();
   });
 
-  it("accepts the current plain-text Create button as a ready form signal", async () => {
-    const plainCreate = 'button:has-text("Create")';
+  it("rejects the compact composer when Advanced mode has not hydrated", async () => {
     const { page } = makePage({
-      [plainCreate]: { visible: true }
+      [SUNO_CREATE_SELECTORS.createNav]: { visible: true },
+      [SUNO_CREATE_SELECTORS.createButton]: { visible: true }
     });
-    await expect(waitForSunoCreateFormReady(page, 50)).resolves.toBeUndefined();
+    await expect(waitForSunoCreateFormReady(page, 50)).rejects.toThrow(SUNO_CREATE_FORM_MISSING_REASON);
   });
 
   it("rejects with DOM-missing when no form-ready selector is visible", async () => {
