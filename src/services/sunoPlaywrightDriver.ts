@@ -27,9 +27,8 @@ import {
 } from "./sunoCreateForm.js";
 
 export const DEFAULT_SUNO_PROFILE_PATH = ".openclaw-browser-profiles/suno";
-// Suno's /create route redirects to the logged-in homepage composer.
-// Open that final destination directly to avoid a redirect race during form mounting.
-export const SUNO_CREATE_URL = "https://suno.com/";
+// The authenticated Create workspace is Suno's canonical Create route.
+export const SUNO_CREATE_URL = "https://suno.com/create";
 export const SUNO_LIBRARY_URL = "https://suno.com/me";
 export const PLAYWRIGHT_DRIVER_NOT_INSTALLED_DETAIL =
   "playwright module not installed — run `npm install` in project root";

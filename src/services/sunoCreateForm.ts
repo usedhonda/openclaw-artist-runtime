@@ -60,7 +60,7 @@ export const SUNO_CREATE_FALLBACKS = {
     'textarea[name*="lyric" i]',
     SUNO_CREATE_SELECTORS.lyricsTextarea
   ],
-  // The current homepage composer starts in "Describe your lyrics" mode.
+  // The current Create workspace starts in "Describe your lyrics" mode.
   // Select "Write Lyrics" first; older Advanced/custom entry points remain fallbacks.
   advancedTab: [
     SUNO_CREATE_SELECTORS.writeLyricsTab,
@@ -180,7 +180,7 @@ async function clickVisibleLocatorWithRetry(
 /**
  * Ensure the lyrics editor is present before any lyrics fill and return it.
  *
- * The current homepage composer exposes the lyrics editor through "Write Lyrics";
+ * The current Create workspace exposes the lyrics editor through "Write Lyrics";
  * older builds use Advanced or "Add your own lyrics". If the editor is not already
  * visible, select that entry point, then resolve the editor. The resolved locator is the
  * contenteditable lyrics body — never the "Cowriter prompt" co-writer chat box.
@@ -243,7 +243,7 @@ export async function ensureSunoLyricsMode(page: Page, timeoutMs: number): Promi
 }
 
 /**
- * The current homepage composer keeps Styles in a collapsed section. Return a visible style
+ * The current Create workspace keeps Styles in a collapsed section. Return a visible style
  * textarea, opening that section when required, without touching the Create action.
  */
 export async function ensureSunoStyleMode(page: Page, timeoutMs: number): Promise<Locator> {
