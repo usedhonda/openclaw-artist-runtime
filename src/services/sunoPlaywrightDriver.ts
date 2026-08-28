@@ -22,13 +22,15 @@ import {
   SUNO_CREATE_FORM_READY_SELECTORS,
   SUNO_CREATE_SELECTORS,
   SUNO_STYLE_SELECTOR,
+  enterSunoCreateWorkspace,
   readSunoCreateCardSongUrls,
   readSunoPlayControlSongUrls
 } from "./sunoCreateForm.js";
 
 export const DEFAULT_SUNO_PROFILE_PATH = ".openclaw-browser-profiles/suno";
-// The logged-in composer is entered through Suno's canonical Create route.
-export const SUNO_CREATE_URL = "https://suno.com/create";
+// Suno's /create route redirects to the logged-in homepage composer.
+// Open that final destination directly to avoid a redirect race during form mounting.
+export const SUNO_CREATE_URL = "https://suno.com/";
 export const SUNO_LIBRARY_URL = "https://suno.com/me";
 export const PLAYWRIGHT_DRIVER_NOT_INSTALLED_DETAIL =
   "playwright module not installed — run `npm install` in project root";
@@ -114,6 +116,7 @@ export class PlaywrightSunoDriver implements SunoBrowserDriver {
         timeout: 20_000
       });
       await page.waitForLoadState("domcontentloaded").catch(() => undefined);
+      await enterSunoCreateWorkspace(page, 20_000);
 
       const url = page.url();
       if (await this.isLoginRequired(page, url)) {
@@ -166,6 +169,7 @@ export class PlaywrightSunoDriver implements SunoBrowserDriver {
         timeout: 20_000
       });
       await page.waitForLoadState("domcontentloaded").catch(() => undefined);
+      await enterSunoCreateWorkspace(page, 20_000);
 
       const payload = request.payload ?? {};
       const lyrics = this.extractPayloadLyrics(payload);

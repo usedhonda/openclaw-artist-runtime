@@ -5,6 +5,7 @@ import {
   SUNO_CREATE_FORM_MISSING_REASON,
   SUNO_CREATE_SELECTORS,
   SUNO_EXPECTED_TAKE_COUNT,
+  enterSunoCreateWorkspace,
   ensureSunoLyricsMode,
   ensureSunoStyleMode,
   filterFreshTakeUrls,
@@ -99,6 +100,17 @@ describe("waitForSunoCreateFormReady", () => {
   it("rejects with DOM-missing when no form-ready selector is visible", async () => {
     const { page } = makePage({});
     await expect(waitForSunoCreateFormReady(page, 10)).rejects.toThrow(SUNO_CREATE_FORM_MISSING_REASON);
+  });
+});
+
+describe("enterSunoCreateWorkspace", () => {
+  it("uses the SUNO logo transition without touching the Create button", async () => {
+    const { page, clicks } = makePage({
+      [SUNO_CREATE_SELECTORS.sunoLogo]: { visible: true },
+      [SUNO_CREATE_SELECTORS.createButton]: { visible: true }
+    });
+    await enterSunoCreateWorkspace(page, 50);
+    expect(clicks).toEqual([SUNO_CREATE_SELECTORS.sunoLogo]);
   });
 });
 

@@ -2,9 +2,9 @@
 
 ## Unreleased
 
-- Suno manual-submit now enters the canonical `/create` workspace directly and
-  selects `Write Lyrics` before locating the lyrics editor, preserving the
-  producer-only Create click boundary.
+- Suno manual-submit now opens the homepage composer directly because Suno redirects
+  `/create` there, then selects `Write Lyrics` before locating the lyrics editor,
+  preserving the producer-only Create click boundary.
 
 - Explicit `POST /api/run-cycle` requests can set `operatorRequestedSpawn: true` to bypass only the autonomous recent-completion proposal cooldown; automatic cycles retain that protection.
 

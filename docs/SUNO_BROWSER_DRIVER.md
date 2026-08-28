@@ -178,8 +178,9 @@ Safety invariants:
 
 Selector note: current Suno builds can render `Advanced` and `Create` as plain
 text buttons without the older ARIA metadata. Form readiness and mode switching
-accept both the semantic selectors and these observed text-button fallbacks. In
-the `/create` workspace, the driver first selects the visible `Write Lyrics` mode.
+accept both the semantic selectors and these observed text-button fallbacks. Suno
+redirects `/create` to the homepage composer, where the driver first selects the
+visible `Write Lyrics` mode.
 For older Advanced surfaces it selects the visible `Custom` mode before waiting for
 the lyrics editor; the editor is not mounted in the default Advanced sub-mode. A
 transient detached-element click is re-resolved and retried because the current
@@ -388,7 +389,7 @@ the library if the card view stays silent.
 - `driver: "playwright"` + `dryRun: true` is the current probe-only / no-credit
   lane
 - `driver: "playwright"` + `submitMode: "skip"` fills lyrics/style/instrumental
-  fields on the `/create` workspace but still never clicks the `Create` button
+  fields on the homepage composer but still never clicks the `Create` button
 - `driver: "playwright"` + `submitMode: "live"` clicks `Create` and polls
   `https://suno.com/me` until new song URLs appear or the timeout is hit
 

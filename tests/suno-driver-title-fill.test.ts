@@ -27,6 +27,7 @@ function pageMock() {
       first: () => ({
         waitFor: vi.fn(async () => undefined),
         isVisible: vi.fn(async () => true),
+        click: vi.fn(async () => undefined),
         fill: vi.fn(async (value: string) => fills.push({ selector, value }))
       }),
       fill: vi.fn(async (value: string) => fills.push({ selector, value })),

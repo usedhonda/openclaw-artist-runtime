@@ -30,6 +30,7 @@ export const SUNO_CREATE_SELECTORS = {
   // (the older "Add your own lyrics" custom-mode toggle is gone from v5.5).
   advancedTab: 'button[role="tab"][aria-label="Advanced"]',
   writeLyricsTab: 'button:has-text("Write Lyrics")',
+  sunoLogo: 'a[aria-label="Suno"]',
   stylesButton: 'button:has-text("Styles")',
   addLyricsButton: 'button[aria-label="Add your own lyrics"]',
   stylesWrapper: '[data-testid="create-form-styles-wrapper"]',
@@ -43,6 +44,11 @@ export const SUNO_CREATE_SELECTORS = {
  * placeholder/text/structure that survives a relabel of the primary hook.
  */
 export const SUNO_CREATE_FALLBACKS = {
+  sunoLogo: [
+    SUNO_CREATE_SELECTORS.sunoLogo,
+    'a[href="/"]:has-text("SUNO")',
+    'a:has-text("SUNO")'
+  ],
   createButton: [
     SUNO_CREATE_SELECTORS.createButton,
     'button[aria-label*="Create song"]',
@@ -60,7 +66,7 @@ export const SUNO_CREATE_FALLBACKS = {
     'textarea[name*="lyric" i]',
     SUNO_CREATE_SELECTORS.lyricsTextarea
   ],
-  // The current Create workspace starts in "Describe your lyrics" mode.
+  // The current homepage composer starts in "Describe your lyrics" mode.
   // Select "Write Lyrics" first; older Advanced/custom entry points remain fallbacks.
   advancedTab: [
     SUNO_CREATE_SELECTORS.writeLyricsTab,
@@ -155,6 +161,19 @@ export async function waitForSunoCreateFormReady(page: Page, timeoutMs: number):
   }
 }
 
+/**
+ * Suno redirects `/create` to its homepage. The visible SUNO logo completes the
+ * site's own transition into the logged-in composer; it is never the Create action.
+ */
+export async function enterSunoCreateWorkspace(page: Page, timeoutMs: number): Promise<void> {
+  const logo = await resolveFirstVisibleLocator(page, SUNO_CREATE_FALLBACKS.sunoLogo, timeoutMs, "Suno logo").catch(
+    () => undefined
+  );
+  if (logo) {
+    await logo.click({ timeout: timeoutMs });
+  }
+}
+
 async function clickVisibleLocatorWithRetry(
   page: Page,
   candidates: readonly string[],
@@ -180,7 +199,7 @@ async function clickVisibleLocatorWithRetry(
 /**
  * Ensure the lyrics editor is present before any lyrics fill and return it.
  *
- * The current Create workspace exposes the lyrics editor through "Write Lyrics";
+ * The current homepage composer exposes the lyrics editor through "Write Lyrics";
  * older builds use Advanced or "Add your own lyrics". If the editor is not already
  * visible, select that entry point, then resolve the editor. The resolved locator is the
  * contenteditable lyrics body — never the "Cowriter prompt" co-writer chat box.
@@ -243,7 +262,7 @@ export async function ensureSunoLyricsMode(page: Page, timeoutMs: number): Promi
 }
 
 /**
- * The current Create workspace keeps Styles in a collapsed section. Return a visible style
+ * The current homepage composer keeps Styles in a collapsed section. Return a visible style
  * textarea, opening that section when required, without touching the Create action.
  */
 export async function ensureSunoStyleMode(page: Page, timeoutMs: number): Promise<Locator> {
