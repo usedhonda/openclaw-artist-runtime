@@ -5,7 +5,6 @@ import {
   SUNO_CREATE_FORM_MISSING_REASON,
   SUNO_CREATE_SELECTORS,
   SUNO_EXPECTED_TAKE_COUNT,
-  enterSunoCreateWorkspace,
   ensureSunoLyricsMode,
   ensureSunoStyleMode,
   filterFreshTakeUrls,
@@ -103,16 +102,6 @@ describe("waitForSunoCreateFormReady", () => {
   });
 });
 
-describe("enterSunoCreateWorkspace", () => {
-  it("uses the SUNO logo transition without touching the Create button", async () => {
-    const { page, clicks } = makePage({
-      [SUNO_CREATE_SELECTORS.sunoLogo]: { visible: true },
-      [SUNO_CREATE_SELECTORS.createButton]: { visible: true }
-    });
-    await enterSunoCreateWorkspace(page, 50);
-    expect(clicks).toEqual([SUNO_CREATE_SELECTORS.sunoLogo]);
-  });
-});
 
 describe("filterFreshTakeUrls (take-attribution guard)", () => {
   const u = (n: number) => `https://suno.com/song/${n}`;

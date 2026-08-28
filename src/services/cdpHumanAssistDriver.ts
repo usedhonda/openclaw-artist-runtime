@@ -7,7 +7,6 @@ import { SUNO_CREATE_URL } from "./sunoPlaywrightDriver.js";
 import {
   SUNO_CREATE_FALLBACKS,
   SUNO_EXPECTED_TAKE_COUNT,
-  enterSunoCreateWorkspace,
   ensureSunoLyricsMode,
   ensureSunoStyleMode,
   filterFreshTakeUrls,
@@ -204,7 +203,6 @@ export class CdpHumanAssistDriver implements HumanAssistBrowserDriver {
     const page = sessionHydrated ? await context.newPage() : existing ?? (await context.newPage());
     this.ownsPage = sessionHydrated || !existing;
     await page.goto(SUNO_CREATE_URL, { waitUntil: "domcontentloaded", timeout: FORM_READY_TIMEOUT_MS });
-    await enterSunoCreateWorkspace(page, FORM_READY_TIMEOUT_MS);
     // Wait for the form to render past the Clerk handshake using any-of form-ready
     // selectors (not just the Create button) so a single relabel does not defeat the gate.
     await waitForSunoCreateFormReady(page, FORM_READY_TIMEOUT_MS);

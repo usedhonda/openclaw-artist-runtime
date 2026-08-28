@@ -22,7 +22,6 @@ import {
   SUNO_CREATE_FORM_READY_SELECTORS,
   SUNO_CREATE_SELECTORS,
   SUNO_STYLE_SELECTOR,
-  enterSunoCreateWorkspace,
   readSunoCreateCardSongUrls,
   readSunoPlayControlSongUrls
 } from "./sunoCreateForm.js";
@@ -116,7 +115,6 @@ export class PlaywrightSunoDriver implements SunoBrowserDriver {
         timeout: 20_000
       });
       await page.waitForLoadState("domcontentloaded").catch(() => undefined);
-      await enterSunoCreateWorkspace(page, 20_000);
 
       const url = page.url();
       if (await this.isLoginRequired(page, url)) {
@@ -169,7 +167,6 @@ export class PlaywrightSunoDriver implements SunoBrowserDriver {
         timeout: 20_000
       });
       await page.waitForLoadState("domcontentloaded").catch(() => undefined);
-      await enterSunoCreateWorkspace(page, 20_000);
 
       const payload = request.payload ?? {};
       const lyrics = this.extractPayloadLyrics(payload);

@@ -30,7 +30,6 @@ export const SUNO_CREATE_SELECTORS = {
   // (the older "Add your own lyrics" custom-mode toggle is gone from v5.5).
   advancedTab: 'button[role="tab"][aria-label="Advanced"]',
   writeLyricsTab: 'button:has-text("Write Lyrics")',
-  sunoLogo: 'a[aria-label="Suno"]',
   stylesButton: 'button:has-text("Styles")',
   addLyricsButton: 'button[aria-label="Add your own lyrics"]',
   stylesWrapper: '[data-testid="create-form-styles-wrapper"]',
@@ -44,11 +43,6 @@ export const SUNO_CREATE_SELECTORS = {
  * placeholder/text/structure that survives a relabel of the primary hook.
  */
 export const SUNO_CREATE_FALLBACKS = {
-  sunoLogo: [
-    SUNO_CREATE_SELECTORS.sunoLogo,
-    'a[href="/"]:has-text("SUNO")',
-    'a:has-text("SUNO")'
-  ],
   createButton: [
     SUNO_CREATE_SELECTORS.createButton,
     'button[aria-label*="Create song"]',
@@ -158,19 +152,6 @@ export async function waitForSunoCreateFormReady(page: Page, timeoutMs: number):
     throw new Error(
       `${SUNO_CREATE_FORM_MISSING_REASON}: create form not found within ${timeoutMs}ms; none of [${SUNO_CREATE_FORM_READY_SELECTORS.join(", ")}] became visible after Clerk handshake`
     );
-  }
-}
-
-/**
- * Suno redirects `/create` to its homepage. The visible SUNO logo completes the
- * site's own transition into the logged-in composer; it is never the Create action.
- */
-export async function enterSunoCreateWorkspace(page: Page, timeoutMs: number): Promise<void> {
-  const logo = await resolveFirstVisibleLocator(page, SUNO_CREATE_FALLBACKS.sunoLogo, timeoutMs, "Suno logo").catch(
-    () => undefined
-  );
-  if (logo) {
-    await logo.click({ timeout: timeoutMs });
   }
 }
 
