@@ -189,7 +189,6 @@ export class CdpHumanAssistDriver implements HumanAssistBrowserDriver {
 
   async openAndFill(): Promise<void> {
     const { context } = await this.service.ensureRunning(this.input.config);
-    const sessionHydrated = await hydrateSunoBrowserSession(context, this.input.sessionFile);
     const existing = context.pages().find((page) => {
       try {
         return page.url().includes("suno.com");
@@ -197,11 +196,11 @@ export class CdpHumanAssistDriver implements HumanAssistBrowserDriver {
         return false;
       }
     });
-    // A page that rendered before session hydration can retain signed-out server markup
-    // and fail React hydration after cookies change. Open a fresh page after injecting
-    // the already-authorized CLI session; never close an operator-owned existing tab.
-    const page = sessionHydrated ? await context.newPage() : existing ?? (await context.newPage());
-    this.ownsPage = sessionHydrated || !existing;
+    // The persistent browser profile is the operator's authentication authority.
+    // Never overwrite it with the CLI session file: that file can lag a fresh manual
+    // login and cause a newly opened tab to render a different, partial Create surface.
+    const page = existing ?? (await context.newPage());
+    this.ownsPage = !existing;
     await page.goto(SUNO_CREATE_URL, { waitUntil: "domcontentloaded", timeout: FORM_READY_TIMEOUT_MS });
     // Wait for the form to render past the Clerk handshake using any-of form-ready
     // selectors (not just the Create button) so a single relabel does not defeat the gate.

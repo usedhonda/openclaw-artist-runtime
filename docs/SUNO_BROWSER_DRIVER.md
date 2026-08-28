@@ -141,11 +141,10 @@ Enable it only alongside the CLI driver:
 }
 ```
 
-No separate browser login is required after `suno-cli login`: the plugin's
-`SunoBrowserService` launches that CLI-authenticated profile when the fallback
-runs. Before navigation it also copies the saved CLI `__session` cookie into the
-browser context without logging it, then opens a fresh page. The fresh-page step
-avoids a signed-out server render being reused after session hydration. The legacy
+The plugin's `SunoBrowserService` launches the operator's persistent logged-in
+profile when the fallback runs. The CLI `session.json` remains available for the
+separate feed-import path, but is never copied into that browser context: the
+profile's current login is the authority for the visible Create workspace. The legacy
 `scripts/start-chrome-cdp.sh` + `OPENCLAW_SUNO_USE_CDP=1` path remains only as an
 advanced/emergency override (see the CDP endpoint section above).
 

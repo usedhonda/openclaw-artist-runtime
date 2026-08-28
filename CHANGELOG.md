@@ -9,6 +9,9 @@
 - Suno human-assist now waits for the fully hydrated Create workspace (navigation,
   Advanced mode picker, and Create boundary) instead of filling a compact composer.
 
+- Suno human-assist now trusts the operator's current browser-profile login rather
+  than overwriting it from the separate CLI session before opening Create.
+
 - Explicit `POST /api/run-cycle` requests can set `operatorRequestedSpawn: true` to bypass only the autonomous recent-completion proposal cooldown; automatic cycles retain that protection.
 
 - Telegram song proposals now use a free-form artist pitch grounded in the selected
