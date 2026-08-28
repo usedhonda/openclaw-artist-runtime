@@ -34,6 +34,7 @@ export const SUNO_CREATE_SELECTORS = {
   // (the older "Add your own lyrics" custom-mode toggle is gone from v5.5).
   advancedTab: 'button[role="tab"][aria-label="Advanced"]',
   writeLyricsTab: 'button:has-text("Write Lyrics")',
+  writeModeButton: 'button:has-text("Write")',
   stylesButton: 'button:has-text("Styles")',
   addLyricsButton: 'button[aria-label="Add your own lyrics"]',
   stylesWrapper: '[data-testid="create-form-styles-wrapper"]',
@@ -57,12 +58,7 @@ export const SUNO_CREATE_FALLBACKS = {
   lyricsEditor: [
     SUNO_CREATE_SELECTORS.lyricsEditor,
     '[role="textbox"][aria-label="Lyrics editor"]',
-    '[contenteditable="true"].lyrics-editor-content',
-    '[role="textbox"][aria-label*="Lyric" i]',
-    'textarea[aria-label*="lyric" i]',
-    'textarea[placeholder*="lyric" i]',
-    'textarea[name*="lyric" i]',
-    SUNO_CREATE_SELECTORS.lyricsTextarea
+    '[contenteditable="true"].lyrics-editor-content'
   ],
   // The current Create workspace starts in "Describe your lyrics" mode.
   // Select "Write Lyrics" first; older Advanced/custom entry points remain fallbacks.
@@ -198,10 +194,9 @@ async function clickVisibleLocatorWithRetry(
 /**
  * Ensure the lyrics editor is present before any lyrics fill and return it.
  *
- * The current Create workspace exposes the lyrics editor through "Write Lyrics";
- * older builds use Advanced or "Add your own lyrics". If the editor is not already
- * visible, select that entry point, then resolve the editor. The resolved locator is the
- * contenteditable lyrics body — never the "Cowriter prompt" co-writer chat box.
+ * The current Create workspace requires Advanced -> Write -> Lyrics before the editor
+ * mounts. The resolved locator is the contenteditable lyrics body — never a prompt
+ * textarea, which only tells Suno to invent lyrics and has a different character cap.
  */
 export async function ensureSunoLyricsMode(page: Page, timeoutMs: number): Promise<Locator> {
   const visibleEditor = async (): Promise<Locator | undefined> => {
@@ -215,8 +210,7 @@ export async function ensureSunoLyricsMode(page: Page, timeoutMs: number): Promi
   if (existingEditor) {
     return existingEditor;
   }
-  // Current Suno mounts the lyrics textarea asynchronously after Write Lyrics. Do
-  // not fall through to the legacy Custom control before that mount has settled.
+  // Some prior Create revisions exposed one combined Write Lyrics control.
   const writeLyrics = page.locator(SUNO_CREATE_SELECTORS.writeLyricsTab).first();
   if (await writeLyrics.isVisible().catch(() => false)) {
     await clickVisibleLocatorWithRetry(page, [SUNO_CREATE_SELECTORS.writeLyricsTab], timeoutMs, "Write Lyrics mode");
@@ -243,19 +237,13 @@ export async function ensureSunoLyricsMode(page: Page, timeoutMs: number): Promi
   if (editorAfterAdvanced) {
     return editorAfterAdvanced;
   }
-  const customMode = await resolveFirstVisibleLocator(
-    page,
-    SUNO_CREATE_FALLBACKS.customMode,
-    timeoutMs,
-    "Custom lyrics mode"
-  ).catch(() => undefined);
-  if (customMode) {
-    await clickVisibleLocatorWithRetry(
-      page,
-      SUNO_CREATE_FALLBACKS.customMode,
-      timeoutMs,
-      "Custom lyrics mode"
-    );
+  const writeMode = page.locator(SUNO_CREATE_SELECTORS.writeModeButton).first();
+  if (await writeMode.isVisible().catch(() => false)) {
+    await clickVisibleLocatorWithRetry(page, [SUNO_CREATE_SELECTORS.writeModeButton], timeoutMs, "Write lyrics mode");
+  }
+  const addLyrics = page.locator(SUNO_CREATE_SELECTORS.addLyricsButton).first();
+  if (await addLyrics.isVisible().catch(() => false)) {
+    await clickVisibleLocatorWithRetry(page, [SUNO_CREATE_SELECTORS.addLyricsButton], timeoutMs, "Add your own lyrics");
   }
   return resolveFirstVisibleLocator(page, SUNO_CREATE_FALLBACKS.lyricsEditor, timeoutMs, "lyrics editor");
 }

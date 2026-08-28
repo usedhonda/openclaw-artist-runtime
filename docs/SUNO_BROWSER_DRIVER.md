@@ -119,6 +119,8 @@ string to conclude live is unavailable.
 Before any fields are filled, the runtime waits for the authenticated `/create`
 workspace to expose its Create navigation, Advanced mode picker, and producer-only
 Create boundary. A partially hydrated compact composer is rejected rather than used.
+For current Suno Create, the lyrics body is opened through `Advanced -> Write -> Lyrics`;
+the runtime never sends supplied lyrics to Suno's separate "write lyrics about" prompt.
 
 Suno now requires a captcha token for generate, so a tokenless `suno-cli create`
 fails closed as `blocked_captcha` (exit 31). An automated browser click is often

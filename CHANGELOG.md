@@ -12,6 +12,9 @@
 - Suno human-assist now trusts the operator's current browser-profile login rather
   than overwriting it from the separate CLI session before opening Create.
 
+- Suno human-assist now selects the actual `Lyrics editor` through Advanced, Write,
+  and Lyrics, instead of mistaking Suno's lyric-generation prompt for supplied lyrics.
+
 - Explicit `POST /api/run-cycle` requests can set `operatorRequestedSpawn: true` to bypass only the autonomous recent-completion proposal cooldown; automatic cycles retain that protection.
 
 - Telegram song proposals now use a free-form artist pitch grounded in the selected

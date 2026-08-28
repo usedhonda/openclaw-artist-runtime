@@ -163,21 +163,22 @@ describe("ensureSunoLyricsMode", () => {
     expect(await locator.isVisible()).toBe(true);
   });
 
-  it("recognizes the current Describe your lyrics textarea after selecting Write Lyrics", async () => {
-    const textarea = 'textarea[placeholder*="lyric" i]';
-    const textareaState: SelectorState = { visible: false };
+  it("selects Write and Lyrics before resolving the current editor", async () => {
+    const editorState: SelectorState = { visible: false };
     const { page, clicks } = makePage({
-      [textarea]: textareaState,
-      [SUNO_CREATE_SELECTORS.writeLyricsTab]: {
+      [SUNO_CREATE_SELECTORS.advancedTab]: { visible: true, attrs: { "aria-selected": "true" } },
+      [SUNO_CREATE_SELECTORS.writeModeButton]: { visible: true },
+      [SUNO_CREATE_SELECTORS.addLyricsButton]: {
         visible: true,
         onClick: () => {
-          textareaState.visible = true;
+          editorState.visible = true;
         }
-      }
+      },
+      [SUNO_CREATE_SELECTORS.lyricsEditor]: editorState
     });
 
     const locator = await ensureSunoLyricsMode(page, 50);
-    expect(clicks).toEqual([SUNO_CREATE_SELECTORS.writeLyricsTab]);
+    expect(clicks).toEqual([SUNO_CREATE_SELECTORS.writeModeButton, SUNO_CREATE_SELECTORS.addLyricsButton]);
     expect(await locator.isVisible()).toBe(true);
   });
 
@@ -198,59 +199,20 @@ describe("ensureSunoLyricsMode", () => {
     expect(await locator.isVisible()).toBe(true);
   });
 
-  it("uses the current plain-text Advanced button when no tab aria metadata exists", async () => {
+  it("selects Advanced before Write and Lyrics when needed", async () => {
     const editorState: SelectorState = { visible: false };
     const plainAdvanced = 'button:has-text("Advanced")';
     const { page, clicks } = makePage({
       [SUNO_CREATE_SELECTORS.lyricsEditor]: editorState,
       [plainAdvanced]: {
         visible: true,
-        onClick: () => {
-          editorState.visible = true;
-        }
-      }
+        attrs: { "aria-selected": "false" }
+      },
+      [SUNO_CREATE_SELECTORS.writeModeButton]: { visible: true },
+      [SUNO_CREATE_SELECTORS.addLyricsButton]: { visible: true, onClick: () => { editorState.visible = true; } }
     });
     const locator = await ensureSunoLyricsMode(page, 50);
-    expect(clicks).toContain(plainAdvanced);
-    expect(await locator.isVisible()).toBe(true);
-  });
-
-  it("selects Custom inside Advanced before waiting for the current lyrics editor", async () => {
-    const editorState: SelectorState = { visible: false };
-    const customMode = 'button:has-text("Custom")';
-    const { page, clicks } = makePage({
-      [SUNO_CREATE_SELECTORS.lyricsEditor]: editorState,
-      [SUNO_CREATE_SELECTORS.advancedTab]: { visible: true, attrs: { "aria-selected": "true" } },
-      [customMode]: {
-        visible: true,
-        onClick: () => {
-          editorState.visible = true;
-        }
-      }
-    });
-
-    const locator = await ensureSunoLyricsMode(page, 50);
-    expect(clicks).toEqual([customMode]);
-    expect(await locator.isVisible()).toBe(true);
-  });
-
-  it("re-resolves and retries Custom when React replaces the first visible button before click", async () => {
-    const editorState: SelectorState = { visible: false };
-    const customMode = 'button:has-text("Custom")';
-    const { page, clicks } = makePage({
-      [SUNO_CREATE_SELECTORS.lyricsEditor]: editorState,
-      [SUNO_CREATE_SELECTORS.advancedTab]: { visible: true, attrs: { "aria-selected": "true" } },
-      [customMode]: {
-        visible: true,
-        clickFailures: 1,
-        onClick: () => {
-          editorState.visible = true;
-        }
-      }
-    });
-
-    const locator = await ensureSunoLyricsMode(page, 50);
-    expect(clicks).toEqual([customMode, customMode]);
+    expect(clicks).toEqual([plainAdvanced, SUNO_CREATE_SELECTORS.writeModeButton, SUNO_CREATE_SELECTORS.addLyricsButton]);
     expect(await locator.isVisible()).toBe(true);
   });
 
