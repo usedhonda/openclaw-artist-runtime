@@ -30,6 +30,7 @@ export const SUNO_CREATE_SELECTORS = {
   // (the older "Add your own lyrics" custom-mode toggle is gone from v5.5).
   advancedTab: 'button[role="tab"][aria-label="Advanced"]',
   writeLyricsTab: 'button:has-text("Write Lyrics")',
+  stylesButton: 'button:has-text("Styles")',
   addLyricsButton: 'button[aria-label="Add your own lyrics"]',
   stylesWrapper: '[data-testid="create-form-styles-wrapper"]',
   titleInput: 'input[placeholder="Song Title (Optional)"]:visible',
@@ -75,6 +76,8 @@ export const SUNO_CREATE_FALLBACKS = {
   ],
   style: [
     '[data-testid="create-form-styles-wrapper"] textarea',
+    'textarea[aria-label*="style" i]',
+    'textarea[placeholder*="style" i]',
     'textarea[placeholder="Describe the sound you want"]',
     'textarea[placeholder*="クラシック音楽"]',
     'textarea[placeholder*="バイキングメタル"]',
@@ -232,7 +235,20 @@ export async function ensureSunoLyricsMode(page: Page, timeoutMs: number): Promi
   return resolveFirstVisibleLocator(page, SUNO_CREATE_FALLBACKS.lyricsEditor, timeoutMs, "lyrics editor");
 }
 
-/** Style textarea locator using the shared fallback list (one joined selector). */
+/**
+ * The current homepage keeps Styles in a collapsed section. Return a visible style
+ * textarea, opening that section when required, without touching the Create action.
+ */
+export async function ensureSunoStyleMode(page: Page, timeoutMs: number): Promise<Locator> {
+  for (const selector of SUNO_CREATE_FALLBACKS.style) {
+    const candidate = page.locator(selector).first();
+    if (await candidate.isVisible().catch(() => false)) return candidate;
+  }
+  await clickVisibleLocatorWithRetry(page, [SUNO_CREATE_SELECTORS.stylesButton], timeoutMs, "Styles section");
+  return resolveFirstVisibleLocator(page, SUNO_CREATE_FALLBACKS.style, timeoutMs, "style textarea");
+}
+
+/** Legacy synchronous locator used by the background-browser lane. */
 export function sunoStyleLocator(page: Page): Locator {
   return page.locator(SUNO_STYLE_SELECTOR);
 }

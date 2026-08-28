@@ -8,10 +8,10 @@ import {
   SUNO_CREATE_FALLBACKS,
   SUNO_EXPECTED_TAKE_COUNT,
   ensureSunoLyricsMode,
+  ensureSunoStyleMode,
   filterFreshTakeUrls,
   readSunoCreateCardSongUrls,
   resolveFirstVisibleLocator,
-  sunoStyleLocator,
   waitForSunoCreateFormReady
 } from "./sunoCreateForm.js";
 import { fetchSunoFeedClips, selectFreshFeedTakeUrls } from "./sunoFeedHarvest.js";
@@ -224,7 +224,8 @@ export class CdpHumanAssistDriver implements HumanAssistBrowserDriver {
     }
     const style = readText(payload.styleAndFeel);
     if (style) {
-      await sunoStyleLocator(page).first().fill(style, { timeout: FORM_READY_TIMEOUT_MS });
+      const styleField = await ensureSunoStyleMode(page, FORM_READY_TIMEOUT_MS);
+      await styleField.fill(style, { timeout: FORM_READY_TIMEOUT_MS });
     }
     const title = readText(payload.songName);
     if (title) {

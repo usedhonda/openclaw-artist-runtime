@@ -6,6 +6,7 @@ import {
   SUNO_CREATE_SELECTORS,
   SUNO_EXPECTED_TAKE_COUNT,
   ensureSunoLyricsMode,
+  ensureSunoStyleMode,
   filterFreshTakeUrls,
   resolveFirstVisibleLocator,
   waitForSunoCreateFormReady
@@ -259,6 +260,26 @@ describe("ensureSunoLyricsMode", () => {
     });
     const locator = await ensureSunoLyricsMode(page, 50);
     expect(clicks).toHaveLength(0);
+    expect(await locator.isVisible()).toBe(true);
+  });
+});
+
+describe("ensureSunoStyleMode", () => {
+  it("opens the current collapsed Styles section before resolving its textarea", async () => {
+    const textarea = 'textarea[placeholder*="style" i]';
+    const textareaState: SelectorState = { visible: false };
+    const { page, clicks } = makePage({
+      [textarea]: textareaState,
+      [SUNO_CREATE_SELECTORS.stylesButton]: {
+        visible: true,
+        onClick: () => {
+          textareaState.visible = true;
+        }
+      }
+    });
+
+    const locator = await ensureSunoStyleMode(page, 50);
+    expect(clicks).toEqual([SUNO_CREATE_SELECTORS.stylesButton]);
     expect(await locator.isVisible()).toBe(true);
   });
 });
