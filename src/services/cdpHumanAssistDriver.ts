@@ -246,7 +246,17 @@ export class CdpHumanAssistDriver implements HumanAssistBrowserDriver {
     }
     const exclude = readText(payload.excludeStyles);
     if (exclude) {
-      await this.fillCandidates(SUNO_CREATE_FALLBACKS.excludeInput, "exclude styles", exclude);
+      // Exclude styles is optional and absent from the current homepage composer.
+      // Keep the producer's prepared form usable when Suno omits this legacy field.
+      const excludeField = await resolveFirstVisibleLocator(
+        page,
+        SUNO_CREATE_FALLBACKS.excludeInput,
+        FORM_READY_TIMEOUT_MS,
+        "exclude styles"
+      ).catch(() => undefined);
+      if (excludeField) {
+        await excludeField.fill(exclude, { timeout: FORM_READY_TIMEOUT_MS });
+      }
     }
     // Leave the producer a usable form in manual-submit mode. Only safe
     // informational/upsell overlays are closed; sensitive surfaces stay visible.
