@@ -15,6 +15,9 @@
 - Suno human-assist now selects the actual `Lyrics editor` through Advanced, Write,
   and Lyrics, instead of mistaking Suno's lyric-generation prompt for supplied lyrics.
 
+- Suno human-assist now sends the explicit lyric body before legacy YAML payload text,
+  preventing registration metadata from consuming the lyrics editor's character budget.
+
 - Explicit `POST /api/run-cycle` requests can set `operatorRequestedSpawn: true` to bypass only the autonomous recent-completion proposal cooldown; automatic cycles retain that protection.
 
 - Telegram song proposals now use a free-form artist pitch grounded in the selected

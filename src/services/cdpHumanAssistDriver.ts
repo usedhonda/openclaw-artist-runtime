@@ -79,7 +79,10 @@ function readText(value: unknown): string | undefined {
 }
 
 function extractLyrics(payload: SunoCreatePayload): string | undefined {
-  return readText(payload.payloadYaml) ?? readText(payload.lyrics) ?? readText(payload.lyricsText);
+  // `payloadYaml` includes non-lyric registration metadata and can exceed a text
+  // field's practical limit. The explicit lyrics body is the only value for Suno's
+  // Lyrics editor; retain the YAML only as a legacy fallback.
+  return readText(payload.lyrics) ?? readText(payload.lyricsText) ?? readText(payload.payloadYaml);
 }
 
 /**
