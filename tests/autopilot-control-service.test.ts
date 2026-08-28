@@ -97,6 +97,24 @@ describe("AutopilotControlService", () => {
     expect(resumed.retryCount).toBe(0);
   });
 
+  it("repairs an idle current song left by an older resume after prompt-pack completion", async () => {
+    const root = tempWorkspace();
+    await writeState(root, {
+      runId: "auto-idle-suno",
+      currentSongId: "song-001",
+      stage: "idle",
+      paused: false,
+      lastSuccessfulStage: "prompt_pack",
+      retryCount: 0,
+      cycleCount: 3,
+      updatedAt: "2026-04-27T08:00:00.000Z"
+    });
+
+    const resumed = await new AutopilotControlService(fixedClock()).resume(root);
+
+    expect(resumed.stage).toBe("suno_generation");
+  });
+
   it("clears blockedReason + user_paused suspension but preserves GO-gate suspension on resume (Plan v10.56 Phase 2)", async () => {
     const root = tempWorkspace();
     await writeState(root, {

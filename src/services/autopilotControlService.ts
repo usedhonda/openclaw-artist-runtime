@@ -51,8 +51,8 @@ export class AutopilotControlService {
     const resumesSunoGeneration =
       current.currentSongId !== undefined &&
       current.lastSuccessfulStage === "prompt_pack" &&
-      typeof current.blockedReason === "string" &&
-      current.blockedReason.startsWith("suno_generate_");
+      ((typeof current.blockedReason === "string" && current.blockedReason.startsWith("suno_generate_")) ||
+        current.stage === "idle");
     const next = await writeAutopilotState(root, {
       ...current,
       paused: false,
