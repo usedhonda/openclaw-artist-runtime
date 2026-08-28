@@ -54,6 +54,9 @@ export const SUNO_CREATE_FALLBACKS = {
     '[role="textbox"][aria-label="Lyrics editor"]',
     '[contenteditable="true"].lyrics-editor-content',
     '[role="textbox"][aria-label*="Lyric" i]',
+    'textarea[aria-label*="lyric" i]',
+    'textarea[placeholder*="lyric" i]',
+    'textarea[name*="lyric" i]',
     SUNO_CREATE_SELECTORS.lyricsTextarea
   ],
   // The current homepage Create workspace starts in "Describe your lyrics" mode.

@@ -159,6 +159,24 @@ describe("ensureSunoLyricsMode", () => {
     expect(await locator.isVisible()).toBe(true);
   });
 
+  it("recognizes the current Describe your lyrics textarea after selecting Write Lyrics", async () => {
+    const textarea = 'textarea[placeholder*="lyric" i]';
+    const textareaState: SelectorState = { visible: false };
+    const { page, clicks } = makePage({
+      [textarea]: textareaState,
+      [SUNO_CREATE_SELECTORS.writeLyricsTab]: {
+        visible: true,
+        onClick: () => {
+          textareaState.visible = true;
+        }
+      }
+    });
+
+    const locator = await ensureSunoLyricsMode(page, 50);
+    expect(clicks).toEqual([SUNO_CREATE_SELECTORS.writeLyricsTab]);
+    expect(await locator.isVisible()).toBe(true);
+  });
+
   it("selects the Advanced tab to reveal the lyrics editor when it is hidden", async () => {
     const editorState: SelectorState = { visible: false };
     const { page, clicks } = makePage({
