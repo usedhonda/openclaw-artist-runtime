@@ -17,6 +17,7 @@ import {
   SUNO_LIBRARY_URL,
   SUNO_CREATE_URL
 } from "../src/services/sunoPlaywrightDriver";
+import { SUNO_STYLE_SELECTOR } from "../src/services/sunoCreateForm";
 
 const {
   chromiumMock,
@@ -167,7 +168,7 @@ describe("PlaywrightSunoDriver create", () => {
       value: "line one\nline two"
     });
     expect(page.fills).toContainEqual({
-      selector: "[data-testid=\"create-form-styles-wrapper\"] textarea, textarea[placeholder=\"Describe the sound you want\"], textarea[placeholder*=\"クラシック音楽\"], textarea[placeholder*=\"バイキングメタル\"], textarea[placeholder*=\"sound you want\"]",
+      selector: SUNO_STYLE_SELECTOR,
       value: "cold synth texture"
     });
     expect(page.fills).toContainEqual({
