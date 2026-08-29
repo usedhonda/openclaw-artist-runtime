@@ -1326,22 +1326,32 @@ export async function handleSunoGenerateFailure(
     });
   }
   if (retryCount >= 3) {
+    const parkedReason = `parked_needs_operator: ${reason}`;
     emitRuntimeEvent({
       type: "suno_generate_failed",
       songId: song.songId,
-      reason,
+      reason: parkedReason,
       retryCount,
       timestamp: Date.now()
     });
+    // A transient Suno failure belongs to this song, not to the whole artist.
+    // Preserve the failed song for the existing operator retry route, then free the
+    // planning lane so fresh observations can produce the next work. Credential,
+    // captcha, and payment failures already returned through the terminal branch above.
+    await updateSongState(root, song.songId, {
+      status: "failed",
+      reason: parkedReason
+    });
     return writeStageState(root, existing, {
       ...baseState,
-      currentSongId: song.songId,
-      stage: "paused",
-      paused: true,
-      pausedReason: `suno_generate_failed:${reason}`,
-      blockedReason: `suno_generate_failed:${reason}`,
-      lastError: reason,
-      retryCount,
+      currentSongId: undefined,
+      stage: "planning",
+      paused: false,
+      pausedReason: undefined,
+      blockedReason: undefined,
+      lastError: undefined,
+      retryCount: 0,
+      suspendedAt: undefined,
       cycleCount: existing.cycleCount + 1
     });
   }

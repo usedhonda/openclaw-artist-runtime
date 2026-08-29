@@ -88,7 +88,7 @@ describe("autopilot Suno generate stage", () => {
     expect(events.some((event) => event.type === "suno_generate_retry")).toBe(true);
   });
 
-  it("pauses after repeated Suno generation failures", async () => {
+  it("parks only the failed song after repeated Suno generation failures", async () => {
     const root = mkdtempSync(join(tmpdir(), "artist-runtime-autopilot-suno-failed-"));
     await ensureArtistWorkspace(root);
     await ensureSongState(root, "failed-song", "Failed Song");
@@ -112,10 +112,17 @@ describe("autopilot Suno generate stage", () => {
     });
 
     unsubscribe();
-    expect(state.stage).toBe("paused");
-    expect(state.paused).toBe(true);
-    expect(state.retryCount).toBe(3);
-    expect(state.blockedReason).toContain("suno_generate_failed");
+    expect(state).toMatchObject({
+      stage: "planning",
+      paused: false,
+      currentSongId: undefined,
+      retryCount: 0,
+      blockedReason: undefined
+    });
+    expect(await readSongState(root, "failed-song")).toMatchObject({
+      status: "failed",
+      lastReason: expect.stringContaining("parked_needs_operator:")
+    });
     expect(events.some((event) => event.type === "suno_generate_failed")).toBe(true);
   });
 

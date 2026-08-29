@@ -94,14 +94,15 @@ notification. **No manual step is needed to recover an in-flight song**; stoppin
 mid-pipeline does not lose or corrupt it (the Suno credit is already spent and
 the song remains in the Suno library by URL).
 
-If a song was paused mid-pipeline, the producer resumes it from Telegram:
+If the producer manually paused the pipeline, resume it from Telegram:
 
 ```
 /resume
 ```
 
-`/resume` clears the stuck reason and resets the Suno retry budget, so an
-exhausted-retry song actually re-attempts.
+`/resume` clears the manual pause. A Suno song that exhausts transient retries is
+parked individually and the autopilot continues with the next observation; use the
+song retry route when that specific song has been repaired.
 
 ## Auto-restart via launchd (persistent gateway)
 

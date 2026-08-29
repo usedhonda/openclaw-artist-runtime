@@ -816,8 +816,10 @@ The Suno stage now has an explicit guard and retry layer:
   submit. Daily generation count is controlled by `maxGenerationsPerDay`.
 - `sunoRetryHandler` applies bounded exponential backoff for transient Suno
   failures.
-- hard failures emit `suno_generate_failed` and leave the artist in a recoverable
-  paused state instead of silently dropping the song.
+- after three transient failures, the runtime emits `suno_generate_failed`, parks
+  only that song as `parked_needs_operator`, and returns the artist to planning for
+  the next observation. Login, CAPTCHA, payment, and quota hard stops still protect
+  the whole runtime.
 
 This stage still respects the existing Suno authority gates. Dry-run mode blocks
 real Suno create; Plan v9.18 only makes the internal stage transition and failure
