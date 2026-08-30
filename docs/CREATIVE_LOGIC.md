@@ -46,7 +46,7 @@ to force a proposal.
 | Aggression | `aggression` | Dis-default rule | `dis` \| `changeup` |
 | Tempo | `tempo` | weighted band pool, band + bpm from one sub-seed | `{ band, bpm }` |
 | Dopagaki | `dopagaki` | **single** density computation | `{ active, threshold, variationSeed }` |
-| Intro | `intro` | one rotation for lyrics AND style | `{ archetype, modifier, lyricInstruction, styleMove }` |
+| Intro | `intro` | one rotation for lyrics AND style | `{ archetype, modifier, lyricInstruction, styleMove }`; rejects the two latest archetypes and the latest entry mode |
 | Hook shape | `hookShape` | rotation, exclude previous | question / number / list / call_response / reversal / one_line |
 | Shibuya tag | `shibuyaTag` | rotation, exclude previous | technique id from the canon |
 | Signature | `signature` | 1 of 5, exclude previous | the artist's recurring "癖" |
@@ -185,6 +185,15 @@ block. Active mode is overt (clipped fragments, instant hook pressure,
 fast-development contrast), high-speed delivery is limited to 2-4 bar bursts, and
 the nu-jazz low-bass core with the dry intelligible lead stays intact. Source of
 truth: `src/services/creativeVariationPolicy.ts`.
+
+## Intro variation
+
+An intro is a first-eight-bars event, not a decorative label. The director rotates
+voice-led openings (a clipped hook fragment, a scene image, or an accusation),
+music-led openings (an unresolved three-bar motif or a filter rupture), and
+rhythm-led openings (a broken pickup or silence/tag/answer). It rejects the two
+most recent archetypes and the preceding entry mode. This prevents a run of
+different names that all still sound like the same wordless runway and drop.
 
 ## Rap lyrics density
 

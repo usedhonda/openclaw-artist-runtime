@@ -107,16 +107,6 @@ const BUILTIN_ATTACK_STANCES: Record<LensId, readonly string[]> = {
   ]
 };
 
-const INTRO_STYLE_MOVE: Record<string, string> = {
-  cold_open: "cold intro, immediate pocket",
-  instrumental: "instrumental motif intro, no runway",
-  atmospheric: "atmospheric fade intro",
-  count_in: "count-in into the groove",
-  scene_set: "sparse scene intro then hard downbeat",
-  spoken_cue: "spoken cue intro",
-  silence_hit: "silence then hard downbeat entry"
-};
-
 // The artist's recurring catchphrases. Budgeted per song (a catchphrase used in
 // the previous song is banned in the next) so hooks like "ぜんいんしぶや" and
 // "ドンキ/免税袋" stop appearing in every track. Aliases collapse spelling
@@ -342,7 +332,6 @@ export function decideCreative(input: CreativeDirectorInput): CreativeDecision {
   // --- Intro (single decision for both lyrics and style) ---
   const recentArchetypes = recentDecisions.map((decision) => decision.intro.archetype);
   const introVariant = resolveIntroVariant(`intro:${seed}`, recentArchetypes);
-  const styleMove = INTRO_STYLE_MOVE[introVariant.id] ?? "intro move";
 
   // --- Hook shape ---
   const hookExcluded = new Set<HookShape>();
@@ -406,7 +395,7 @@ export function decideCreative(input: CreativeDirectorInput): CreativeDecision {
       archetype: introVariant.id,
       modifier: introVariant.modifier,
       lyricInstruction: introVariant.lyricInstruction,
-      styleMove
+      styleMove: introVariant.styleMove
     },
     structure,
     hookShape,

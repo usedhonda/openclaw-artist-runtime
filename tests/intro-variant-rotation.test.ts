@@ -34,12 +34,17 @@ describe("resolveIntroVariant", () => {
     }
   });
 
-  it("only excludes the last entry of recentArchetypes", () => {
-    const seed = "intro:song-fixed\nbrief";
-    const natural = resolveIntroVariant(seed).id;
-    // A non-terminal match should NOT be excluded; only .at(-1) matters.
-    const other = INTRO_ARCHETYPE_IDS.find((id) => id !== natural)!;
-    expect(resolveIntroVariant(seed, [natural, other]).id).toBe(natural);
+  it("avoids the recent entry mode as well as the two latest archetypes", () => {
+    for (let i = 0; i < 500; i += 1) {
+      const seed = `intro:entry-mode-${i}`;
+      const first = resolveIntroVariant(seed);
+      const second = resolveIntroVariant(`${seed}:next`, [first.id]);
+      const third = resolveIntroVariant(`${seed}:third`, [first.id, second.id]);
+      expect(second.id).not.toBe(first.id);
+      expect(second.entryMode).not.toBe(first.entryMode);
+      expect(third.id).not.toBe(first.id);
+      expect(third.id).not.toBe(second.id);
+    }
   });
 
   it("keeps every archetype internally coherent", () => {
@@ -52,6 +57,7 @@ describe("resolveIntroVariant", () => {
       expect(v.lineTarget.length).toBeGreaterThan(0);
       expect(v.modifier.length).toBeGreaterThan(0);
       expect(v.lyricInstruction.length).toBeGreaterThan(0);
+      expect(v.styleMove.length).toBeGreaterThan(0);
     }
     expect(ids.size).toBe(7);
   });

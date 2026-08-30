@@ -180,11 +180,13 @@ export function dopagakiPromptLines(decision?: DopagakiVariationDecision): strin
 // seed -> same variant, no Math.random, no I/O.
 export interface IntroVariant {
   id: string;
+  entryMode: "voice_led" | "music_led" | "rhythm_led";
   bars: number;
   lineFloor: number;
   lineTarget: string;
   modifier: string;
   lyricInstruction: string;
+  styleMove: string;
 }
 
 const INTRO_MOTIFS = [
@@ -197,31 +199,35 @@ const INTRO_MOTIFS = [
 
 const INTRO_METERS = ["straight 4/4", "7/8", "triplet", "half-time"] as const;
 
-// Ordered pool; index selection is a stable hash over this list. Each builder
-// may pull an independent sub-seed (":motif" / ":meter") so a rotating detail
-// does not correlate with the archetype choice or the tempo/dopagaki seeds.
+// Ordered pool; index selection is a stable hash over this list.  These are not
+// cosmetic labels: each one gives Suno a different first-eight-bars event and a
+// different handoff into the body.  entryMode is deliberately separate from the
+// id so two differently named, but sonically similar, no-vocal openings cannot
+// keep following one another.
 const INTRO_ARCHETYPES: ReadonlyArray<{ id: string; build: (seed: string) => IntroVariant }> = [
   {
     id: "scene_set",
     build: (seed) => {
       const variants = [
-        { modifier: "4 bars, sparse scene, no rush", lyricInstruction: "0-1 line; establish the scene and do not start rushing." },
-        { modifier: "4 bars, sparse scene, room to breathe", lyricInstruction: "0-1 line; sketch the opening scene with space around it and no rush." },
-        { modifier: "4 bars, low-lit scene set, unhurried", lyricInstruction: "0-1 line; set a low-lit scene and hold back before the verse." }
+        { modifier: "2 bars, close-mic scene line over a bare bass pulse, drums answer on bar 3", lyricInstruction: "1 line; give one concrete image in a dry near-spoken voice, then let the full verse cut in." },
+        { modifier: "2 bars, one visual line over a held Rhodes chord, beat enters late", lyricInstruction: "1 line; state one image without explaining it, leave a beat of air, then enter the verse." },
+        { modifier: "3 bars, whispered scene line, horn answer, abrupt verse entry", lyricInstruction: "1 line; place one quiet image, let a horn answer it, then snap into the verse." }
       ];
       const pick = variants[Math.floor(hashRatio(`${seed}:scene`) * variants.length) % variants.length];
-      return { id: "scene_set", bars: 4, lineFloor: 1, lineTarget: "0-1 line", ...pick };
+      return { id: "scene_set", entryMode: "voice_led", bars: 3, lineFloor: 1, lineTarget: "1 line", styleMove: "close-mic image, late-beat verse snap", ...pick };
     }
   },
   {
     id: "cold_open",
     build: () => ({
       id: "cold_open",
+      entryMode: "voice_led",
       bars: 2,
-      lineFloor: 0,
-      lineTarget: "0 lines",
-      modifier: "2 bars, cold open, hard entry, no runway",
-      lyricInstruction: "0 lines; enter immediately at full energy with no setup."
+      lineFloor: 1,
+      lineTarget: "1 line",
+      modifier: "2 bars, vocal cold open: clipped hook fragment on beat one, verse cuts in before it resolves",
+      lyricInstruction: "1 line; start with a short hook fragment on the first beat, then interrupt it with the verse before it can settle.",
+      styleMove: "vocal cold open; hook fragment cut by verse"
     })
   },
   {
@@ -231,11 +237,13 @@ const INTRO_ARCHETYPES: ReadonlyArray<{ id: string; build: (seed: string) => Int
       const meter = INTRO_METERS[Math.floor(hashRatio(`${seed}:meter`) * INTRO_METERS.length) % INTRO_METERS.length];
       return {
         id: "instrumental",
-        bars: 4,
+        entryMode: "music_led",
+        bars: 3,
         lineFloor: 0,
         lineTarget: "0 lines",
-        modifier: `4 bars, instrumental, ${motif}, ${meter} feel`,
-        lyricInstruction: "0 lines; no vocals, establish the motif."
+        modifier: `3 bars, instrumental ${motif} in ${meter}, phrase cuts off before bar 4`,
+        lyricInstruction: "0 lines; establish a short motif, cut it off mid-thought, and enter the verse against the missing fourth bar.",
+        styleMove: "three-bar motif cut before resolution"
       };
     }
   },
@@ -245,11 +253,13 @@ const INTRO_ARCHETYPES: ReadonlyArray<{ id: string; build: (seed: string) => Int
       const meter = INTRO_METERS[Math.floor(hashRatio(`${seed}:meter`) * INTRO_METERS.length) % INTRO_METERS.length];
       return {
         id: "count_in",
-        bars: 2,
+        entryMode: "rhythm_led",
+        bars: 1,
         lineFloor: 0,
         lineTarget: "0 lines",
-        modifier: `2 bars, count-in, ${meter} feel`,
-        lyricInstruction: "0 lines; count-in then drop straight into the verse."
+        modifier: `1 bar, broken drum pickup in ${meter}, bass enters a beat late`,
+        lyricInstruction: "0 lines; use a fractured drum pickup, then let the bass arrive late under the first verse line.",
+        styleMove: "broken pickup, late bass arrival"
       };
     }
   },
@@ -257,48 +267,63 @@ const INTRO_ARCHETYPES: ReadonlyArray<{ id: string; build: (seed: string) => Int
     id: "atmospheric",
     build: () => ({
       id: "atmospheric",
-      bars: 4,
+      entryMode: "music_led",
+      bars: 3,
       lineFloor: 0,
       lineTarget: "0 lines",
-      modifier: "4 bars, fade in, atmospheric pads, sparse",
-      lyricInstruction: "0 lines; ambient fade in, minimal, let the pads breathe."
+      modifier: "3 bars, filtered pad swell with an exposed bass note; filter tears open into a dry drum break",
+      lyricInstruction: "0 lines; let the texture swell without a melody, then tear it open into the first dry drum break.",
+      styleMove: "filter rupture into dry drum break"
     })
   },
   {
     id: "spoken_cue",
     build: () => ({
       id: "spoken_cue",
+      entryMode: "voice_led",
       bars: 2,
       lineFloor: 1,
       lineTarget: "1 line",
-      modifier: "2 bars, spoken word, single line",
-      lyricInstruction: "1 line; one spoken line, dry, then the beat enters."
+      modifier: "2 bars, spoken accusation with no backing chord; drums answer the final word",
+      lyricInstruction: "1 line; speak one accusation plainly, leave the last word exposed, then let the drums answer it.",
+      styleMove: "spoken accusation, drums answer last word"
     })
   },
   {
     id: "silence_hit",
     build: () => ({
       id: "silence_hit",
+      entryMode: "rhythm_led",
       bars: 2,
-      lineFloor: 0,
-      lineTarget: "0 lines",
-      modifier: "2 bars, silence then hard downbeat",
-      lyricInstruction: "0 lines; negative space, then a hard entry on the downbeat."
+      lineFloor: 1,
+      lineTarget: "1 line",
+      modifier: "2 bars, one beat of silence, vocal tag lands alone, band hits on its echo",
+      lyricInstruction: "1 line; leave one beat silent, land a short vocal tag alone, then let the band hit on its echo.",
+      styleMove: "silence, isolated tag, band echo"
     })
   }
 ];
 
 export const INTRO_ARCHETYPE_IDS: readonly string[] = INTRO_ARCHETYPES.map((entry) => entry.id);
 
-// Picks one INTRO archetype for the given seed. When recentArchetypes is
-// provided, the most recent one is excluded so consecutive songs do not open the
-// same way (mirrors pickEmotionalMode's shift-by-one avoidance).
+function introEntryMode(id: string): IntroVariant["entryMode"] | undefined {
+  return INTRO_ARCHETYPES.find((entry) => entry.id === id)?.build("entry-mode").entryMode;
+}
+
+// Picks one INTRO archetype for the given seed.  Exclude the last two exact
+// archetypes and the immediately previous entry mode.  The old rule rejected
+// only an identical label, so instrumental / atmospheric / silence intros could
+// still form a run of near-identical "wait, then drop" openings.
 export function resolveIntroVariant(seed: string, recentArchetypes: readonly string[] = []): IntroVariant {
   const count = INTRO_ARCHETYPES.length;
   const start = Math.floor(hashRatio(seed) * count) % count;
-  const latest = recentArchetypes.at(-1);
-  const index = count > 1 && INTRO_ARCHETYPES[start].id === latest ? (start + 1) % count : start;
-  return INTRO_ARCHETYPES[index].build(seed);
+  const recentIds = new Set(recentArchetypes.slice(-2));
+  const latestMode = introEntryMode(recentArchetypes.at(-1) ?? "");
+  for (let offset = 0; offset < count; offset += 1) {
+    const candidate = INTRO_ARCHETYPES[(start + offset) % count].build(seed);
+    if (!recentIds.has(candidate.id) && candidate.entryMode !== latestMode) return candidate;
+  }
+  return INTRO_ARCHETYPES[start].build(seed);
 }
 
 // Rebuilds the full IntroVariant for a known archetype id and seed. Used by
