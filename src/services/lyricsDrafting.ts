@@ -74,6 +74,13 @@ const LABEL_LEAK_PATTERN = /\bpunch\s*(?:line|one|two|three|\d)\b/i;
 // softener lint.
 const PHRASE_OVERLAP_THRESHOLD = 4;
 
+// A repeated mora is not the same thing as a repeated hook. Suno tends to turn
+// these runs into the same vocal gesture across otherwise different songs, so
+// normal drafts reject them. A selected call-and-response hook may use one
+// intentional response tag, but never in the intro or verses.
+const CONTIGUOUS_STUTTER_PATTERN = /([ぁ-んァ-ヶA-Za-z])\1{2,}/gu;
+const SEPARATED_STUTTER_PATTERN = /([ぁ-んァ-ヶA-Za-z]{1,3})(?:\s*[、,，.。!?！？…-]\s*|\s+)\1(?:\s*[、,，.。!?！？…-]\s*|\s+)\1/gu;
+
 // Content lines only: section headers `[...]` dropped, blank lines dropped. The
 // unit of both lints so tag annotations never trip them.
 function contentLyricLines(lyrics: string): string[] {
@@ -87,6 +94,32 @@ function contentLyricLines(lyrics: string): string[] {
 // compare equal. Kana/kanji are left intact; slicing by UTF-16 code unit is fine here.
 function normalizeForOverlap(line: string): string {
   return line.replace(/[\s、。，．,.!?！？…‥・「」『』（）()［］{}〈〉《》【】\-—–~〜"'`｜|/]/g, "");
+}
+
+function stutterMatches(line: string): string[] {
+  return [...line.matchAll(CONTIGUOUS_STUTTER_PATTERN), ...line.matchAll(SEPARATED_STUTTER_PATTERN)]
+    .map((match) => match[0])
+    .filter(Boolean);
+}
+
+export function uncontrolledStutterRuns(lyrics: string, allowCallResponseHook = false): string[] {
+  const allowedHookRuns = new Set<string>();
+  const violations = new Set<string>();
+  for (const section of parseLyricsSections(lyrics)) {
+    const runs = section.lines.flatMap(stutterMatches);
+    if (runs.length === 0) continue;
+    if (allowCallResponseHook && section.kind === "hook") {
+      for (const run of runs) allowedHookRuns.add(run);
+      continue;
+    }
+    for (const run of runs) violations.add(run);
+  }
+  // A call-and-response song gets one distinct response tag, repeated across
+  // its physical Hook sections. More than one is filler again.
+  if (allowCallResponseHook && allowedHookRuns.size > 1) {
+    for (const run of allowedHookRuns) violations.add(run);
+  }
+  return [...violations];
 }
 
 // Counts distinct 8+-char substrings the new lyrics share with previous songs.
@@ -127,14 +160,16 @@ export function phraseOverlapCount(lyrics: string, previousLyrics: string[]): nu
 // pattern reads only the header-stripped body so tag annotations are exempt.
 function evaluatePhraseRepeat(
   repaired: string,
-  previousLyrics: string[]
-): { hit: boolean; labelLeak: boolean; overlap: number } {
+  previousLyrics: string[],
+  allowCallResponseHook = false
+): { hit: boolean; labelLeak: boolean; overlap: number; stutters: string[] } {
   const labelLeak = LABEL_LEAK_PATTERN.test(contentLyricLines(repaired).join("\n"));
   const overlap = phraseOverlapCount(repaired, previousLyrics);
-  return { hit: labelLeak || overlap > PHRASE_OVERLAP_THRESHOLD, labelLeak, overlap };
+  const stutters = uncontrolledStutterRuns(repaired, allowCallResponseHook);
+  return { hit: labelLeak || overlap > PHRASE_OVERLAP_THRESHOLD || stutters.length > 0, labelLeak, overlap, stutters };
 }
 
-function repeatedRepairNote(labelLeak: boolean, overlap: number): string {
+function repeatedRepairNote(labelLeak: boolean, overlap: number, stutters: string[]): string {
   const triggers: string[] = [];
   if (labelLeak) {
     triggers.push(
@@ -145,6 +180,9 @@ function repeatedRepairNote(labelLeak: boolean, overlap: number): string {
     triggers.push(
       `直近曲と重複するフレーズ（8文字以上の共有部分文字列）が ${overlap} 箇所ある。重複する行を書き直し、既出の言い回しを避けよ`
     );
+  }
+  if (stutters.length > 0) {
+    triggers.push(`単音節・短い語の連打（${stutters.slice(0, 3).join(" / ")}）がある。だ、だ、だ類の吃音的な水増しを消し、意味のある一行へ置き換えよ`);
   }
   return `repeated_detected: ${triggers.join(" / ")}`;
 }
@@ -565,11 +603,11 @@ async function composeLyricsDraft(input: DraftLyricsInput, title: string, briefT
       // Phrase-repeat lint: one regeneration attempt when the draft leaks a
       // punchline label or reuses recent phrasing. Independent of the softener
       // budget; both share the loop's three attempts.
-      const repeat = evaluatePhraseRepeat(repaired, previousLyrics);
+      const repeat = evaluatePhraseRepeat(repaired, previousLyrics, plan?.hookShape === "call_response");
       if (repeat.hit && !repeatedRetryUsed) {
         repeatedRetryUsed = true;
         repeatedStash = { draft: finalDraft, repaired };
-        repairNotes = [repeatedRepairNote(repeat.labelLeak, repeat.overlap)];
+        repairNotes = [repeatedRepairNote(repeat.labelLeak, repeat.overlap, repeat.stutters)];
         continue;
       }
       await recordCreativeQuality(finalDraft, repaired, softenerHit, repeat.hit);
@@ -585,7 +623,7 @@ async function composeLyricsDraft(input: DraftLyricsInput, title: string, briefT
       softenedStash.draft,
       softenedStash.repaired,
       true,
-      evaluatePhraseRepeat(softenedStash.repaired, previousLyrics).hit
+      evaluatePhraseRepeat(softenedStash.repaired, previousLyrics, plan?.hookShape === "call_response").hit
     );
     return softenedStash.draft;
   }

@@ -19,7 +19,7 @@ vi.mock("../src/services/aiProviderClient", async (importOriginal) => {
   };
 });
 
-const { draftLyrics, phraseOverlapCount } = await import("../src/services/lyricsDrafting");
+const { draftLyrics, phraseOverlapCount, uncontrolledStutterRuns } = await import("../src/services/lyricsDrafting");
 
 async function workspace(): Promise<string> {
   const root = mkdtempSync(join(tmpdir(), "artist-runtime-lyrics-repair-"));
@@ -45,6 +45,19 @@ function fieldDraft(lyrics: string): string {
     "moodHint: civic dread pulse"
   ].join("\n");
 }
+
+describe("syllable-stutter guard", () => {
+  it("rejects stutters outside an intentional call-and-response hook", () => {
+    const lyric = [
+      "[Intro - dry entry]",
+      "だ、だ、だ、だ と かべをたたく",
+      "[Hook - answer]",
+      "よ よ よ と よびかける"
+    ].join("\n");
+    expect(uncontrolledStutterRuns(lyric)).toEqual(expect.arrayContaining(["だ、だ、だ", "よ よ よ"]));
+    expect(uncontrolledStutterRuns(lyric, true)).toEqual(expect.arrayContaining(["だ、だ、だ"]));
+  });
+});
 
 function goodJsonDraft(): string {
   const verseOneLines = Array.from({ length: 16 }, (_, index) => `誰も見ない窓にだけ信号が残る 既読の街で責任だけが遅れる ${index % 2 === 0 ? "低いベースが名前を削っていく からの埃がまだ胸で鳴る" : "朝の手前でまだ息を数える からの安全だけ白く剥がれる"}`);

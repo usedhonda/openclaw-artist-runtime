@@ -246,6 +246,7 @@ export function buildLyricsDraftingPrompt(input: BuildLyricsPromptInput): string
     "If the brief contains both news and x_reaction sources, use both: news supplies the event, x_reaction supplies crowd temperature, irritation, irony, or sympathy. Do not merely summarize them; assign them to lyric sections.",
     "Prioritize 韻, 伏線, 情景, genre-aware flow, hook design, Suno V5.5 section tags, and singable line length.",
     "Rap density rule: for rap/trap/drill/fast social songs, produce at least two 12-16 bar verses, physical hook repeats, internal rhyme in each verse, and one punchline/perspective turn per verse. If the first draft feels short, expand verse detail before returning JSON.",
+    "Repetition rule: physically repeat a meaningful Hook phrase across Hook sections, but never pad the intro, verses, or hook with syllable stutters or filler such as だ、だ、だ / よよよ / da-da-da. A repeated word must carry a different rhythmic or semantic job; do not open the song with a stutter.",
     ...(input.decision
       ? selectiveDirectiveLines(input.decision, input.artistMd)
       : critiqueLensLines(input.artistMd)),

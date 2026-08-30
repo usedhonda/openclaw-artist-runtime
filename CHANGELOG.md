@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- Lyrics now reject syllable-stutter and filler-run openings such as `だ、だ、だ`
+  or `da-da-da`; meaningful section-level Hook repeats remain, with a narrow
+  call-and-response exception for one intentional response tag.
+
 - Suno transient failures no longer pause the whole artist after three attempts:
   the failed song is parked for repair and the next observation can progress.
 

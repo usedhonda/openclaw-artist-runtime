@@ -204,6 +204,15 @@ accepted: at least 1200 bare-lyric characters (80 bars × 15) **and** at least 5
 non-marker lyric lines. Fast bands target a shorter runtime; the band comes from
 the plan. Source of truth: `src/suno-production/durationPlan.ts`.
 
+### Meaningful repetition only
+
+Section-level Hook repeats remain part of the song form. Within a lyric line,
+however, a repeated mora or short filler (`だ、だ、だ`, `よよよ`, `da-da-da`) is
+regenerated once rather than used to fill the opening or a verse. The sole narrow
+exception is one intentional response tag in a call-and-response hook; it never
+permits an intro stutter. This keeps repetition as a deliberate hook device,
+not the default vocal gesture.
+
 ## Contract → test map
 
 Each protected contract and the test file that pins it:
