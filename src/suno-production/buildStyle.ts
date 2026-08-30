@@ -166,7 +166,7 @@ interface StyleVariationProfile {
 const variationProfiles: StyleVariationProfile[] = [
   {
     id: "progressive-overt",
-    line: "Variation Move: overt high-velocity progressive rap; 2-4 bar technical fast-flow bursts, compressed sections, metric displacement, motivated transitions, rhythmic switch-ups, motif callbacks, transformed hook returns.",
+    line: "Variation Move: Verse sections carry overt high-velocity progressive rap; 2-4 bar technical fast-flow bursts, compressed sections, metric displacement, motivated transitions, rhythmic switch-ups, motif callbacks, transformed hook returns. Keep the opening free of rap ad-libs.",
     arrangement: ["compressed section turns", "metric displacement at boundaries", "2-4 bar technical fast-flow bursts", "transformed final hook return"],
     mix: ["dry transient definition", "bass-forward rhythmic pressure", "Rhodes and horn punctuation at turns", "controlled density without festival scale"],
     texture: ["live-room drum grain", "Rhodes shadow detail", "tight rhythmic counter-motifs"],
@@ -174,7 +174,7 @@ const variationProfiles: StyleVariationProfile[] = [
   },
   {
     id: "progressive-core",
-    line: "Variation Move: core high-velocity progressive rap; rapid but intelligible section development, rhythmic cell changes at musical boundaries, recurring motifs, jazz-rap continuity, and a final hook that returns with changed meaning while preserving the natural mid-range male lead.",
+    line: "Variation Move: Verse sections carry core high-velocity progressive rap; rapid but intelligible section development, rhythmic cell changes at musical boundaries, recurring motifs, jazz-rap continuity, and a final hook that returns with changed meaning while preserving the natural mid-range male lead. Keep the opening free of rap ad-libs.",
     arrangement: ["rapid section development", "rhythmic cell changes at boundaries", "recurring motif callback", "changed-meaning final hook"],
     mix: ["dry transient definition", "bass-forward pocket", "controlled density without digital gloss"],
     texture: ["live-room drum grain", "Rhodes shadow detail"],

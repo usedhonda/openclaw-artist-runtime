@@ -46,7 +46,7 @@ to force a proposal.
 | Aggression | `aggression` | Dis-default rule | `dis` \| `changeup` |
 | Tempo | `tempo` | weighted band pool, band + bpm from one sub-seed | `{ band, bpm }` |
 | Dopagaki | `dopagaki` | **single** density computation | `{ active, threshold, variationSeed }` |
-| Intro | `intro` | one rotation for lyrics AND style | `{ archetype, modifier, lyricInstruction, styleMove }`; rejects the two latest archetypes and the latest entry mode |
+| Intro | `intro` | artist-authored opening contract for lyrics AND style | `{ archetype, modifier, lyricInstruction, styleMove }`; the writer chooses the opening from the song rather than rotating stock forms; empty/scatted vocal openings are prohibited |
 | Hook shape | `hookShape` | rotation, exclude previous | question / number / list / call_response / reversal / one_line |
 | Shibuya tag | `shibuyaTag` | rotation, exclude previous | technique id from the canon |
 | Signature | `signature` | 1 of 5, exclude previous | the artist's recurring "癖" |
@@ -186,14 +186,16 @@ fast-development contrast), high-speed delivery is limited to 2-4 bar bursts, an
 the nu-jazz low-bass core with the dry intelligible lead stays intact. Source of
 truth: `src/services/creativeVariationPolicy.ts`.
 
-## Intro variation
+## Opening contract
 
-An intro is a first-eight-bars event, not a decorative label. The director rotates
-voice-led openings (a clipped hook fragment, a scene image, or an accusation),
-music-led openings (an unresolved three-bar motif or a filter rupture), and
-rhythm-led openings (a broken pickup or silence/tag/answer). It rejects the two
-most recent archetypes and the preceding entry mode. This prevents a run of
-different names that all still sound like the same wordless runway and drop.
+The runtime does not rotate a catalogue of intro archetypes. Each lyric writer must
+make the opening from the current observation, emotional turn, and musical plan.
+There are two renderable forms only: an `[Instrumental Intro]` with a concrete sound
+gesture and no lyric lines, or an `[Intro]` carrying exactly one complete,
+intelligible lyric line. Empty intro sections, count-ins, phonetic filler, scat,
+vocal chops, and ad-libs before the first written lyric are prohibited. Fast flow is
+scoped to Verse sections, so a global rap direction cannot turn a sparse opening
+into an invented vocalise.
 
 ## Rap lyrics density
 
@@ -225,7 +227,7 @@ Each protected contract and the test file that pins it:
 | Selective directive injection + 免罪句 lint | `lyricsDraftingPrompt.ts`, `lyricsDrafting.ts` | `tests/lyrics-drafting-prompt.test.ts`, `tests/lyrics-drafting-repair.test.ts` |
 | Title anti-repeat, seeded motif | `songSpawnProposer.ts` | `tests/title-anti-repeat.test.ts` |
 | Tempo band templates | `durationPlan.ts` | `tests/duration-plan-tempo-bands.test.ts` |
-| Intro archetype rotation | `creativeVariationPolicy.ts` | `tests/intro-variant-rotation.test.ts` |
+| Artist-authored opening contract | `creativeVariationPolicy.ts`, `lyricsDraftingPrompt.ts` | `tests/intro-variant-rotation.test.ts`, `tests/lyrics-drafting-prompt.test.ts` |
 | Persona contract doctor | `personaContractDoctor.ts` | `tests/persona-contract-doctor.test.ts` |
 | Monotony streak detection + one notice | `creativeQualityLedger.ts` | `tests/creative-monotony-watchdog.test.ts` |
 | Ledger records decision + result | `creativeQualityLedger.ts` | `tests/creative-quality-ledger.test.ts` |

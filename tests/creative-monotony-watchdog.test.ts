@@ -129,6 +129,14 @@ describe("detectCreativeStreaks", () => {
     expect(fromFallback).toContainEqual({ kind: "intro_archetype", value: "atmospheric", length: 2 });
   });
 
+  it("does not mistake the artist-led opening contract for a repeated sonic form", () => {
+    const entries = [
+      entry({ decision: decision({ intro: { ...decision().intro, archetype: "artist_led" } }) }),
+      entry({ decision: decision({ intro: { ...decision().intro, archetype: "artist_led" } }) })
+    ];
+    expect(detectCreativeStreaks(entries).some((streak) => streak.kind === "intro_archetype")).toBe(false);
+  });
+
   it("detects a >=2-char kanji/katakana word shared by two consecutive titles", () => {
     const entries = [
       entry({ title: "整形の顔" }),

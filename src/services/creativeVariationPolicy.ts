@@ -173,14 +173,14 @@ export function dopagakiPromptLines(decision?: DopagakiVariationDecision): strin
   ];
 }
 
-// Deterministic INTRO archetype rotation. The intro modifier is the strongest
-// arrangement signal Suno reads from the lyrics-box [Intro - ...] tag, so rather
-// than shipping every song with the same fixed "sparse scene" intro we rotate a
-// seven-archetype pool by a stable hash of the song seed. Pure function: same
-// seed -> same variant, no Math.random, no I/O.
+// The director chooses the song's subject, stance, tempo, structure, and hook.
+// It must not also choose from a menu of nearly-identical openings: that turns
+// the first bars into a detectable template. The lyric writer owns each new
+// opening; this contract only prevents Suno from filling an empty lead section
+// with wordless vocalise.
 export interface IntroVariant {
   id: string;
-  entryMode: "voice_led" | "music_led" | "rhythm_led";
+  entryMode: "artist_led" | "voice_led" | "music_led" | "rhythm_led";
   bars: number;
   lineFloor: number;
   lineTarget: string;
@@ -188,6 +188,17 @@ export interface IntroVariant {
   lyricInstruction: string;
   styleMove: string;
 }
+
+const ARTIST_LED_OPENING: IntroVariant = {
+  id: "artist_led",
+  entryMode: "artist_led",
+  bars: 2,
+  lineFloor: 0,
+  lineTarget: "artist-decided opening",
+  modifier: "artist-decided opening: either a concrete instrumental gesture with no vocals, or one complete intelligible lyric line; never an empty vocal intro",
+  lyricInstruction: "Choose the opening for this song from its observation and emotional turn. It may be instrumental only when the tag begins [Instrumental Intro] and has zero lyric lines; otherwise write exactly one complete, meaningful lyric line. Never use syllables, phonetic filler, vocal chops, ad-libs, a count-in, or an empty [Intro].",
+  styleMove: "no intro ad-libs"
+};
 
 const INTRO_MOTIFS = [
   "piano motif",
@@ -304,26 +315,12 @@ const INTRO_ARCHETYPES: ReadonlyArray<{ id: string; build: (seed: string) => Int
   }
 ];
 
-export const INTRO_ARCHETYPE_IDS: readonly string[] = INTRO_ARCHETYPES.map((entry) => entry.id);
+// New songs use one artist-led contract, not an archetype rotation.  The
+// arguments remain for compatibility with older callers and persisted plans.
+export const INTRO_ARCHETYPE_IDS: readonly string[] = [ARTIST_LED_OPENING.id];
 
-function introEntryMode(id: string): IntroVariant["entryMode"] | undefined {
-  return INTRO_ARCHETYPES.find((entry) => entry.id === id)?.build("entry-mode").entryMode;
-}
-
-// Picks one INTRO archetype for the given seed.  Exclude the last two exact
-// archetypes and the immediately previous entry mode.  The old rule rejected
-// only an identical label, so instrumental / atmospheric / silence intros could
-// still form a run of near-identical "wait, then drop" openings.
-export function resolveIntroVariant(seed: string, recentArchetypes: readonly string[] = []): IntroVariant {
-  const count = INTRO_ARCHETYPES.length;
-  const start = Math.floor(hashRatio(seed) * count) % count;
-  const recentIds = new Set(recentArchetypes.slice(-2));
-  const latestMode = introEntryMode(recentArchetypes.at(-1) ?? "");
-  for (let offset = 0; offset < count; offset += 1) {
-    const candidate = INTRO_ARCHETYPES[(start + offset) % count].build(seed);
-    if (!recentIds.has(candidate.id) && candidate.entryMode !== latestMode) return candidate;
-  }
-  return INTRO_ARCHETYPES[start].build(seed);
+export function resolveIntroVariant(_seed: string, _recentArchetypes: readonly string[] = []): IntroVariant {
+  return ARTIST_LED_OPENING;
 }
 
 // Rebuilds the full IntroVariant for a known archetype id and seed. Used by
@@ -332,6 +329,7 @@ export function resolveIntroVariant(seed: string, recentArchetypes: readonly str
 // the prompt-visible modifier and lyricInstruction. Passing the same seed the
 // director used (`intro:${plan.seed}`) reproduces the identical variant.
 export function buildIntroVariantById(id: string, seed: string): IntroVariant | undefined {
+  if (id === ARTIST_LED_OPENING.id) return ARTIST_LED_OPENING;
   return INTRO_ARCHETYPES.find((entry) => entry.id === id)?.build(seed);
 }
 

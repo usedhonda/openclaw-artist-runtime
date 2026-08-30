@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- New songs now use an artist-authored opening contract instead of rotating a
+  catalogue of intro templates. The lyrics and Style/Exclude fields prohibit empty
+  intro vocalise, scat, vocal chops, and ad-libs before the first written lyric;
+  fast-flow direction is scoped to Verse sections.
 - Lyrics now reject syllable-stutter and filler-run openings such as `だ、だ、だ`
   or `da-da-da`; meaningful section-level Hook repeats remain, with a narrow
   call-and-response exception for one intentional response tag.

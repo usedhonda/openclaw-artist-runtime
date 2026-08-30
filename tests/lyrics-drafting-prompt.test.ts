@@ -80,6 +80,8 @@ describe("lyrics drafting prompt", () => {
     expect(prompt).toContain("rap_and_flow.md");
     expect(prompt).toContain("english_lyrics.md");
     expect(prompt).toContain("master_reference.md");
+    expect(prompt).toContain("Opening rule");
+    expect(prompt).toContain("Never emit an empty Intro");
     expect(LYRICS_KNOWLEDGE_DIGEST_FILES).toContain("master_reference.md");
 
     const digest = await readLyricsKnowledgeDigest();

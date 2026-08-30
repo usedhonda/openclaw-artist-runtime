@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   INTRO_ARCHETYPE_IDS,
+  buildIntroVariantById,
   resolveIntroVariant
 } from "../src/services/creativeVariationPolicy";
 import { getDurationPlan } from "../src/suno-production/durationPlan";
@@ -13,53 +14,21 @@ describe("resolveIntroVariant", () => {
     expect(a).toEqual(b);
   });
 
-  it("covers all seven archetypes across many seeds", () => {
+  it("uses one artist-led opening contract instead of rotating stock archetypes", () => {
     const seen = new Set<string>();
     for (let i = 0; i < 2000; i += 1) {
       seen.add(resolveIntroVariant(`intro:song-${i}\nbrief ${i}`).id);
     }
     expect([...seen].sort()).toEqual([...INTRO_ARCHETYPE_IDS].sort());
-    expect(seen.size).toBe(7);
+    expect(seen).toEqual(new Set(["artist_led"]));
   });
 
-  it("excludes the most recent archetype when recentArchetypes is provided", () => {
-    // For any seed, passing that seed's own natural pick as the recent archetype
-    // must produce a different archetype id (avoids repeating the previous song).
-    for (let i = 0; i < 500; i += 1) {
-      const seed = `intro:song-${i}\nbrief ${i}`;
-      const natural = resolveIntroVariant(seed).id;
-      const avoided = resolveIntroVariant(seed, [natural]).id;
-      expect(avoided).not.toBe(natural);
-      expect(INTRO_ARCHETYPE_IDS).toContain(avoided);
-    }
-  });
-
-  it("avoids the recent entry mode as well as the two latest archetypes", () => {
-    for (let i = 0; i < 500; i += 1) {
-      const seed = `intro:entry-mode-${i}`;
-      const first = resolveIntroVariant(seed);
-      const second = resolveIntroVariant(`${seed}:next`, [first.id]);
-      const third = resolveIntroVariant(`${seed}:third`, [first.id, second.id]);
-      expect(second.id).not.toBe(first.id);
-      expect(second.entryMode).not.toBe(first.entryMode);
-      expect(third.id).not.toBe(first.id);
-      expect(third.id).not.toBe(second.id);
-    }
-  });
-
-  it("keeps every archetype internally coherent", () => {
-    const ids = new Set<string>();
-    for (let i = 0; i < 4000; i += 1) {
-      const v = resolveIntroVariant(`intro:coh-${i}`);
-      ids.add(v.id);
-      expect(v.bars).toBeGreaterThan(0);
-      expect(v.lineFloor).toBeGreaterThanOrEqual(0);
-      expect(v.lineTarget.length).toBeGreaterThan(0);
-      expect(v.modifier.length).toBeGreaterThan(0);
-      expect(v.lyricInstruction.length).toBeGreaterThan(0);
-      expect(v.styleMove.length).toBeGreaterThan(0);
-    }
-    expect(ids.size).toBe(7);
+  it("keeps legacy persisted archetypes readable", () => {
+    expect(buildIntroVariantById("cold_open", "legacy")).toMatchObject({ id: "cold_open" });
+    expect(buildIntroVariantById("artist_led", "current")).toMatchObject({
+      id: "artist_led",
+      entryMode: "artist_led"
+    });
   });
 });
 

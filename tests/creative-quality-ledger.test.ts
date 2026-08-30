@@ -251,13 +251,12 @@ describe("creative quality ledger", () => {
     expect(record.decision).toEqual(decision); // full decision recorded
   });
 
-  it("logs the chosen intro archetype and excludes the most recent one", async () => {
+  it("logs the artist-led opening contract without rotating a stock archetype", async () => {
     callAiProviderMock.mockReset();
     callAiProviderMock.mockResolvedValueOnce(denseDraftWithBankTerms());
     const root = await bankWorkspace(BANK_MD);
 
-    // Reproduce lyricsDrafting's seed formula to find the bare-hash archetype,
-    // then seed the ledger with it so the anti-repeat shift must move off it.
+    // A previous artist-led entry must not make the next song select a template.
     const briefText = readFileSync(join(root, "songs", "song-001", "brief.md"), "utf8");
     const barePick = resolveIntroVariant(`intro:song-001\n${briefText}`).id;
     await appendCreativeQualityEntry(root, entry({ songId: "prior", introArchetype: barePick }));
@@ -267,11 +266,10 @@ describe("creative quality ledger", () => {
     const ledger = await readCreativeQualityLedger(root);
     expect(ledger[0].songId).toBe("song-001");
     const chosen = ledger[0].introArchetype;
-    // Proves the archetype is recorded (logging wired) ...
+    // Proves the opening contract is recorded (logging wired) ...
     expect(chosen).toBeDefined();
     expect(INTRO_ARCHETYPE_IDS).toContain(chosen);
-    // ... and that the recent-history exclusion is fed back in (anti-repeat).
-    expect(chosen).not.toBe(barePick);
+    expect(chosen).toBe(barePick);
   });
 });
 

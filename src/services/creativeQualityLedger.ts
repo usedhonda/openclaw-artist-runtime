@@ -157,7 +157,10 @@ function headRun(
 }
 
 function introArchetypeOf(entry: CreativeQualityEntry): string | undefined {
-  return entry.decision?.intro.archetype ?? entry.introArchetype;
+  const value = entry.decision?.intro.archetype ?? entry.introArchetype;
+  // artist_led is a writing contract, not a repeated sonic form. Treating it as
+  // an archetype would generate a false monotony warning for every new song.
+  return value === "artist_led" ? undefined : value;
 }
 
 // >=2-char kanji/katakana content words in a title. Reuses the module's existing

@@ -206,7 +206,7 @@ describe("lyrics drafting repair-not-reject orchestration", () => {
     expect((await readSongState(root, "song-001")).degradedLyrics).toBe(false);
   });
 
-  it("rejects a 40-line draft on the line floor even when the character floor is cleared", async () => {
+  it("rejects a 40-line draft on the artist-led opening's line floor", async () => {
     const root = await workspace();
     callAiProviderMock.mockResolvedValue(fortyLineDraft());
 
@@ -218,10 +218,7 @@ describe("lyrics drafting repair-not-reject orchestration", () => {
     expect(callAiProviderMock).toHaveBeenCalledTimes(3);
     const repairNotes = (thrown as { repairNotes?: string[] } | undefined)?.repairNotes ?? [];
     expect(repairNotes.some((note) => /lyrics_too_short_for_duration_plan/.test(note))).toBe(true);
-    // The deterministic INTRO archetype for song-001 resolves to "silence_hit",
-    // which now carries its isolated vocal tag as one intro line. A 40-line draft
-    // is still rejected against the resulting 52-line plan floor.
-    expect(repairNotes.some((note) => /lines 40\/52/.test(note))).toBe(true);
+    expect(repairNotes.some((note) => /lines 40\/51/.test(note))).toBe(true);
     expect((await readSongState(root, "song-001")).degradedLyrics).toBe(true);
   });
 
