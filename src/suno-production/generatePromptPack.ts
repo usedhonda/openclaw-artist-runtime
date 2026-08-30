@@ -146,7 +146,7 @@ export function createSunoPromptPack(input: CreateSunoPromptPackInput): SunoProm
   const style = sanitizeAcousticBassStyle(enforceStyleCoreContract(styleResult.total), acousticBassAvoidance);
   const exclude = buildExcludeV55({
     genre,
-    artistAvoid: [...acousticBassAvoidance, "intro scat/vocalise", "intro vocal ad-libs", "intro vocal chops", "generic EDM drop", "fake crowd noise"],
+    artistAvoid: [...acousticBassAvoidance, "generic EDM drop", "fake crowd noise"],
     copyrightSourceNameDenylist: [input.songTitle]
   }).text;
   const yamlLyrics = buildYamlV55({
@@ -253,7 +253,7 @@ export async function createSunoPromptPackWithAi(
   }, { provider: input.aiReviewProvider });
   const excludeResult = await synthesizeExclude({
     genre,
-    artistAvoid: [...acousticBassAvoidance, "intro scat/vocalise", "intro vocal ad-libs", "intro vocal chops", "generic EDM drop", "fake crowd noise"],
+    artistAvoid: [...acousticBassAvoidance, "generic EDM drop", "fake crowd noise"],
     copyrightSourceNameDenylist: [input.songTitle]
   }, { provider: input.aiReviewProvider });
   const yamlLyrics = buildYamlV55({

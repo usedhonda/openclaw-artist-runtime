@@ -77,29 +77,23 @@ function baseInput() {
 }
 
 function introMoveLine(style: string): string {
-  return (style.match(/- Intro Move: ([^\n]+)/)?.[1] ?? "").replace(/\.\s*$/, "");
+  return (style.match(/- Opening: ([^\n]+)/)?.[1] ?? "").replace(/\.\s*$/, "");
 }
 
 describe("Suno V5.5 CreativeDecision thread-through", () => {
-  it("uses the plan's archetype-derived intro styleMove, not an independent rotation", () => {
+  it("uses the plan's opening direction without an independent style rotation", () => {
     const plan = planFor("song-plan-01");
 
     const withPlan = createSunoPromptPack({ ...baseInput(), creativeDecision: plan, styleVariationSeed: plan.dopagaki.variationSeed });
     const withoutPlan = createSunoPromptPack({ ...baseInput(), styleVariationSeed: plan.dopagaki.variationSeed });
 
-    // The style Intro Move is exactly the plan's styleMove. The override replaces
-    // the value inside a required line (no net length), so it survives even when
-    // this cap-bound artist forces the optional hint lines to be dropped.
-    expect(withPlan.style).toContain(`- Intro Move: ${plan.intro.styleMove}.`);
-    // A sentinel styleMove (a string no variation profile intro pool holds) proves
-    // the plan value overrides the hash rotation rather than coinciding with it.
+    expect(withPlan.style).toContain(`- Opening: ${plan.intro.styleMove}.`);
     const sentinelPlan: CreativeDecision = { ...plan, intro: { ...plan.intro, styleMove: "sentinel offbeat intro cue" } };
     const withSentinel = createSunoPromptPack({ ...baseInput(), creativeDecision: sentinelPlan, styleVariationSeed: plan.dopagaki.variationSeed });
     expect(introMoveLine(withSentinel.style)).toBe("sentinel offbeat intro cue");
     expect(introMoveLine(withoutPlan.style)).not.toBe("sentinel offbeat intro cue");
-    // Regression: the contract-required lines must survive the length trim.
-    expect(withPlan.style).toContain("Variation Move");
-    expect(withPlan.style).toContain("Intro Move");
+    expect(withPlan.style).not.toContain("Variation Move");
+    expect(withPlan.style).toContain("Opening");
     expect(withPlan.validation.valid).toBe(true);
   });
 
@@ -107,29 +101,25 @@ describe("Suno V5.5 CreativeDecision thread-through", () => {
     const plan = planFor("song-plan-01");
     expect(plan.emotionalMode.spec).toContain("confrontational rap diss");
 
-    // Headroom fixture: a minimal artistSnapshot plus a variation seed that selects
-    // a shorter profile, so the single optional Emotional Mode hint line fits under
-    // the style length cap (the deterministic style otherwise runs near the cap).
+    // The neutral fallback keeps the song's actual emotional direction instead of
+    // dropping it to preserve a fixed arrangement profile.
     const roomy = { ...baseInput(), artistSnapshot: "# ARTIST", styleVariationSeed: "seed-6" };
     const withPlan = createSunoPromptPack({ ...roomy, creativeDecision: plan });
     const withoutPlan = createSunoPromptPack(roomy);
 
     expect(withPlan.style).toContain("Emotional Mode");
     expect(withPlan.style).toContain("confrontational rap diss");
-    expect(withPlan.style).toContain("Variation Move");
     // moodHint (音色) still drives its own surfaces regardless of the plan.
     expect(withPlan.style).toContain("civic dread pulse");
     expect(withoutPlan.style).not.toContain("Emotional Mode");
     expect(withoutPlan.style).not.toContain("confrontational rap diss");
   });
 
-  it("drops the optional hint before the required Variation Move line on cap-bound styles", () => {
+  it("keeps the song's emotional direction without adding a fixed variation move", () => {
     const plan = planFor("song-plan-01");
-    // The default (nu-jazz) artistSnapshot is cap-bound: the Emotional Mode hint
-    // cannot fit, so it is dropped and the contract line is preserved.
     const withPlan = createSunoPromptPack({ ...baseInput(), creativeDecision: plan });
-    expect(withPlan.style).toContain("Variation Move");
-    expect(withPlan.style).not.toContain("Emotional Mode");
+    expect(withPlan.style).toContain("Emotional Mode");
+    expect(withPlan.style).not.toContain("Variation Move");
     expect(withPlan.validation.valid).toBe(true);
   });
 

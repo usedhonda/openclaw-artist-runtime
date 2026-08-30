@@ -2,8 +2,6 @@ import { describe, expect, it } from "vitest";
 import {
   CANONICAL_STYLE_CORE_MAX_CHARS,
   CANONICAL_STYLE_HARD_MAX_CHARS,
-  CANONICAL_STYLE_TARGET_MAX_CHARS,
-  CANONICAL_STYLE_TARGET_MIN_CHARS,
   buildStyle,
   enforceStyleCoreContract
 } from "../src/suno-production/buildStyle";
@@ -14,7 +12,7 @@ import {
 } from "../src/suno-production/styleSynthesisPrompt";
 
 describe("Suno V5.5 style builder", () => {
-  it("builds canonical rich style guidance with genre and mood anchors", () => {
+  it("keeps only submitted style facts in the non-AI fallback", () => {
     const result = buildStyle({
       genre: "nu-jazz rap",
       bpm: 132,
@@ -26,18 +24,16 @@ describe("Suno V5.5 style builder", () => {
     });
 
     expect(result.coreTags.length).toBeLessThanOrEqual(CANONICAL_STYLE_CORE_MAX_CHARS);
-    expect(result.total.length).toBeGreaterThanOrEqual(CANONICAL_STYLE_TARGET_MIN_CHARS);
-    expect(result.total.length).toBeLessThanOrEqual(CANONICAL_STYLE_TARGET_MAX_CHARS);
+    expect(result.total.length).toBeLessThanOrEqual(CANONICAL_STYLE_HARD_MAX_CHARS);
     expect(result.coreTags.startsWith("nu-jazz rap")).toBe(true);
     expect(result.coreTags).toContain("BPM 132");
     expect(result.coreTags).toContain("civic dread");
     expect(result.total.startsWith("# Style\n")).toBe(true);
     expect(result.total).toContain("nu-jazz rap");
     expect(result.total).toContain("Instruments");
-    expect(result.total).toContain("Texture");
     expect(result.total).toContain("Performance");
-    expect(result.total).toContain("Variation Move");
-    expect(result.total).toContain("Intro Move");
+    expect(result.total).toContain("Opening");
+    expect(result.total).not.toContain("Variation Move");
     expect(result.total).not.toContain("Knowledge Vocabulary");
   });
 
@@ -68,11 +64,10 @@ describe("Suno V5.5 style builder", () => {
     ["edm", "cold warehouse pulse"],
     ["post-punk", "concrete hallway dread"],
     ["rap", "dry street sarcasm"]
-  ])("renders canonical template for %s", (genre, vibe) => {
+  ])("keeps fallback formatting neutral for %s", (genre, vibe) => {
     const result = buildStyle({ genre, vibe, moodHint: vibe });
 
-    expect(result.total.length).toBeGreaterThanOrEqual(CANONICAL_STYLE_TARGET_MIN_CHARS);
-    expect(result.total.length).toBeLessThanOrEqual(CANONICAL_STYLE_TARGET_MAX_CHARS);
+    expect(result.total.length).toBeLessThanOrEqual(CANONICAL_STYLE_HARD_MAX_CHARS);
     expect(result.coreTags.length).toBeLessThanOrEqual(CANONICAL_STYLE_CORE_MAX_CHARS);
     expect(result.total.startsWith("# Style\n")).toBe(true);
     expect(result.total).toContain(genre);
@@ -110,60 +105,18 @@ describe("Suno V5.5 style builder", () => {
     expect(prompt.user).not.toContain("total target <=400 characters");
   });
 
-  // Regression for the arrangement collapse: because the artist profile always
-  // carries "high-velocity progressive rap" / "metric displacement", every
-  // non-overt song used to pin variationProfiles[1], flattening the six-way
-  // rotation to one profile. A non-overt progressive-identity brief must now
-  // hash-rotate across profiles. (The overt/dopagaki pin is covered by the two
-  // tests below, which retain the progressive substrings for the explicit case.)
-  it("rotates variation profiles for non-overt progressive-identity songs", () => {
-    const base = {
+  it("does not invent a fixed variation move from a seed", () => {
+    const input = {
       genre: "nu-jazz rap" as const,
       artistProfile: "high-velocity progressive rap identity, metric displacement, structural density",
       moodHint: "blue civic pressure",
       brief: "Keep the current artist core; progressive architecture stays the identity while the arrangement rotates."
     };
-    const variationMove = (seed: string): string => {
-      const total = buildStyle({ ...base, variationSeed: seed }).total;
-      expect(total.length).toBeLessThanOrEqual(CANONICAL_STYLE_HARD_MAX_CHARS);
-      return total.match(/Variation Move: ([^\n]+)/)?.[1] ?? "";
-    };
-    const moves = Array.from({ length: 10 }, (_, index) => variationMove(`song-seed-${index}`));
-
-    // Collapse fix: several distinct Variation Move lines, not one fixed profile.
-    expect(new Set(moves).size).toBeGreaterThanOrEqual(3);
-    // Sharp proof the progressive shortcut no longer wins every non-overt song:
-    // at least one rotated profile is not a progressive one.
-    expect(moves.some((move) => move && !move.includes("progressive rap"))).toBe(true);
-  });
-
-  it("uses the overt dopagaki variation when the prompt asks for strong exposure", () => {
-    const result = buildStyle({
-      genre: "nu-jazz rap",
-      moodHint: "高速多展開プログレッシブ・ラップ強め, overt structural density, but keep the current artist",
-      brief: "Expose the high-velocity progressive architecture clearly inside the nu-jazz rap frame."
-    });
-
-    expect(result.total.length).toBeLessThanOrEqual(CANONICAL_STYLE_HARD_MAX_CHARS);
-    expect(result.total).toContain("overt high-velocity progressive rap");
-    expect(result.total).toContain("metric displacement");
-    expect(result.total).toContain("technical fast-flow bursts");
-    expect(result.total).not.toContain("digital gloss");
-    expect(result.coreTags).not.toContain(",,");
-    expect(result.coreTags).not.toContain(" ,");
-  });
-
-  it("uses the overt dopagaki variation from the per-song variation seed", () => {
-    const result = buildStyle({
-      genre: "nu-jazz rap",
-      moodHint: "aggressive urban critique",
-      brief: "Keep the same low-bass artist core.",
-      variationSeed: "dopagaki:overt:spawn_001"
-    });
-
-    expect(result.total).toContain("overt high-velocity progressive rap");
-    expect(result.total).toContain("metric displacement");
-    expect(result.total).not.toContain("generic digital gloss");
+    const first = buildStyle({ ...input, variationSeed: "song-seed-a" }).total;
+    const second = buildStyle({ ...input, variationSeed: "song-seed-b" }).total;
+    expect(first).toBe(second);
+    expect(first).not.toContain("Variation Move");
+    expect(first).not.toContain("nocturnal jazz color shift");
   });
 });
 

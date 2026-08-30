@@ -28,7 +28,7 @@ describe("Suno prompt mood hint", () => {
     expect(pack.style.length).toBeLessThanOrEqual(CANONICAL_STYLE_TARGET_MAX_CHARS);
     expect(pack.style).toContain("civic dread pulse");
     expect(pack.style).not.toContain("song intent:");
-    expect(pack.style).toContain("brushed drums");
+    expect(pack.style).not.toContain("brushed drums");
   });
 
   it("keeps canonical style bounded when moodHint is oversized", () => {
@@ -39,10 +39,10 @@ describe("Suno prompt mood hint", () => {
     });
     expect(pack.style.length).toBeLessThanOrEqual(CANONICAL_STYLE_TARGET_MAX_CHARS);
     expect(pack.style).not.toContain("song intent:");
-    expect(pack.style).toContain("brushed drums");
+    expect(pack.style).not.toContain("brushed drums");
   });
 
-  it("honors autonomous dopagaki variation from the artist snapshot without per-song prompt text", () => {
+  it("does not turn artist identity into a fixed dopagaki style profile", () => {
     const pack = createSunoPromptPack({
       ...base,
       artistReason: "city observation without explicit style request",
@@ -59,14 +59,12 @@ describe("Suno prompt mood hint", () => {
       ].join("\n")
     });
 
-    expect(pack.style).toContain("overt high-velocity progressive rap");
-    expect(pack.style).toContain("metric displacement");
-    expect(pack.style).toContain("technical fast-flow bursts");
-    expect(String(pack.payload.styleAndFeel)).toContain("overt high-velocity progressive rap");
+    expect(pack.style).not.toContain("Variation Move");
+    expect(String(pack.payload.styleAndFeel)).not.toContain("overt high-velocity progressive rap");
     expect(pack.yamlLyrics).toContain("language: Japanese 60% / English 40%");
   });
 
-  it("honors per-song dopagaki variation seed without changing registration lyrics", () => {
+  it("does not synthesize a fixed style from a per-song variation seed", () => {
     const pack = createSunoPromptPack({
       ...base,
       lyricsText: "[Verse]\n街の灯りが遅れる",
@@ -74,8 +72,7 @@ describe("Suno prompt mood hint", () => {
       styleVariationSeed: "dopagaki:overt:spawn_seed"
     });
 
-    expect(pack.style).toContain("overt high-velocity progressive rap");
-    expect(pack.style).toContain("metric displacement");
+    expect(pack.style).not.toContain("Variation Move");
     expect(pack.lyricsBundle?.originalLyricsText).toContain("街の灯りが遅れる");
     expect(pack.lyricsBundle?.lyricsText).toContain("まちのあかりがおくれる");
   });

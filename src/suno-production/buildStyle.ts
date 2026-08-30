@@ -1,8 +1,6 @@
 import type { AiReviewProvider } from "../types.js";
 import { callAiProvider, isAiProviderMockFallbackResponse } from "../services/aiProviderClient.js";
 import { buildStyleSynthesisPrompt } from "./styleSynthesisPrompt.js";
-import { KNOWLEDGE_BUNDLE } from "./knowledge-bundle.js";
-import { STYLE_TEMPLATES, type Genre } from "./styleTemplates.js";
 
 export const CANONICAL_STYLE_CORE_MAX_CHARS = 120;
 export const CANONICAL_STYLE_TARGET_MIN_CHARS = 760;
@@ -24,11 +22,6 @@ export interface BuildStyleInput {
   performanceDirection?: string;
   variationSeed?: string;
   // --- CreativeDecision-derived hints (all optional; render-only) ---
-  // These carry the song's one creative decision into the style. They are
-  // consumed ONLY when rendering the style body; they never enter the seed hash
-  // or the variationProfile source (keeping them out of those avoids an "overt"
-  // keyword in a style note silently pinning a variation profile, and keeps the
-  // no-decision path byte-identical).
   //
   // Role separation of the two mood strings (documented deliberately):
   //   - moodHint      = 音色ヒント (mood-hint.txt): timbre/production color. Drives
@@ -41,9 +34,8 @@ export interface BuildStyleInput {
   // Producer brief "- Style notes:" — an explicit style direction the brief writer
   // set but that buildStyle historically dropped. Rendered as one bounded hint line.
   styleNotes?: string;
-  // CreativeDecision.intro.styleMove — archetype-derived, so the style "Intro Move"
-  // matches the lyric intro instead of an independent rotation. Falls back to the
-  // rotation when absent/blank so the line is never empty.
+  // The lyric opening's direction. It is an artist-authored constraint, not a
+  // selector into a style-profile pool.
   introStyleMove?: string;
 }
 
@@ -78,16 +70,6 @@ function uniq(values: string[]): string[] {
   return [...new Set(values.map((value) => value.trim()).filter(Boolean))];
 }
 
-const ACOUSTIC_BASS_TERMS = [
-  "upright bass",
-  "acoustic double bass",
-  "double bass",
-  "wood bass",
-  "walking acoustic jazz bass",
-  "acoustic bass",
-  "fat upright bass"
-];
-
 function acousticBassAvoidanceRequested(input: BuildStyleInput): boolean {
   const source = [
     input.artistProfile,
@@ -99,10 +81,6 @@ function acousticBassAvoidanceRequested(input: BuildStyleInput): boolean {
   ].filter(Boolean).join(" ").toLowerCase();
   return /\b(no|avoid|exclude|without|remove|removed|not|must not contain)\b[^.]*\b(upright|wood|acoustic double|double|acoustic)\s*-?\s*bass\b/.test(source)
     || /\b(upright|wood|acoustic double|double|acoustic)\s*-?\s*bass\b[^.]*\b(not|avoid|exclude|remove|removed|forbid|forbidden)\b/.test(source);
-}
-
-function removeAcousticBassTerms(values: string[]): string[] {
-  return values.filter((value) => !ACOUSTIC_BASS_TERMS.some((term) => value.toLowerCase().includes(term)));
 }
 
 function fitTags(tags: string[], max: number): string {
@@ -141,108 +119,7 @@ function trimAtPhraseBoundary(text: string, maxLength: number): string {
   return head.replace(/[A-Za-z0-9'-]+$/, "").trimEnd() || head.trimEnd();
 }
 
-function hashString(value: string): number {
-  let hash = 2166136261;
-  for (let index = 0; index < value.length; index += 1) {
-    hash ^= value.charCodeAt(index);
-    hash = Math.imul(hash, 16777619);
-  }
-  return hash >>> 0;
-}
-
-function pickOne<T>(items: T[], hash: number, offset = 0): T {
-  return items[(hash + offset) % items.length];
-}
-
-interface StyleVariationProfile {
-  id: string;
-  line: string;
-  arrangement: string[];
-  mix: string[];
-  texture: string[];
-  intro: string[];
-}
-
-const variationProfiles: StyleVariationProfile[] = [
-  {
-    id: "progressive-overt",
-    line: "Variation Move: Verse sections carry overt high-velocity progressive rap; 2-4 bar technical fast-flow bursts, compressed sections, metric displacement, motivated transitions, rhythmic switch-ups, motif callbacks, transformed hook returns. Keep the opening free of rap ad-libs.",
-    arrangement: ["compressed section turns", "metric displacement at boundaries", "2-4 bar technical fast-flow bursts", "transformed final hook return"],
-    mix: ["dry transient definition", "bass-forward rhythmic pressure", "Rhodes and horn punctuation at turns", "controlled density without festival scale"],
-    texture: ["live-room drum grain", "Rhodes shadow detail", "tight rhythmic counter-motifs"],
-    intro: ["cold intro, immediate pocket", "hard downbeat intro, no runway", "count-in straight into the burst"]
-  },
-  {
-    id: "progressive-core",
-    line: "Variation Move: Verse sections carry core high-velocity progressive rap; rapid but intelligible section development, rhythmic cell changes at musical boundaries, recurring motifs, jazz-rap continuity, and a final hook that returns with changed meaning while preserving the natural mid-range male lead. Keep the opening free of rap ad-libs.",
-    arrangement: ["rapid section development", "rhythmic cell changes at boundaries", "recurring motif callback", "changed-meaning final hook"],
-    mix: ["dry transient definition", "bass-forward pocket", "controlled density without digital gloss"],
-    texture: ["live-room drum grain", "Rhodes shadow detail"],
-    intro: ["instrumental motif intro, short runway", "brief Rhodes intro then the pocket", "count-in into the groove"]
-  },
-  {
-    id: "percussive-negative-space",
-    line: "Variation Move: percussion-led negative space; clipped rim details, bass answered by dry room hits, hook widened by rhythm rather than extra chords, bridge drops to breath and low percussion, final hook returns with tighter drum geometry.",
-    arrangement: ["clipped rim details", "bass-and-drum call response", "rhythm-widened hook", "bridge breath drop", "tighter final drum geometry"],
-    mix: ["dry punch", "hard panned small percussion", "low-mid pocket discipline"],
-    texture: ["wood-and-metal transient grain", "short room reflections"],
-    intro: ["sparse percussion intro, negative space", "rim-click intro then hard downbeat", "silence then a drum hit intro"]
-  },
-  {
-    id: "nocturnal-jazz-shift",
-    line: "Variation Move: nocturnal jazz color shift; Rhodes voicings answer the vocal, sax or horn fragments appear only at section turns, chorus keeps the same pulse but changes chord color, bridge thins to bass harmonics before the final hook.",
-    arrangement: ["Rhodes answer phrases", "horn fragments at section turns", "chorus chord-color shift", "bass-harmonic bridge", "final hook motif return"],
-    mix: ["warm low-mid bloom", "close jazz-room depth", "soft analog glue"],
-    texture: ["brushed cymbal grain", "dim club air"],
-    intro: ["atmospheric Rhodes fade intro", "muted horn intro, dim room", "brushed-cymbal intro, unhurried"]
-  },
-  {
-    id: "cold-electro-pulse",
-    line: "Variation Move: cold electro pulse; sub movement stays restrained, arpeggio fragments rotate every section, hook gains width through stereo automation, bridge narrows to mono pressure, final hook reopens with sharper side motion.",
-    arrangement: ["rotating arp fragments", "restrained sub movement", "stereo-automated hook", "mono-pressure bridge", "reopened final hook"],
-    mix: ["clean side motion", "precise low-end envelope", "cold stereo automation"],
-    texture: ["glass synth shimmer", "humid warehouse edge"],
-    intro: ["arpeggio fragment intro, cold fade-in", "sub-pulse intro, stereo widening", "glassy synth intro, sparse"]
-  },
-  {
-    id: "dusty-live-contrast",
-    line: "Variation Move: dusty live contrast; organic bass and drums carry the verses, synth or key texture appears as a shadow, hook widens without arena scale, bridge exposes room noise, final hook restores the main groove with one new countermelody.",
-    arrangement: ["organic verse groove", "shadow synth or key texture", "non-arena hook width", "room-noise bridge", "final countermelody"],
-    mix: ["live-room intimacy", "vocal-forward center", "unpolished transient edges"],
-    texture: ["tape dust", "small-room air"],
-    intro: ["room-noise intro, organic bass first", "spoken cue intro then the groove", "tape-dust intro, live-room air"]
-  }
-];
-
-function variationProfile(input: BuildStyleInput): StyleVariationProfile {
-  const source = `${input.variationSeed ?? ""}\n${input.artistProfile ?? ""}\n${input.brief ?? ""}\n${input.moodHint ?? ""}\n${input.vibe ?? ""}`;
-  const progressiveIdentity = /high-velocity progressive rap|progressive architecture|structural density|metric displacement/i.test(source);
-  const legacyVariation = /\bdopagaki\b|\bdopamine\b|\bhigh stimulus\b/i.test(source) || source.includes("\u30c9\u30d1\u30ac\u30ad");
-  if (
-    /\b(overt|strong|hard|max(?:imum)?|explicit|full)\b/i.test(source)
-    || /露骨|強め|濃い|全開|はっきり|ガッツリ|ごりごり|ゴリゴリ/.test(source)
-  ) {
-    if (legacyVariation || progressiveIdentity) {
-      return variationProfiles[0];
-    }
-  }
-  // Ordinary progressive-identity songs (the artist profile always carries
-  // "high-velocity progressive rap" / "metric displacement") must not collapse
-  // to one fixed profile. Only an explicit overt/dopagaki override above pins a
-  // progressive profile; everything else hash-rotates across all six.
-  const seed = input.variationSeed ?? source;
-  const hash = hashString(seed || "artist-runtime-style-variation");
-  return pickOne(variationProfiles, hash);
-}
-
-function richList(items: string[], hash: number, maxItems: number): string[] {
-  const rotated = items.map((item, index) => ({ item, score: hashString(`${hash}:${index}:${item}`) }))
-    .sort((a, b) => a.score - b.score)
-    .map(({ item }) => item);
-  return uniq(rotated).slice(0, maxItems);
-}
-
-function inferGenre(input: BuildStyleInput): Genre {
+function inferGenre(input: BuildStyleInput): string {
   const source = `${input.genre ?? ""} ${input.brief ?? ""} ${input.artistProfile ?? ""}`.toLowerCase();
   if (/nu.?jazz/.test(source) && /rap|hip.?hop/.test(source)) return "nu-jazz rap";
   if (/rap|hip.?hop/.test(source)) return "rap";
@@ -283,8 +160,7 @@ function styleHintLine(label: string, value: string | undefined, max: number): s
   return phrase ? `- ${label}: ${phrase}.` : undefined;
 }
 
-// The decision's intro styleMove, sanitized. Undefined when absent/blank so the
-// caller falls back to the hash rotation and the Intro Move line is never empty.
+// The decision's opening direction, sanitized for the neutral fallback formatter.
 function resolveIntroMove(value: string | undefined): string | undefined {
   if (!value) return undefined;
   const phrase = compact(englishStylePhrase(value, ""));
@@ -294,13 +170,7 @@ function resolveIntroMove(value: string | undefined): string | undefined {
 export function buildStyle(input: BuildStyleInput): BuildStyleResult {
   const vibe = fitPhrase(englishStylePhrase(input.vibe, inferMood(input)), 40);
   const genre = inferGenre(input);
-  const template = STYLE_TEMPLATES[genre] ?? STYLE_TEMPLATES.default;
-  const templateInstruments = acousticBassAvoidanceRequested(input)
-    ? removeAcousticBassTerms(template.instruments)
-    : template.instruments;
   const bpm = Math.round(input.bpm ?? 124);
-  const seedHash = hashString(input.variationSeed ?? `${input.artistProfile ?? ""}\n${input.brief ?? ""}\n${input.moodHint ?? ""}\n${genre}\n${bpm}`);
-  const profile = variationProfile(input);
   const instruments = input.instruments ?? inferInstruments(input);
   const gender = input.vocalGender ?? "male";
   const vocalDescriptor = input.vocalDescriptor ?? (gender === "female" ? "close dry female vocal" : gender === "neutral" ? "close dry neutral lead vocal" : "mid-range male rap vocal");
@@ -309,94 +179,32 @@ export function buildStyle(input: BuildStyleInput): BuildStyleResult {
     vibe,
     `BPM ${bpm}`,
     vocalDescriptor,
-    ...(instruments.length > 0 ? instruments : templateInstruments).slice(0, 3),
+    ...(instruments.length > 0 ? instruments : ["drums", "bass", "keys"]),
     input.mixKeyword ?? "intimate mix"
   ]);
   const coreTags = fitTags(tags, CANONICAL_STYLE_CORE_MAX_CHARS);
   const direction = trimAtPhraseBoundary(compact(input.performanceDirection ?? "Keep performance restrained, intelligible, and image-led; no double-time vocal."), 76);
-  // CreativeDecision-derived hint lines. Placed BEFORE the Intro Move line so the
-  // tail-side length trim never removes them. Undefined lines drop via filter.
   const emotionalModeLine = styleHintLine("Emotional Mode", input.emotionalModeSpec, 64);
   const styleNotesLine = styleHintLine("Style Notes", input.styleNotes, 80);
-  // Single intro decision: the archetype-derived styleMove wins; only when absent
-  // (legacy songs) does the style fall back to the independent hash rotation.
-  const introMove = resolveIntroMove(input.introStyleMove) ?? pickOne(profile.intro, seedHash, 23);
+  const introMove = resolveIntroMove(input.introStyleMove) ?? "opening follows the lyric section tag";
   const injectedInstruments = uniq([
     ...instruments,
-    ...richList(uniq([...instruments, ...templateInstruments]), seedHash, 7)
+    ...(instruments.length > 0 ? [] : ["drums", "bass", "keys"])
   ]);
-  const vocabulary = [
-    "wide stereo",
-    "close-mic",
-    "vocal-forward",
-    "bass-heavy",
-    "full arrangement"
-  ].filter((term) => KNOWLEDGE_BUNDLE["style_catalog.md"].toLowerCase().includes(term));
-  const render = (detailLevel: "full" | "compact", includeHints: boolean) => {
-    // Decision hint lines are best-effort: they are dropped (includeHints=false)
-    // before the contract-required Variation Move / Intro Move lines are ever
-    // sacrificed to the length trim. See the render ladder below.
-    const emotionalHint = includeHints ? emotionalModeLine : undefined;
-    const styleNotesHint = includeHints ? styleNotesLine : undefined;
-    const mix = uniq([...template.mixVision, ...profile.mix, ...vocabulary]).slice(0, detailLevel === "full" ? 7 : 4).join(", ");
-    const texture = uniq([...template.texture, ...profile.texture]).slice(0, detailLevel === "full" ? 6 : 3).join(", ");
-    if (detailLevel === "compact") {
-      const compactMix = uniq([...template.mixVision, ...profile.mix]).slice(0, 3).join(", ");
-      const compactTexture = uniq([...template.texture, ...profile.texture]).slice(0, 2).join(", ");
-      return [
-        "# Style",
-        "",
-        coreTags,
-        `- Genre & Era: ${genre}, ${bpm} BPM, minor; cool urban restraint.`,
-        `- Vocal Production: ${vocalDescriptor}; dry intelligible lead, restrained doubles.`,
-        `- Instruments: ${injectedInstruments.slice(0, 3).join(", ")}; ${profile.arrangement[0]}.`,
-        `- Rhythm & Bass: ${pickOne(template.mixVision, seedHash, 11)}, ${pickOne(profile.mix, seedHash, 17)}; no double-time.`,
-        `- Mix/Texture: ${compactMix.split(", ").slice(0, 2).join(", ")}; ${compactTexture.split(", ")[0]}; vocal-forward space.`,
-        `- Arrangement Arc: ${template.arrangementNotes[0]}; ${profile.arrangement.slice(0, 2).join("; ")}.`,
-        emotionalHint,
-        styleNotesHint,
-        `- Intro Move: ${introMove}.`,
-        `- Performance: ${trimAtPhraseBoundary(direction, 52)}`,
-        trimAtPhraseBoundary(profile.line, 165)
-      ].filter((line): line is string => Boolean(line)).join("\n");
-    }
-    return [
-      "# Style",
-      "",
-      coreTags,
-      `- Genre & Era: ${template.genreLine}; keep the current artist core intact, observational, cool, urban, unsentimental.`,
-      `- Vocal Production: ${vocalDescriptor}; ${template.vocalProduction.join(", ")}; natural lead identity, dry consonants, restrained doubles, no novelty character voice.`,
-      `- Instruments: ${injectedInstruments.join(", ")}; ${profile.arrangement.slice(0, 3).join(", ")}.`,
-      `- Rhythm & Bass: ${pickOne(template.mixVision, seedHash, 11)}, ${pickOne(profile.mix, seedHash, 17)}, bass movement supports Japanese phrasing without double-time vocal pressure.`,
-      `- Mix Vision: ${mix}; vocal-forward center with enough negative space for dense lyrics.`,
-      `- Texture: ${texture}.`,
-      `- Arrangement Arc: ${template.arrangementNotes.join("; ")}; ${profile.arrangement.join("; ")}.`,
-      emotionalHint,
-      styleNotesHint,
-      `- Intro Move: ${introMove}.`,
-      `- Performance: ${direction}`,
-      profile.line
-    ].filter((line): line is string => Boolean(line)).join("\n");
-  };
-  const hasHints = Boolean(emotionalModeLine || styleNotesLine);
-  let total = render("full", true);
-  if (total.length > CANONICAL_STYLE_TARGET_MAX_CHARS) {
-    total = render("compact", true);
-  }
-  // Contract-required lines (Variation Move / Intro Move) must survive the length
-  // trim; the optional decision hints must not. When a hint is present and even
-  // the compact render overflows, drop the hints and re-render before the blunt
-  // tail trim runs. Guarded on hasHints so the legacy no-decision path is byte-
-  // identical (this rung never fires without a decision hint).
-  if (hasHints && total.length > CANONICAL_STYLE_TARGET_MAX_CHARS) {
-    total = render("compact", false);
-  }
-  if (total.length > CANONICAL_STYLE_TARGET_MAX_CHARS) {
-    total = trimAtPhraseBoundary(total, CANONICAL_STYLE_TARGET_MAX_CHARS);
-  }
-  if (total.length > CANONICAL_STYLE_HARD_MAX_CHARS) {
-    total = trimAtPhraseBoundary(total, CANONICAL_STYLE_HARD_MAX_CHARS);
-  }
+  // This path is only used when the AI style writer is unavailable. It carries
+  // submitted facts forward without inventing an alternate arrangement arc.
+  const total = [
+    "# Style",
+    "",
+    coreTags,
+    `- Genre & Tempo: ${genre}, ${bpm} BPM.`,
+    `- Vocal Production: ${vocalDescriptor}.`,
+    `- Instruments: ${injectedInstruments.join(", ")}.`,
+    emotionalModeLine,
+    styleNotesLine,
+    `- Opening: ${introMove}.`,
+    `- Performance: ${direction}`
+  ].filter((line): line is string => Boolean(line)).join("\n");
   return { coreTags, performanceDirection: direction, total };
 }
 

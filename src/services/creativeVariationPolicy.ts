@@ -196,8 +196,8 @@ const ARTIST_LED_OPENING: IntroVariant = {
   lineFloor: 0,
   lineTarget: "artist-decided opening",
   modifier: "artist-decided opening: either a concrete instrumental gesture with no vocals, or one complete intelligible lyric line; never an empty vocal intro",
-  lyricInstruction: "Choose the opening for this song from its observation and emotional turn. It may be instrumental only when the tag begins [Instrumental Intro] and has zero lyric lines; otherwise write exactly one complete, meaningful lyric line. Never use syllables, phonetic filler, vocal chops, ad-libs, a count-in, or an empty [Intro].",
-  styleMove: "no intro ad-libs"
+  lyricInstruction: "Choose the opening for this song from its observation and emotional turn. It may be instrumental only when the tag begins [Instrumental Intro] and has zero lyric lines; otherwise write one intentional vocal event: a complete meaningful lyric line, or a brief written scat when the song needs it. Never use an empty [Intro], a count-in, or phonetic filler as a fallback.",
+  styleMove: "opening follows the lyric section tag"
 };
 
 const INTRO_MOTIFS = [

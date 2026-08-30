@@ -69,6 +69,7 @@ export async function buildStyleSynthesisPrompt(input: BuildStyleInput): Promise
     "Do not browse; use only the supplied artist brief, runtime snapshots, and the knowledge digest below.",
     "Length budget: front-load the strongest descriptors, then keep adding concrete detail. Target 760-900 characters (absolute ceiling 1000). USE the space — Style is the primary quality signal, so be specific and rich, never thin or generic.",
     "Ban thin filler adjectives (pop, catchy, energetic, beautiful, amazing, vibey). Every descriptor must be concrete and specific: named instruments, playing techniques, mix/space qualities, era/production markers, reference-grade textures.",
+    "Do not select or imitate a stock arrangement template. Compose the opening, section movement, and production gesture from this song's observation, lyric world, emotional mode, and style notes; the same artist identity must not force the same intro or arc on a different song.",
     "Quote concrete production vocabulary from the knowledge digest (instrument descriptors, mix terms, era markers, V5.5 metatag entries) instead of paraphrasing it away.",
     optionalLine("Artist profile", input.artistProfile),
     optionalLine("Song brief", input.brief),

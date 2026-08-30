@@ -104,8 +104,10 @@ Legacy songs with no plan keep the previous critique-lens prose.
 
 `generatePromptPack` / `buildStyle` read the plan, not independent hashes:
 
-- The style `Intro Move` is derived from the plan's `intro.styleMove`, so the
-  lyric intro and the style intro can no longer contradict.
+- The style `Opening` direction is derived from the plan's `intro.styleMove`, so
+  the lyric opening and the fallback Style field cannot contradict. The normal AI
+  style writer receives the same direction plus the observation and does not select
+  from a fixed arrangement profile.
 - `bpm` and `vocalGender` come from the plan.
 - `emotionalMode.spec` (感情) and `moodHint` (音色) are role-separated: the mode
   is the emotional stance, the moodHint is the sonic colour, and both reach the
