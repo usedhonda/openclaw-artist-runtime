@@ -82,6 +82,9 @@ describe("lyrics drafting prompt", () => {
     expect(prompt).toContain("master_reference.md");
     expect(prompt).toContain("Opening rule");
     expect(prompt).toContain("Never emit an empty Intro");
+    expect(prompt).toContain("Place-name rule");
+    expect(prompt).toContain("Do not use 渋谷 / Shibuya as a recurring hook, refrain, or default label");
+    expect(prompt).toContain("at most once in the lyric body");
     expect(LYRICS_KNOWLEDGE_DIGEST_FILES).toContain("master_reference.md");
 
     const digest = await readLyricsKnowledgeDigest();

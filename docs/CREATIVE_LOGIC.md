@@ -46,9 +46,10 @@ to force a proposal.
 | Aggression | `aggression` | Dis-default rule | `dis` \| `changeup` |
 | Tempo | `tempo` | weighted band pool, band + bpm from one sub-seed | `{ band, bpm }` |
 | Dopagaki | `dopagaki` | **single** density computation | `{ active, threshold, variationSeed }` |
-| Intro | `intro` | artist-authored opening contract for lyrics AND style | `{ archetype, modifier, lyricInstruction, styleMove }`; the writer chooses the opening from the song rather than rotating stock forms; empty/scatted vocal openings are prohibited |
+| Intro | `intro` | artist-authored opening contract for lyrics AND style | `{ archetype, modifier, lyricInstruction, styleMove }`; the writer chooses the opening from the song rather than rotating stock forms; empty/filler vocal openings are prohibited, while deliberate scat remains available when it serves the song |
 | Hook shape | `hookShape` | rotation, exclude previous | question / number / list / call_response / reversal / one_line |
 | Shibuya tag | `shibuyaTag` | rotation, exclude previous | technique id from the canon |
+| Place naming | lyric prompt rule | observation + persona material | render the city through concrete traces first; literal `渋谷` / `Shibuya` is never a recurring hook and is limited to one necessary lyric-body use |
 | Signature | `signature` | 1 of 5, exclude previous | the artist's recurring "癖" |
 | Observation | `observation` | from the collector | `{ url, author, motifScore }` or null |
 | Degraded inputs | `degradedInputs` | recorded, never hidden | e.g. `observation_null`, `material_banks_empty` |
