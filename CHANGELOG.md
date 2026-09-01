@@ -5,7 +5,8 @@
 - Lyrics now render the city's concrete traces before its name: landmarks, routes,
   ads, prices, and street-level details carry the setting, while literal `渋谷` /
   `Shibuya` is restricted to one necessary lyric-body use and cannot be a recurring
-  hook or refrain.
+  hook or refrain. The 109 landmark is spelled `いちまるきゅー` in lyrics so Suno
+  reads it correctly.
 - New songs now use an artist-authored opening contract instead of rotating a
   catalogue of intro templates. The lyrics and Style/Exclude fields prohibit empty
   intro fallback vocalise; deliberate scat and occasional vocal chops remain

@@ -251,7 +251,7 @@ export function buildLyricsDraftingPrompt(input: BuildLyricsPromptInput): string
     ...(input.decision
       ? selectiveDirectiveLines(input.decision, input.artistMd)
       : critiqueLensLines(input.artistMd)),
-    "Place-name rule: let the city register through concrete evidence from the observation and persona material bank: a numbered landmark such as 109, a redevelopment route, station gates, tax-free bags, clinic ads, rent, height, or a storefront detail. Do not use 渋谷 / Shibuya as a recurring hook, refrain, or default label. Use the explicit place name only when one line materially needs it, and at most once in the lyric body.",
+    "Place-name rule: let the city register through concrete evidence from the observation and persona material bank: a landmark such as いちまるきゅー (never numeric 109 in lyric text), a redevelopment route, station gates, tax-free bags, clinic ads, rent, height, or a storefront detail. Do not use 渋谷 / Shibuya as a recurring hook, refrain, or default label. Use the explicit place name only when one line materially needs it, and at most once in the lyric body.",
     ...dopagakiPromptLines(input.dopagakiVariation),
     emotionalMode ? `Emotional mode for this song: ${emotionalMode}` : "",
     input.recentHookTexts?.length ? `Avoid these recent hook phrases; invent a clearly distinct hook shape: ${input.recentHookTexts.slice(0, 8).join(" | ")}` : "",
