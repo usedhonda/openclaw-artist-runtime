@@ -65,8 +65,10 @@ describe("autopilot Suno import stage", () => {
       cycleCount: 0,
       updatedAt: new Date().toISOString(),
       lastRunAt: new Date().toISOString(),
-      lastSuccessfulStage: "suno_generation",
-      blockedReason: "waiting for Suno result import"
+      // This is the live failure shape: the prior create was accepted, leaving
+      // suno_running plus an already-successful stage but no blockedReason. The
+      // idempotency guard must not suppress the pending import.
+      lastSuccessfulStage: "suno_generation"
     });
     await importSunoResults({
       workspaceRoot: root,

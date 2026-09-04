@@ -431,7 +431,10 @@ fire with a single URL while the second is (or will imminently be) available.
   valid `https://suno.com/song/<id>` URLs (deduped by take id). While a run has
   only one captured take URL, the song is held in `suno_running`
   (`blockedReason: awaiting_second_suno_take_url`) and the autopilot cycle
-  re-checks it instead of notifying with one URL.
+  re-checks it instead of notifying with one URL. A `suno_running` song always
+  re-enters import processing even when the previous tick marked
+  `suno_generation` successful; the idempotency guard never owns a pending
+  accepted run.
 - Bounded single-URL fallback (fail-open): if only one take URL ever materializes,
   the run is delivered with that single URL once it has waited past
   `OPENCLAW_SUNO_SINGLE_TAKE_FALLBACK_MINUTES` (default 5 minutes). The event then

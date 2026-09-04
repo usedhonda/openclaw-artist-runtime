@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- Accepted Suno runs awaiting import can no longer be stranded behind the
+  same-run idempotency guard. The active song re-enters import processing until
+  it advances or reports a real import outcome, releasing the new-song lane.
 - Lyrics now render the city's concrete traces before its name: landmarks, routes,
   ads, prices, and street-level details carry the setting, while literal `渋谷` /
   `Shibuya` is restricted to one necessary lyric-body use and cannot be a recurring

@@ -1706,11 +1706,17 @@ export class ArtistAutopilotService {
     }
 
     const hasUnresolvedBlock = Boolean(stateBeforeStage.blockedReason || stateBeforeStage.lastError);
+    // `suno_running` means a real create was accepted but its files or second URL may
+    // still be pending. It must revisit the import path even when the preceding tick
+    // recorded suno_generation as successful; otherwise the idempotency guard strands
+    // the current song and prevents every later proposal from taking the single lane.
+    const pendingSunoImport = song?.status === "suno_running" && stage === "suno_generation";
     const guardWouldHold =
       existing.runId === runId
       && existing.lastSuccessfulStage === stage
       && stage !== "planning"
-      && !hasUnresolvedBlock;
+      && !hasUnresolvedBlock
+      && !pendingSunoImport;
     if (guardWouldHold) {
       // A song rolled back to suno_prompt_pack after a failed/superseded Suno create is
       // genuinely pre-create again: stageFromSong maps it to suno_generation, which equals
