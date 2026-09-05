@@ -97,6 +97,9 @@ else
       fi
       ;;
     Linux)
+      # Linux containers commonly expose a small /dev/shm; keep renderer
+      # startup reliable without changing the macOS launch arguments.
+      CHROME_ARGS+=(--disable-dev-shm-usage)
       ;;
     *)
       echo "Suno login does not support platform: $PLATFORM" >&2

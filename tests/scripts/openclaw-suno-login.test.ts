@@ -134,6 +134,7 @@ describe("openclaw-suno-login.sh", () => {
     expect(openArgs).toEqual([]);
     expect(chromeApp).toContain("Google Chrome for Testing.app");
     expect(chromeArgs).toContain("--password-store=basic");
+    expect(chromeArgs).not.toContain("--disable-dev-shm-usage");
   });
 
   it("directly starts a macOS Chrome app and retains cleanup ownership", async () => {
@@ -142,6 +143,7 @@ describe("openclaw-suno-login.sh", () => {
     expect(result.status).toBe(0);
     expect(openArgs).toEqual([]);
     expect(chromeArgs).toContain("--password-store=basic");
+    expect(chromeArgs).not.toContain("--disable-dev-shm-usage");
     expect(chromePid).toBeDefined();
     expect(() => process.kill(chromePid!, 0)).toThrow();
   });
@@ -153,6 +155,7 @@ describe("openclaw-suno-login.sh", () => {
     expect(result.status).toBe(0);
     expect(openArgs).toEqual([]);
     expect(chromeApp).toMatch(/\/google-chrome$/);
+    expect(await readFile(scriptPath, "utf8")).toContain("CHROME_ARGS+=(--disable-dev-shm-usage)");
   });
 
   it("fails before launching when Playwright returns no executable", async () => {

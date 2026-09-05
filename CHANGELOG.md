@@ -219,8 +219,9 @@
 ### Fixed
 - Added Linux support to the optional Suno login wrapper. Linux directly starts
   the configured or Playwright-resolved Chrome executable with the same private
-  CLI profile and loopback CDP lifecycle, while macOS retains its validated
-  `.app` executable path.
+  CLI profile and loopback CDP lifecycle, adds `--disable-dev-shm-usage` for
+  small container shared-memory mounts, while macOS retains its validated
+  `.app` executable path and arguments.
 - Hardened the local gateway lifecycle wrappers against mixed manual/launchd
   ownership. Manual start now refuses a loaded launchd service, requires its
   spawned PID to own the supervisor lock before accepting HTTP readiness, and

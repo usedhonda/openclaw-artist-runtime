@@ -241,6 +241,9 @@ when present or opens one, and stores the result in `session.json` without
 changing the browser profile. After the session is captured, the CDP-attached
 external Chrome is closed and the saved `session.json` is authoritative. CDP failure is fail-closed;
 the wrapper does not silently retry with Playwright's persistent-profile launcher.
+On Linux the wrapper also passes `--disable-dev-shm-usage` because containerized
+servers may expose a small `/dev/shm`, which can otherwise crash the Suno renderer;
+macOS arguments are unchanged.
 `<workspace>` is
 `OPENCLAW_LOCAL_WORKSPACE` when set, otherwise `.local/openclaw/workspace` in the
 repository.
