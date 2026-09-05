@@ -23,8 +23,13 @@ export class FeedClient {
             throw new Error(`Suno feed request failed: HTTP ${response.status}`);
         }
         const payload = await response.json();
-        const clips = extractFeedClips(payload);
-        return clips.map(normalizeClip);
+        const clipsById = new Map(extractFeedClips(payload).map((clip) => [clip.id, clip]));
+        const requestedIds = [...new Set(clipIds)];
+        const missingIds = requestedIds.filter((clipId) => !clipsById.has(clipId));
+        if (missingIds.length > 0) {
+            throw new Error(`Suno feed response missing requested clip id(s): ${missingIds.join(", ")}`);
+        }
+        return requestedIds.map((clipId) => normalizeClip(clipsById.get(clipId)));
     }
 }
 export function normalizeClip(clip) {

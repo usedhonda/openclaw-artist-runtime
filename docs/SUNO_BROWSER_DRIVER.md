@@ -69,6 +69,11 @@ Outcomes are judged by the CLI's exit code (never by string-matching stdout):
 Credential safety: the captcha token is redacted (`***`) in any diagnostic log
 and never appears in a returned reason; the cookie/JWT are never logged.
 
+Feed status and download requests are target-bound: if Suno returns a broad feed,
+the CLI keeps only the requested clip IDs and preserves their request order. If
+any requested ID is absent, the command fails closed instead of treating an empty
+or unrelated response as a successful status or download.
+
 Normal live `suno-cli create` requests no longer preflight `sunoCdpEndpoint` reachability.
 Endpoint configuration is still passed only for optional mint flows, so unreachable
 legacy CDP config now surfaces as normal CLI failure reasons (for example
