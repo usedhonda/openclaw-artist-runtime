@@ -147,13 +147,17 @@ describe("ai provider client", () => {
         waitForRun: vi.fn(),
         getSessionMessages: vi.fn()
       },
-      llm: { complete: vi.fn(async () => ({ text: "artistName: LLM facade" })) }
+      llm: { complete: vi.fn(async () => ({ text: "artistName: LLM facade" })) },
+      config: { current: () => ({ agents: { defaults: { thinkingDefault: "high" } } }) }
     };
 
     await expect(callAiProvider("draft", { provider: "openai-codex", runtime })).resolves.toBe("artistName: LLM facade");
     expect(runtime.llm.complete).toHaveBeenCalledWith(expect.objectContaining({
-      messages: [{ role: "user", content: "draft" }]
+      messages: [{ role: "user", content: "draft" }],
+      reasoning: "high",
+      signal: expect.any(AbortSignal)
     }));
+    expect(runtime.subagent.run).not.toHaveBeenCalled();
   });
 
   it("keeps mock behavior unchanged when a host runtime is present", async () => {
