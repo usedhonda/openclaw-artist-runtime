@@ -960,12 +960,20 @@ export async function proposeSpawn(root: string, options: ProposeSpawnOptions = 
   // the observation entries it was actually built from so mock / not_configured
   // paths still leave a verifiable citation trail.
   fallback.sources = sourcesFromExcerpts(obsData.excerpts ?? []);
+  // The deterministic fallback below is observation-anchored -- built from the
+  // same excerpt/raw observation as `fallback.sources` -- so it must say so via
+  // artistObservation, or the honest-thin guard further down rejects it.
+  const fallbackArtistObservation = (fallback.sources[0]?.quote || observation)
+    .replace(/\s+/g, " ")
+    .trim()
+    .slice(0, 200);
   const mockReason = composeReasonInArtistVoice({ artistMd, soulMd, fingerprint, observation, brief: fallback });
   let raw = provider === "mock"
     ? [
       "spawn: yes",
       `title: ${fallback.title}`,
       `brief: ${fallback.brief}`,
+      `artistObservation: ${fallbackArtistObservation}`,
       `lyricsTheme: ${fallback.lyricsTheme}`,
       `mood: ${fallback.mood}`,
       `tempo: ${fallback.tempo}`,
@@ -1000,6 +1008,7 @@ export async function proposeSpawn(root: string, options: ProposeSpawnOptions = 
       "spawn: yes",
       `title: ${fallback.title}`,
       `brief: ${fallback.brief}`,
+      `artistObservation: ${fallbackArtistObservation}`,
       `lyricsTheme: ${fallback.lyricsTheme}`,
       `mood: ${fallback.mood}`,
       `tempo: ${fallback.tempo}`,
@@ -1024,7 +1033,9 @@ export async function proposeSpawn(root: string, options: ProposeSpawnOptions = 
   }
   // Post-validate the reason: if voice fingerprint is ready and AI output violates contract,
   // replace the reason with a deterministic artist-voice line from composeArtistFallback.
-  if (provider === "mock" && isVoiceFingerprintReady(fingerprint).ok) {
+  // Contract compliance is about output quality, not provider identity -- a real
+  // provider's boilerplate reason (了解しました etc.) needs the same repair as mock's.
+  if (isVoiceFingerprintReady(fingerprint).ok) {
     const validation = validateAgainstVoiceContract(parsed.reason, {
       fingerprint,
       lastEndings: []
@@ -1041,7 +1052,6 @@ export async function proposeSpawn(root: string, options: ProposeSpawnOptions = 
   // does not leak previous song context. Skip when context is thin -- thin
   // path keeps short honest markers per validPitchField contract.
   if (
-    provider === "mock" &&
     !isThinPitchContext(pitchContext) &&
     parsed.brief.title &&
     !parsed.reason.includes(parsed.brief.title)

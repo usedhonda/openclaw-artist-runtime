@@ -516,11 +516,12 @@ export class TelegramNotifier {
   private async notifySongSpawnBatch(events: Array<Extract<RuntimeEvent, { type: "song_spawn_proposed" }>>): Promise<void> {
     if (events.length === 0) return;
     const event = events.at(-1)!;
-    const text = await formatSongSpawnPitch(event, {
+    const pitch = await formatSongSpawnPitch(event, {
       workspaceRoot: this.options.workspaceRoot,
       aiReviewProvider: this.options.aiReviewProvider,
       dashboardBaseUrl: this.options.dashboardBaseUrl
     });
+    const text = appendButtonEffectSection(event, pitch);
     const sent = await this.client.sendMessage(this.options.chatId, text);
     await Promise.all(events.map((item) => this.recordDelivery(item, sent.message_id)));
     await this.attachSongSpawnButtons(event, sent.message_id);
@@ -1267,6 +1268,10 @@ async function formatSongSpawnPitch(
   options: Pick<TelegramNotifierOptions, "workspaceRoot" | "aiReviewProvider" | "dashboardBaseUrl">
 ): Promise<string> {
   const fallback = formatSongSpawnCard(event);
+  // Mock provider produces a generic, event-independent voice fallback (no title
+  // reference); use the deterministic title-bearing card instead of sending a
+  // spawn notification the producer cannot tell apart from any other proposal.
+  if ((options.aiReviewProvider ?? "mock") === "mock") return fallback;
   if (!options.workspaceRoot) return fallback;
   const sourceFooter = formatSpawnSourceFooter(selectedSpawnSource(event));
   const work = (async () => {
