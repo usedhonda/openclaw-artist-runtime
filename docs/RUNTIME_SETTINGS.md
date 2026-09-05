@@ -67,6 +67,7 @@ diagnostic switches.
 | `OPENCLAW_TELEGRAM_NOTIFIER` | Settings diagnostics: enabled/disabled | Local transport switch. It can disable Telegram even when schema settings are on. |
 | `OPENCLAW_NEWS_BROWSER_RESOLVE`, `OPENCLAW_NEWS_ARTICLE_RESOLVE` | Settings diagnostics: enabled/disabled | Local network/browser behavior; kept env-only to avoid marketplace operators enabling browser fetch accidentally. |
 | `OPENCLAW_X_FIREFOX_PROFILE` | Settings diagnostics: configured/missing only | Local Firefox profile path for Bird/X. Paths are private machine details. |
+| `OPENCLAW_ARTIST_PRIVATE_ROOT` | Not shown | Optional absolute path to a private data checkout (workspace/songs/state archives). Unset is fine for CI and marketplace installs; see `docs/PRIVATE_DATA_ROOT.md`. |
 | `OPENCLAW_CONFIG`, `OPENCLAW_AUTH_PROFILES` | Not shown | Local OpenClaw auth/config file locations. Paths may reveal user account layout. |
 | `SPOTIFY_BEARER_TOKEN` | Not shown | Credential for optional music lookup helpers. |
 | `OPENCLAW_SUNO_CDP_ENDPOINT`, `OPENCLAW_SUNO_USE_CDP` | Not shown | Low-level browser attach controls; CDP is an emergency/operator-only path. |

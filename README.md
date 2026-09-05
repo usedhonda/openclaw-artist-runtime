@@ -60,6 +60,8 @@ contains everything needed to run and operate the artist daemon. Start here:
   projection contract.
 - `docs/RUNTIME_SETTINGS.md` — runtime settings layers, precedence, and
   env-only diagnostics.
+- `docs/PRIVATE_DATA_ROOT.md` — optional `OPENCLAW_ARTIST_PRIVATE_ROOT` for a
+  separate private data checkout (not required for CI).
 - `docs/OPERATOR_RUNBOOK.md` — manual doctor, log rotation, and runtime state
   snapshot helpers.
 - `docs/TROUBLESHOOTING.md` — symptom-first recovery decision tree linked to
