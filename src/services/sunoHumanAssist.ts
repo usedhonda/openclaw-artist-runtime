@@ -47,6 +47,12 @@ export interface HumanAssistBrowserDriver {
   bringToFront(): Promise<void>;
   /** Poll page/network up to timeoutMs for a producer-driven successful submit. */
   waitForHumanSubmit(timeoutMs: number): Promise<HumanAssistWaitOutcome>;
+  /**
+   * Cosmetic, success-only: move a reused attach-mode tab off the Create form so no
+   * abandoned filled form lingers after a successful submit. Failure paths must NOT
+   * call this — the filled form is the producer's evidence.
+   */
+  retireCreateSurface?(): Promise<void>;
   /** Close the browser/session. Always called exactly once at the end of the flow. */
   close(): Promise<void>;
 }
@@ -97,6 +103,11 @@ export async function runHumanAssistCreate(
       }
 
       if (submit.kind === "accepted") {
+        try {
+          await driver.retireCreateSurface?.();
+        } catch {
+          // Cosmetic only; the accepted result stands regardless.
+        }
         return { status: "accepted", urls: submit.urls ?? [], via: "machine" };
       }
       if (submit.kind === "error") {
@@ -119,6 +130,11 @@ export async function runHumanAssistCreate(
       return { status: "error", reason: describeError(error, "human_wait_failed") };
     }
     if (waited.kind === "accepted") {
+      try {
+        await driver.retireCreateSurface?.();
+      } catch {
+        // Cosmetic only; the accepted result stands regardless.
+      }
       return { status: "accepted", urls: waited.urls ?? [], via: "human" };
     }
     return { status: "timeout", reason: HUMAN_ASSIST_TIMEOUT_REASON };

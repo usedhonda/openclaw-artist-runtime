@@ -21,6 +21,7 @@ function makeDriver(overrides: DriverOverrides = {}) {
     closeChallengeOverlay: 0,
     bringToFront: 0,
     waitForHumanSubmit: 0,
+    retireCreateSurface: 0,
     close: 0
   };
   const driver: HumanAssistBrowserDriver = {
@@ -45,6 +46,9 @@ function makeDriver(overrides: DriverOverrides = {}) {
       return overrides.waitForHumanSubmit
         ? overrides.waitForHumanSubmit(timeoutMs)
         : { kind: "timeout" };
+    },
+    retireCreateSurface: async () => {
+      calls.retireCreateSurface += 1;
     },
     close: async () => {
       calls.close += 1;
@@ -75,6 +79,7 @@ describe("runHumanAssistCreate", () => {
     expect(notifier.awaitingHumanCreate).not.toHaveBeenCalled();
     expect(calls.closeChallengeOverlay).toBe(0);
     expect(calls.waitForHumanSubmit).toBe(0);
+    expect(calls.retireCreateSurface).toBe(1);
     expect(calls.close).toBe(1);
   });
 
@@ -100,6 +105,7 @@ describe("runHumanAssistCreate", () => {
     expect(calls.bringToFront).toBe(1);
     expect(notifier.awaitingHumanCreate).toHaveBeenCalledTimes(1);
     expect(notifier.awaitingHumanCreate).toHaveBeenCalledWith({ songId: "song-1", title: "Neon Alley" });
+    expect(calls.retireCreateSurface).toBe(1);
     expect(calls.close).toBe(1);
   });
 
@@ -115,6 +121,8 @@ describe("runHumanAssistCreate", () => {
     expect(result).toEqual({ status: "timeout", reason: HUMAN_ASSIST_TIMEOUT_REASON });
     // Re-notify suppression: one attempt fires the awaiting alert at most once.
     expect(notifier.awaitingHumanCreate).toHaveBeenCalledTimes(1);
+    // Failure paths keep the filled form on screen: no cosmetic retire.
+    expect(calls.retireCreateSurface).toBe(0);
     expect(calls.close).toBe(1);
   });
 

@@ -337,6 +337,20 @@ export class CdpHumanAssistDriver implements HumanAssistBrowserDriver {
     return { kind: "timeout" };
   }
 
+  async retireCreateSurface(): Promise<void> {
+    // Success-only cosmetic step. An owned page is closed outright by close(); a
+    // reused attach-mode tab is externally owned, so instead of leaving the filled
+    // Create form on screen we return it to the Suno home surface. Best-effort: any
+    // navigation failure is ignored because the create was already accepted.
+    const page = this.page;
+    if (!page || this.ownsPage) {
+      return;
+    }
+    await page
+      .goto("https://suno.com/", { waitUntil: "domcontentloaded", timeout: FORM_READY_TIMEOUT_MS })
+      .catch(() => undefined);
+  }
+
   async close(): Promise<void> {
     // Drop our page reference and release the SunoBrowserService hold. The service
     // idle-closes the plugin-launched browser once the last holder releases (a legacy
