@@ -362,6 +362,7 @@ async function callOpenAiResponses(
 ): Promise<string> {
   const controller = new AbortController();
   let timeout: ReturnType<typeof setTimeout> | undefined;
+  let timedOut = false;
   try {
     const request = fetchImpl(openAiCodexResponsesUrl, {
       method: "POST",
@@ -389,6 +390,7 @@ async function callOpenAiResponses(
       request,
       new Promise<Response>((_, reject) => {
         timeout = setTimeout(() => {
+          timedOut = true;
           controller.abort();
           reject(new Error("ai_provider_timeout"));
         }, timeoutMs);
@@ -400,17 +402,21 @@ async function callOpenAiResponses(
     const contentType = response.headers.get("content-type") ?? "";
     if (contentType.includes("application/json")) {
       const payload = await response.json().catch(() => undefined);
-      return extractResponseText(payload) ?? mockResponse(prompt, "Mock provider fallback (empty response)");
+      return timedOut
+        ? mockResponse(prompt, "Mock provider fallback (timeout)")
+        : extractResponseText(payload) ?? mockResponse(prompt, "Mock provider fallback (empty response)");
     }
     const streamText = await response.text().catch(() => "");
-    return extractSseResponseText(streamText) ?? mockResponse(prompt, "Mock provider fallback (empty response)");
+    return timedOut
+      ? mockResponse(prompt, "Mock provider fallback (timeout)")
+      : extractSseResponseText(streamText) ?? mockResponse(prompt, "Mock provider fallback (empty response)");
   } catch (error) {
     // The timeout rejection is created above, so classify it before the
     // generic transport failure. Never include the error, request, or body in
     // the fallback text: downstream consumers may persist it.
     return mockResponse(
       prompt,
-      error instanceof Error && error.message === "ai_provider_timeout"
+      timedOut || (error instanceof Error && error.message === "ai_provider_timeout")
         ? "Mock provider fallback (timeout)"
         : "Mock provider fallback (request failed)"
     );

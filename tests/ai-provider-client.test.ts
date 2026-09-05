@@ -332,7 +332,16 @@ describe("ai provider client", () => {
   it("categorizes timeout fallback without exposing transport details", async () => {
     const root = makeRoot();
     const { configPath, authProfilesPath } = await writeOpenClawAuthFixture(root);
-    const fetchImpl = vi.fn(() => new Promise<Response>(() => undefined));
+    const fetchImpl = vi.fn(async (_url: string, init?: RequestInit) => {
+      const signal = init?.signal as AbortSignal;
+      return {
+        ok: true,
+        headers: new Headers({ "content-type": "text/event-stream" }),
+        text: () => new Promise<string>((_, reject) => {
+          signal.addEventListener("abort", () => reject(new Error("body aborted")), { once: true });
+        })
+      } as Response;
+    });
 
     const result = await callAiProvider("field: draft", {
       provider: "openai-codex",
