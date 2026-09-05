@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- Hosted creative AI calls now use OpenClaw's public runtime and native auth/model
+  configuration, with tools and external delivery disabled; runtime failures fail
+  closed without falling back to legacy auth files.
+
 - Suno CLI feed status now treats the explicit `/api/forbidden` audio URL
   placeholder as not ready, preventing false `audio_ready` status and downloads.
 

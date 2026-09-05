@@ -86,6 +86,47 @@ describe("ai provider client", () => {
     await expect(callAiProvider("hello", { provider: "mock" })).resolves.toBe("Mock provider: hello");
   });
 
+  it("uses the host runtime and returns assistant text without legacy auth", async () => {
+    const runtime = {
+      subagent: {
+        run: vi.fn(async (params: { sessionKey: string }) => ({ runId: "run-native", sessionKey: params.sessionKey })),
+        waitForRun: vi.fn(async () => ({ status: "ok" as const })),
+        getSessionMessages: vi.fn(async () => ({ messages: [
+          { role: "user", content: "ignored" },
+          { role: "assistant", content: [{ type: "text", text: "artistName: Native" }] }
+        ] }))
+      }
+    };
+    const fetchImpl = vi.fn();
+
+    await expect(callAiProvider("draft", { provider: "openai-codex", runtime, fetchImpl })).resolves.toBe("artistName: Native");
+    expect(runtime.subagent.run).toHaveBeenCalledWith(expect.objectContaining({
+      message: "draft", disableTools: true, promptMode: "minimal", lightContext: true, deliver: false
+    }));
+    expect(fetchImpl).not.toHaveBeenCalled();
+  });
+
+  it("does not fall back to legacy auth when the host runtime fails", async () => {
+    const runtime = {
+      subagent: {
+        run: vi.fn(async (params: { sessionKey: string }) => ({ runId: "run-native", sessionKey: params.sessionKey })),
+        waitForRun: vi.fn(async () => ({ status: "error" as const })),
+        getSessionMessages: vi.fn()
+      }
+    };
+    const fetchImpl = vi.fn();
+
+    await expect(callAiProvider("draft", { provider: "openai-codex", runtime, fetchImpl })).resolves.toContain("native runtime failed");
+    expect(fetchImpl).not.toHaveBeenCalled();
+    expect(runtime.subagent.getSessionMessages).not.toHaveBeenCalled();
+  });
+
+  it("keeps mock behavior unchanged when a host runtime is present", async () => {
+    const runtime = { subagent: { run: vi.fn(), waitForRun: vi.fn(), getSessionMessages: vi.fn() } };
+    await expect(callAiProvider("hello", { provider: "mock", runtime })).resolves.toBe("Mock provider: hello");
+    expect(runtime.subagent.run).not.toHaveBeenCalled();
+  });
+
   it("calls OpenAI Responses for openai-codex with a local OpenClaw auth profile", async () => {
     const root = makeRoot();
     const { configPath, authProfilesPath } = await writeOpenClawAuthFixture(root, { thinkingDefault: "high" });

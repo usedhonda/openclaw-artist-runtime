@@ -9,6 +9,7 @@ import { registerCommands } from "./commands/index.js";
 import { safeRegisterInteractiveHandler } from "./pluginApi.js";
 import { installGatewayProcessCrashReporter } from "./services/processCrashReporter.js";
 import { handleTelegramInteractiveCallback } from "./services/telegramInteractiveCallbackGuard.js";
+import { setOpenClawAiRuntime } from "./services/openClawAiRuntime.js";
 
 interface PluginCommandSpecLike {
   name?: string;
@@ -46,6 +47,12 @@ export default definePluginEntry({
   name: "Artist Runtime",
   description: "Runs OpenClaw as a public autonomous AI musician using Suno and social distribution.",
   register(api: unknown): void {
+    const runtime = typeof api === "object" && api !== null && "runtime" in api
+      ? (api as { runtime?: unknown }).runtime
+      : undefined;
+    if (runtime && typeof runtime === "object") {
+      setOpenClawAiRuntime(runtime as Parameters<typeof setOpenClawAiRuntime>[0]);
+    }
     installGatewayProcessCrashReporter();
     registerTools(api);
     registerHooks(api);

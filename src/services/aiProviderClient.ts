@@ -3,6 +3,7 @@ import { homedir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import type { AiReviewProvider } from "../types.js";
 import { getOpenClawAuthProfilesPath, getOpenClawConfigPath } from "./runtimeConfig.js";
+import { callOpenClawAiRuntime, getOpenClawAiRuntime, type OpenClawAiRuntime } from "./openClawAiRuntime.js";
 
 export interface AiProviderCallOptions {
   provider: AiReviewProvider;
@@ -11,6 +12,7 @@ export interface AiProviderCallOptions {
   authProfilesPath?: string;
   configPath?: string;
   reasoningEffort?: ReasoningEffort;
+  runtime?: OpenClawAiRuntime;
 }
 
 export type ReasoningEffort = "low" | "medium" | "high" | "xhigh";
@@ -436,6 +438,17 @@ export async function callAiProvider(prompt: string, options: AiProviderCallOpti
   }
   if (providerPromptSecretPattern.test(prompt)) {
     return mockResponse(prompt, "Mock provider fallback (secret-like prompt blocked)");
+  }
+  const runtime = options.runtime ?? getOpenClawAiRuntime();
+  if (runtime) {
+    try {
+      const result = await callOpenClawAiRuntime(runtime, prompt, options.timeoutMs ?? 120000);
+      return result ?? mockResponse(prompt, "Mock provider fallback (native runtime failed)");
+    } catch {
+      // Native runtime failures are fail-closed. Never fall back to legacy auth
+      // files after the host has offered its public runtime.
+      return mockResponse(prompt, "Mock provider fallback (native runtime failed)");
+    }
   }
   const auth = await resolveCodexAuth(options);
   if (!auth.profile || !auth.model) {
