@@ -3,7 +3,12 @@ import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { callAiProvider, decodeJwtExpMs, getAiProviderFailureReason, isAiProviderMockFallbackResponse } from "../src/services/aiProviderClient";
+import {
+  callAiProvider,
+  decodeJwtExpMs,
+  getAiProviderFailureReason,
+  isAiProviderMockFallbackResponse
+} from "../src/services/aiProviderClient";
 import { proposePersonaFields } from "../src/services/personaProposer";
 
 function makeRoot(): string {
@@ -91,21 +96,34 @@ describe("ai provider client", () => {
       subagent: {
         run: vi.fn(async (params: { sessionKey: string }) => ({ runId: "run-native", sessionKey: params.sessionKey })),
         waitForRun: vi.fn(async () => ({ status: "ok" as const })),
-        getSessionMessages: vi.fn(async () => ({ messages: [
-          { role: "user", content: "ignored" },
-          { role: "assistant", content: [
-            { type: "thinking", text: "secret reasoning" },
-            { type: "text", text: "artistName: Native" }
-          ] }
-        ] }))
+        getSessionMessages: vi.fn(async () => ({
+          messages: [
+            { role: "user", content: "ignored" },
+            {
+              role: "assistant",
+              content: [
+                { type: "thinking", text: "secret reasoning" },
+                { type: "text", text: "artistName: Native" }
+              ]
+            }
+          ]
+        }))
       }
     };
     const fetchImpl = vi.fn();
 
-    await expect(callAiProvider("draft", { provider: "openai-codex", runtime, fetchImpl })).resolves.toBe("artistName: Native");
-    expect(runtime.subagent.run).toHaveBeenCalledWith(expect.objectContaining({
-      message: "draft", disableTools: true, promptMode: "minimal", lightContext: true, deliver: false
-    }));
+    await expect(callAiProvider("draft", { provider: "openai-codex", runtime, fetchImpl })).resolves.toBe(
+      "artistName: Native"
+    );
+    expect(runtime.subagent.run).toHaveBeenCalledWith(
+      expect.objectContaining({
+        message: "draft",
+        disableTools: true,
+        promptMode: "minimal",
+        lightContext: true,
+        deliver: false
+      })
+    );
     expect(fetchImpl).not.toHaveBeenCalled();
   });
 
@@ -118,7 +136,9 @@ describe("ai provider client", () => {
       }
     };
 
-    await expect(callAiProvider("draft", { provider: "openai-codex", runtime, timeoutMs: 5 })).resolves.toContain("native_runtime_timeout");
+    await expect(callAiProvider("draft", { provider: "openai-codex", runtime, timeoutMs: 5 })).resolves.toContain(
+      "native_runtime_timeout"
+    );
     expect(runtime.subagent.waitForRun).not.toHaveBeenCalled();
   });
 
@@ -143,17 +163,27 @@ describe("ai provider client", () => {
   it("uses the public LLM facade when subagent binding is unavailable", async () => {
     const runtime = {
       subagent: {
-        run: vi.fn(async () => { throw new Error("RequestScopedSubagentRuntimeError"); }),
+        run: vi.fn(async () => {
+          throw new Error("RequestScopedSubagentRuntimeError");
+        }),
         waitForRun: vi.fn(),
         getSessionMessages: vi.fn()
       },
-      llm: { complete: vi.fn(async () => ({ text: "artistName: LLM facade" })) }
+      llm: { complete: vi.fn(async () => ({ text: "artistName: LLM facade" })) },
+      config: { current: () => ({ agents: { defaults: { thinkingDefault: "high" } } }) }
     };
 
-    await expect(callAiProvider("draft", { provider: "openai-codex", runtime })).resolves.toBe("artistName: LLM facade");
-    expect(runtime.llm.complete).toHaveBeenCalledWith(expect.objectContaining({
-      messages: [{ role: "user", content: "draft" }]
-    }));
+    await expect(callAiProvider("draft", { provider: "openai-codex", runtime })).resolves.toBe(
+      "artistName: LLM facade"
+    );
+    expect(runtime.llm.complete).toHaveBeenCalledWith(
+      expect.objectContaining({
+        messages: [{ role: "user", content: "draft" }],
+        reasoning: "high",
+        signal: expect.any(AbortSignal)
+      })
+    );
+    expect(runtime.subagent.run).not.toHaveBeenCalled();
   });
 
   it("keeps mock behavior unchanged when a host runtime is present", async () => {
@@ -165,7 +195,9 @@ describe("ai provider client", () => {
   it("classifies thrown native errors without echoing secret-looking details", async () => {
     const runtime = {
       subagent: {
-        run: vi.fn(async () => { throw new Error("unauthorized token=super-secret-value"); }),
+        run: vi.fn(async () => {
+          throw new Error("unauthorized token=super-secret-value");
+        }),
         waitForRun: vi.fn(),
         getSessionMessages: vi.fn()
       }
@@ -178,15 +210,19 @@ describe("ai provider client", () => {
   it("calls OpenAI Responses for openai-codex with a local OpenClaw auth profile", async () => {
     const root = makeRoot();
     const { configPath, authProfilesPath } = await writeOpenClawAuthFixture(root, { thinkingDefault: "high" });
-    const fetchImpl = vi.fn(async () =>
-      new Response([
-        "event: response.output_text.delta",
-        "data: {\"type\":\"response.output_text.delta\",\"delta\":\"artistName: Signal Teeth (origin: model)\"}",
-        "",
-        "event: response.completed",
-        "data: {\"type\":\"response.completed\",\"response\":{\"status\":\"completed\"}}",
-        ""
-      ].join("\n"), { status: 200, headers: { "content-type": "text/event-stream" } })
+    const fetchImpl = vi.fn(
+      async () =>
+        new Response(
+          [
+            "event: response.output_text.delta",
+            'data: {"type":"response.output_text.delta","delta":"artistName: Signal Teeth (origin: model)"}',
+            "",
+            "event: response.completed",
+            'data: {"type":"response.completed","response":{"status":"completed"}}',
+            ""
+          ].join("\n"),
+          { status: 200, headers: { "content-type": "text/event-stream" } }
+        )
     );
 
     const result = await callAiProvider("artistName: draft this", {
@@ -228,22 +264,28 @@ describe("ai provider client", () => {
     const configPath = join(root, "openclaw.json");
     const authProfilesPath = join(root, "auth-profiles.json");
     await writeFile(configPath, "{}\n", "utf8");
-    await writeFile(authProfilesPath, `${JSON.stringify({
-      profiles: {
-        "openai-codex:test@example.invalid": {
-          provider: "openai-codex",
-          access: "placeholder-access"
+    await writeFile(
+      authProfilesPath,
+      `${JSON.stringify({
+        profiles: {
+          "openai-codex:test@example.invalid": {
+            provider: "openai-codex",
+            access: "placeholder-access"
+          }
         }
-      }
-    })}\n`, "utf8");
+      })}\n`,
+      "utf8"
+    );
     const fetchImpl = vi.fn();
 
-    await expect(callAiProvider("artistName: draft this", {
-      provider: "openai-codex",
-      configPath,
-      authProfilesPath,
-      fetchImpl
-    })).resolves.toBe("AI provider 'openai-codex' is not configured. No external model call was made.");
+    await expect(
+      callAiProvider("artistName: draft this", {
+        provider: "openai-codex",
+        configPath,
+        authProfilesPath,
+        fetchImpl
+      })
+    ).resolves.toBe("AI provider 'openai-codex' is not configured. No external model call was made.");
     expect(fetchImpl).not.toHaveBeenCalled();
   });
 
@@ -255,11 +297,12 @@ describe("ai provider client", () => {
     const { configPath, authProfilesPath } = await writeOpenClawAuthFixture(root, { access: "static-access" });
     vi.stubEnv("OPENCLAW_CODEX_AUTH_FROM_CLI", "on");
     vi.stubEnv("CODEX_HOME", codexHome);
-    const fetchImpl = vi.fn(async () =>
-      new Response(JSON.stringify({ output_text: "artistName: Live Codex (origin: model)" }), {
-        status: 200,
-        headers: { "content-type": "application/json" }
-      })
+    const fetchImpl = vi.fn(
+      async () =>
+        new Response(JSON.stringify({ output_text: "artistName: Live Codex (origin: model)" }), {
+          status: 200,
+          headers: { "content-type": "application/json" }
+        })
     );
 
     const result = await callAiProvider("artistName: draft this", {
@@ -282,11 +325,12 @@ describe("ai provider client", () => {
     const { configPath, authProfilesPath } = await writeOpenClawAuthFixture(root, { access: "static-access" });
     vi.stubEnv("OPENCLAW_CODEX_AUTH_FROM_CLI", "on");
     vi.stubEnv("CODEX_HOME", codexHome);
-    const fetchImpl = vi.fn(async () =>
-      new Response(JSON.stringify({ output_text: "artistName: Static Fallback (origin: model)" }), {
-        status: 200,
-        headers: { "content-type": "application/json" }
-      })
+    const fetchImpl = vi.fn(
+      async () =>
+        new Response(JSON.stringify({ output_text: "artistName: Static Fallback (origin: model)" }), {
+          status: 200,
+          headers: { "content-type": "application/json" }
+        })
     );
 
     const result = await callAiProvider("artistName: draft this", {
@@ -331,11 +375,12 @@ describe("ai provider client", () => {
     const { configPath, authProfilesPath } = await writeOpenClawAuthFixture(root, { access: "static-access" });
     vi.stubEnv("OPENCLAW_CODEX_AUTH_FROM_CLI", "on");
     vi.stubEnv("CODEX_HOME", codexHome);
-    const fetchImpl = vi.fn(async () =>
-      new Response(JSON.stringify({ output_text: "artistName: Static Missing CLI (origin: model)" }), {
-        status: 200,
-        headers: { "content-type": "application/json" }
-      })
+    const fetchImpl = vi.fn(
+      async () =>
+        new Response(JSON.stringify({ output_text: "artistName: Static Missing CLI (origin: model)" }), {
+          status: 200,
+          headers: { "content-type": "application/json" }
+        })
     );
 
     const result = await callAiProvider("artistName: draft this", {
@@ -358,11 +403,12 @@ describe("ai provider client", () => {
     const { configPath, authProfilesPath } = await writeOpenClawAuthFixture(root, { access: "static-access" });
     vi.stubEnv("OPENCLAW_CODEX_AUTH_FROM_CLI", "off");
     vi.stubEnv("CODEX_HOME", codexHome);
-    const fetchImpl = vi.fn(async () =>
-      new Response(JSON.stringify({ output_text: "artistName: Static Disabled CLI (origin: model)" }), {
-        status: 200,
-        headers: { "content-type": "application/json" }
-      })
+    const fetchImpl = vi.fn(
+      async () =>
+        new Response(JSON.stringify({ output_text: "artistName: Static Disabled CLI (origin: model)" }), {
+          status: 200,
+          headers: { "content-type": "application/json" }
+        })
     );
 
     const result = await callAiProvider("artistName: draft this", {
@@ -386,11 +432,12 @@ describe("ai provider client", () => {
   it("keeps parsing JSON response payloads for unit-level transport mocks", async () => {
     const root = makeRoot();
     const { configPath, authProfilesPath } = await writeOpenClawAuthFixture(root);
-    const fetchImpl = vi.fn(async () =>
-      new Response(JSON.stringify({ output_text: "artistName: JSON Wire (origin: model)" }), {
-        status: 200,
-        headers: { "content-type": "application/json" }
-      })
+    const fetchImpl = vi.fn(
+      async () =>
+        new Response(JSON.stringify({ output_text: "artistName: JSON Wire (origin: model)" }), {
+          status: 200,
+          headers: { "content-type": "application/json" }
+        })
     );
 
     const result = await callAiProvider("artistName: draft this", {
@@ -426,9 +473,10 @@ describe("ai provider client", () => {
       return {
         ok: true,
         headers: new Headers({ "content-type": "text/event-stream" }),
-        text: () => new Promise<string>((_, reject) => {
-          signal.addEventListener("abort", () => reject(new Error("body aborted")), { once: true });
-        })
+        text: () =>
+          new Promise<string>((_, reject) => {
+            signal.addEventListener("abort", () => reject(new Error("body aborted")), { once: true });
+          })
       } as Response;
     });
 
@@ -451,9 +499,9 @@ describe("ai provider client", () => {
     await writeFile(configPath, "{}\n", "utf8");
     await writeFile(authProfilesPath, `${JSON.stringify({ version: 1, profiles: {} })}\n`, "utf8");
 
-    await expect(callAiProvider("field: draft", { provider: "openai-codex", configPath, authProfilesPath })).resolves.toContain(
-      "not configured"
-    );
+    await expect(
+      callAiProvider("field: draft", { provider: "openai-codex", configPath, authProfilesPath })
+    ).resolves.toContain("not configured");
   });
 
   it("blocks secret-like prompts before HTTP", async () => {
@@ -477,31 +525,41 @@ describe("ai provider client", () => {
     const { configPath, authProfilesPath } = await writeOpenClawAuthFixture(root);
     vi.stubEnv("OPENCLAW_CONFIG", configPath);
     vi.stubEnv("OPENCLAW_AUTH_PROFILES", authProfilesPath);
-    vi.stubGlobal("fetch", vi.fn(async () =>
-      new Response([
-        "event: response.output_text.delta",
-        `data: ${JSON.stringify({
-          type: "response.output_text.delta",
-          delta: [
-            "obsessions: public transit ghosts and broken neon (origin: model)",
-            "socialVoice: short, dry, and unsalesy (origin: model)"
-          ].join("\n")
-        })}`,
-        "",
-        "event: response.completed",
-        "data: {\"type\":\"response.completed\",\"response\":{\"status\":\"completed\"}}",
-        ""
-      ].join("\n"), { status: 200, headers: { "content-type": "text/event-stream" } })
-    ));
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(
+        async () =>
+          new Response(
+            [
+              "event: response.output_text.delta",
+              `data: ${JSON.stringify({
+                type: "response.output_text.delta",
+                delta: [
+                  "obsessions: public transit ghosts and broken neon (origin: model)",
+                  "socialVoice: short, dry, and unsalesy (origin: model)"
+                ].join("\n")
+              })}`,
+              "",
+              "event: response.completed",
+              'data: {"type":"response.completed","response":{"status":"completed"}}',
+              ""
+            ].join("\n"),
+            { status: 200, headers: { "content-type": "text/event-stream" } }
+          )
+      )
+    );
 
-    const result = await proposePersonaFields({
-      fields: ["obsessions", "socialVoice"],
-      source: {
-        artistMd: "# ARTIST.md\n\n## Voice\n\nImported voice.",
-        soulMd: "# SOUL.md\n\nDirect.",
-        customSections: ["Voice"]
-      }
-    }, { aiReviewProvider: "openai-codex" });
+    const result = await proposePersonaFields(
+      {
+        fields: ["obsessions", "socialVoice"],
+        source: {
+          artistMd: "# ARTIST.md\n\n## Voice\n\nImported voice.",
+          soulMd: "# SOUL.md\n\nDirect.",
+          customSections: ["Voice"]
+        }
+      },
+      { aiReviewProvider: "openai-codex" }
+    );
 
     expect(result.provider).toBe("openai-codex");
     expect(result.drafts).toEqual([

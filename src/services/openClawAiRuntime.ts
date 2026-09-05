@@ -26,8 +26,11 @@ export interface OpenClawAiRuntime {
       messages: Array<{ role: "system" | "user" | "assistant"; content: string }>;
       maxTokens?: number;
       purpose?: string;
+      reasoning?: "low" | "medium" | "high" | "xhigh";
+      signal?: AbortSignal;
     }) => Promise<{ text: string }>;
   };
+  config?: { current?: () => unknown };
 }
 
 export type NativeRuntimeFailureReason =
@@ -65,9 +68,7 @@ function textFromContent(content: unknown): string | undefined {
   if (!Array.isArray(content)) return undefined;
   const parts = content.flatMap((item) => {
     if (!isRecord(item)) return [];
-    return (item.type === "text" || item.type === "output_text") && typeof item.text === "string"
-      ? [item.text]
-      : [];
+    return (item.type === "text" || item.type === "output_text") && typeof item.text === "string" ? [item.text] : [];
   });
   return parts.join("").trim() || undefined;
 }
@@ -89,41 +90,58 @@ export async function callOpenClawAiRuntime(
   timeoutMs: number
 ): Promise<string | undefined> {
   const sessionKey = `artist-runtime:creative:${Date.now()}-${++sessionCounter}`;
+  const controller = new AbortController();
+  let timer: ReturnType<typeof setTimeout> | undefined;
   const operation = (async () => {
-    try {
-      const run = await runtime.subagent.run({
-    sessionKey,
-    message: prompt,
-    disableTools: true,
-    promptMode: "minimal",
-    lightContext: true,
-    deliver: false,
-    idempotencyKey: sessionKey
-    });
-    const waited = await runtime.subagent.waitForRun({ runId: run.runId, timeoutMs });
-    if (waited.status === "timeout") throw new NativeRuntimeError("native_runtime_timeout");
-    if (waited.status !== "ok") throw new NativeRuntimeError(classifyNativeRuntimeFailure(waited.error));
-    const messages = await runtime.subagent.getSessionMessages({ sessionKey: run.sessionKey ?? sessionKey, limit: 20 });
-    const text = extractOpenClawAssistantText(messages.messages);
-    if (!text) throw new NativeRuntimeError("native_runtime_empty_response");
-    return text;
-    } catch (error) {
-      const reason = error instanceof NativeRuntimeError ? error.reason : classifyNativeRuntimeFailure(error);
-      if (reason !== "native_runtime_unavailable" || !runtime.llm) throw error;
+    if (runtime.llm) {
+      const currentConfig = runtime.config?.current?.();
+      const defaults =
+        isRecord(currentConfig) && isRecord(currentConfig.agents) ? currentConfig.agents.defaults : undefined;
+      const thinkingDefault = isRecord(defaults) ? defaults.thinkingDefault : undefined;
+      const reasoning =
+        thinkingDefault === "low" ||
+        thinkingDefault === "medium" ||
+        thinkingDefault === "high" ||
+        thinkingDefault === "xhigh"
+          ? thinkingDefault
+          : undefined;
       const result = await runtime.llm.complete({
         messages: [{ role: "user", content: prompt }],
-        purpose: "artist-runtime creative AI"
+        purpose: "artist-runtime creative AI",
+        ...(reasoning ? { reasoning } : {}),
+        signal: controller.signal
       });
       if (!result.text.trim()) throw new NativeRuntimeError("native_runtime_empty_response");
       return result.text.trim();
     }
+    const run = await runtime.subagent.run({
+      sessionKey,
+      message: prompt,
+      disableTools: true,
+      promptMode: "minimal",
+      lightContext: true,
+      deliver: false,
+      idempotencyKey: sessionKey
+    });
+    const waited = await runtime.subagent.waitForRun({ runId: run.runId, timeoutMs });
+    if (waited.status === "timeout") throw new NativeRuntimeError("native_runtime_timeout");
+    if (waited.status !== "ok") throw new NativeRuntimeError(classifyNativeRuntimeFailure(waited.error));
+    const messages = await runtime.subagent.getSessionMessages({
+      sessionKey: run.sessionKey ?? sessionKey,
+      limit: 20
+    });
+    const text = extractOpenClawAssistantText(messages.messages);
+    if (!text) throw new NativeRuntimeError("native_runtime_empty_response");
+    return text;
   })();
-  let timer: ReturnType<typeof setTimeout> | undefined;
   try {
     return await Promise.race([
       operation,
       new Promise<undefined>((_, reject) => {
-        timer = setTimeout(() => reject(new NativeRuntimeError("native_runtime_timeout")), timeoutMs);
+        timer = setTimeout(() => {
+          controller.abort();
+          reject(new NativeRuntimeError("native_runtime_timeout"));
+        }, timeoutMs);
       })
     ]);
   } catch (error) {
@@ -138,8 +156,14 @@ function classifyNativeRuntimeFailure(value: unknown): NativeRuntimeFailureReaso
   const text = typeof value === "string" ? value : value instanceof Error ? `${value.name} ${value.message}` : "";
   const normalized = text.toLowerCase();
   if (normalized.includes("timeout") || normalized.includes("timed out")) return "native_runtime_timeout";
-  if (normalized.includes("unauthoriz") || normalized.includes("forbidden") || normalized.includes("auth")) return "native_runtime_unauthorized";
-  if (normalized.includes("unavailable") || normalized.includes("not configured") || normalized.includes("missing")
-    || normalized.includes("requestscopedsubagentruntime")) return "native_runtime_unavailable";
+  if (normalized.includes("unauthoriz") || normalized.includes("forbidden") || normalized.includes("auth"))
+    return "native_runtime_unauthorized";
+  if (
+    normalized.includes("unavailable") ||
+    normalized.includes("not configured") ||
+    normalized.includes("missing") ||
+    normalized.includes("requestscopedsubagentruntime")
+  )
+    return "native_runtime_unavailable";
   return "native_runtime_request_failed";
 }
