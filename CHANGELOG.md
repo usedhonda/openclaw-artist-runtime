@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- Lyric provider fallbacks now retain stable, secret-safe diagnostics for timeout,
+  HTTP status, empty response, and request failure categories.
+
 - Real-provider song proposals now preserve coherent, safe source-grounded pitch
   fields when observations are short instead of replacing them with thin-context
   persona filler; mock-path honest-thin fallbacks remain unchanged.

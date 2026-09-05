@@ -329,7 +329,7 @@ describe("ai provider client", () => {
     expect(result).toContain("Mock provider fallback (500): field: draft");
   });
 
-  it("falls back to a mock placeholder on timeout", async () => {
+  it("categorizes timeout fallback without exposing transport details", async () => {
     const root = makeRoot();
     const { configPath, authProfilesPath } = await writeOpenClawAuthFixture(root);
     const fetchImpl = vi.fn(() => new Promise<Response>(() => undefined));
@@ -342,7 +342,8 @@ describe("ai provider client", () => {
       timeoutMs: 1
     });
 
-    expect(result).toContain("Mock provider fallback (request failed): field: draft");
+    expect(result).toContain("Mock provider fallback (timeout): field: draft");
+    expect(result).not.toContain("ai_provider_timeout");
   });
 
   it("returns not configured when no openai-codex auth profile is present", async () => {

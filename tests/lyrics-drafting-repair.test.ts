@@ -184,6 +184,19 @@ describe("lyrics drafting repair-not-reject orchestration", () => {
     callAiProviderMock.mockReset();
   });
 
+  it("forwards only the stable provider timeout category into repair notes", async () => {
+    const root = await workspace();
+    callAiProviderMock.mockResolvedValue("Mock provider fallback (timeout): provider prompt echo");
+
+    let thrown: { repairNotes?: string[] } | undefined;
+    await draftLyrics({ workspaceRoot: root, songId: "song-001", aiReviewProvider: "openai-codex" }).catch((error) => {
+      thrown = error as { repairNotes?: string[] };
+    });
+
+    expect(thrown?.repairNotes).toEqual(["ai_provider_timeout"]);
+    expect(thrown?.repairNotes?.join(" ")).not.toContain("provider prompt echo");
+  });
+
   it("accepts a dense provider draft without retrying", async () => {
     const root = await workspace();
     callAiProviderMock.mockResolvedValueOnce(goodJsonDraft());

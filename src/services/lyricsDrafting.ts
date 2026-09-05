@@ -1,7 +1,7 @@
 import { mkdir, readdir, readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import type { AiReviewProvider, ArtistRuntimeConfig } from "../types.js";
-import { isAiNotConfiguredResponse, isAiProviderMockFallbackResponse, callAiProvider } from "./aiProviderClient.js";
+import { getAiProviderFailureReason, isAiNotConfiguredResponse, isAiProviderMockFallbackResponse, callAiProvider } from "./aiProviderClient.js";
 import { readArtistMind, updateSongState } from "./artistState.js";
 import { appendPromptLedger, createPromptLedgerEntry, getSongPromptLedgerPath } from "./promptLedger.js";
 import { repairLyricsV55 } from "./lyricsRepair.js";
@@ -567,7 +567,7 @@ async function composeLyricsDraft(input: DraftLyricsInput, title: string, briefT
     if (isAiProviderMockFallbackResponse(raw)) {
       repairNotes = isAiNotConfiguredResponse(raw)
         ? ["ai_provider_not_configured: 歌詞AIのトークン失効/未設定 — 再認証が必要"]
-        : ["provider fallback response"];
+        : [getAiProviderFailureReason(raw)];
       continue;
     }
     const parsed = parseDraft(raw, title);

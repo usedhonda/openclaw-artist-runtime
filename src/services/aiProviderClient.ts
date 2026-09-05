@@ -65,8 +65,32 @@ export const AI_PROVIDER_MOCK_FALLBACK_PREFIXES = [
   "AI provider '"
 ] as const;
 
+export type AiProviderFailureReason =
+  | "ai_provider_timeout"
+  | "ai_provider_empty_response"
+  | "ai_provider_request_failed"
+  | `ai_provider_http_status: ${number}`
+  | "ai_provider_fallback";
+
 export function isAiProviderMockFallbackResponse(value: string): boolean {
   return AI_PROVIDER_MOCK_FALLBACK_PREFIXES.some((prefix) => value.startsWith(prefix));
+}
+
+export function getAiProviderFailureReason(value: string): AiProviderFailureReason {
+  if (value.startsWith("Mock provider fallback (timeout)")) {
+    return "ai_provider_timeout";
+  }
+  if (value.startsWith("Mock provider fallback (empty response)")) {
+    return "ai_provider_empty_response";
+  }
+  if (value.startsWith("Mock provider fallback (request failed)")) {
+    return "ai_provider_request_failed";
+  }
+  const status = value.match(/^Mock provider fallback \((\d{3})\)/)?.[1];
+  if (status) {
+    return `ai_provider_http_status: ${Number(status)}`;
+  }
+  return "ai_provider_fallback";
 }
 
 export function isAiNotConfiguredResponse(raw: string): boolean {
@@ -380,8 +404,16 @@ async function callOpenAiResponses(
     }
     const streamText = await response.text().catch(() => "");
     return extractSseResponseText(streamText) ?? mockResponse(prompt, "Mock provider fallback (empty response)");
-  } catch {
-    return mockResponse(prompt, "Mock provider fallback (request failed)");
+  } catch (error) {
+    // The timeout rejection is created above, so classify it before the
+    // generic transport failure. Never include the error, request, or body in
+    // the fallback text: downstream consumers may persist it.
+    return mockResponse(
+      prompt,
+      error instanceof Error && error.message === "ai_provider_timeout"
+        ? "Mock provider fallback (timeout)"
+        : "Mock provider fallback (request failed)"
+    );
   } finally {
     if (timeout) {
       clearTimeout(timeout);
