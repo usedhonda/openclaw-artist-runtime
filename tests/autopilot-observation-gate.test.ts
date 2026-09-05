@@ -6,6 +6,8 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { ensureArtistWorkspace } from "../src/services/artistWorkspace";
 import { listSongStates } from "../src/services/artistState";
 import { ArtistAutopilotService } from "../src/services/autopilotService";
+import * as spawnProposer from "../src/services/songSpawnProposer";
+import { markSpawned } from "../src/services/songSpawnRateLimiter";
 
 function workspace(): string {
   return mkdtempSync(join(tmpdir(), "artist-runtime-observation-gate-"));
@@ -42,6 +44,28 @@ describe("autopilot observation materialization gate", () => {
   afterEach(() => {
     failingRunner.mockClear();
     vi.unstubAllEnvs();
+    vi.restoreAllMocks();
+  });
+
+  it("bypasses the autonomous proposal interval only for an explicit idle-lane request", async () => {
+    const root = workspace();
+    await ensureArtistWorkspace(root);
+    await spawnReadyWithUnusableObservation(root);
+    await markSpawned(root);
+    const propose = vi.spyOn(spawnProposer, "proposeSpawn").mockResolvedValue(null);
+    const input = {
+      workspaceRoot: root,
+      config: {
+        artist: { workspaceRoot: root },
+        autopilot: { enabled: true, dryRun: true, songsPerWeek: 50 },
+        songSpawn: { enabled: true }
+      },
+      observationRunner: failingRunner
+    };
+    await new ArtistAutopilotService().runCycle(input);
+    expect(propose).not.toHaveBeenCalled();
+    await new ArtistAutopilotService().runCycle({ ...input, operatorRequestedSpawn: true });
+    expect(propose).toHaveBeenCalledOnce();
   });
 
   it("holds instead of materializing a bank-only song when no observation exists", async () => {

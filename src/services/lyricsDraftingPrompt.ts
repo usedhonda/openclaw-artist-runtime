@@ -243,6 +243,7 @@ export function buildLyricsDraftingPrompt(input: BuildLyricsPromptInput): string
     LYRICS_KNOWLEDGE_DIGEST_FILES.join(", "),
     "",
     "Extract one motif from the observation-bearing brief, metabolize it through the artist persona, and avoid generic placeholder lyrics.",
+    "Write a song, not a business briefing or a press release. Let the source-grounded human stakes and the artist's specific feeling drive the scenes and turns. Do not automatically translate every event into prices, balance sheets, or the same urban critique. Imagined scenes are artistic expression, not additional reported facts; never attribute them to the source as fact.",
     "If the brief contains both news and x_reaction sources, use both: news supplies the event, x_reaction supplies crowd temperature, irritation, irony, or sympathy. Do not merely summarize them; assign them to lyric sections.",
     "Prioritize 韻, 伏線, 情景, genre-aware flow, hook design, Suno V5.5 section tags, and singable line length.",
     "Rap density rule: for rap/trap/drill/fast social songs, produce at least two 12-16 bar verses, physical hook repeats, internal rhyme in each verse, and one punchline/perspective turn per verse. If the first draft feels short, expand verse detail before returning JSON.",

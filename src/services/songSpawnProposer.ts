@@ -90,7 +90,7 @@ async function latestObservationData(
   const newsAsObservation = newsEntries.map((entry) => ({
     text: entry.text,
     author: entry.source,
-    url: entry.url,
+    url: entry.url ?? entry.lookupUrl,
     postedAt: entry.postedAt,
     motifMatch: entry.motifMatch,
     motifScore: entry.motifScore,
@@ -121,7 +121,11 @@ async function latestObservationData(
   // displace the article the artist is meant to be responding to.
   const articlePool = selectedPool.filter((entry) => entry.sourceKind === "news" && Boolean(entry.url));
   const primaryPool = articlePool.length > 0 ? articlePool : selectedPool;
-  const sorted = [...primaryPool].sort((a, b) => (b.motifScore ?? 0) - (a.motifScore ?? 0));
+  // News already carries editorial selection order; geography keyword scores
+  // must not put market tickers back ahead of a grounded human story.
+  const sorted = articlePool.length > 0
+    ? [...primaryPool]
+    : [...primaryPool].sort((a, b) => (b.motifScore ?? 0) - (a.motifScore ?? 0));
   // Plan v10.38 Phase E: keep top-N excerpts so buildPrompt can show them to
   // the AI as "Today's Topic (main material)". Both X and news entries pass
   // through here, scored by the same persona motif rubric.
@@ -689,6 +693,7 @@ function buildPrompt(context: {
     `System: あなたは ${context.identity.artistName} 本人。 producer に新曲を提案する artist として一人称で書く。`,
     "Decision: 観察と heartbeat から、 今 新曲を始めるべきか判断する。 不十分なら spawn: no。",
     "Material policy: 1つの観察 entry を主素材として選ぶ。title / brief / lyricsTheme の中心に置く事実・対象・仕組みは、その entry の quote から直接たどれるものだけにする。ARTIST.md / SOUL.md は口調・音・批評の角度を決める lens であり、観察にない別の街・産業・物・事件を並列の主題として足してはいけない。観察から普通の日本語で因果を説明できないなら spawn: no。",
+    "Editorial direction: 市況実況や企業発表の宣伝文句を、そのまま主題や歌詞にしない。経済の記事でも、そこに実際に記された人の生活・欲望・喪失・喜び・矛盾に自分が反応した場合は使える。地名一致は採用理由にならない。直近の曲と事件名だけを替えた同じ批評を避け、この出来事だから生まれる感情と視点を自由に見つける。見出ししか取得できていない記事を本文まで読んだように語らず、事実と想像の情景を区別する。",
     `Emotional mode for this song: ${context.emotionalMood}`,
     "Avoid any subject or title already listed in recently proposed themes.",
     "Never include secrets. Keep the brief lean enough for autopilot planning.",

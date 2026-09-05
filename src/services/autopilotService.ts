@@ -431,13 +431,13 @@ async function runIdeaQueueLane(
   root: string,
   existing: AutopilotRunState,
   config: ArtistRuntimeConfig,
-  options: { preserveCurrentSongLane?: boolean; ignoreRecentCompletion?: boolean } = {}
+  options: { preserveCurrentSongLane?: boolean; ignoreRecentCompletion?: boolean; operatorRequestedSpawn?: boolean } = {}
 ): Promise<{ state?: AutopilotRunState; emitted: boolean; skippedForFullQueue: boolean; heldForObservation: boolean }> {
   const skippedForFullQueue = false;
   let emitted = false;
   let heldForObservation = false;
   await shouldSpawn(root, { minIntervalHours: getSongSpawnIntervalHours(process.env, config) }).then(async (allowed) => {
-    if (!allowed) {
+    if (!allowed && !options.operatorRequestedSpawn) {
       return;
     }
     const personaSetup = await readPersonaSetupStatus(root);
@@ -1508,7 +1508,8 @@ export class ArtistAutopilotService {
       const producerReviewOnly = isProducerReviewOnlyLane(existing);
       const ideaLane = await runIdeaQueueLane(input.workspaceRoot, existing, config, {
         preserveCurrentSongLane: producerReviewOnly,
-        ignoreRecentCompletion: input.operatorRequestedSpawn === true
+        ignoreRecentCompletion: input.operatorRequestedSpawn === true,
+        operatorRequestedSpawn: input.operatorRequestedSpawn === true && !currentLaneSong
       });
       if (producerReviewOnly) {
         return ideaLane.state ?? writeStageState(input.workspaceRoot, existing, {
