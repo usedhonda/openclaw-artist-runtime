@@ -89,6 +89,34 @@ describe("detectCreativeStreaks", () => {
     expect(detectCreativeStreaks(entries).some((streak) => streak.kind === "lens")).toBe(false);
   });
 
+  it("detects the same structure 3 songs in a row", () => {
+    const entries = [
+      entry({ decision: decision({ structure: "hook_first" }) }),
+      entry({ decision: decision({ structure: "hook_first" }) }),
+      entry({ decision: decision({ structure: "hook_first" }) })
+    ];
+    const streaks = detectCreativeStreaks(entries);
+    expect(streaks).toContainEqual({ kind: "structure", value: "hook_first", length: 3 });
+  });
+
+  it("does not flag a structure run of only 2 (threshold is 3)", () => {
+    const entries = [
+      entry({ decision: decision({ structure: "hook_first" }) }),
+      entry({ decision: decision({ structure: "hook_first" }) }),
+      entry({ decision: decision({ structure: "standard" }) })
+    ];
+    expect(detectCreativeStreaks(entries).some((streak) => streak.kind === "structure")).toBe(false);
+  });
+
+  it("does not flag a structure streak when one of the 3 entries lacks the field", () => {
+    const entries = [
+      entry({ decision: decision({ structure: "hook_first" }) }),
+      entry({ decision: decision({ structure: undefined }) }),
+      entry({ decision: decision({ structure: "hook_first" }) })
+    ];
+    expect(detectCreativeStreaks(entries).some((streak) => streak.kind === "structure")).toBe(false);
+  });
+
   it("detects aggression=changeup twice in a row", () => {
     const entries = [
       entry({ decision: decision({ aggression: "changeup" }) }),

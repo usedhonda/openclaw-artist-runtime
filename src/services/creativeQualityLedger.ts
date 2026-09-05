@@ -67,7 +67,14 @@ export interface CreativeQualityAggregate {
 // A run of consecutive most-recent songs that repeat the same creative choice.
 // `length` is how many newest songs currently share `value` for `kind`.
 export interface CreativeStreak {
-  kind: "lens" | "aggression_changeup" | "attack_stance" | "intro_archetype" | "title_word" | "catchphrase";
+  kind:
+    | "lens"
+    | "aggression_changeup"
+    | "attack_stance"
+    | "intro_archetype"
+    | "title_word"
+    | "catchphrase"
+    | "structure";
   value: string;
   length: number;
 }
@@ -179,6 +186,17 @@ export function detectCreativeStreaks(entries: CreativeQualityEntry[]): Creative
   const lens = headRun(entries, (entry) => entry.decision?.lens);
   if (lens && lens.length >= 3) streaks.push({ kind: "lens", value: lens.value, length: lens.length });
 
+  // Structure: the director weights standard 1/2 and never repeats the previous
+  // song's structure, so 2-in-a-row is expected and only 3-in-a-row signals the
+  // anti-repeat broke down (or plans are missing). headRun's undefined-breaks-run
+  // behavior already treats a missing decision.structure as unknown and
+  // non-matching, so older ledger entries without the field never fabricate a
+  // streak.
+  const structure = headRun(entries, (entry) => entry.decision?.structure);
+  if (structure && structure.length >= 3) {
+    streaks.push({ kind: "structure", value: structure.value, length: structure.length });
+  }
+
   const changeup = headRun(entries, (entry) =>
     entry.decision?.aggression === "changeup" ? "changeup" : undefined
   );
@@ -254,7 +272,8 @@ const STREAK_KIND_LABELS: Record<CreativeStreak["kind"], string> = {
   attack_stance: "攻め筋",
   intro_archetype: "イントロ型",
   title_word: "タイトル語",
-  catchphrase: "決め句"
+  catchphrase: "決め句",
+  structure: "構成"
 };
 
 // Short Japanese description naming the streaks, for the Telegram notice and the
