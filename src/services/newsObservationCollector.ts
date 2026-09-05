@@ -21,7 +21,7 @@ import {
   topQueryKeywords,
   type PersonaMotifBundle
 } from "./personaMotifExtractor.js";
-import { rankObservations, summarizeMatches } from "./xObservationScorer.js";
+import { rankObservations, scoreObservation, summarizeMatches } from "./xObservationScorer.js";
 import { selectNewsEditorially } from "./newsEditorialSelection.js";
 
 export interface NewsObservationEntry {
@@ -628,10 +628,9 @@ function rankAndAnnotate(
   motifs: PersonaMotifBundle,
   preserveOrder = false
 ): NewsObservationEntry[] {
-  const scored = rankObservations(entries, motifs);
   const rows = preserveOrder
-    ? entries.slice(0, maxEntries).map((entry) => scored.find((row) => row.entry === entry)).filter((row): row is (typeof scored)[number] => Boolean(row))
-    : scored.slice(0, maxEntries);
+    ? entries.slice(0, maxEntries).map((entry) => scoreObservation(entry, motifs))
+    : rankObservations(entries, motifs).slice(0, maxEntries);
   return rows.map((row) => ({
     ...row.entry,
     motifMatch: row.matched.length > 0 ? summarizeMatches(row) : undefined,
