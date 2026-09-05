@@ -77,7 +77,8 @@ describe("run-cycle route manual seed", () => {
         "/plugins/artist-runtime/api/run-cycle",
         JSON.stringify({
           config: { artist: { workspaceRoot: root }, autopilot: { enabled: false, dryRun: true } },
-          manualSeed: { hint: "latest rail noise" }
+          manualSeed: { hint: "latest rail noise" },
+          forceObservationRefresh: true
         }),
         { "content-type": "application/json" }
       ),
@@ -88,7 +89,8 @@ describe("run-cycle route manual seed", () => {
     expect(JSON.parse(response.readBody())).toMatchObject({ tickerOutcome: "ran" });
     expect(spy).toHaveBeenCalledWith(expect.objectContaining({
       workspaceRoot: root,
-      manualSeed: { hint: "latest rail noise" }
+      manualSeed: { hint: "latest rail noise" },
+      forceObservationRefresh: true
     }));
   });
 
@@ -117,6 +119,7 @@ describe("run-cycle route manual seed", () => {
 
     expect(response.readStatus()).toBe(200);
     expect(spy).toHaveBeenCalledWith(expect.not.objectContaining({ manualSeed: expect.anything() }));
+    expect(spy).toHaveBeenCalledWith(expect.objectContaining({ forceObservationRefresh: false }));
   });
 
   it("passes an explicit producer-requested spawn flag", async () => {

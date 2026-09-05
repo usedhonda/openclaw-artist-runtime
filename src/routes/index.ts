@@ -700,7 +700,8 @@ export function registerRoutes(api: unknown): void {
           }
         : undefined;
       const operatorRequestedSpawn = payload.operatorRequestedSpawn === true;
-      const result = await getAutopilotTicker().runNow(config, manualSeed, operatorRequestedSpawn);
+      const forceObservationRefresh = payload.forceObservationRefresh === true;
+      const result = await getAutopilotTicker().runNow(config, manualSeed, operatorRequestedSpawn, forceObservationRefresh);
       return {
         ...result.state,
         tickerOutcome: result.outcome,
