@@ -1,6 +1,6 @@
 import { appendFile, mkdir, readFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
-import type { AiReviewProvider, AutopilotStatus, CommissionBrief, CommissionBriefSource, SpawnProposal } from "../types.js";
+import type { AiReviewProvider, ArtistRuntimeConfig, AutopilotStatus, CommissionBrief, CommissionBriefSource, SpawnProposal } from "../types.js";
 import { readAutopilotRunState, stageFromSong, writeAutopilotRunState } from "./autopilotService.js";
 import { AutopilotControlService } from "./autopilotControlService.js";
 import { getAutopilotTicker } from "./autopilotTicker.js";
@@ -13,7 +13,7 @@ import { getSongDetail, listRecentSongs } from "./songQueryService.js";
 import { readSongMaterial } from "./songMaterialReader.js";
 import { createTelegramPersonaSession, handleTelegramPersonaSessionMessage } from "./telegramPersonaSession.js";
 import { formatPersonaMigratePlan, planPersonaMigrate } from "./personaMigrator.js";
-import { isLegacyWizardEnabled } from "./runtimeConfig.js";
+import { isLegacyWizardEnabled, resolveRuntimeConfig } from "./runtimeConfig.js";
 import { readSoulPersonaSummary } from "./soulFileBuilder.js";
 import { isConversationalSongCreate, routeTelegramConversation, type TelegramProposalButtonsRequest } from "./telegramConversationalRouter.js";
 import { readObservationsReport, type ObservationReport } from "./xObservationCollector.js";
@@ -138,17 +138,23 @@ function logCommandSideEffectFailure(context: string, error: unknown): void {
   console.error(`[telegram-command] ${context} failed: ${reason}`);
 }
 
-function kickAutopilotCycleAfterTextDecision(context: string): void {
-  void getAutopilotTicker().runNow().catch((error) => {
-    const reason = error instanceof Error ? error.message : String(error);
-    logCommandSideEffectFailure(`text decision runNow ${context}`, error);
-    emitRuntimeEvent({
-      type: "error",
-      source: "telegram_text_decision_run_now",
-      reason,
-      timestamp: Date.now()
+// Scoped to the caller's own workspace root (see the identical fix and rationale
+// in telegramCallbackHandler.ts's kickAutopilotCycleAfterProducerDecision): left
+// unscoped, the ticker resolves via resolveDefaultWorkspaceRoot() instead of the
+// workspace this text command is actually operating on. Stays fire-and-forget.
+function kickAutopilotCycleAfterTextDecision(root: string, context: string): void {
+  void resolveRuntimeConfig({ artist: { workspaceRoot: root } } as Partial<ArtistRuntimeConfig>)
+    .then((config) => getAutopilotTicker().runNow(config))
+    .catch((error) => {
+      const reason = error instanceof Error ? error.message : String(error);
+      logCommandSideEffectFailure(`text decision runNow ${context}`, error);
+      emitRuntimeEvent({
+        type: "error",
+        source: "telegram_text_decision_run_now",
+        reason,
+        timestamp: Date.now()
+      });
     });
-  });
 }
 
 async function releaseDiscardedCurrentSongLane(root: string, songId: string, now: number): Promise<void> {
@@ -209,7 +215,7 @@ async function runTelegramTextSongReviewAction(input: {
   if (input.action === "song_discard") {
     await releaseDiscardedCurrentSongLane(input.root, input.songId, now);
   }
-  kickAutopilotCycleAfterTextDecision(input.action);
+  kickAutopilotCycleAfterTextDecision(input.root, input.action);
   return message;
 }
 
@@ -1199,31 +1205,35 @@ export async function routeTelegramCommand(input: TelegramRouteInput): Promise<T
       && !afterResume.suspendedAt
       && state.blockedReason === "song_spawn_waiting_for_proposal"
     ) {
-      void getAutopilotTicker().runNow().catch((error) => {
-        const reason = error instanceof Error ? error.message : String(error);
-        logCommandSideEffectFailure("resume spawn proposal runNow", error);
-        emitRuntimeEvent({
-          type: "error",
-          source: "telegram_resume_run_now",
-          reason,
-          timestamp: Date.now()
+      void resolveRuntimeConfig({ artist: { workspaceRoot: input.workspaceRoot } } as Partial<ArtistRuntimeConfig>)
+        .then((config) => getAutopilotTicker().runNow(config))
+        .catch((error) => {
+          const reason = error instanceof Error ? error.message : String(error);
+          logCommandSideEffectFailure("resume spawn proposal runNow", error);
+          emitRuntimeEvent({
+            type: "error",
+            source: "telegram_resume_run_now",
+            reason,
+            timestamp: Date.now()
+          });
         });
-      });
       const info = "Autopilot resumed。次の曲案を今すぐ探す。提案が出たらTelegramに出す。";
       return { kind: "resume", responseText: await voiceCommand("ack", info, input, "autopilot resumed and spawn proposal cycle kicked"), shouldStoreFreeText: false };
     }
     if (afterResume.currentSongId && !afterResume.suspendedAt && resumedSong && !terminalStatuses.has(resumedSong.status)) {
-      void getAutopilotTicker().runNow().catch((error) => {
-        const reason = error instanceof Error ? error.message : String(error);
-        logCommandSideEffectFailure("resume immediate runNow", error);
-        emitRuntimeEvent({
-          type: "error",
-          source: "telegram_resume_run_now",
-          reason,
-          songId: afterResume.currentSongId,
-          timestamp: Date.now()
+      void resolveRuntimeConfig({ artist: { workspaceRoot: input.workspaceRoot } } as Partial<ArtistRuntimeConfig>)
+        .then((config) => getAutopilotTicker().runNow(config))
+        .catch((error) => {
+          const reason = error instanceof Error ? error.message : String(error);
+          logCommandSideEffectFailure("resume immediate runNow", error);
+          emitRuntimeEvent({
+            type: "error",
+            source: "telegram_resume_run_now",
+            reason,
+            songId: afterResume.currentSongId,
+            timestamp: Date.now()
+          });
         });
-      });
       const info = `Autopilot resumed。${afterResume.currentSongId} の続きを今すぐ進める。できあがったら知らせる。`;
       return { kind: "resume", responseText: await voiceCommand("ack", info, input, "autopilot resumed and cycle kicked"), shouldStoreFreeText: false };
     }
