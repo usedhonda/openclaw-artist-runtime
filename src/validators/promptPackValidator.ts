@@ -6,7 +6,7 @@ import {
   CANONICAL_STYLE_HARD_MAX_CHARS,
   CANONICAL_STYLE_TARGET_MAX_CHARS
 } from "../suno-production/buildStyle.js";
-import { getDurationPlanByTemplateId } from "../suno-production/durationPlan.js";
+import { getDurationPlanByTemplateId, type StructureVariant } from "../suno-production/durationPlan.js";
 
 function sunoLyricsBoxLimit(): number {
   return getSunoLyricsLimit();
@@ -34,12 +34,16 @@ function styleCoreLine(style: string): string | undefined {
     .filter((line) => line && !/^#\s*Style\b/i.test(line))[0];
 }
 
-function validateDurationPlanStructure(payloadYaml: string, warnings: string[]): void {
+function validateDurationPlanStructure(payloadYaml: string, warnings: string[], structure: StructureVariant): void {
   if (!payloadYaml.includes("duration_plan:") && !payloadYaml.includes("LYRICS START")) {
     return;
   }
   const templateId = payloadYaml.match(/^\s*template:\s*(\S+)\s*$/m)?.[1];
-  const plan = getDurationPlanByTemplateId(templateId);
+  const plan = getDurationPlanByTemplateId(templateId, { structure });
+  // The plan's own section list carries the structure's real prehook count (2 for
+  // "standard", 1 for both variants, which drop prehook2), so the expectation is
+  // derived from the resolved plan instead of a hardcoded "2".
+  const expectedPrehookCount = plan.sectionPlan.filter((section) => /^pre[-\s]?hook/i.test(section.label) || /^pre[-\s]?chorus/i.test(section.label)).length;
   const lyrics = extractLyricsBody(payloadYaml);
   const labels = headerLabels(lyrics);
   const sectionCount = labels.length;
@@ -49,8 +53,8 @@ function validateDurationPlanStructure(payloadYaml: string, warnings: string[]):
   if (sectionCount < plan.sectionPlan.length) {
     warnings.push(`duration_plan_section_count_below_plan: ${sectionCount}/${plan.sectionPlan.length}`);
   }
-  if (prehookCount < 2) {
-    warnings.push(`duration_plan_prehook_count_below_plan: ${prehookCount}/2`);
+  if (prehookCount < expectedPrehookCount) {
+    warnings.push(`duration_plan_prehook_count_below_plan: ${prehookCount}/${expectedPrehookCount}`);
   }
   if (hookRepeatCount < plan.chorusPolicy.physicalRepeats) {
     warnings.push(`duration_plan_hook_repeats_below_plan: ${hookRepeatCount}/${plan.chorusPolicy.physicalRepeats}`);
@@ -64,7 +68,7 @@ function classifyLanguageWarning(value: string): "error" | "warning" {
   return /^(?:residual_kanji|ascii_number):/.test(value) ? "error" : "warning";
 }
 
-export function validateSunoPromptPack(pack: Partial<SunoPromptPack>): SunoPromptPackValidation {
+export function validateSunoPromptPack(pack: Partial<SunoPromptPack>, structure: StructureVariant = "standard"): SunoPromptPackValidation {
   const errors: string[] = [];
   const warnings: string[] = [];
   if (!pack.songId) {
@@ -108,7 +112,7 @@ export function validateSunoPromptPack(pack: Partial<SunoPromptPack>): SunoPromp
     if (payloadYaml && payloadYaml.length < Math.floor(lyricsLimit * 0.8)) {
       warnings.push(`payloadYaml leaves Suno lyrics box budget underused: ${payloadYaml.length}/${lyricsLimit}`);
     }
-    validateDurationPlanStructure(payloadYaml, warnings);
+    validateDurationPlanStructure(payloadYaml, warnings, structure);
     const warningsValue = (pack.payload as { languageWarnings?: unknown }).languageWarnings;
     if (Array.isArray(warningsValue) && warningsValue.length > 0) {
       for (const warning of warningsValue.map(String)) {

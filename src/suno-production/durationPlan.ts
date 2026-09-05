@@ -395,9 +395,10 @@ export function getDurationPlan(band: TempoBand = "mid", opts?: GetDurationPlanO
   };
 }
 
-export function getDurationPlanByTemplateId(templateId: string | undefined): DurationPlan {
-  if (!templateId) return MID_PLAN;
-  return TEMPO_BANDS.map((band) => PLANS_BY_BAND[band]).find((plan) => plan.templateId === templateId) ?? MID_PLAN;
+export function getDurationPlanByTemplateId(templateId: string | undefined, opts?: GetDurationPlanOptions): DurationPlan {
+  if (!templateId) return getDurationPlan("mid", opts);
+  const band = TEMPO_BANDS.find((candidate) => PLANS_BY_BAND[candidate].templateId === templateId);
+  return getDurationPlan(band ?? "mid", opts);
 }
 
 // Reads the artist-chosen tempo band from a brief (or any text carrying the

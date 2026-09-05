@@ -218,7 +218,7 @@ export function createSunoPromptPack(input: CreateSunoPromptPackInput): SunoProm
     knowledgePackHash
   };
 
-  pack.validation = validateSunoPromptPack(pack);
+  pack.validation = validateSunoPromptPack(pack, input.creativeDecision?.structure ?? "standard");
   return pack;
 }
 
@@ -325,6 +325,6 @@ export async function createSunoPromptPackWithAi(
     currentStateHash,
     knowledgePackHash
   };
-  pack.validation = validateSunoPromptPack(pack);
+  pack.validation = validateSunoPromptPack(pack, input.creativeDecision?.structure ?? "standard");
   return pack;
 }
