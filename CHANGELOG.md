@@ -217,6 +217,10 @@
 - Plan v9.5 finalizes the autopilot revival and Telegram bridge dogfood pass: RuntimeEventBus stage/state/take notifications, owner-only Telegram commands, local free-text inbox staging, debug-only `/review <songId>` mock AI review, and final pre-release distribution gate coverage.
 
 ### Fixed
+- Added Linux support to the optional Suno login wrapper. Linux directly starts
+  the configured or Playwright-resolved Chrome executable with the same private
+  CLI profile and loopback CDP lifecycle, while macOS retains its LaunchServices
+  `.app` launch path.
 - Hardened the local gateway lifecycle wrappers against mixed manual/launchd
   ownership. Manual start now refuses a loaded launchd service, requires its
   spawned PID to own the supervisor lock before accepting HTTP readiness, and

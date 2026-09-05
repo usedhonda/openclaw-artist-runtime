@@ -47,9 +47,8 @@ elif [[ $# -gt 0 ]]; then
   node "$ROOT_DIR/scripts/openclaw-suno-login.mjs" "$PROFILE_PATH"
 else
   # The normal lane must refresh the profile and session.json consumed by suno-cli.
-  # Launch the matching visible Chrome bundle through LaunchServices, then attach
-  # explicitly over loopback. This avoids the known launchPersistentContext crash
-  # against the authenticated CLI profile; a failed attach never falls back.
+  # Launch the matching visible Chrome through the platform-native path, then
+  # attach explicitly over loopback. A failed attach never falls back.
   WORKSPACE_ROOT="${OPENCLAW_LOCAL_WORKSPACE:-$ROOT_DIR/.local/openclaw/workspace}"
   CLI_DATA_DIR="$WORKSPACE_ROOT/runtime/suno/cli"
   CDP_PORT="${OPENCLAW_SUNO_LOGIN_CDP_PORT:-9222}"
@@ -74,51 +73,58 @@ else
     echo "Suno login could not resolve an executable Chrome browser." >&2
     exit 1
   fi
-  case "$CHROME_EXECUTABLE" in
-    */Contents/MacOS/*)
-      CHROME_APP="${CHROME_EXECUTABLE%%/Contents/MacOS/*}"
+  PLATFORM="$(uname -s)"
+  CHROME_ARGS=(
+    --user-data-dir="$CLI_DATA_DIR/browser-profile"
+    --profile-directory=Default
+    --remote-debugging-address="$CDP_HOST"
+    --remote-debugging-port="$CDP_PORT"
+    --remote-allow-origins="$CDP_ENDPOINT"
+    --password-store=basic
+    --no-first-run
+    --no-default-browser-check
+    https://suno.com/
+  )
+  case "$PLATFORM" in
+    Darwin)
+      case "$CHROME_EXECUTABLE" in
+        */Contents/MacOS/*) CHROME_APP="${CHROME_EXECUTABLE%%/Contents/MacOS/*}" ;;
+        *) echo "Suno login requires a Chrome app executable under a .app bundle: $CHROME_EXECUTABLE" >&2; exit 1 ;;
+      esac
+      if [[ "$CHROME_APP" != *.app || ! -d "$CHROME_APP" ]]; then
+        echo "Suno login requires an executable inside a Chrome .app bundle." >&2
+        exit 1
+      fi
+      open -na "$CHROME_APP" --args "${CHROME_ARGS[@]}"
+      ;;
+    Linux)
+      BROWSER_LOG="$(mktemp "${TMPDIR:-/tmp}/openclaw-suno-login.XXXXXX")"
+      CHROME_PID=""
+      terminate_tree() {
+        local parent="$1"
+        local child
+        while read -r child; do
+          [[ -n "$child" ]] || continue
+          terminate_tree "$child"
+        done < <(pgrep -P "$parent" 2>/dev/null || true)
+        kill -TERM "$parent" >/dev/null 2>&1 || true
+      }
+      cleanup_browser() {
+        if [[ -n "$CHROME_PID" ]] && kill -0 "$CHROME_PID" >/dev/null 2>&1; then
+          terminate_tree "$CHROME_PID"
+          wait "$CHROME_PID" >/dev/null 2>&1 || true
+        fi
+        rm -f "$BROWSER_LOG"
+      }
+      trap cleanup_browser EXIT
+      "$CHROME_EXECUTABLE" "${CHROME_ARGS[@]}" >"$BROWSER_LOG" 2>&1 &
+      CHROME_PID=$!
       ;;
     *)
-      echo "Suno login requires a Chrome app executable under a .app bundle: $CHROME_EXECUTABLE" >&2
+      echo "Suno login does not support platform: $PLATFORM" >&2
       exit 1
       ;;
   esac
-  if [[ "$CHROME_APP" != *.app || ! -d "$CHROME_APP" ]]; then
-    echo "Suno login requires an executable inside a Chrome .app bundle." >&2
-    exit 1
-  fi
-
-  BROWSER_LOG="$(mktemp "${TMPDIR:-/tmp}/openclaw-suno-login.XXXXXX")"
-  CHROME_PID=""
-  terminate_tree() {
-    local parent="$1"
-    local child
-    while read -r child; do
-      [[ -n "$child" ]] || continue
-      terminate_tree "$child"
-    done < <(pgrep -P "$parent" 2>/dev/null || true)
-    kill -TERM "$parent" >/dev/null 2>&1 || true
-  }
-  cleanup_browser() {
-    if [[ -n "$CHROME_PID" ]] && kill -0 "$CHROME_PID" >/dev/null 2>&1; then
-      terminate_tree "$CHROME_PID"
-      wait "$CHROME_PID" >/dev/null 2>&1 || true
-    fi
-    rm -f "$BROWSER_LOG"
-  }
-  trap cleanup_browser EXIT
-
-  "$CHROME_EXECUTABLE" \
-    --user-data-dir="$CLI_DATA_DIR/browser-profile" \
-    --profile-directory=Default \
-    --remote-debugging-address="$CDP_HOST" \
-    --remote-debugging-port="$CDP_PORT" \
-    --remote-allow-origins="$CDP_ENDPOINT" \
-    --password-store=basic \
-    --no-first-run \
-    --no-default-browser-check \
-    https://suno.com/ >"$BROWSER_LOG" 2>&1 &
-  CHROME_PID=$!
 
   for _ in {1..40}; do
     if curl -fsS --max-time 1 "$CDP_ENDPOINT/json/version" >/dev/null 2>&1; then
