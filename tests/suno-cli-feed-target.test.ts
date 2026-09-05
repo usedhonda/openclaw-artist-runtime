@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { classifyError, ExitCode } from "../vendor/suno-cli/dist/src/commands/output.js";
 import { FeedClient } from "../vendor/suno-cli/dist/src/http/feed.js";
+import { resolveTarget } from "../vendor/suno-cli/dist/src/commands/resolve-target.js";
 
 function response(payload: unknown): Response {
   return new Response(JSON.stringify(payload), {
@@ -10,6 +11,9 @@ function response(payload: unknown): Response {
 }
 
 describe("vendored suno-cli feed target filtering", () => {
+  const targetA = "8b849deb-f167-4ecb-98f5-335a59b85088";
+  const targetB = "9b849deb-f167-4ecb-98f5-335a59b85088";
+
   it("keeps only requested clips in request order when the feed is broad", async () => {
     const client = new FeedClient({
       jwt: "test-jwt",
@@ -37,5 +41,17 @@ describe("vendored suno-cli feed target filtering", () => {
     const missingTarget = client.getClips(["target-a", "target-b"]);
     await expect(missingTarget).rejects.toThrow("Suno feed response missing requested clip id(s): target-b");
     await expect(missingTarget.catch((error: unknown) => classifyError(error))).resolves.toBe(ExitCode.retryableUnknown);
+  });
+
+  it("does not broaden an explicit clip UUID or song URL to a ledger run", async () => {
+    const group = { runId: "group-run", clipIds: [targetA, targetB], songUrls: [], status: "accepted" };
+    const ledger = { findRun: async () => group };
+
+    await expect(resolveTarget(targetA, ledger)).resolves.toMatchObject({ clipIds: [targetA], run: { runId: `clip_${targetA}` } });
+    await expect(resolveTarget(`https://suno.com/song/${targetA}`, ledger)).resolves.toMatchObject({
+      clipIds: [targetA],
+      run: { runId: `clip_${targetA}` },
+    });
+    await expect(resolveTarget("group-run", ledger)).resolves.toMatchObject({ clipIds: [targetA, targetB], run: group });
   });
 });

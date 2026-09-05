@@ -73,6 +73,9 @@ Feed status and download requests are target-bound: if Suno returns a broad feed
 the CLI keeps only the requested clip IDs and preserves their request order. If
 any requested ID is absent, the command fails closed instead of treating an empty
 or unrelated response as a successful status or download.
+An explicit clip UUID or `https://suno.com/song/<uuid>` target is also resolved as
+that single clip even when the ledger contains a group run containing it; only a
+run ID intentionally expands to all clips in the run.
 Keep this vendored patch when refreshing `vendor/suno-cli`; a vendor sync must
 retain target filtering and retryable missing-target classification.
 
