@@ -9,6 +9,16 @@ export function isSilencePlaceholder(url) {
         return url.toLowerCase().includes("sil-100.mp3");
     }
 }
+export function isForbiddenPlaceholder(url) {
+    if (!url)
+        return false;
+    try {
+        return new URL(url).pathname.toLowerCase() === "/api/forbidden";
+    }
+    catch {
+        return /(?:^|\/)api\/forbidden(?:[?#]|$)/i.test(url);
+    }
+}
 export function isAudioReady(url) {
-    return Boolean(url) && !isSilencePlaceholder(url);
+    return Boolean(url) && !isSilencePlaceholder(url) && !isForbiddenPlaceholder(url);
 }

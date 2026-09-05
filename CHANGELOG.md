@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- Suno CLI feed status now treats the explicit `/api/forbidden` audio URL
+  placeholder as not ready, preventing false `audio_ready` status and downloads.
+
 - Lyric provider fallbacks now retain stable, secret-safe diagnostics for timeout,
   HTTP status, empty response, and request failure categories.
 

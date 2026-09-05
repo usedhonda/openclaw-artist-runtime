@@ -476,6 +476,11 @@ Round 49 now locks the cheap boundary cases in mock-only tests:
 - extracted `.m4a` fallback assets stay `.m4a` on disk and in metadata
 - 404 downloads fail closed with empty imported paths and a recorded reason
 
+The vendored `suno-cli` also treats Suno's explicit `/api/forbidden` audio URL
+placeholder as not ready. It must not be reported as `audio_ready` or downloaded;
+the operator should wait for a real CDN audio URL and investigate authentication or
+feed access if the placeholder persists.
+
 ## Imported assets in Producer Console
 
 - Producer Console now mirrors the latest imported Suno asset evidence from
