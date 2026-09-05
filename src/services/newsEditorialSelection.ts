@@ -30,7 +30,7 @@ function parseIndices(raw: string, size: number): number[] | undefined {
     const indices = parsed.filter((value): value is number => Number.isInteger(value) && value >= 0 && value < size);
     if (indices.length !== parsed.length) return undefined;
     const unique = [...new Set(indices)];
-    return unique.length > 0 ? unique.slice(0, 5) : undefined;
+    return unique.slice(0, 5);
   } catch {
     return undefined;
   }
