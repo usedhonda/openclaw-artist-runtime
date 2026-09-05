@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { classifyError, ExitCode } from "../vendor/suno-cli/dist/src/commands/output.js";
 import { FeedClient } from "../vendor/suno-cli/dist/src/http/feed.js";
 
 function response(payload: unknown): Response {
@@ -33,8 +34,8 @@ describe("vendored suno-cli feed target filtering", () => {
       fetcher: async () => response({ clips: [{ id: "target-a", audio_url: "https://cdn.test/a.mp3" }] }),
     });
 
-    await expect(client.getClips(["target-a", "target-b"])).rejects.toThrow(
-      "Suno feed response missing requested clip id(s): target-b",
-    );
+    const missingTarget = client.getClips(["target-a", "target-b"]);
+    await expect(missingTarget).rejects.toThrow("Suno feed response missing requested clip id(s): target-b");
+    await expect(missingTarget.catch((error: unknown) => classifyError(error))).resolves.toBe(ExitCode.retryableUnknown);
   });
 });

@@ -56,6 +56,8 @@ export function statusForExitCode(code) {
 }
 export function classifyError(error) {
     const message = error instanceof Error ? error.message : String(error);
+    if (error && typeof error === "object" && "code" in error && error.code === "suno_feed_target_missing")
+        return ExitCode.retryableUnknown;
     if (message.includes("cookie is required"))
         return ExitCode.blockedLogin;
     if (message.startsWith("Usage:"))

@@ -27,7 +27,9 @@ export class FeedClient {
         const requestedIds = [...new Set(clipIds)];
         const missingIds = requestedIds.filter((clipId) => !clipsById.has(clipId));
         if (missingIds.length > 0) {
-            throw new Error(`Suno feed response missing requested clip id(s): ${missingIds.join(", ")}`);
+            const error = new Error(`Suno feed response missing requested clip id(s): ${missingIds.join(", ")}`);
+            error.code = "suno_feed_target_missing";
+            throw error;
         }
         return requestedIds.map((clipId) => normalizeClip(clipsById.get(clipId)));
     }
