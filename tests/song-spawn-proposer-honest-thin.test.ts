@@ -137,6 +137,37 @@ describe("song spawn proposer pitch density and honest-thin contract", () => {
     expectThin(proposal!.reason);
   });
 
+  it("preserves coherent real-provider fields when the observation is thin", async () => {
+    const root = await thinWorkspace("source");
+    await writeFile(join(root, "observations", "2026-05-10.md"), "BBCの地図だけが残った。\n", "utf8");
+    const lyricsTheme = "BBCの地図に残る空白を、遠い国の声として歌う。サビは増えない大陸を静かに反復する。";
+    const styleNotes = "restrained piano, low bass, dry close vocals, sparse drums, and wide empty space";
+    const reason = "大陸は増えてないという題で、BBCの地図に残る空白を音にしたい。静かな反復で置く。";
+    callAiProviderMock.mockResolvedValue([
+      "spawn: yes",
+      "title: 大陸は増えてない",
+      "brief: BBCの地図に残る空白を遠い国の声として切る",
+      `lyricsTheme: ${lyricsTheme}`,
+      `style: ${styleNotes}`,
+      "mood: observant",
+      "tempo: 92 BPM",
+      "duration: 2:48",
+      `reason: ${reason}`,
+      "artistObservation: BBCの地図に残る空白を見た"
+    ].join("\n"));
+
+    const proposal = await proposeSpawn(root, {
+      aiReviewProvider: "openai-codex",
+      now: new Date("2026-05-10T00:00:00.000Z")
+    });
+
+    expect(proposal).not.toBeNull();
+    expect(proposal!.brief.title).toBe("大陸は増えてない");
+    expect(proposal!.brief.lyricsTheme).toBe(lyricsTheme);
+    expect(proposal!.brief.styleNotes).toBe(styleNotes);
+    expect(proposal!.reason).toBe(reason);
+  });
+
   it("uses short honest markers when only mood-level persona context exists", async () => {
     const proposal = await proposeSpawn(await thinWorkspace("mood"), {
       aiReviewProvider: "mock",

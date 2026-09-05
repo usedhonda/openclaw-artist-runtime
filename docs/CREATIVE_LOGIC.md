@@ -35,6 +35,10 @@ material controls the critical voice and sound; it cannot introduce an unrelated
 second subject. If the connection cannot be stated plainly, the runtime declines
 to force a proposal.
 
+When a real provider returns a coherent, safe field, the runtime preserves that
+source-grounded wording even if the observation is short. Honest-thin marker
+templates are reserved for mock or otherwise invalid field output.
+
 ### Decision axes
 
 | Axis | Field | Decided by | Notes |

@@ -351,6 +351,7 @@ interface PitchDensityContext {
   artistMd: string;
   soulMd: string;
   fingerprint: VoiceFingerprintBundle;
+  preserveSourceFields?: boolean;
 }
 
 const honestThinMarkerPattern = /まだ|言葉になってない|輪郭しか|仮で|これから/;
@@ -456,22 +457,26 @@ function fallbackPitchLine(field: PitchField, context: PitchDensityContext, thin
   return `${slots.callname}、${slots.place}で見た${slots.object}がずっと残ってる。${slots.theme}として切る、捨てずに持ってた違和感をそのまま置いて、低い音と短いフックに委ねたい。怖さは残るけど、逃がさないな。`;
 }
 
-function validPitchField(value: string, thin: boolean): boolean {
+function validPitchField(value: string, thin: boolean, preserveSourceFields = false): boolean {
   const length = charLength(value);
+  // Real provider output is already source-grounded by the prompt contract.
+  // Thin observations should not turn a coherent proposal into persona filler
+  // merely because it misses the mock-path length/marker envelope.
+  if (preserveSourceFields) return length > 0;
   const min = thin ? 30 : 80;
   const max = thin ? 60 : 220;
   return length >= min && length <= max && (!thin || honestThinMarkerPattern.test(value));
 }
 
 function normalizePitchField(field: PitchField, value: string | undefined, context: PitchDensityContext): string {
-  const thin = isThinPitchContext(context);
+  const thin = !context.preserveSourceFields && isThinPitchContext(context);
   const clean = (value ?? "").replace(/\s+/g, " ").trim();
   if (
     !clean ||
     secretLikePattern.test(clean) ||
     machineVoicePattern.test(clean) ||
     fillerPattern.test(clean) ||
-    !validPitchField(clean, thin)
+    !validPitchField(clean, thin, context.preserveSourceFields)
   ) {
     return fallbackPitchLine(field, context, thin);
   }
@@ -935,7 +940,8 @@ export async function proposeSpawn(root: string, options: ProposeSpawnOptions = 
 
   const fingerprint = parseVoiceFingerprint(soulMd);
   const identity = await getArtistIdentity(root);
-  const pitchContext = { observation, artistMd, soulMd, fingerprint };
+  const provider = options.aiReviewProvider ?? "mock";
+  const pitchContext = { observation, artistMd, soulMd, fingerprint, preserveSourceFields: provider !== "mock" };
   const recentDecisions = await readRecentCreativeDecisions(root, 6);
   // Last few drafted titles for the title anti-repeat (newest-first ledger).
   const recentTitles = (await readCreativeQualityLedger(root, 3))
@@ -954,7 +960,6 @@ export async function proposeSpawn(root: string, options: ProposeSpawnOptions = 
   // the observation entries it was actually built from so mock / not_configured
   // paths still leave a verifiable citation trail.
   fallback.sources = sourcesFromExcerpts(obsData.excerpts ?? []);
-  const provider = options.aiReviewProvider ?? "mock";
   const mockReason = composeReasonInArtistVoice({ artistMd, soulMd, fingerprint, observation, brief: fallback });
   let raw = provider === "mock"
     ? [
@@ -1019,7 +1024,7 @@ export async function proposeSpawn(root: string, options: ProposeSpawnOptions = 
   }
   // Post-validate the reason: if voice fingerprint is ready and AI output violates contract,
   // replace the reason with a deterministic artist-voice line from composeArtistFallback.
-  if (isVoiceFingerprintReady(fingerprint).ok) {
+  if (provider === "mock" && isVoiceFingerprintReady(fingerprint).ok) {
     const validation = validateAgainstVoiceContract(parsed.reason, {
       fingerprint,
       lastEndings: []
@@ -1036,6 +1041,7 @@ export async function proposeSpawn(root: string, options: ProposeSpawnOptions = 
   // does not leak previous song context. Skip when context is thin -- thin
   // path keeps short honest markers per validPitchField contract.
   if (
+    provider === "mock" &&
     !isThinPitchContext(pitchContext) &&
     parsed.brief.title &&
     !parsed.reason.includes(parsed.brief.title)

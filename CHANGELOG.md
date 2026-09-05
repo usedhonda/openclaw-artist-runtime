@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- Real-provider song proposals now preserve coherent, safe source-grounded pitch
+  fields when observations are short instead of replacing them with thin-context
+  persona filler; mock-path honest-thin fallbacks remain unchanged.
+
 - News collection now uses one bounded AI editorial selection pass (when a real
   provider is configured) to choose diverse, grounded candidates before resolving
   article bodies; invalid selections fail closed, and Google News intermediates
