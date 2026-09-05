@@ -1,4 +1,8 @@
-import { describe, expect, it } from "vitest";
+import { mkdtempSync } from "node:fs";
+import { rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   isSunoCdpEnabled,
   sunoBrowserChannel,
@@ -6,7 +10,23 @@ import {
   sunoChromeExecutablePath,
   sunoChromeProfileDest
 } from "../src/services/runtimeConfig";
-import { shouldUseRebrowser } from "../src/services/sunoBrowserLaunch";
+
+const { playwrightExtraChromiumMock, launchPersistentContextMock, binaryHealthMock } = vi.hoisted(() => ({
+  playwrightExtraChromiumMock: { launchPersistentContext: vi.fn() },
+  launchPersistentContextMock: vi.fn(),
+  binaryHealthMock: vi.fn()
+}));
+
+playwrightExtraChromiumMock.launchPersistentContext = launchPersistentContextMock;
+
+vi.mock("playwright-extra", () => ({ chromium: playwrightExtraChromiumMock }));
+vi.mock("../src/services/sunoBinaryHealthCheck", () => ({
+  checkSunoBrowserBinaryHealth: binaryHealthMock,
+  reinstallPlaywrightChromium: vi.fn(),
+  isSunoBrowserLaunchFailure: vi.fn(() => false)
+}));
+
+import { launchSunoPersistentContext, shouldUseRebrowser } from "../src/services/sunoBrowserLaunch";
 
 function browserConfig(browser: Record<string, unknown>) {
   return { music: { suno: { browser } } };
@@ -49,5 +69,38 @@ describe("Suno browser launcher compatibility", () => {
     expect(shouldUseRebrowser(undefined)).toBe(true);
     expect(shouldUseRebrowser(browserConfig({ channel: "chrome" }))).toBe(false);
     expect(shouldUseRebrowser(browserConfig({ executablePath: "/custom/chrome" }))).toBe(false);
+  });
+});
+
+describe("launchSunoPersistentContext platform args", () => {
+  let profile: string;
+
+  beforeEach(() => {
+    profile = mkdtempSync(join(tmpdir(), "artist-runtime-suno-launch-"));
+    launchPersistentContextMock.mockReset().mockResolvedValue({ close: vi.fn() });
+    binaryHealthMock.mockReset().mockResolvedValue({ ok: true, checkedAt: "2026-07-18T00:00:00.000Z" });
+  });
+
+  afterEach(async () => {
+    await rm(profile, { recursive: true, force: true });
+  });
+
+  it("appends --disable-dev-shm-usage exactly once, after the existing args, on linux", async () => {
+    await launchSunoPersistentContext(profile, { extraArgs: ["--remote-debugging-port=54321"], platform: "linux" });
+
+    const [, launchOptions] = launchPersistentContextMock.mock.calls[0];
+    const args = launchOptions.args as string[];
+    expect(args.filter((arg) => arg === "--disable-dev-shm-usage")).toHaveLength(1);
+    expect(args[args.length - 1]).toBe("--disable-dev-shm-usage");
+    expect(args.indexOf("--remote-debugging-port=54321")).toBeLessThan(args.indexOf("--disable-dev-shm-usage"));
+  });
+
+  it("omits --disable-dev-shm-usage on darwin, leaving args byte-identical to the pre-change shape", async () => {
+    await launchSunoPersistentContext(profile, { extraArgs: ["--remote-debugging-port=54321"], platform: "darwin" });
+
+    const [, launchOptions] = launchPersistentContextMock.mock.calls[0];
+    const args = launchOptions.args as string[];
+    expect(args).not.toContain("--disable-dev-shm-usage");
+    expect(args[args.length - 1]).toBe("--remote-debugging-port=54321");
   });
 });

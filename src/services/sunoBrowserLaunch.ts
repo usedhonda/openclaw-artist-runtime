@@ -67,11 +67,14 @@ async function resolveSunoChromium(
  * verbatim from PlaywrightSunoDriver.openContext so the browser driver and the
  * plugin-owned SunoBrowserService both launch through one identical lane. extraArgs are
  * appended to the base sunoBrowserArgs (e.g. a fixed non-zero --remote-debugging-port to
- * expose CDP; port 0 must not be used as it sets navigator.webdriver=true).
+ * expose CDP; port 0 must not be used as it sets navigator.webdriver=true). On Linux,
+ * --disable-dev-shm-usage is appended last: Linux containers commonly expose a small
+ * /dev/shm, which crashes renderer startup (mirrors scripts/openclaw-suno-login.sh).
+ * Darwin args are unaffected.
  */
 export async function launchSunoPersistentContext(
   profilePath: string,
-  options: { extraArgs?: string[]; config?: SunoBrowserConfigView } = {}
+  options: { extraArgs?: string[]; config?: SunoBrowserConfigView; platform?: NodeJS.Platform } = {}
 ): Promise<BrowserContext> {
   await mkdir(profilePath, { recursive: true });
   const executablePath = sunoChromeExecutablePath(options.config);
@@ -82,11 +85,12 @@ export async function launchSunoPersistentContext(
   // browsers therefore use stock playwright-extra; the bundled lane keeps rebrowser.
   const chromium = await resolveSunoChromium(shouldUseRebrowser(options.config));
   const usesBundledChromium = !executablePath && !channel;
+  const platform = options.platform ?? process.platform;
   const launchOptions = {
     headless: false,
     ...(executablePath ? { executablePath } : {}),
     ...(channel ? { channel } : {}),
-    args: [...sunoBrowserArgs(), ...(options.extraArgs ?? [])],
+    args: [...sunoBrowserArgs(), ...(options.extraArgs ?? []), ...(platform === "linux" ? ["--disable-dev-shm-usage"] : [])],
     ignoreDefaultArgs: ["--enable-automation"]
   };
   if (usesBundledChromium) {
