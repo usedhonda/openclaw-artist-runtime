@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- OpenAI Codex calls now inherit OpenClaw's configured thinking default, with lyric drafting and song proposals explicitly using `xhigh` reasoning.
+
 - Accepted Suno runs awaiting import can no longer be stranded behind the
   same-run idempotency guard. The active song re-enters import processing until
   it advances or reports a real import outcome, releasing the new-song lane.

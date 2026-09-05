@@ -10,7 +10,10 @@ export interface AiProviderCallOptions {
   timeoutMs?: number;
   authProfilesPath?: string;
   configPath?: string;
+  reasoningEffort?: ReasoningEffort;
 }
+
+export type ReasoningEffort = "low" | "medium" | "high" | "xhigh";
 
 interface OpenClawConfigShape {
   agents?: {
@@ -18,6 +21,7 @@ interface OpenClawConfigShape {
       model?: {
         primary?: unknown;
       };
+      thinkingDefault?: unknown;
     };
   };
   auth?: {
@@ -197,6 +201,17 @@ function resolveModel(config: OpenClawConfigShape | undefined): string | undefin
   return undefined;
 }
 
+function resolveReasoningEffort(
+  config: OpenClawConfigShape | undefined,
+  override?: ReasoningEffort
+): ReasoningEffort | undefined {
+  if (override) return override;
+  const configured = config?.agents?.defaults?.thinkingDefault;
+  return configured === "low" || configured === "medium" || configured === "high" || configured === "xhigh"
+    ? configured
+    : undefined;
+}
+
 function profileKeysFromConfig(config: OpenClawConfigShape | undefined): string[] {
   const keys = config?.auth?.profiles && isRecord(config.auth.profiles)
     ? Object.keys(config.auth.profiles)
@@ -236,6 +251,7 @@ function selectCodexProfile(
 
 async function resolveCodexAuth(options: AiProviderCallOptions): Promise<{
   model?: string;
+  reasoningEffort?: ReasoningEffort;
   profile?: ResolvedCodexProfile;
 }> {
   const configRead = await readFirstJson<OpenClawConfigShape>(candidateConfigPaths(options.configPath));
@@ -243,6 +259,7 @@ async function resolveCodexAuth(options: AiProviderCallOptions): Promise<{
   if (cliProfile && (!cliProfile.expires || cliProfile.expires > Date.now())) {
     return {
       model: resolveModel(configRead?.value),
+      reasoningEffort: resolveReasoningEffort(configRead?.value, options.reasoningEffort),
       profile: cliProfile
     };
   }
@@ -251,6 +268,7 @@ async function resolveCodexAuth(options: AiProviderCallOptions): Promise<{
   );
   return {
     model: resolveModel(configRead?.value),
+    reasoningEffort: resolveReasoningEffort(configRead?.value, options.reasoningEffort),
     profile: selectCodexProfile(authRead?.value, configRead?.value)
   };
 }
@@ -314,6 +332,7 @@ async function callOpenAiResponses(
   prompt: string,
   auth: ResolvedCodexProfile,
   model: string,
+  reasoningEffort: ReasoningEffort | undefined,
   fetchImpl: typeof fetch,
   timeoutMs: number
 ): Promise<string> {
@@ -328,6 +347,7 @@ async function callOpenAiResponses(
       },
       body: JSON.stringify({
         model,
+        ...(reasoningEffort ? { reasoning: { effort: reasoningEffort } } : {}),
         instructions: "Return concise, field-oriented persona draft text. Do not include secrets.",
         input: [{
           role: "user",
@@ -390,6 +410,7 @@ export async function callAiProvider(prompt: string, options: AiProviderCallOpti
     prompt,
     auth.profile,
     auth.model,
+    auth.reasoningEffort,
     options.fetchImpl ?? fetch,
     options.timeoutMs ?? 120000
   );

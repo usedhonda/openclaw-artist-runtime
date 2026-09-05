@@ -560,7 +560,9 @@ async function composeLyricsDraft(input: DraftLyricsInput, title: string, briefT
       decision: plan ?? undefined
     });
     assertSafe("input", prompt);
-    const raw = provider === "mock" ? mockStructuredDraft(title, briefText) : await callAiProvider(prompt, { provider });
+    const raw = provider === "mock"
+      ? mockStructuredDraft(title, briefText)
+      : await callAiProvider(prompt, { provider, reasoningEffort: "xhigh" });
     assertSafe("response", raw);
     if (isAiProviderMockFallbackResponse(raw)) {
       repairNotes = isAiNotConfiguredResponse(raw)

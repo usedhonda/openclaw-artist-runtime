@@ -979,7 +979,7 @@ export async function proposeSpawn(root: string, options: ProposeSpawnOptions = 
       cascadeSeed: fallback.songId,
       activeQueueContext: options.activeQueueContext,
       emotionalMood: fallback.mood
-    }), { provider });
+    }), { provider, reasoningEffort: "xhigh" });
   // v10.67 flood guard: a provider fallback echo ("Mock provider fallback (...)" /
   // not-configured) is not artist output. Do not parse the echoed prompt. Instead,
   // fall back to the deterministic observation-anchored brief and let the spawn

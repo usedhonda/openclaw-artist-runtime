@@ -41,7 +41,7 @@ async function writeCodexCliAuthFixture(root: string, accessToken: string): Prom
 
 async function writeOpenClawAuthFixture(
   root: string,
-  options: { access?: string; expires?: number } = {}
+  options: { access?: string; expires?: number; thinkingDefault?: string } = {}
 ): Promise<{ configPath: string; authProfilesPath: string }> {
   await mkdir(root, { recursive: true });
   const configPath = join(root, "openclaw.json");
@@ -49,7 +49,7 @@ async function writeOpenClawAuthFixture(
   await writeFile(
     configPath,
     `${JSON.stringify({
-      agents: { defaults: { model: { primary: "openai/gpt-5.6" } } },
+      agents: { defaults: { model: { primary: "openai/gpt-5.6" }, thinkingDefault: options.thinkingDefault } },
       auth: { profiles: { "openai-codex:test@example.invalid": {} } }
     })}\n`,
     "utf8"
@@ -88,7 +88,7 @@ describe("ai provider client", () => {
 
   it("calls OpenAI Responses for openai-codex with a local OpenClaw auth profile", async () => {
     const root = makeRoot();
-    const { configPath, authProfilesPath } = await writeOpenClawAuthFixture(root);
+    const { configPath, authProfilesPath } = await writeOpenClawAuthFixture(root, { thinkingDefault: "high" });
     const fetchImpl = vi.fn(async () =>
       new Response([
         "event: response.output_text.delta",
@@ -117,10 +117,21 @@ describe("ai provider client", () => {
     const body = JSON.parse(fetchImpl.mock.calls[0][1]?.body as string);
     expect(body).toMatchObject({
       model: "gpt-5.6",
+      reasoning: { effort: "high" },
       stream: true,
       store: false
     });
     expect(body.input[0].content[0].text).toBe("artistName: draft this");
+
+    await callAiProvider("artistName: draft this", {
+      provider: "openai-codex",
+      configPath,
+      authProfilesPath,
+      reasoningEffort: "xhigh",
+      fetchImpl
+    });
+    const overrideBody = JSON.parse(fetchImpl.mock.calls[1][1]?.body as string);
+    expect(overrideBody).toMatchObject({ model: "gpt-5.6", reasoning: { effort: "xhigh" } });
   });
 
   it("does not invent a plugin model when OpenClaw has no primary model", async () => {
