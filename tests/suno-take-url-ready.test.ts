@@ -32,6 +32,23 @@ vi.mock("../src/connectors/suno/browserWorkerConnector.js", () => ({
   }))
 }));
 
+// routeTelegramCallback's producer-decision handlers (song_archive/song_discard/etc.)
+// fire-and-forget a `getAutopilotTicker().runNow(...)` kick
+// (telegramCallbackHandler.ts:kickAutopilotCycleAfterProducerDecision), still
+// un-awaited by design. It now threads this test's own workspaceRoot through
+// instead of resolving the schema default, and resolveRuntimeConfig now
+// normalizes that bare-relative default correctly either way — so the kick no
+// longer touches the operator's live workspace or a wrong root. This mock is
+// defense-in-depth on top of that fix: it keeps the background cycle from
+// racing this file's shared connector mocks (connectorImportMock etc.) across
+// tests, regardless of which workspaceRoot it resolves to.
+vi.mock("../src/services/autopilotTicker.js", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../src/services/autopilotTicker.js")>()),
+  getAutopilotTicker: () => ({
+    runNow: vi.fn().mockResolvedValue({ outcome: "skipped:disabled", state: {} })
+  })
+}));
+
 function workspace(): string {
   return mkdtempSync(join(tmpdir(), "artist-runtime-suno-url-ready-"));
 }

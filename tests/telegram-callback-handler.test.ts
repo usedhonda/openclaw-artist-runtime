@@ -62,7 +62,16 @@ describe("telegram callback handler", () => {
 
       expect(result).toMatchObject({ result: "discarded", reason: "song_spawn_skipped" });
       expect((await readSongSpawnState(workspace)).lastSpawnAt).toBeUndefined();
-      expect(runNow).toHaveBeenCalledWith(undefined, undefined, false, true);
+      // The post-decision kick resolves and threads this callback's own
+      // workspaceRoot through (telegramCallbackHandler.ts), rather than
+      // leaving it undefined and letting the ticker fall back to the schema
+      // default workspace.
+      expect(runNow).toHaveBeenCalledWith(
+        expect.objectContaining({ artist: expect.objectContaining({ workspaceRoot: workspace }) }),
+        undefined,
+        false,
+        true
+      );
       expect(client.sendMessage).toHaveBeenCalledWith(100, expect.stringContaining("却下した"), undefined);
     } finally {
       if (previous === undefined) delete process.env.OPENCLAW_SONG_SPAWN_ENABLED;

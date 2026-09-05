@@ -540,8 +540,14 @@ export async function writeRuntimeSafetyOverrides(root: string, patch: RuntimeSa
   return next;
 }
 
+// Any workspaceRoot that is not an absolute path is relative — including a bare
+// path with no leading "./" (e.g. the schema default ".local/openclaw/workspace").
+// The previous check only matched ".", "./", "", "./*" and "../*", so a bare
+// relative default silently skipped the normalization below and leaked through
+// unresolved (a fire-and-forget autopilot kick with no explicit workspaceRoot
+// would then resolve against the wrong directory instead of the caller's root).
 function isRelativeWorkspaceRoot(value: string): boolean {
-  return value === "." || value === "./" || value === "" || value.startsWith("./") || value.startsWith("../");
+  return value === "" || !value.startsWith("/");
 }
 
 export async function resolveRuntimeConfig(
