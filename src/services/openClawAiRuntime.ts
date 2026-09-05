@@ -21,6 +21,13 @@ export interface OpenClawAiRuntime {
       messages: unknown[];
     }>;
   };
+  llm?: {
+    complete: (params: {
+      messages: Array<{ role: "system" | "user" | "assistant"; content: string }>;
+      maxTokens?: number;
+      purpose?: string;
+    }) => Promise<{ text: string }>;
+  };
 }
 
 export type NativeRuntimeFailureReason =
@@ -83,7 +90,8 @@ export async function callOpenClawAiRuntime(
 ): Promise<string | undefined> {
   const sessionKey = `artist-runtime:creative:${Date.now()}-${++sessionCounter}`;
   const operation = (async () => {
-    const run = await runtime.subagent.run({
+    try {
+      const run = await runtime.subagent.run({
     sessionKey,
     message: prompt,
     disableTools: true,
@@ -99,6 +107,16 @@ export async function callOpenClawAiRuntime(
     const text = extractOpenClawAssistantText(messages.messages);
     if (!text) throw new NativeRuntimeError("native_runtime_empty_response");
     return text;
+    } catch (error) {
+      const reason = error instanceof NativeRuntimeError ? error.reason : classifyNativeRuntimeFailure(error);
+      if (reason !== "native_runtime_unavailable" || !runtime.llm) throw error;
+      const result = await runtime.llm.complete({
+        messages: [{ role: "user", content: prompt }],
+        purpose: "artist-runtime creative AI"
+      });
+      if (!result.text.trim()) throw new NativeRuntimeError("native_runtime_empty_response");
+      return result.text.trim();
+    }
   })();
   let timer: ReturnType<typeof setTimeout> | undefined;
   try {
@@ -121,6 +139,7 @@ function classifyNativeRuntimeFailure(value: unknown): NativeRuntimeFailureReaso
   const normalized = text.toLowerCase();
   if (normalized.includes("timeout") || normalized.includes("timed out")) return "native_runtime_timeout";
   if (normalized.includes("unauthoriz") || normalized.includes("forbidden") || normalized.includes("auth")) return "native_runtime_unauthorized";
-  if (normalized.includes("unavailable") || normalized.includes("not configured") || normalized.includes("missing")) return "native_runtime_unavailable";
+  if (normalized.includes("unavailable") || normalized.includes("not configured") || normalized.includes("missing")
+    || normalized.includes("requestscopedsubagentruntime")) return "native_runtime_unavailable";
   return "native_runtime_request_failed";
 }

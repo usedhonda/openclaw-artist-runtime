@@ -140,6 +140,22 @@ describe("ai provider client", () => {
     expect(runtime.subagent.getSessionMessages).not.toHaveBeenCalled();
   });
 
+  it("uses the public LLM facade when subagent binding is unavailable", async () => {
+    const runtime = {
+      subagent: {
+        run: vi.fn(async () => { throw new Error("RequestScopedSubagentRuntimeError"); }),
+        waitForRun: vi.fn(),
+        getSessionMessages: vi.fn()
+      },
+      llm: { complete: vi.fn(async () => ({ text: "artistName: LLM facade" })) }
+    };
+
+    await expect(callAiProvider("draft", { provider: "openai-codex", runtime })).resolves.toBe("artistName: LLM facade");
+    expect(runtime.llm.complete).toHaveBeenCalledWith(expect.objectContaining({
+      messages: [{ role: "user", content: "draft" }]
+    }));
+  });
+
   it("keeps mock behavior unchanged when a host runtime is present", async () => {
     const runtime = { subagent: { run: vi.fn(), waitForRun: vi.fn(), getSessionMessages: vi.fn() } };
     await expect(callAiProvider("hello", { provider: "mock", runtime })).resolves.toBe("Mock provider: hello");
