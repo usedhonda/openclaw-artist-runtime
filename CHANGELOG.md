@@ -14,7 +14,8 @@
   article bodies; invalid selections fail closed, and Google News intermediates
   remain explicitly labeled `lookupUrl`.
 
-- OpenAI Codex calls now inherit OpenClaw's configured thinking default, with lyric drafting and song proposals explicitly using `xhigh` reasoning.
+- OpenAI Codex calls now inherit OpenClaw's configured thinking default; song
+  proposals retain their explicit `xhigh` reasoning override.
 
 - Accepted Suno runs awaiting import can no longer be stranded behind the
   same-run idempotency guard. The active song re-enters import processing until
