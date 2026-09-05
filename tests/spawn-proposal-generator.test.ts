@@ -72,6 +72,7 @@ function aiOutput(title: string, lyricsTheme: string): string {
     "duration: 2:40",
     "style: low bass, dry drums, empty-room male vocal",
     `reason: ゆずるさん、${title}を切るやつ、今やりたい。`,
+    "artistObservation: コピー機の白い光に、若者の疲れだけが残っているのを見た",
     "sources:",
     "- kind:x url:https://x.com/office/status/12345 author:@office quote:コピー機の夜に若者の疲れだけが光っていた"
   ].join("\n");

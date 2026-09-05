@@ -52,6 +52,7 @@ describe("spawn pitch observation cascade", () => {
       "duration: 2:40",
       "style: low bass, dry drums, empty-room vocal",
       "reason: ゆずるさん、コピー機の夜を切るやつ、今やりたい。",
+      "artistObservation: コピー機の白い光に、若者の疲れだけが残っているのを見た",
       "sources:",
       "- kind:x url:https://x.com/office_watcher/status/12345 author:@office_watcher quote:コピー機の夜に若者の疲れだけが光っていた"
     ].join("\n"));

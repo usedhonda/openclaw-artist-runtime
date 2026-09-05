@@ -21,7 +21,7 @@ vi.mock("../src/services/lyricsExtraction.js", () => ({ extractLyricsBody: extra
 
 const lyricsSelector = 'textarea[data-testid="lyrics-textarea"]';
 const styleSelector =
-  '[data-testid="create-form-styles-wrapper"] textarea, textarea[placeholder="Describe the sound you want"], textarea[placeholder*="クラシック音楽"], textarea[placeholder*="バイキングメタル"], textarea[placeholder*="sound you want"]';
+  '[data-testid="create-form-styles-wrapper"] textarea, textarea[aria-label*="style" i], textarea[placeholder*="style" i], textarea[placeholder="Describe the sound you want"], textarea[placeholder*="クラシック音楽"], textarea[placeholder*="バイキングメタル"], textarea[placeholder*="sound you want"]';
 const titleSelector = 'input[placeholder="Song Title (Optional)"]:visible';
 const excludeSelector = 'input[placeholder="Exclude styles"]';
 const instrumentalSelector = 'button[aria-label="Check this to generate an instrumental only song"]';

@@ -112,7 +112,8 @@ describe("song spawn proposer pitch density and honest-thin contract", () => {
       "mood: tense, late-night, urban decay, dry satire",
       "tempo: 146 BPM",
       "duration: 2:52",
-      "reason: 了解しました。 ご確認ください。 申し訳ございません。"
+      "reason: 了解しました。 ご確認ください。 申し訳ございません。",
+      "artistObservation: 渋谷の再開発で、逃げ場を失った若者を見た"
     ].join("\n"));
     const proposal = await proposeSpawn(await completeWorkspace(), {
       aiReviewProvider: "openai-codex",
@@ -189,7 +190,8 @@ describe("song spawn proposer pitch density and honest-thin contract", () => {
       "reason: これはこれはこれはこれはこれはこれは",
       "mood: tense",
       "tempo: 96 BPM",
-      "duration: 3:00"
+      "duration: 3:00",
+      "artistObservation: フィラーだらけの観察を見た"
     ].join("\n"));
     const proposal = await proposeSpawn(await completeWorkspace(), {
       aiReviewProvider: "openai-codex",

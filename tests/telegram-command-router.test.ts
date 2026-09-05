@@ -615,7 +615,7 @@ describe("telegram command router", () => {
     const result = await routeTelegramCommand({ ...baseInput, text: "/draft skip spawn-ready", workspaceRoot: root });
 
     expect(result.kind).toBe("free_text");
-    expect(result.responseText).toContain("見送った");
+    expect(result.responseText).toContain("却下した");
     expect(await readAutopilotRunState(root)).toMatchObject({
       stage: "planning",
       suspendedAt: null
