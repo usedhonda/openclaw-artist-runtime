@@ -3,7 +3,7 @@ import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { callAiProvider, decodeJwtExpMs } from "../src/services/aiProviderClient";
+import { callAiProvider, decodeJwtExpMs, getAiProviderFailureReason, isAiProviderMockFallbackResponse } from "../src/services/aiProviderClient";
 import { proposePersonaFields } from "../src/services/personaProposer";
 
 function makeRoot(): string {
@@ -132,7 +132,10 @@ describe("ai provider client", () => {
     };
     const fetchImpl = vi.fn();
 
-    await expect(callAiProvider("draft", { provider: "openai-codex", runtime, fetchImpl })).resolves.toContain("native_runtime_request_failed");
+    const result = await callAiProvider("draft", { provider: "openai-codex", runtime, fetchImpl });
+    expect(result).toContain("native_runtime_request_failed");
+    expect(isAiProviderMockFallbackResponse(result)).toBe(true);
+    expect(getAiProviderFailureReason(result)).toBe("native_runtime_request_failed");
     expect(fetchImpl).not.toHaveBeenCalled();
     expect(runtime.subagent.getSessionMessages).not.toHaveBeenCalled();
   });

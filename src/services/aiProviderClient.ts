@@ -100,6 +100,11 @@ export function getAiProviderFailureReason(value: string): AiProviderFailureReas
   return "ai_provider_fallback";
 }
 
+function nativeFailureResponse(prompt: string, reason: NativeRuntimeFailureReason): string {
+  console.warn(`[artist-runtime] native AI runtime failure: ${reason}`);
+  return mockResponse(prompt, `Mock provider fallback (${reason})`);
+}
+
 export function isAiNotConfiguredResponse(raw: string): boolean {
   return /AI provider '[^']+' is not configured\./.test(raw);
 }
@@ -448,11 +453,14 @@ export async function callAiProvider(prompt: string, options: AiProviderCallOpti
   if (runtime) {
     try {
       const result = await callOpenClawAiRuntime(runtime, prompt, options.timeoutMs ?? 120000);
-      return result ?? mockResponse(prompt, "Mock provider fallback (native_runtime_empty_response)");
+      return result ?? nativeFailureResponse(prompt, "native_runtime_empty_response");
     } catch (error) {
       // Native runtime failures are fail-closed. Never fall back to legacy auth
       // files after the host has offered its public runtime.
-      return mockResponse(prompt, error instanceof NativeRuntimeError ? error.reason : "native_runtime_request_failed");
+      return nativeFailureResponse(
+        prompt,
+        error instanceof NativeRuntimeError ? error.reason : "native_runtime_request_failed"
+      );
     }
   }
   const auth = await resolveCodexAuth(options);
