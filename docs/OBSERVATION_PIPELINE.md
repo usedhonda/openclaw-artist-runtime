@@ -42,7 +42,14 @@ its diagnostics then flow into the spawn brief
 search query built from persona motifs), capped at `maxFeedsPerRun = 5`
 (`newsObservationCollector.ts:66`). Feeds are fetched, parsed
 (`parseRssXml`), optionally article-resolved (`resolveArticleUrls`, gated by
-`OPENCLAW_NEWS_ARTICLE_RESOLVE`), motif-ranked, and cached for
+`OPENCLAW_NEWS_ARTICLE_RESOLVE`). When `aiReview.provider` is a configured real
+provider, a single bounded editorial call receives up to 60 headline/excerpt
+candidates plus persona and the latest eight song briefs, and returns only
+validated candidate indices. Article bodies are resolved only after selection;
+an unresolved Google News link remains a distinct `lookupUrl`, never a claimed
+publisher URL. Mock or unset providers retain deterministic motif ranking, while
+invalid or unavailable editorial responses skip the refresh explicitly. The
+selected entries are motif-ranked, and cached for
 `newsCacheTtlMs = 6h` (`newsObservationCollector.ts:65`). With no motifs and no env
 feeds the stage skips with reason
 `news_motifs_unavailable_and_OPENCLAW_NEWS_RSS_URLS_unset`

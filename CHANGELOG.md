@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- News collection now uses one bounded AI editorial selection pass (when a real
+  provider is configured) to choose diverse, grounded candidates before resolving
+  article bodies; invalid selections fail closed, and Google News intermediates
+  remain explicitly labeled `lookupUrl`.
+
 - OpenAI Codex calls now inherit OpenClaw's configured thinking default, with lyric drafting and song proposals explicitly using `xhigh` reasoning.
 
 - Accepted Suno runs awaiting import can no longer be stranded behind the

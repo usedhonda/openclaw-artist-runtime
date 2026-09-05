@@ -22,6 +22,7 @@ import {
   type PersonaMotifBundle
 } from "./personaMotifExtractor.js";
 import { rankObservations, summarizeMatches } from "./xObservationScorer.js";
+import { selectNewsEditorially } from "./newsEditorialSelection.js";
 
 export interface NewsObservationEntry {
   text: string;
@@ -55,7 +56,7 @@ export interface NewsObservationContext {
   now?: Date;
   fetcher?: (url: string) => Promise<string>;
   articleResolver?: NewsArticleResolver;
-  config?: Pick<ArtistRuntimeConfig, "observation">;
+  config?: Pick<ArtistRuntimeConfig, "observation" | "aiReview">;
   /** Producer rejected a proposal: bypass only the local cache for this cycle. */
   forceRefresh?: boolean;
 }
@@ -511,14 +512,13 @@ async function resolveArticleUrls(
   resolver: NewsArticleResolver | undefined
 ): Promise<NewsObservationEntry[]> {
   if (!resolver) {
-    return entries.map(({ lookupUrl: _lookupUrl, ...entry }) => entry);
+    return entries;
   }
   const resolved: NewsObservationEntry[] = [];
   let resolutionCount = 0;
   for (const entry of entries) {
     if (entry.url || !entry.lookupUrl || resolutionCount >= maxArticleResolutionsPerRun) {
-      const { lookupUrl: _lookupUrl, ...clean } = entry;
-      resolved.push(clean);
+      resolved.push(entry);
       continue;
     }
     resolutionCount += 1;
@@ -528,16 +528,15 @@ async function resolveArticleUrls(
       source: entry.source,
       candidateUrl: entry.lookupUrl
     }).catch(() => undefined);
-    const { lookupUrl: _lookupUrl, ...clean } = entry;
     if (!resolution?.url || !isUsableArticleUrl(resolution.url)) {
-      resolved.push(clean);
+      resolved.push(entry);
       continue;
     }
     resolved.push({
-      ...clean,
-      text: renderTextWithResolution(clean, resolution),
+      ...entry,
+      text: renderTextWithResolution(entry, resolution),
       url: resolution.url,
-      source: resolution.source ?? clean.source
+      source: resolution.source ?? entry.source
     });
   }
   return resolved;
@@ -549,6 +548,7 @@ function renderNewsObservation(entries: NewsObservationEntry[], now: Date): stri
     lines.push(`- text: ${JSON.stringify(entry.text)}`);
     if (entry.source) lines.push(`  source: ${JSON.stringify(entry.source)}`);
     if (entry.url) lines.push(`  url: ${JSON.stringify(entry.url)}`);
+    if (entry.lookupUrl) lines.push(`  lookupUrl: ${JSON.stringify(entry.lookupUrl)}`);
     if (entry.postedAt) lines.push(`  postedAt: ${JSON.stringify(entry.postedAt)}`);
     if (entry.motifMatch) lines.push(`  motifMatch: ${JSON.stringify(entry.motifMatch)}`);
     if (typeof entry.motifScore === "number" && entry.motifScore !== 0) {
@@ -585,6 +585,8 @@ export function parseNewsObservationFile(content: string): NewsObservationEntry[
     if (!current) continue;
     const urlMatch = raw.match(/^\s+url:\s+(.*)$/);
     if (urlMatch) current.url = parseQuoted(urlMatch[1]) || undefined;
+    const lookupUrlMatch = raw.match(/^\s+lookupUrl:\s+(.*)$/);
+    if (lookupUrlMatch) current.lookupUrl = parseQuoted(lookupUrlMatch[1]) || undefined;
     const dateMatch = raw.match(/^\s+postedAt:\s+(.*)$/);
     if (dateMatch) current.postedAt = parseQuoted(dateMatch[1]) || undefined;
     const sourceMatch = raw.match(/^\s+source:\s+(.*)$/);
@@ -623,10 +625,14 @@ function feedSourceLabel(url: string): string {
 
 function rankAndAnnotate(
   entries: NewsObservationEntry[],
-  motifs: PersonaMotifBundle
+  motifs: PersonaMotifBundle,
+  preserveOrder = false
 ): NewsObservationEntry[] {
   const scored = rankObservations(entries, motifs);
-  return scored.slice(0, maxEntries).map((row) => ({
+  const rows = preserveOrder
+    ? entries.slice(0, maxEntries).map((entry) => scored.find((row) => row.entry === entry)).filter((row): row is (typeof scored)[number] => Boolean(row))
+    : scored.slice(0, maxEntries);
+  return rows.map((row) => ({
     ...row.entry,
     motifMatch: row.matched.length > 0 ? summarizeMatches(row) : undefined,
     motifScore: row.score
@@ -676,11 +682,18 @@ export async function collectNewsObservations(
       reason: failures.length > 0 ? `all_rss_failed:${failures.join(",")}` : "rss_returned_no_items"
     };
   }
-  const resolved = await resolveArticleUrls(collected, articleResolver);
+  const editorial = await selectNewsEditorially(root, collected, {
+    provider: context.config?.aiReview?.provider,
+    personaText: context.personaText
+  });
+  if (editorial.reason) {
+    return { status: "skipped", path, entries: [], reason: editorial.reason };
+  }
+  const resolved = await resolveArticleUrls(editorial.entries, articleResolver);
   if (secretLikePattern.test(resolved.map((entry) => entry.text).join("\n"))) {
     throw new Error("news_observation_contains_secret_like_text");
   }
-  const annotated = rankAndAnnotate(resolved, motifs);
+  const annotated = rankAndAnnotate(resolved, motifs, Boolean(context.config?.aiReview?.provider && context.config.aiReview.provider !== "mock"));
   await mkdir(dirname(path), { recursive: true });
   await writeFile(path, `${renderNewsObservation(annotated, now).trim()}\n`, "utf8");
   return { status: "collected", path, entries: annotated };

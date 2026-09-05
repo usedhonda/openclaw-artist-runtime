@@ -190,7 +190,7 @@ describe("news observation collector", () => {
     expect(result.entries[0].url).toBe("https://example.com/articles/nafusa-redstar");
   });
 
-  it("does not cache Google News RSS article intermediates as article URLs", async () => {
+  it("keeps Google News RSS intermediates as lookup URLs, not publisher URLs", async () => {
     const root = workspace();
     process.env.OPENCLAW_NEWS_RSS_URLS = "https://news.google.com/rss/search?q=test";
     const fetcher = vi.fn(async () => googleIntermediateOnlySample);
@@ -204,8 +204,10 @@ describe("news observation collector", () => {
     expect(result.entries).toHaveLength(1);
     expect(result.entries[0].source).toBe("BCN+R");
     expect(result.entries[0].url).toBeUndefined();
+    expect(result.entries[0].lookupUrl).toBe("https://news.google.com/rss/articles/example");
     const cached = await readTodayNewsObservations(root, new Date("2026-05-23T01:30:00.000Z"));
     expect(cached[0].url).toBeUndefined();
+    expect(cached[0].lookupUrl).toBe("https://news.google.com/rss/articles/example");
   });
 
   it("resolves Google News RSS intermediates before writing the daily cache", async () => {
@@ -233,7 +235,7 @@ describe("news observation collector", () => {
 
     const cached = await readFile(join(root, "observations", "news-2026-05-23.md"), "utf8");
     expect(cached).toContain("https://www.bcnretail.com/news/detail/20260629_638591.html");
-    expect(cached).not.toContain("https://news.google.com/rss/articles/example");
+    expect(cached).toContain('lookupUrl: "https://news.google.com/rss/articles/example"');
   });
 
   it("default article resolver uses canonical article metadata from fetched HTML", async () => {
