@@ -3,7 +3,7 @@ import { homedir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import type { AiReviewProvider } from "../types.js";
 import { getOpenClawAuthProfilesPath, getOpenClawConfigPath } from "./runtimeConfig.js";
-import { callOpenClawAiRuntime, getOpenClawAiRuntime, type OpenClawAiRuntime } from "./openClawAiRuntime.js";
+import { callOpenClawAiRuntime, getOpenClawAiRuntime, NativeRuntimeError, type NativeRuntimeFailureReason, type OpenClawAiRuntime } from "./openClawAiRuntime.js";
 
 export interface AiProviderCallOptions {
   provider: AiReviewProvider;
@@ -72,6 +72,7 @@ export type AiProviderFailureReason =
   | "ai_provider_empty_response"
   | "ai_provider_request_failed"
   | `ai_provider_http_status: ${number}`
+  | NativeRuntimeFailureReason
   | "ai_provider_fallback";
 
 export function isAiProviderMockFallbackResponse(value: string): boolean {
@@ -92,6 +93,10 @@ export function getAiProviderFailureReason(value: string): AiProviderFailureReas
   if (status) {
     return `ai_provider_http_status: ${Number(status)}`;
   }
+  const nativeReason = value.match(/^Mock provider fallback \((native_runtime_[a-z_]+)\)/)?.[1];
+  if (nativeReason === "native_runtime_unavailable" || nativeReason === "native_runtime_unauthorized"
+    || nativeReason === "native_runtime_timeout" || nativeReason === "native_runtime_empty_response"
+    || nativeReason === "native_runtime_request_failed") return nativeReason;
   return "ai_provider_fallback";
 }
 
@@ -443,16 +448,11 @@ export async function callAiProvider(prompt: string, options: AiProviderCallOpti
   if (runtime) {
     try {
       const result = await callOpenClawAiRuntime(runtime, prompt, options.timeoutMs ?? 120000);
-      return result ?? mockResponse(prompt, "Mock provider fallback (native runtime failed)");
+      return result ?? mockResponse(prompt, "Mock provider fallback (native_runtime_empty_response)");
     } catch (error) {
       // Native runtime failures are fail-closed. Never fall back to legacy auth
       // files after the host has offered its public runtime.
-      return mockResponse(
-        prompt,
-        error instanceof Error && error.message === "ai_provider_timeout"
-          ? "Mock provider fallback (timeout)"
-          : "Mock provider fallback (native runtime failed)"
-      );
+      return mockResponse(prompt, error instanceof NativeRuntimeError ? error.reason : "native_runtime_request_failed");
     }
   }
   const auth = await resolveCodexAuth(options);

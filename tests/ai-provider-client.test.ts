@@ -118,7 +118,7 @@ describe("ai provider client", () => {
       }
     };
 
-    await expect(callAiProvider("draft", { provider: "openai-codex", runtime, timeoutMs: 5 })).resolves.toContain("timeout");
+    await expect(callAiProvider("draft", { provider: "openai-codex", runtime, timeoutMs: 5 })).resolves.toContain("native_runtime_timeout");
     expect(runtime.subagent.waitForRun).not.toHaveBeenCalled();
   });
 
@@ -132,7 +132,7 @@ describe("ai provider client", () => {
     };
     const fetchImpl = vi.fn();
 
-    await expect(callAiProvider("draft", { provider: "openai-codex", runtime, fetchImpl })).resolves.toContain("native runtime failed");
+    await expect(callAiProvider("draft", { provider: "openai-codex", runtime, fetchImpl })).resolves.toContain("native_runtime_request_failed");
     expect(fetchImpl).not.toHaveBeenCalled();
     expect(runtime.subagent.getSessionMessages).not.toHaveBeenCalled();
   });
@@ -141,6 +141,19 @@ describe("ai provider client", () => {
     const runtime = { subagent: { run: vi.fn(), waitForRun: vi.fn(), getSessionMessages: vi.fn() } };
     await expect(callAiProvider("hello", { provider: "mock", runtime })).resolves.toBe("Mock provider: hello");
     expect(runtime.subagent.run).not.toHaveBeenCalled();
+  });
+
+  it("classifies thrown native errors without echoing secret-looking details", async () => {
+    const runtime = {
+      subagent: {
+        run: vi.fn(async () => { throw new Error("unauthorized token=super-secret-value"); }),
+        waitForRun: vi.fn(),
+        getSessionMessages: vi.fn()
+      }
+    };
+    const result = await callAiProvider("draft", { provider: "openai-codex", runtime });
+    expect(result).toContain("native_runtime_unauthorized");
+    expect(result).not.toContain("super-secret-value");
   });
 
   it("calls OpenAI Responses for openai-codex with a local OpenClaw auth profile", async () => {
