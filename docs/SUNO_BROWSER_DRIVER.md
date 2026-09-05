@@ -231,9 +231,9 @@ machine. This repository carries that runtime hardening patch on top of
 The no-argument `scripts/openclaw-suno-login.sh` launches the matching visible
 Chrome with `--password-store=basic`, loopback-only remote debugging, and the
 authoritative CLI profile, then invokes `suno-cli login --cdp-endpoint` to capture
-that already authenticated Suno page. On macOS it launches the validated `.app`
-through LaunchServices; on Linux it directly spawns the validated executable
-(for example `/usr/bin/google-chrome`) and owns its cleanup. With
+that already authenticated Suno page. On macOS it directly spawns the validated
+`.app` executable; on Linux it directly spawns the validated executable (for
+example `/usr/bin/google-chrome`). Both paths own their cleanup. With
 `OPENCLAW_SUNO_CHROME_EXECUTABLE` set, that executable is validated and used;
 otherwise the wrapper resolves the installed Playwright
 `chromium.executablePath()`. There is no hard-coded Chrome path or fallback. It reuses an existing Suno tab

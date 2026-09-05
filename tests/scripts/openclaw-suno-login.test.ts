@@ -128,21 +128,22 @@ describe("openclaw-suno-login.sh", () => {
   });
 
   it("resolves the visible Chrome app from installed Playwright when no override is set", async () => {
-    const { result, openArgs, chromeApp } = await runWithFakeNode({ chromeExecutable: null, platform: "Darwin" });
+    const { result, openArgs, chromeArgs, chromeApp } = await runWithFakeNode({ chromeExecutable: null, platform: "Darwin", holdBrowser: true });
 
     expect(result.status).toBe(0);
-    expect(openArgs.slice(0, 3)).toEqual(["-na", chromeApp, "--args"]);
+    expect(openArgs).toEqual([]);
     expect(chromeApp).toContain("Google Chrome for Testing.app");
-    expect(openArgs).toContain("--password-store=basic");
+    expect(chromeArgs).toContain("--password-store=basic");
   });
 
-  it("uses macOS LaunchServices for a Chrome app without spawning a cleanup-owned process", async () => {
-    const { result, openArgs, chromeArgs, chromeApp } = await runWithFakeNode({ platform: "Darwin" });
+  it("directly starts a macOS Chrome app and retains cleanup ownership", async () => {
+    const { result, openArgs, chromeArgs, chromePid } = await runWithFakeNode({ platform: "Darwin", holdBrowser: true });
 
     expect(result.status).toBe(0);
-    expect(openArgs.slice(0, 3)).toEqual(["-na", chromeApp, "--args"]);
-    expect(openArgs).toContain("--password-store=basic");
-    expect(chromeArgs).toEqual([]);
+    expect(openArgs).toEqual([]);
+    expect(chromeArgs).toContain("--password-store=basic");
+    expect(chromePid).toBeDefined();
+    expect(() => process.kill(chromePid!, 0)).toThrow();
   });
 
   it("directly starts a non-app Linux executable with the private profile and CDP flags", async () => {
