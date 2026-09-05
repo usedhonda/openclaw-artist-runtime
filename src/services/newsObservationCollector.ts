@@ -687,6 +687,8 @@ export async function collectNewsObservations(
     personaText: context.personaText
   });
   if (editorial.reason) {
+    await mkdir(dirname(path), { recursive: true });
+    await writeFile(path, `${renderNewsObservation([], now).trim()}\n`, "utf8");
     return { status: "skipped", path, entries: [], reason: editorial.reason };
   }
   const resolved = await resolveArticleUrls(editorial.entries, articleResolver);

@@ -6,7 +6,8 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 const { callAiProviderMock } = vi.hoisted(() => ({ callAiProviderMock: vi.fn() }));
 vi.mock("../src/services/aiProviderClient", () => ({
   callAiProvider: callAiProviderMock,
-  isAiNotConfiguredResponse: (value: string) => value.includes("not configured")
+  isAiNotConfiguredResponse: (value: string) => value.includes("not configured"),
+  isAiProviderMockFallbackResponse: (value: string) => value.startsWith("Mock provider fallback")
 }));
 
 import { selectNewsEditorially } from "../src/services/newsEditorialSelection";
@@ -21,7 +22,7 @@ describe("news editorial selection", () => {
       { text: "Residents defend a threatened community library", source: "local" },
       { text: "Night workers organize for safer transit", source: "local" }
     ];
-    callAiProviderMock.mockResolvedValueOnce("[2, 3]");
+    callAiProviderMock.mockResolvedValueOnce("[1, 3]");
     const result = await selectNewsEditorially(mkdtempSync(join(tmpdir(), "editorial-")), candidates, {
       provider: "openai-codex",
       personaText: "social observation"
@@ -36,5 +37,12 @@ describe("news editorial selection", () => {
     const result = await selectNewsEditorially("/tmp/editorial", [{ text: "story" }], { provider: "openclaw" });
     expect(result.entries).toEqual([]);
     expect(result.reason).toBe("news_editorial_selection_invalid_indices");
+  });
+
+  it("does not parse a provider fallback echo as a selection", async () => {
+    callAiProviderMock.mockResolvedValueOnce("Mock provider fallback: Return JSON only [2, 7, 11]");
+    const result = await selectNewsEditorially("/tmp/editorial", [{ text: "story" }], { provider: "openclaw" });
+    expect(result.entries).toEqual([]);
+    expect(result.reason).toBe("news_editorial_selection_provider_failed");
   });
 });

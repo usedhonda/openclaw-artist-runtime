@@ -1,7 +1,7 @@
 import type { AiReviewProvider } from "../types.js";
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
-import { callAiProvider, isAiNotConfiguredResponse } from "./aiProviderClient.js";
+import { callAiProvider, isAiNotConfiguredResponse, isAiProviderMockFallbackResponse } from "./aiProviderClient.js";
 import { listSongStates } from "./artistState.js";
 
 export interface EditorialNewsCandidate {
@@ -26,7 +26,7 @@ function parseIndices(raw: string, size: number): number[] | undefined {
   if (!json) return undefined;
   try {
     const parsed: unknown = JSON.parse(json);
-    if (!Array.isArray(parsed) || parsed.length === 0) return undefined;
+    if (!Array.isArray(parsed)) return undefined;
     const indices = parsed.filter((value): value is number => Number.isInteger(value) && value >= 0 && value < size);
     if (indices.length !== parsed.length) return undefined;
     const unique = [...new Set(indices)];
@@ -69,6 +69,33 @@ function buildPrompt<T extends EditorialNewsCandidate>(
   ].join("\n\n");
 }
 
+function editorialPool<T extends EditorialNewsCandidate>(candidates: T[]): T[] {
+  const seen = new Set<string>();
+  const groups = new Map<string, T[]>();
+  for (const candidate of candidates) {
+    const key = [candidate.url, candidate.lookupUrl, candidate.text.replace(/\s+/g, " ").trim().toLowerCase()].join("|");
+    if (seen.has(key)) continue;
+    seen.add(key);
+    const source = candidate.source ?? "unknown";
+    const group = groups.get(source) ?? [];
+    group.push(candidate);
+    groups.set(source, group);
+  }
+  const pool: T[] = [];
+  while (pool.length < 60) {
+    let added = false;
+    for (const group of groups.values()) {
+      const candidate = group.shift();
+      if (!candidate) continue;
+      pool.push(candidate);
+      added = true;
+      if (pool.length >= 60) break;
+    }
+    if (!added) break;
+  }
+  return pool;
+}
+
 export async function selectNewsEditorially<T extends EditorialNewsCandidate>(
   root: string,
   candidates: T[],
@@ -76,7 +103,7 @@ export async function selectNewsEditorially<T extends EditorialNewsCandidate>(
 ): Promise<NewsEditorialSelectionResult<T>> {
   const provider = options.provider;
   if (!provider || provider === "mock") return { entries: candidates };
-  const pool = candidates.slice(0, 60);
+  const pool = editorialPool(candidates);
   let raw: string;
   try {
     raw = await callAiProvider(buildPrompt(pool, options.personaText ?? "", await recentSongContext(root)), { provider });
@@ -84,7 +111,9 @@ export async function selectNewsEditorially<T extends EditorialNewsCandidate>(
     return { entries: [], reason: "news_editorial_selection_provider_failed" };
   }
   if (isAiNotConfiguredResponse(raw)) return { entries: [], reason: "news_editorial_selection_provider_not_configured" };
+  if (isAiProviderMockFallbackResponse(raw)) return { entries: [], reason: "news_editorial_selection_provider_failed" };
   const indices = parseIndices(raw, pool.length);
   if (!indices) return { entries: [], reason: "news_editorial_selection_invalid_indices" };
+  if (indices.length === 0) return { entries: [], reason: "news_editorial_selection_no_suitable_candidates" };
   return { entries: indices.map((index) => pool[index]).filter((entry): entry is T => Boolean(entry)) };
 }
