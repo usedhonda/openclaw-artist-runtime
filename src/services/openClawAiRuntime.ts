@@ -39,12 +39,12 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 }
 
 function textFromContent(content: unknown): string | undefined {
-  if (typeof content === "string") return content;
   if (!Array.isArray(content)) return undefined;
   const parts = content.flatMap((item) => {
-    if (typeof item === "string") return [item];
     if (!isRecord(item)) return [];
-    return typeof item.text === "string" ? [item.text] : [];
+    return (item.type === "text" || item.type === "output_text") && typeof item.text === "string"
+      ? [item.text]
+      : [];
   });
   return parts.join("").trim() || undefined;
 }
@@ -54,7 +54,7 @@ export function extractOpenClawAssistantText(messages: unknown[]): string | unde
   const parts: string[] = [];
   for (const message of messages) {
     if (!isRecord(message) || message.role !== "assistant") continue;
-    const text = textFromContent(message.content) ?? textFromContent(message.text);
+    const text = textFromContent(message.content);
     if (text) parts.push(text);
   }
   return parts.join("\n").trim() || undefined;
@@ -66,7 +66,8 @@ export async function callOpenClawAiRuntime(
   timeoutMs: number
 ): Promise<string | undefined> {
   const sessionKey = `artist-runtime:creative:${Date.now()}-${++sessionCounter}`;
-  const run = await runtime.subagent.run({
+  const operation = (async () => {
+    const run = await runtime.subagent.run({
     sessionKey,
     message: prompt,
     disableTools: true,
@@ -74,9 +75,22 @@ export async function callOpenClawAiRuntime(
     lightContext: true,
     deliver: false,
     idempotencyKey: sessionKey
-  });
-  const waited = await runtime.subagent.waitForRun({ runId: run.runId, timeoutMs });
-  if (waited.status !== "ok") return undefined;
-  const messages = await runtime.subagent.getSessionMessages({ sessionKey: run.sessionKey ?? sessionKey, limit: 20 });
-  return extractOpenClawAssistantText(messages.messages);
+    });
+    const waited = await runtime.subagent.waitForRun({ runId: run.runId, timeoutMs });
+    if (waited.status === "timeout") throw new Error("ai_provider_timeout");
+    if (waited.status !== "ok") return undefined;
+    const messages = await runtime.subagent.getSessionMessages({ sessionKey: run.sessionKey ?? sessionKey, limit: 20 });
+    return extractOpenClawAssistantText(messages.messages);
+  })();
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  try {
+    return await Promise.race([
+      operation,
+      new Promise<undefined>((_, reject) => {
+        timer = setTimeout(() => reject(new Error("ai_provider_timeout")), timeoutMs);
+      })
+    ]);
+  } finally {
+    if (timer) clearTimeout(timer);
+  }
 }

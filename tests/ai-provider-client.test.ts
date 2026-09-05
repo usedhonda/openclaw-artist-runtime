@@ -93,7 +93,10 @@ describe("ai provider client", () => {
         waitForRun: vi.fn(async () => ({ status: "ok" as const })),
         getSessionMessages: vi.fn(async () => ({ messages: [
           { role: "user", content: "ignored" },
-          { role: "assistant", content: [{ type: "text", text: "artistName: Native" }] }
+          { role: "assistant", content: [
+            { type: "thinking", text: "secret reasoning" },
+            { type: "text", text: "artistName: Native" }
+          ] }
         ] }))
       }
     };
@@ -104,6 +107,19 @@ describe("ai provider client", () => {
       message: "draft", disableTools: true, promptMode: "minimal", lightContext: true, deliver: false
     }));
     expect(fetchImpl).not.toHaveBeenCalled();
+  });
+
+  it("bounds a native run that never settles and classifies it as a timeout", async () => {
+    const runtime = {
+      subagent: {
+        run: vi.fn(() => new Promise<never>(() => undefined)),
+        waitForRun: vi.fn(),
+        getSessionMessages: vi.fn()
+      }
+    };
+
+    await expect(callAiProvider("draft", { provider: "openai-codex", runtime, timeoutMs: 5 })).resolves.toContain("timeout");
+    expect(runtime.subagent.waitForRun).not.toHaveBeenCalled();
   });
 
   it("does not fall back to legacy auth when the host runtime fails", async () => {

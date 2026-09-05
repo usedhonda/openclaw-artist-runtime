@@ -444,10 +444,15 @@ export async function callAiProvider(prompt: string, options: AiProviderCallOpti
     try {
       const result = await callOpenClawAiRuntime(runtime, prompt, options.timeoutMs ?? 120000);
       return result ?? mockResponse(prompt, "Mock provider fallback (native runtime failed)");
-    } catch {
+    } catch (error) {
       // Native runtime failures are fail-closed. Never fall back to legacy auth
       // files after the host has offered its public runtime.
-      return mockResponse(prompt, "Mock provider fallback (native runtime failed)");
+      return mockResponse(
+        prompt,
+        error instanceof Error && error.message === "ai_provider_timeout"
+          ? "Mock provider fallback (timeout)"
+          : "Mock provider fallback (native runtime failed)"
+      );
     }
   }
   const auth = await resolveCodexAuth(options);
