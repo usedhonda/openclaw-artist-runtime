@@ -294,6 +294,20 @@ section 6, "Boot"). The Suno browser worker starts only from an explicit
 operator action. Do not add a browser launch to the launcher script or to
 any unit here.
 
+### No systemd / cron available (containers)
+
+On a Linux host where PID 1 is not systemd and cron is not available (for
+example, a container), `scripts/linux/gateway-healthcheck.sh` still needs
+something to run it on a schedule. `scripts/linux/gateway-healthcheck-loop.sh`
+covers that case: `start` detaches a singleton background loop (pid file plus
+a `setsid` detach, mirroring `scripts/openclaw-local-gateway`) that runs the
+healthcheck every `HEALTHCHECK_INTERVAL_SEC` seconds (default 300) and logs
+to `${OPENCLAW_LOCAL_LOGS}/healthcheck.log`; `status` reports the pid, whether
+it's alive, and the last log line; `stop` terminates it; `run-once` runs a
+single healthcheck in the foreground for debugging. Prefer the systemd timer
+above when systemd `--user` is available — this loop is the fallback for when
+it is not.
+
 ## Applying a code change to the running gateway
 
 The gateway runs the compiled `dist/`. Node does **not** hot-reload, so after a

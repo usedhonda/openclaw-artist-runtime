@@ -6,13 +6,34 @@ import { spawn, spawnSync } from "node:child_process";
 import { afterEach, describe, expect, it } from "vitest";
 
 const healthcheckScript = resolve("scripts/linux/gateway-healthcheck.sh");
+const healthcheckLoopScript = resolve("scripts/linux/gateway-healthcheck-loop.sh");
 
 let activeServer: Server | undefined;
+let activeLoopPid: number | undefined;
+
+function isPidAlive(pid: number): boolean {
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch {
+    return false;
+  }
+}
 
 afterEach(async () => {
   if (activeServer) {
     await new Promise<void>((res) => activeServer!.close(() => res()));
     activeServer = undefined;
+  }
+  // Safety net: if a loop-related assertion throws before the test's own
+  // "stop" call runs, don't leak a detached background process.
+  if (activeLoopPid !== undefined && isPidAlive(activeLoopPid)) {
+    try {
+      process.kill(activeLoopPid, "SIGKILL");
+    } catch {
+      // already gone
+    }
+    activeLoopPid = undefined;
   }
 });
 
@@ -162,5 +183,97 @@ describe("gateway-healthcheck.sh", () => {
     expect(recovered.status).toBe(0);
     notifyContents = await readFile(notifyLog, "utf8").catch(() => "");
     expect(notifyContents).toContain("gateway healthcheck recovered");
+  });
+});
+
+describe("scripts/linux/gateway-healthcheck-loop.sh syntax", () => {
+  it("passes bash -n syntax checking", () => {
+    const result = spawnSync("bash", ["-n", healthcheckLoopScript], { encoding: "utf8" });
+    expect(result.status, result.stderr).toBe(0);
+  });
+});
+
+describe("gateway-healthcheck-loop.sh", () => {
+  it("starts a singleton detached loop, refuses a second start, and stops cleanly", async () => {
+    const workspace = await mkdtemp(join(tmpdir(), "artist-runtime-healthcheck-loop-"));
+    await writeHeartbeat(workspace, 1_000);
+    const gatewayUrl = await startStubServer(200);
+    const logDir = join(workspace, "logs");
+    const pidFile = join(logDir, "healthcheck-loop.pid");
+
+    const env = {
+      ...process.env,
+      GATEWAY_URL: gatewayUrl,
+      WORKSPACE_ROOT: workspace,
+      STATE_FILE: join(workspace, "runtime", "healthcheck-state.json"),
+      HEALTHCHECK_LOOP_LOG_DIR: logDir,
+      HEALTHCHECK_INTERVAL_SEC: "1"
+    };
+
+    const start = spawnSync("bash", [healthcheckLoopScript, "start"], { env, encoding: "utf8" });
+    expect(start.status, start.stderr).toBe(0);
+
+    const pid = Number((await readFile(pidFile, "utf8")).trim());
+    expect(Number.isInteger(pid) && pid > 0).toBe(true);
+    activeLoopPid = pid;
+    expect(isPidAlive(pid)).toBe(true);
+
+    const statusAfterStart = spawnSync("bash", [healthcheckLoopScript, "status"], { env, encoding: "utf8" });
+    expect(statusAfterStart.status).toBe(0);
+    expect(statusAfterStart.stdout).toContain(`pid=${pid}`);
+    expect(statusAfterStart.stdout).toContain("alive=true");
+
+    // Second start must refuse to spawn a competing instance.
+    const secondStart = spawnSync("bash", [healthcheckLoopScript, "start"], { env, encoding: "utf8" });
+    expect(secondStart.status).toBe(0);
+    expect(secondStart.stderr).toContain("already running");
+    const pidAfterSecondStart = (await readFile(pidFile, "utf8")).trim();
+    expect(pidAfterSecondStart).toBe(String(pid));
+
+    // Let at least one interval tick land in the log before stopping.
+    await new Promise((res) => setTimeout(res, 1_500));
+    const logContents = await readFile(join(logDir, "healthcheck.log"), "utf8");
+    expect(logContents).toMatch(/\] (ok|fail) /);
+
+    const stop = spawnSync("bash", [healthcheckLoopScript, "stop"], { env, encoding: "utf8" });
+    expect(stop.status, stop.stderr).toBe(0);
+    activeLoopPid = undefined;
+    expect(isPidAlive(pid)).toBe(false);
+
+    const statusAfterStop = spawnSync("bash", [healthcheckLoopScript, "status"], { env, encoding: "utf8" });
+    expect(statusAfterStop.stdout).toContain("pid=stopped");
+    expect(statusAfterStop.stdout).toContain("alive=false");
+  }, 15_000);
+
+  it("runs one healthcheck in the foreground for run-once", async () => {
+    const workspace = await mkdtemp(join(tmpdir(), "artist-runtime-healthcheck-loop-"));
+    await writeHeartbeat(workspace, 1_000);
+    const gatewayUrl = await startStubServer(200);
+    const stateFile = join(workspace, "runtime", "healthcheck-state.json");
+
+    // Async spawn, not spawnSync: run-once shells out to curl against the
+    // stub server living in this same process, and spawnSync would freeze
+    // this process's event loop while curl waits on it (see the
+    // runHealthcheck comment above).
+    const result = await new Promise<{ status: number | null; stdout: string }>((resolvePromise, reject) => {
+      const child = spawn("bash", [healthcheckLoopScript, "run-once"], {
+        env: {
+          ...process.env,
+          GATEWAY_URL: gatewayUrl,
+          WORKSPACE_ROOT: workspace,
+          STATE_FILE: stateFile,
+          HEALTHCHECK_LOOP_LOG_DIR: join(workspace, "logs")
+        }
+      });
+      let stdout = "";
+      child.stdout.on("data", (chunk) => { stdout += chunk; });
+      child.on("error", reject);
+      child.on("close", (status) => resolvePromise({ status, stdout }));
+    });
+
+    expect(result.status).toBe(0);
+    expect(result.stdout).toContain("] ok ");
+    const state = await readState(stateFile);
+    expect(state.ok).toBe(true);
   });
 });
