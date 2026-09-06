@@ -8,6 +8,7 @@ import { ArtistAutopilotService, writeAutopilotRunState, isDegradedLyricsBoxReas
 import type { AutopilotRunState } from "../src/types";
 import { getRuntimeEventBus, type RuntimeEvent } from "../src/services/runtimeEventBus";
 import { importSunoResults, readLatestSunoRun } from "../src/services/sunoRuns";
+import { HUMAN_ASSIST_FEED_UNAVAILABLE_REASON } from "../src/services/sunoHumanAssist";
 
 const completeBrief = [
   "# Brief",
@@ -216,6 +217,41 @@ describe("autopilot Suno generate stage", () => {
     expect(state.retryCount).toBe(0);
     expect(events.some((event) => event.type === "suno_hard_stop")).toBe(false);
     expect(events.some((event) => event.type === "suno_generate_retry" && event.reason === "suno_human_assist_timeout")).toBe(true);
+  });
+
+  it("parks on the first occurrence when the feed cannot confirm the take -- never re-enters suno_generation, the exact credit-spend loop this reason exists to stop", async () => {
+    const root = mkdtempSync(join(tmpdir(), "artist-runtime-autopilot-feed-unavailable-"));
+    await ensureArtistWorkspace(root);
+    const song = await ensureSongState(root, "feed-unavailable-song", "Feed Unavailable Song");
+    const base: AutopilotRunState = {
+      runId: "feed-unavailable-song",
+      currentSongId: "feed-unavailable-song",
+      stage: "suno_generation",
+      paused: false,
+      retryCount: 0,
+      cycleCount: 0,
+      updatedAt: new Date().toISOString()
+    };
+    const events: RuntimeEvent[] = [];
+    const unsubscribe = getRuntimeEventBus().subscribe((event) => events.push(event));
+
+    const state = await handleSunoGenerateFailure(root, base, base, song, HUMAN_ASSIST_FEED_UNAVAILABLE_REASON);
+
+    unsubscribe();
+    expect(state.stage).toBe("planning");
+    expect(state.currentSongId).toBeUndefined();
+    expect(state.paused).toBeFalsy();
+    expect(state.hardStopReason).toBeFalsy();
+    expect(state.retryCount).toBe(0);
+    expect(await readSongState(root, "feed-unavailable-song")).toMatchObject({
+      status: "failed",
+      lastReason: expect.stringContaining("parked_needs_operator:")
+    });
+    expect(events.some((event) => event.type === "suno_hard_stop")).toBe(false);
+    expect(events.some((event) => event.type === "suno_generate_retry")).toBe(false);
+    const notices = events.filter((event) => event.type === "suno_generate_failed");
+    expect(notices).toHaveLength(1);
+    expect(notices[0]).toMatchObject({ reason: expect.stringContaining(HUMAN_ASSIST_FEED_UNAVAILABLE_REASON) });
   });
 
   it("recognizes a transient degraded lyrics-box reason regardless of stage prefix", () => {

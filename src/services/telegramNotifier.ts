@@ -13,6 +13,7 @@ import { composePlanningSkeletonVoice } from "./planningSkeletonVoiceComposer.js
 import { buttonVoiceLabels } from "./buttonVoiceLabels.js";
 import { summarizeLyricsDegradedReason } from "./lyricsDegradedSummary.js";
 import { summarizeStopReason } from "./producerStopReason.js";
+import { HUMAN_ASSIST_FEED_UNAVAILABLE_REASON } from "./sunoHumanAssist.js";
 import { access, readdir, readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { buildCascadeTrace } from "./cascadeTrace.js";
@@ -1746,6 +1747,15 @@ async function formatRuntimeEventRaw(
         event.retryCount
       );
     case "suno_generate_failed":
+      if (event.reason.includes(HUMAN_ASSIST_FEED_UNAVAILABLE_REASON)) {
+        return [
+          "Suno 生成は止めたけど、Suno 側には既にテイクが出来ている可能性がある。",
+          "",
+          TELEGRAM_SECTION_DIVIDER,
+          `song: ${event.songId}`,
+          "次: /api/songs/:songId/attach-takes でフィード確認済みの URL を直接紐付けられる。見当たらなければ /suno retry-prompt-pack でやり直すか、/song abandon で諦める。"
+        ].join("\n");
+      }
       return stoppedFailureReport(
         "Suno 生成は失敗で止めた。勝手に進めない。",
         event.songId,

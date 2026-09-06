@@ -108,6 +108,23 @@ describe("blocked runtime events Telegram delivery", () => {
     expect(texts.join("\n")).toContain("─────");
   });
 
+  it("points the operator at attach-takes when a suno_generate_failed park is caused by an unconfirmable feed", async () => {
+    const feedUnavailablePark: RuntimeEvent = {
+      type: "suno_generate_failed",
+      songId: "song-026",
+      reason: "parked_needs_operator: suno_human_assist_feed_unavailable",
+      retryCount: 1,
+      timestamp: 1
+    };
+    const text = await formatRuntimeEvent(feedUnavailablePark);
+    expect(text).toContain("既にテイクが出来ている可能性がある");
+    expect(text).toContain("attach-takes");
+    expect(text).toContain("song-026");
+    // The generic stopped-failure template (with its retry-count line) must NOT
+    // also render -- this is a distinct notice, not a decoration on top of it.
+    expect(text).not.toContain("再試行:");
+  });
+
   it("sends P4a producer-actionable events and mints buttons where supported", async () => {
     const lyricsEvent: RuntimeEvent = {
       type: "lyrics_generation_degraded",

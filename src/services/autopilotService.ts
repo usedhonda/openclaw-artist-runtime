@@ -28,7 +28,7 @@ import {
   type SunoTakeUrlReadiness
 } from "./sunoTakeUrls.js";
 import { classifySunoGenerateFailure, nextSunoRetryDecision } from "./sunoRetryHandler.js";
-import { HUMAN_ASSIST_TIMEOUT_REASON } from "./sunoHumanAssist.js";
+import { HUMAN_ASSIST_TIMEOUT_REASON, HUMAN_ASSIST_FEED_UNAVAILABLE_REASON } from "./sunoHumanAssist.js";
 import { PLAYWRIGHT_LYRICS_BOX_DEGRADED_REASON } from "./sunoPlaywrightDriver.js";
 import { collectObservations, type XObservationContext } from "./xObservationCollector.js";
 import { collectNewsObservations } from "./newsObservationCollector.js";
@@ -1279,6 +1279,42 @@ export async function handleSunoGenerateFailure(
       lastError: reason,
       lastRunAt: new Date().toISOString(),
       retryCount: 0,
+      cycleCount: existing.cycleCount + 1
+    });
+  }
+  if (reason === HUMAN_ASSIST_FEED_UNAVAILABLE_REASON) {
+    // The feed could never confirm whether the manual/machine submit produced real
+    // takes (expired/unreachable suno-cli session). Unlike HUMAN_ASSIST_TIMEOUT_REASON
+    // this must NOT re-enter suno_generation: a genuine take may already exist on
+    // Suno, so a blind re-create risks spending real credit for a duplicate
+    // generation of a song that is already done. Park on the FIRST occurrence (not
+    // the generic 3-strike below) using the shared parked_needs_operator: convention
+    // so retry-prompt-pack / attach-takes / abandon remain the operator's exits, and
+    // notify with take-specific guidance instead of the generic stopped-report text.
+    // Not a hard stop: this is an infra/network condition, not the login/captcha/
+    // payment class that composeDraftBoxNextAction and suno_hard_stop are reserved for.
+    const parkedReason = `parked_needs_operator: ${reason}`;
+    emitRuntimeEvent({
+      type: "suno_generate_failed",
+      songId: song.songId,
+      reason: parkedReason,
+      retryCount,
+      timestamp: Date.now()
+    });
+    await updateSongState(root, song.songId, {
+      status: "failed",
+      reason: parkedReason
+    });
+    return writeStageState(root, existing, {
+      ...baseState,
+      currentSongId: undefined,
+      stage: "planning",
+      paused: false,
+      pausedReason: undefined,
+      blockedReason: undefined,
+      lastError: undefined,
+      retryCount: 0,
+      suspendedAt: undefined,
       cycleCount: existing.cycleCount + 1
     });
   }
