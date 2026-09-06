@@ -27,6 +27,31 @@ today rather than the prior Mac-only assumptions.
 - CAPTCHA automation or login-challenge automation
 
 ## Current state
+
+Checkpoint 2026-09-07 (whole-system audit on the Linux host):
+
+- Scheduled autopilot ticks ignored config overrides changed after boot (the
+  ticker pinned the boot-time snapshot as the tick payload). Fixed in
+  `src/services/autopilotTicker.ts` (`scheduledBaseConfig`); the host's `dist`
+  is rebuilt and the fix takes effect at the next gateway restart. Until then
+  the ticker watcher's safe tick drives cycles.
+- The launcher derived in-host HTTP/WS URLs from the tailnet address even when
+  the gateway is bound to loopback, so the ticker watcher's safe tick and the
+  status connectivity probe always hit a closed port. Fixed in
+  `scripts/openclaw-local-env.sh`.
+- Out-of-band watcher restarts need the gateway's safe-tick token; without a
+  fixed `OPENCLAW_SAFE_TICK_TRIGGER_TOKEN` in the machine-local env the launcher
+  generates a fresh random one per shell. A fixed token is now set on the host
+  (applies at the next restart). Before that restart, kill the manually started
+  watcher so the supervisor's own watcher is the only one.
+- Open: the Producer Console is reachable only on loopback on the host. Moving
+  to a tailnet bind with token auth needs a gateway restart, which must wait for
+  the outstanding human-assist Create window to close (marker
+  `runtime/suno/human-assist-pending.json`).
+- Open: the plugin's `llm.complete` path did not fall back when the primary
+  model returned HTTP 429; the operator temporarily switched the primary model
+  by hand. Verify OpenClaw fallback behavior on that path before relying on it.
+
 Several parallel lanes landed fixes toward Linux parity:
 
 - The Mac-only gateway posture is retired; Linux is now a first-class host.
