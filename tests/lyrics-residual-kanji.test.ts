@@ -156,4 +156,54 @@ describe("residual kanji lyrics lint", () => {
     expect(registrationLyrics).toContain("たんか");
     expect(registrationLyrics).toContain("ぎょうかい");
   });
+
+  it("normalizes the 24-word vocabulary expansion (2026-09) without residual kanji", () => {
+    const registrationLyrics = normalizeSunoRegistrationJapanese([
+      "暖簾と二毛作",
+      "儀式化した相槌",
+      "更衣室と仮囲い",
+      "跡地の三面張り",
+      "完済と転売",
+      "殴り合うひとが占拠する",
+      "継続率と維持率",
+      "均一な温度差",
+      "上層階の案内板",
+      "駐車枠と遠征費",
+      "誘導と審査",
+      "既読のまま縮む"
+    ].join("\n"));
+
+    expect(lintResidualKanji(registrationLyrics)).toEqual([]);
+    expect(registrationLyrics).toContain("のれん");
+    expect(registrationLyrics).toContain("にもうさく");
+    expect(registrationLyrics).toContain("ぎしきか");
+    expect(registrationLyrics).toContain("あいづち");
+    expect(registrationLyrics).toContain("こういしつ");
+    expect(registrationLyrics).toContain("かりがこい");
+    expect(registrationLyrics).toContain("あとち");
+    expect(registrationLyrics).toContain("さんめんばり");
+    expect(registrationLyrics).toContain("かんさい");
+    expect(registrationLyrics).toContain("てんばい");
+    expect(registrationLyrics).toContain("なぐりあう");
+    expect(registrationLyrics).toContain("せんきょ");
+    expect(registrationLyrics).toContain("けいぞくりつ");
+    expect(registrationLyrics).toContain("いじりつ");
+    expect(registrationLyrics).toContain("きんいつ");
+    expect(registrationLyrics).toContain("おんどさ");
+    expect(registrationLyrics).toContain("じょうそうかい");
+    expect(registrationLyrics).toContain("あんないばん");
+    expect(registrationLyrics).toContain("ちゅうしゃわく");
+    expect(registrationLyrics).toContain("えんせいひ");
+    expect(registrationLyrics).toContain("ゆうどう");
+    expect(registrationLyrics).toContain("しんさ");
+    expect(registrationLyrics).toContain("きどく");
+    expect(registrationLyrics).toContain("ちぢむ");
+  });
+
+  it("keeps compound readings intact for the new vocabulary instead of partially converting (三面張り, 継続率, 転売)", () => {
+    expect(normalizeSunoRegistrationJapanese("三面張りのかわ")).toBe("さんめんばりのかわ");
+    expect(normalizeSunoRegistrationJapanese("継続率がたかい")).toBe("けいぞくりつがたかい");
+    // 転売 must not degrade into "転" + the pre-existing single-kanji "売" -> "うり" mapping
+    expect(normalizeSunoRegistrationJapanese("転売のうわさ")).toBe("てんばいのうわさ");
+  });
 });
