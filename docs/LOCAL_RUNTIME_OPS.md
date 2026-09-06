@@ -319,6 +319,14 @@ single healthcheck in the foreground for debugging. Prefer the systemd timer
 above when systemd `--user` is available — this loop is the fallback for when
 it is not.
 
+After a container restart nothing starts on its own on such a host (there is
+no init hook for user processes). The operator runbook is two commands from
+the repository root: `scripts/openclaw-local-gateway start` and then
+`scripts/linux/gateway-healthcheck-loop.sh start`. An external probe (a cron
+job on another machine that runs `gateway-healthcheck-loop.sh run-once` over
+SSH and notifies on failure) is what detects the outage in the first place;
+the in-container loop dies with the container.
+
 ## Applying a code change to the running gateway
 
 The gateway runs the compiled `dist/`. Node does **not** hot-reload, so after a
