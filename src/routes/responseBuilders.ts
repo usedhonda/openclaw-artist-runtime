@@ -42,6 +42,7 @@ import { STATUS_SUNO_ARTIFACT_LIMIT } from "../services/sunoArtifacts.js";
 import { SunoBudgetTracker } from "../services/sunoBudget.js";
 import { readLatestPromptPackMetadata } from "../services/sunoPromptPackFiles.js";
 import { buildSunoArtifactIndex, readAllSunoRuns, readLatestSunoRun } from "../services/sunoRuns.js";
+import { readSunoCliSessionStatus } from "../services/sunoCliSessionStatus.js";
 import { workerImportOutcomeFromSong } from "../services/sunoBrowserWorker.js";
 import { readTakeHistory } from "../services/takeSelection.js";
 import { routeTelegramCallback } from "../services/telegramCallbackHandler.js";
@@ -1336,7 +1337,8 @@ export async function buildStatusResponse(config?: Partial<ArtistRuntimeConfig>)
         stale: sunoWorker.sunoProfileStale,
         detail: sunoWorker.sunoProfileDetail,
         checkedAt: sunoWorker.sunoProfileCheckedAt
-      }
+      },
+      cliSession: await readSunoCliSessionStatus(mergedConfig.artist.workspaceRoot)
     },
     sunoWorker,
     distributionWorker,

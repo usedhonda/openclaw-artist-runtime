@@ -72,7 +72,8 @@ const TELEGRAM_SIGNAL_EVENT_TYPES: ReadonlySet<RuntimeEvent["type"]> = new Set([
   "suno_generate_failed",
   "suno_human_assist_requested",
   "autopilot_auto_paused",
-  "creative_monotony_warning"
+  "creative_monotony_warning",
+  "suno_cli_session_expired"
 ]);
 
 const HARD_STOP_REASON_PATTERNS: Array<{ category: string; pattern: RegExp; message: string }> = [
@@ -1945,6 +1946,16 @@ async function formatRuntimeEventRaw(
       ].join("\n");
     case "persona_contract_degraded":
       return `Persona contract degraded: ${event.degraded.join(", ")} — ${event.detail}`;
+    case "suno_cli_session_expired":
+      return [
+        "⚠️ Suno のログインセッションが切れてるみたい。",
+        "",
+        TELEGRAM_SECTION_DIVIDER,
+        `理由: ${summarizeStopReason(event.reason)}`,
+        "次: Suno に再ログインしてから /resume すると曲作りが続く。"
+      ].join("\n");
+    case "suno_take_attached_by_operator":
+      return `Suno take attached by operator: ${event.songId} (${event.urls.length} url(s)) — ${event.reason}`;
     case "error":
       if (event.source === "telegram_manual_song_create") {
         return [

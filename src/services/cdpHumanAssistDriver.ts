@@ -14,7 +14,8 @@ import {
   resolveFirstVisibleLocator,
   waitForSunoCreateFormReady
 } from "./sunoCreateForm.js";
-import { fetchSunoFeedClips, selectFreshFeedTakeUrls } from "./sunoFeedHarvest.js";
+import { fetchSunoFeedClips, reconcileFeedTakes, type FeedReconcileResult } from "./sunoFeedHarvest.js";
+import { checkSunoCliSessionStatus } from "./sunoCliSessionStatus.js";
 import { emitRuntimeEvent } from "./runtimeEventBus.js";
 import type {
   HumanAssistBrowserDriver,
@@ -59,10 +60,6 @@ const FORM_READY_TIMEOUT_MS = 25_000;
 const CLICK_TIMEOUT_MS = 25_000;
 const POST_CLICK_SETTLE_MS = 6_000;
 const POLL_INTERVAL_MS = 3_000;
-// The feed reflects a fresh generate a few seconds after submit (observed ~9s on-device),
-// so give it a short bounded poll before falling back to the DOM harvest.
-const FEED_RECONCILE_ATTEMPTS = 5;
-const FEED_RECONCILE_INTERVAL_MS = 3_000;
 const INFORMATIONAL_DIALOG_CLOSE_TIMEOUT_MS = 5_000;
 const DIALOG_SELECTOR = '[role="dialog"]';
 const DIALOG_CLOSE_SELECTOR = 'button[aria-label="Close"]';
@@ -114,6 +111,9 @@ export interface CdpHumanAssistDriverInput {
   // Path to the suno-cli session.json used to mint the Clerk JWT for the network-primary
   // feed harvest. When omitted (tests, or no workspace root), harvest stays DOM-only.
   sessionFile?: string;
+  // Workspace root, used only to persist the cli-session validity precheck for
+  // /api/status diagnostics. Omitted (tests, no workspace) skips the precheck.
+  workspaceRoot?: string;
 }
 
 export interface SunoSessionCookie {
@@ -191,6 +191,14 @@ export class CdpHumanAssistDriver implements HumanAssistBrowserDriver {
   }
 
   async openAndFill(): Promise<void> {
+    // Best-effort precheck: record whether the suno-cli session can still reach Suno's
+    // feed BEFORE opening the create form. This only feeds diagnostics (/api/status
+    // `suno.cliSession`) and the once-per-hour operator notice -- it never blocks or
+    // alters the create attempt itself. The actual accept/reject gate is the live feed
+    // check inside reconcileTakesFromFeed below, which is independent of this cache.
+    if (this.input.sessionFile && this.input.workspaceRoot) {
+      await checkSunoCliSessionStatus(this.input.workspaceRoot, this.input.sessionFile).catch(() => undefined);
+    }
     const { context } = await this.service.ensureRunning(this.input.config);
     const existing = context.pages().find((page) => {
       try {
@@ -288,7 +296,7 @@ export class CdpHumanAssistDriver implements HumanAssistBrowserDriver {
     }
     const fresh = await this.freshTakeUrls();
     if (fresh.length > 0) {
-      return { kind: "accepted", urls: await this.reconcileTakesFromFeed(fresh) };
+      return this.submitOutcomeFromReconcile(fresh);
     }
     // No captcha visible and no new take yet: give Suno a brief settle window before
     // deciding, then treat a lingering captcha as a challenge, otherwise fall back to
@@ -299,9 +307,22 @@ export class CdpHumanAssistDriver implements HumanAssistBrowserDriver {
     }
     const settled = await this.freshTakeUrls();
     if (settled.length > 0) {
-      return { kind: "accepted", urls: await this.reconcileTakesFromFeed(settled) };
+      return this.submitOutcomeFromReconcile(settled);
     }
     return { kind: "captcha_challenge" };
+  }
+
+  /**
+   * Turn a DOM-fresh take detection into a submit outcome via feed reconciliation.
+   * "unavailable" (the feed was never reached) must NOT become an accepted result --
+   * see reconcileFeedTakes / HUMAN_ASSIST_FEED_UNAVAILABLE_REASON.
+   */
+  private async submitOutcomeFromReconcile(freshDomUrls: string[]): Promise<HumanAssistSubmitOutcome> {
+    const reconciled = await this.reconcileTakesFromFeed(freshDomUrls);
+    if (reconciled.status === "unavailable") {
+      return { kind: "feed_unavailable" };
+    }
+    return { kind: "accepted", urls: reconciled.urls };
   }
 
   async closeChallengeOverlay(): Promise<void> {
@@ -330,7 +351,11 @@ export class CdpHumanAssistDriver implements HumanAssistBrowserDriver {
       // freshTakeUrls, so this never accepts unrelated existing songs.
       const fresh = await this.freshTakeUrls().catch(() => [] as string[]);
       if (fresh.length > 0) {
-        return { kind: "accepted", urls: await this.reconcileTakesFromFeed(fresh) };
+        const reconciled = await this.reconcileTakesFromFeed(fresh);
+        if (reconciled.status === "unavailable") {
+          return { kind: "feed_unavailable" };
+        }
+        return { kind: "accepted", urls: reconciled.urls };
       }
       await sleep(POLL_INTERVAL_MS);
     }
@@ -449,40 +474,37 @@ export class CdpHumanAssistDriver implements HumanAssistBrowserDriver {
    * Network-primary take reconciliation. Once the DOM signals a fresh take appeared (fast
    * "generation started" signal), poll the authenticated feed for the clips this create
    * actually produced — exact title, created at/after submit, not in the pre-submit
-   * baseline. Feed URLs are authoritative and immune to the create-page cross-card bleed;
-   * the DOM-harvested URLs are used only when the feed yields nothing (unavailable, or an
-   * over-count anomaly).
+   * baseline. Feed URLs are authoritative and immune to the create-page cross-card bleed.
+   * The DOM-harvested URLs are used ONLY when the feed was reachable but genuinely found
+   * no match (pre-existing behaviour); when the feed could never be reached at all, the
+   * caller must treat this as "unavailable", not as a silent DOM-trusting success --
+   * see reconcileFeedTakes.
    */
-  private async reconcileTakesFromFeed(domUrls: string[]): Promise<string[]> {
-    const sessionFile = this.input.sessionFile;
-    if (!sessionFile) {
-      return domUrls;
-    }
-    for (let attempt = 0; attempt < FEED_RECONCILE_ATTEMPTS; attempt += 1) {
-      const clips = await fetchSunoFeedClips({ sessionFile }).catch(() => []);
-      const { urls, overCount } = selectFreshFeedTakeUrls({
-        clips,
-        title: this.expectedTitle(),
-        sinceMs: this.submitAtMs,
-        baselineIds: this.baselineFeedIds,
-        expectedCount: SUNO_EXPECTED_TAKE_COUNT
-      });
-      if (urls.length > 0) {
-        console.log(`[suno-feed] harvest_used song="${this.expectedTitle()}" takes=${urls.length}`);
-        return urls;
-      }
-      if (overCount) {
+  private async reconcileTakesFromFeed(domUrls: string[]): Promise<FeedReconcileResult> {
+    const title = this.expectedTitle();
+    const result = await reconcileFeedTakes({
+      domUrls,
+      sessionFile: this.input.sessionFile,
+      title,
+      sinceMs: this.submitAtMs,
+      baselineIds: this.baselineFeedIds,
+      expectedCount: SUNO_EXPECTED_TAKE_COUNT,
+      onOverCount: () => {
         emitRuntimeEvent({
           type: "error",
           source: "suno_human_assist",
-          reason: `feed_take_over_expected: fresh feed clips for "${this.expectedTitle()}" exceed expected ${SUNO_EXPECTED_TAKE_COUNT}; falling back to DOM harvest`,
+          reason: `feed_take_over_expected: fresh feed clips for "${title}" exceed expected ${SUNO_EXPECTED_TAKE_COUNT}; falling back to DOM harvest`,
           timestamp: Date.now()
         });
-        break;
       }
-      await sleep(FEED_RECONCILE_INTERVAL_MS);
+    });
+    if (result.status === "matched") {
+      console.log(`[suno-feed] harvest_used song="${title}" takes=${result.urls.length}`);
+    } else if (result.status === "unavailable") {
+      console.log(`[suno-feed] harvest_unavailable song="${title}"`);
+    } else {
+      console.log(`[suno-feed] harvest_fallback_dom song="${title}" domTakes=${result.urls.length}`);
     }
-    console.log(`[suno-feed] harvest_fallback_dom song="${this.expectedTitle()}" domTakes=${domUrls.length}`);
-    return domUrls;
+    return result;
   }
 }

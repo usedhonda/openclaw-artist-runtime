@@ -384,6 +384,58 @@ export async function generateSunoRun(input: GenerateSunoRunInput): Promise<Suno
   return record;
 }
 
+export interface AppendOperatorAttachedSunoRunInput {
+  workspaceRoot: string;
+  songId: string;
+  urls: string[];
+  reason: string;
+  config?: Partial<ArtistRuntimeConfig>;
+}
+
+/**
+ * Record an operator-attached take URL set as an accepted Suno run, mirroring the
+ * record shape and song-state transition generateSunoRun writes for a
+ * connector-accepted create (same run fields, same selectedTakeId/appendPublicLinks/
+ * runCountDelta on updateSongState) -- used by the attach-takes recovery route when a
+ * manual Suno create genuinely produced takes but the automated pipeline could not
+ * confirm and record them (e.g. an unavailable feed rejected a real create).
+ */
+export async function appendOperatorAttachedSunoRun(
+  input: AppendOperatorAttachedSunoRunInput
+): Promise<SunoRunRecord> {
+  const config = applyRuntimeEnvOverrides(applyConfigDefaults(input.config));
+  const createdAt = new Date().toISOString();
+  const newRunId = runId("operator_attach");
+  const authorityDecision: AuthorityDecision = {
+    allowed: true,
+    reason: `operator attach: ${input.reason}`,
+    policyDecision: "operator_attach_takes"
+  };
+  const record: SunoRunRecord = {
+    runId: newRunId,
+    songId: input.songId,
+    createdAt,
+    mode: config.music.suno.connectionMode,
+    authorityDecision,
+    payloadHash: hashPayload({ urls: input.urls, reason: input.reason }),
+    status: "accepted",
+    dryRun: false,
+    urls: input.urls
+  };
+
+  await appendJsonl(getRunsPath(input.workspaceRoot, input.songId), record);
+  const firstTakeUrl = input.urls.find(Boolean);
+  await updateSongState(input.workspaceRoot, input.songId, {
+    status: "suno_take_url_ready",
+    reason: "Operator attached feed-verified takes",
+    selectedTakeId: firstTakeUrl ? extractSunoTakeId(firstTakeUrl) ?? firstTakeUrl : undefined,
+    appendPublicLinks: input.urls,
+    runCountDelta: 1
+  });
+
+  return record;
+}
+
 export async function importSunoResults(input: ImportSunoResultsInput): Promise<SunoRunRecord> {
   const config = applyRuntimeEnvOverrides(applyConfigDefaults(input.config));
   const importedAt = new Date().toISOString();

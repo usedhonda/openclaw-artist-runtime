@@ -26,7 +26,7 @@ vi.mock("../src/services/cdpHumanAssistDriver", () => ({
     async close(): Promise<void> {}
   }
 }));
-import { HUMAN_ASSIST_TIMEOUT_REASON, type HumanAssistBrowserDriver } from "../src/services/sunoHumanAssist";
+import { HUMAN_ASSIST_TIMEOUT_REASON, HUMAN_ASSIST_FEED_UNAVAILABLE_REASON, type HumanAssistBrowserDriver } from "../src/services/sunoHumanAssist";
 import { getRuntimeEventBus, type RuntimeEvent } from "../src/services/runtimeEventBus";
 import type { SunoConnector } from "../src/connectors/suno/SunoConnector";
 import type { SunoCreateRequest, SunoCreateResult, SunoWorkerStatus } from "../src/types";
@@ -172,6 +172,33 @@ describe("HumanAssistSunoConnector", () => {
     expect(result.accepted).toBe(false);
     expect(result.reason).toBe(HUMAN_ASSIST_TIMEOUT_REASON);
     expect(result.urls).toEqual([]);
+  });
+
+  it("surfaces the feed-unavailable reason distinctly from cross-song-rejected and never runs filterCrossSongTakeUrls", async () => {
+    const { connector } = innerReturning({ accepted: false, runId: "run-1", reason: CLI_BLOCKED_CAPTCHA_REASON, urls: [] });
+    const feedUnavailableDriver: HumanAssistBrowserDriver = {
+      openAndFill: async () => undefined,
+      attemptMachineSubmit: async () => ({ kind: "feed_unavailable" }),
+      closeChallengeOverlay: async () => undefined,
+      bringToFront: async () => undefined,
+      waitForHumanSubmit: async () => ({ kind: "timeout" }),
+      close: async () => undefined
+    };
+    const filterCrossSongTakeUrls = vi.fn(async (_songId: string, urls: string[]) => urls);
+    const decorated = new HumanAssistSunoConnector(connector, {
+      timeoutMs: 1000,
+      driverFactory: () => feedUnavailableDriver,
+      notifier: notifierSpy,
+      filterCrossSongTakeUrls
+    });
+
+    const result = await decorated.create(request);
+
+    expect(result.accepted).toBe(false);
+    expect(result.reason).toBe(HUMAN_ASSIST_FEED_UNAVAILABLE_REASON);
+    expect(result.reason).not.toBe(HUMAN_ASSIST_CROSS_SONG_REJECTED_REASON);
+    expect(result.urls).toEqual([]);
+    expect(filterCrossSongTakeUrls).not.toHaveBeenCalled();
   });
 
   it("rejects (does not accept) when every harvested take URL belongs to another song", async () => {

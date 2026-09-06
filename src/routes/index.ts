@@ -18,6 +18,7 @@ import { buildSongbookLookup, syncSongbookFromITunes } from "../services/songboo
 import { selectTake } from "../services/takeSelection.js";
 import { retryParkedSongPromptPack } from "../services/retryPromptPackService.js";
 import { abandonSong } from "../services/abandonSongService.js";
+import { attachSunoTakes } from "../services/attachSunoTakesService.js";
 import { exportWindowFromPayload, payloadPathSegments, payloadRecord, payloadRequestMethod, payloadRequestPath, platformFromSegment, sunoDiagnosticsDaysFromPayload } from "./payloadHelpers.js";
 import { INSTAGRAM_DEFAULT_TOKEN_EXPIRY_MS, appendConfigOverridesAudit, buildAlertsResponse, buildArtistMindResponse, buildAuditLogResponse, buildCallbackActionsResponse, buildConfigOverridesResponse, buildConfigResponse, buildFailedNotifyListResponse, buildFailedNotifyReplayResponse, buildInternalCallbackDispatchResponse, buildNotifyReviewResponse, buildPersonaCompleteResponse, buildPersonaProposeResponse, buildPersonaResponse, buildPersonaWriteResponse, buildPlatformDetailResponse, buildPlatformsResponse, buildProducerCallbackDispatchResponse, buildPromptLedgerResponse, buildRecoveryResponse, buildSafeTickTriggerResponse, buildSongDetailResponse, buildSongEventsResponse, buildSongLedgerResponse, buildSongsResponse, buildSpawnProposalsResponse, buildStatusExportResponse, buildStatusResponse, buildSunoDiagnosticsExportResponse, buildSunoStatusResponse, isInstagramTokenExpiringSoon, isPersonaSnapshotLayer, payloadContainsSecretLikeText, proposalFieldsFromPayload, proposalRouteError, runtimeSafetyPatchFromPayload } from "./responseBuilders.js";
 import { registerRuntimeEventStreamRoute } from "./runtimeEventStream.js";
@@ -402,6 +403,20 @@ export function registerRoutes(api: unknown): void {
         }
         if (segments.length === 2 && segments[1] === "abandon") {
           return abandonSong(config.artist.workspaceRoot, segments[0] ?? "");
+        }
+        if (segments.length === 2 && segments[1] === "attach-takes") {
+          if (payloadContainsSecretLikeText(payload, ["reason"])) {
+            return {
+              error: "secret_like_payload_rejected",
+              statusCode: 400
+            };
+          }
+          return attachSunoTakes(
+            config.artist.workspaceRoot,
+            segments[0] ?? "",
+            { urls: payload.urls, reason: payload.reason },
+            config
+          );
         }
       }
 

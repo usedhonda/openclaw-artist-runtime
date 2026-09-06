@@ -1260,6 +1260,11 @@ export interface StatusResponse {
       detail?: string;
       checkedAt?: string;
     };
+    cliSession?: {
+      valid: boolean;
+      checkedAt: string;
+      reason?: string;
+    };
   };
   sunoWorker: SunoWorkerStatus;
   distributionWorker: SocialDistributionWorkerStatus;

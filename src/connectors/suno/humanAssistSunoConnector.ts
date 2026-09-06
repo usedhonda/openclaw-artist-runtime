@@ -159,6 +159,21 @@ export class HumanAssistSunoConnector implements SunoConnector {
     if (outcome.status === "timeout") {
       return { accepted: false, runId: result.runId, reason: HUMAN_ASSIST_TIMEOUT_REASON, urls: [] };
     }
+    if (outcome.status === "feed_unavailable") {
+      // Distinct from HUMAN_ASSIST_CROSS_SONG_REJECTED_REASON: this is not a DOM
+      // mis-attribution verdict, it is "the feed could never confirm the take one way
+      // or the other" (expired suno-cli session, network/HTTP failure). Never routed
+      // through filterCrossSongTakeUrls, so a genuinely fresh take never gets rejected
+      // on a stale attribution ledger read.
+      emitRuntimeEvent({
+        type: "error",
+        source: "suno_human_assist",
+        reason: outcome.reason,
+        songId,
+        timestamp: Date.now()
+      });
+      return { accepted: false, runId: result.runId, reason: outcome.reason, urls: [] };
+    }
     return { accepted: false, runId: result.runId, reason: outcome.reason, urls: [] };
   }
 }
@@ -235,7 +250,7 @@ export function createHumanAssistSunoConnector(
     timeoutMs: timeoutMinutes === 0 ? Infinity : timeoutMinutes * 60_000,
     submitMode: config?.music?.suno?.submitMode,
     workspaceRoot,
-    driverFactory: ({ payload }) => new CdpHumanAssistDriver({ payload, config: browserConfig, sessionFile }),
+    driverFactory: ({ payload }) => new CdpHumanAssistDriver({ payload, config: browserConfig, sessionFile, workspaceRoot }),
     notifier: createHumanAssistNotifier(
       timeoutMinutes,
       config?.music?.suno?.submitMode === "manual" ? "manual_submit" : "captcha_fallback"

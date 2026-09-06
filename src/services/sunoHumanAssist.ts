@@ -19,20 +19,26 @@
 // Stable reason strings the connector maps onto autopilot handling.
 export const HUMAN_ASSIST_TIMEOUT_REASON = "suno_human_assist_timeout";
 export const HUMAN_ASSIST_ERROR_REASON = "suno_human_assist_error";
+// The feed baseline/reconciliation could never reach Suno's feed (expired/missing
+// suno-cli session, or a network/HTTP failure on every attempt). A DOM-only "fresh"
+// detection under this condition must NOT be accepted as a real take -- that is the
+// exact gap that let a cross-card DOM bleed get recorded as a successful create.
+export const HUMAN_ASSIST_FEED_UNAVAILABLE_REASON = "suno_human_assist_feed_unavailable";
 
 export interface HumanAssistSubmitOutcome {
   /**
    * "accepted": the machine click submitted and Suno accepted it (urls captured).
    * "captcha_challenge": a captcha challenge blocked the machine click.
    * "error": a non-captcha failure (login, DOM mismatch, network, etc.).
+   * "feed_unavailable": a DOM-fresh take appeared but the feed could never confirm it.
    */
-  kind: "accepted" | "captcha_challenge" | "error";
+  kind: "accepted" | "captcha_challenge" | "error" | "feed_unavailable";
   urls?: string[];
   reason?: string;
 }
 
 export interface HumanAssistWaitOutcome {
-  kind: "accepted" | "timeout";
+  kind: "accepted" | "timeout" | "feed_unavailable";
   urls?: string[];
 }
 
@@ -75,7 +81,8 @@ export interface RunHumanAssistCreateInput {
 export type HumanAssistCreateResult =
   | { status: "accepted"; urls: string[]; via: "machine" | "human" }
   | { status: "timeout"; reason: string }
-  | { status: "error"; reason: string };
+  | { status: "error"; reason: string }
+  | { status: "feed_unavailable"; reason: string };
 
 /**
  * Drive one human-assisted create attempt to a terminal result. The browser is
@@ -113,6 +120,9 @@ export async function runHumanAssistCreate(
       if (submit.kind === "error") {
         return { status: "error", reason: submit.reason ?? HUMAN_ASSIST_ERROR_REASON };
       }
+      if (submit.kind === "feed_unavailable") {
+        return { status: "feed_unavailable", reason: HUMAN_ASSIST_FEED_UNAVAILABLE_REASON };
+      }
 
       // captcha_challenge: close the challenge (never solve it), then hand off.
       await driver.closeChallengeOverlay();
@@ -136,6 +146,9 @@ export async function runHumanAssistCreate(
         // Cosmetic only; the accepted result stands regardless.
       }
       return { status: "accepted", urls: waited.urls ?? [], via: "human" };
+    }
+    if (waited.kind === "feed_unavailable") {
+      return { status: "feed_unavailable", reason: HUMAN_ASSIST_FEED_UNAVAILABLE_REASON };
     }
     return { status: "timeout", reason: HUMAN_ASSIST_TIMEOUT_REASON };
   } finally {

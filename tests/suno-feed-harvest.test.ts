@@ -1,10 +1,13 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import {
   extractFeedClips,
   fetchSunoFeedClips,
+  fetchSunoFeedStatus,
   feedClipSongUrl,
+  reconcileFeedTakes,
   selectFreshFeedTakeUrls,
-  type SunoFeedClip
+  type SunoFeedClip,
+  type SunoFeedFetchResult
 } from "../src/services/sunoFeedHarvest.js";
 
 const SUBMIT_MS = Date.parse("2026-07-29T17:17:09.000Z");
@@ -208,5 +211,178 @@ describe("fetchSunoFeedClips", () => {
       }
     });
     expect(clips).toEqual([]);
+  });
+});
+
+describe("fetchSunoFeedStatus", () => {
+  const clerkOk = async () => ({ getClerkToken: async () => ({ jwt: "jwt-token" }) });
+  function fakeFetch(handler: (url: string) => { ok: boolean; status: number; body: unknown }): typeof fetch {
+    return (async (url: string) => {
+      const r = handler(String(url));
+      return { ok: r.ok, status: r.status, json: async () => r.body };
+    }) as unknown as typeof fetch;
+  }
+
+  it("is unavailable (not merely empty) when the session cannot mint a JWT", async () => {
+    const status = await fetchSunoFeedStatus({
+      sessionFile: "/tmp/session.json",
+      fetchImpl: fakeFetch(() => ({ ok: true, status: 200, body: [] })),
+      clerkLoader: async () => ({ getClerkToken: async () => ({ jwt: undefined }) })
+    });
+    expect(status).toEqual({ clips: [], available: false, reason: "clerk_token_missing" });
+  });
+
+  it("is unavailable when every listing path fails", async () => {
+    const status = await fetchSunoFeedStatus({
+      sessionFile: "/tmp/session.json",
+      fetchImpl: fakeFetch(() => ({ ok: false, status: 401, body: null })),
+      clerkLoader: clerkOk
+    });
+    expect(status.available).toBe(false);
+    expect(status.reason).toBe("http_error");
+    expect(status.clips).toEqual([]);
+  });
+
+  it("is available with an empty clip list when the feed responds 200 with nothing yet", async () => {
+    const status = await fetchSunoFeedStatus({
+      sessionFile: "/tmp/session.json",
+      fetchImpl: fakeFetch(() => ({ ok: true, status: 200, body: [] })),
+      clerkLoader: clerkOk
+    });
+    expect(status).toEqual({ clips: [], available: true });
+  });
+
+  it("is available with clips when a listing path returns matches", async () => {
+    const status = await fetchSunoFeedStatus({
+      sessionFile: "/tmp/session.json",
+      fetchImpl: fakeFetch(() => ({ ok: true, status: 200, body: [{ id: "a" }] })),
+      clerkLoader: clerkOk
+    });
+    expect(status).toEqual({ clips: [{ id: "a" }], available: true });
+  });
+
+  it("never echoes a caught error's message into the reason (fixed codes only)", async () => {
+    const status = await fetchSunoFeedStatus({
+      sessionFile: "/tmp/session.json",
+      fetchImpl: (async () => {
+        throw new Error("leaked-secret-fragment-should-never-appear");
+      }) as unknown as typeof fetch,
+      clerkLoader: clerkOk
+    });
+    expect(status.available).toBe(false);
+    expect(status.reason).toBe("network_error");
+    expect(JSON.stringify(status)).not.toContain("leaked-secret-fragment-should-never-appear");
+  });
+});
+
+describe("reconcileFeedTakes", () => {
+  const domUrls = ["https://suno.com/song/dom-fallback-take"];
+
+  it("stays DOM-only (dom_fallback) when no sessionFile is configured", async () => {
+    const result = await reconcileFeedTakes({
+      domUrls,
+      sessionFile: undefined,
+      title: "Cold Banquet",
+      sinceMs: SUBMIT_MS,
+      baselineIds: new Set()
+    });
+    expect(result).toEqual({ status: "dom_fallback", urls: domUrls });
+  });
+
+  it("returns matched urls as soon as the feed confirms a fresh title-scoped clip", async () => {
+    const fetchFeed = vi.fn(async (): Promise<SunoFeedFetchResult> => ({
+      clips: [{ id: "new-take", title: "Cold Banquet", created_at: AFTER }],
+      available: true
+    }));
+    const result = await reconcileFeedTakes({
+      domUrls,
+      sessionFile: "/tmp/session.json",
+      title: "Cold Banquet",
+      sinceMs: SUBMIT_MS,
+      baselineIds: new Set(),
+      fetchFeed,
+      sleep: async () => undefined
+    });
+    expect(result).toEqual({ status: "matched", urls: [feedClipSongUrl("new-take")] });
+    expect(fetchFeed).toHaveBeenCalledTimes(1);
+  });
+
+  it("falls back to the DOM result when the feed is reachable but never matches (pre-existing behaviour)", async () => {
+    const fetchFeed = vi.fn(async (): Promise<SunoFeedFetchResult> => ({ clips: [], available: true }));
+    const result = await reconcileFeedTakes({
+      domUrls,
+      sessionFile: "/tmp/session.json",
+      title: "Cold Banquet",
+      sinceMs: SUBMIT_MS,
+      baselineIds: new Set(),
+      attempts: 3,
+      fetchFeed,
+      sleep: async () => undefined
+    });
+    expect(result).toEqual({ status: "dom_fallback", urls: domUrls });
+    expect(fetchFeed).toHaveBeenCalledTimes(3);
+  });
+
+  it("reports unavailable -- NEVER dom_fallback -- when the feed is never reached (the incident this fixes: an expired suno-cli session must not let a DOM cross-card bleed through)", async () => {
+    const fetchFeed = vi.fn(async (): Promise<SunoFeedFetchResult> => ({
+      clips: [],
+      available: false,
+      reason: "clerk_token_error"
+    }));
+    const result = await reconcileFeedTakes({
+      domUrls,
+      sessionFile: "/tmp/session.json",
+      title: "Cold Banquet",
+      sinceMs: SUBMIT_MS,
+      baselineIds: new Set(),
+      attempts: 3,
+      fetchFeed,
+      sleep: async () => undefined
+    });
+    expect(result).toEqual({ status: "unavailable" });
+    expect(fetchFeed).toHaveBeenCalledTimes(3);
+  });
+
+  it("treats a fetchFeed rejection the same as an unavailable result (fail closed, no throw)", async () => {
+    const fetchFeed = vi.fn(async (): Promise<SunoFeedFetchResult> => {
+      throw new Error("boom");
+    });
+    const result = await reconcileFeedTakes({
+      domUrls,
+      sessionFile: "/tmp/session.json",
+      title: "Cold Banquet",
+      sinceMs: SUBMIT_MS,
+      baselineIds: new Set(),
+      attempts: 2,
+      fetchFeed,
+      sleep: async () => undefined
+    });
+    expect(result).toEqual({ status: "unavailable" });
+  });
+
+  it("reports an overCount anomaly by falling back to the DOM result and invoking onOverCount once", async () => {
+    const fetchFeed = vi.fn(async (): Promise<SunoFeedFetchResult> => ({
+      clips: [
+        { id: "a", title: "Cold Banquet", created_at: AFTER },
+        { id: "b", title: "Cold Banquet", created_at: AFTER },
+        { id: "c", title: "Cold Banquet", created_at: AFTER }
+      ],
+      available: true
+    }));
+    const onOverCount = vi.fn();
+    const result = await reconcileFeedTakes({
+      domUrls,
+      sessionFile: "/tmp/session.json",
+      title: "Cold Banquet",
+      sinceMs: SUBMIT_MS,
+      baselineIds: new Set(),
+      attempts: 5,
+      fetchFeed,
+      sleep: async () => undefined,
+      onOverCount
+    });
+    expect(result).toEqual({ status: "dom_fallback", urls: domUrls });
+    expect(onOverCount).toHaveBeenCalledTimes(1);
+    expect(fetchFeed).toHaveBeenCalledTimes(1);
   });
 });

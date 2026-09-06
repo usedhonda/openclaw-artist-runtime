@@ -48,6 +48,8 @@ export type RuntimeEvent =
   | { type: "failed_notify_aged_out"; notifyId: string; deliveryId?: string; eventType: string; songId?: string; maxAgeMs: number; timestamp: number }
   | { type: "persona_contract_degraded"; degraded: string[]; detail: string; timestamp: number }
   | { type: "creative_monotony_warning"; streaks: Array<{ kind: string; value: string; length: number }>; signature: string; detail: string; songId?: string; timestamp: number }
+  | { type: "suno_cli_session_expired"; reason: string; timestamp: number }
+  | { type: "suno_take_attached_by_operator"; songId: string; runId: string; urls: string[]; reason: string; timestamp: number }
   | { type: "error"; source: string; reason: string; songId?: string; timestamp: number };
 
 export type RuntimeEventHandler = (event: RuntimeEvent) => void | Promise<void>;

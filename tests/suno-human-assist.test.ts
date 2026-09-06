@@ -3,6 +3,7 @@ import {
   runHumanAssistCreate,
   HUMAN_ASSIST_TIMEOUT_REASON,
   HUMAN_ASSIST_ERROR_REASON,
+  HUMAN_ASSIST_FEED_UNAVAILABLE_REASON,
   type HumanAssistBrowserDriver,
   type HumanAssistSubmitOutcome,
   type HumanAssistWaitOutcome
@@ -141,6 +142,37 @@ describe("runHumanAssistCreate", () => {
     expect(notifier.awaitingHumanCreate).not.toHaveBeenCalled();
     expect(calls.attemptMachineSubmit).toBe(0);
     // Browser is still closed exactly once even on the setup failure path.
+    expect(calls.close).toBe(1);
+  });
+
+  it("reports feed_unavailable (never accepted) when the machine submit's take could not be feed-confirmed", async () => {
+    const notifier = { awaitingHumanCreate: vi.fn() };
+    const { driver, calls } = makeDriver({
+      attemptMachineSubmit: async () => ({ kind: "feed_unavailable" })
+    });
+
+    const result = await runHumanAssistCreate({ driver, notifier, ...base });
+
+    expect(result).toEqual({ status: "feed_unavailable", reason: HUMAN_ASSIST_FEED_UNAVAILABLE_REASON });
+    expect(notifier.awaitingHumanCreate).not.toHaveBeenCalled();
+    expect(calls.closeChallengeOverlay).toBe(0);
+    expect(calls.waitForHumanSubmit).toBe(0);
+    // Failure path: the filled form stays on screen as evidence, no cosmetic retire.
+    expect(calls.retireCreateSurface).toBe(0);
+    expect(calls.close).toBe(1);
+  });
+
+  it("reports feed_unavailable when the producer's manual take could not be feed-confirmed", async () => {
+    const notifier = { awaitingHumanCreate: vi.fn() };
+    const { driver, calls } = makeDriver({
+      attemptMachineSubmit: async () => ({ kind: "captcha_challenge" }),
+      waitForHumanSubmit: async () => ({ kind: "feed_unavailable" })
+    });
+
+    const result = await runHumanAssistCreate({ driver, notifier, ...base });
+
+    expect(result).toEqual({ status: "feed_unavailable", reason: HUMAN_ASSIST_FEED_UNAVAILABLE_REASON });
+    expect(calls.retireCreateSurface).toBe(0);
     expect(calls.close).toBe(1);
   });
 
