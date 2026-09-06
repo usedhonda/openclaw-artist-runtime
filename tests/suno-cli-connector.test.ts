@@ -1,5 +1,11 @@
 import { describe, expect, it, vi } from "vitest";
-import { CliSunoConnector, selectDownloadTargets, type CliRunResult, type CliRunner } from "../src/connectors/suno/cliSunoConnector";
+import {
+  CliSunoConnector,
+  selectDownloadTargets,
+  SUNO_CLI_RETRYABLE_FEED_TARGET_MISSING_REASON,
+  type CliRunResult,
+  type CliRunner
+} from "../src/connectors/suno/cliSunoConnector";
 import type { SunoCreateRequest } from "../src/types";
 
 const ENTRY = "/opt/suno-cli/dist/src/cli.js";
@@ -614,6 +620,20 @@ describe("CliSunoConnector.importResults", () => {
     expect(result.paths).toBeUndefined();
     expect(result.runId).toBe("run-cli-1");
     expect(result.reason).toBe("suno_cli_retryable");
+  });
+
+  it("maps download exit 50 with a feed-target-missing message to the missing-target reason", async () => {
+    const runner = runnerReturning({
+      stdout: JSON.stringify({ ok: false, status: "error", error: "Suno feed response missing requested clip id(s): clip-1" }),
+      stderr: "",
+      exitCode: 50
+    });
+    const connector = new CliSunoConnector("/ws/artist", { env: baseEnv(), runner });
+
+    const result = await connector.importResults({ runId: "run-cli-1", urls: [] });
+
+    expect(result.urls).toEqual([]);
+    expect(result.reason).toBe(SUNO_CLI_RETRYABLE_FEED_TARGET_MISSING_REASON);
   });
 
   const downloadFailureCases: Array<[number, string]> = [

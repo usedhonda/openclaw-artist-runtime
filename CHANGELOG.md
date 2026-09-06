@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- fix: park a song for the operator when its accepted Suno takes are missing
+  from the feed for good, instead of the pending-import sweep retrying it
+  every cycle forever. A grace period (72h) still tolerates the feed briefly
+  lagging before parking.
 - fix: validate prompt packs against the song's structure. Duration-plan
   validation now receives the song's structure variant from the pack
   generators, so `hook_first` and `no_bridge_double_verse` songs stop emitting

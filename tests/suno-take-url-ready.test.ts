@@ -12,6 +12,7 @@ import { DEFAULT_ADOPTION_DOWNLOAD_DELAY_MS, readAdoptionDownloadJobEntries, rea
 import { readFailedNotifyEntries } from "../src/services/failedNotifyLedger";
 import { createAndPersistSunoPromptPack } from "../src/services/sunoPromptPackFiles";
 import { readLatestSunoRun } from "../src/services/sunoRuns";
+import { SUNO_CLI_RETRYABLE_FEED_TARGET_MISSING_REASON } from "../src/connectors/suno/cliSunoConnector";
 import { routeTelegramCallback } from "../src/services/telegramCallbackHandler";
 import type { TelegramClient } from "../src/services/telegramClient";
 import { formatRuntimeEvent, TelegramNotifier } from "../src/services/telegramNotifier";
@@ -428,6 +429,128 @@ describe("Suno take URL ready flow", () => {
         })
       })
     ]);
+  });
+
+  it("parks a song once its accepted run's takes are missing from the feed past the grace period", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-09-06T00:00:00.000Z"));
+    const root = workspace();
+    await ensureArtistWorkspace(root);
+    await updateSongState(root, "song-url", {
+      title: "URL Gate",
+      status: "suno_take_url_ready",
+      selectedTakeId: "take-ready",
+      appendPublicLinks: ["https://suno.com/song/take-ready"]
+    });
+    // Accepted 5 days ago, well past the 72h missing-take grace period.
+    await writeAcceptedRun(root, "song-url", ["https://suno.com/song/take-ready"], "2026-09-01T00:00:00.000Z");
+    connectorStatusMock.mockResolvedValue({ state: "connected" });
+    connectorImportMock.mockResolvedValue({
+      runId: "run-ready",
+      urls: [],
+      paths: [],
+      reason: SUNO_CLI_RETRYABLE_FEED_TARGET_MISSING_REASON
+    });
+    const events: RuntimeEvent[] = [];
+    const unsubscribe = getRuntimeEventBus().subscribe((event) => events.push(event));
+    const cycleConfig = {
+      artist: { workspaceRoot: root },
+      autopilot: { enabled: true, dryRun: false },
+      music: { suno: { driver: "playwright", submitMode: "live", authority: "auto_create_and_select_take" } },
+      telegram: { enabled: false },
+      songSpawn: { enabled: false }
+    };
+
+    await new ArtistAutopilotService().runCycle({ workspaceRoot: root, config: cycleConfig });
+
+    unsubscribe();
+    expect(connectorImportMock).toHaveBeenCalledTimes(1);
+    expect(await readSongState(root, "song-url")).toMatchObject({
+      status: "failed",
+      lastReason: "parked_needs_operator: suno_takes_missing_from_feed"
+    });
+    expect(events.some((event) =>
+      event.type === "suno_generate_failed"
+      && event.songId === "song-url"
+      && event.reason === "parked_needs_operator: suno_takes_missing_from_feed"
+    )).toBe(true);
+
+    // Next sweep skips the song entirely: no further download attempts once parked.
+    await new ArtistAutopilotService().runCycle({ workspaceRoot: root, config: cycleConfig });
+    expect(connectorImportMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("keeps retrying a feed-target-missing take within the grace period instead of parking", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-09-06T00:00:00.000Z"));
+    const root = workspace();
+    await ensureArtistWorkspace(root);
+    await updateSongState(root, "song-url", {
+      title: "URL Gate",
+      status: "suno_take_url_ready",
+      selectedTakeId: "take-ready",
+      appendPublicLinks: ["https://suno.com/song/take-ready"]
+    });
+    // Accepted 1 hour ago: well inside the 72h grace period, Suno's feed can lag.
+    await writeAcceptedRun(root, "song-url", ["https://suno.com/song/take-ready"], "2026-09-05T23:00:00.000Z");
+    connectorStatusMock.mockResolvedValue({ state: "connected" });
+    connectorImportMock.mockResolvedValue({
+      runId: "run-ready",
+      urls: [],
+      paths: [],
+      reason: SUNO_CLI_RETRYABLE_FEED_TARGET_MISSING_REASON
+    });
+
+    await new ArtistAutopilotService().runCycle({
+      workspaceRoot: root,
+      config: {
+        artist: { workspaceRoot: root },
+        autopilot: { enabled: true, dryRun: false },
+        music: { suno: { driver: "playwright", submitMode: "live", authority: "auto_create_and_select_take" } },
+        telegram: { enabled: false },
+        songSpawn: { enabled: false }
+      }
+    });
+
+    expect(connectorImportMock).toHaveBeenCalledTimes(1);
+    expect(await readSongState(root, "song-url")).toMatchObject({ status: "suno_take_url_ready" });
+  });
+
+  it("leaves a non-missing retryable download failure unparked regardless of run age", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-09-06T00:00:00.000Z"));
+    const root = workspace();
+    await ensureArtistWorkspace(root);
+    await updateSongState(root, "song-url", {
+      title: "URL Gate",
+      status: "suno_take_url_ready",
+      selectedTakeId: "take-ready",
+      appendPublicLinks: ["https://suno.com/song/take-ready"]
+    });
+    // Accepted 5 days ago (past the missing-take grace window), but this is a plain
+    // retryable failure, not a feed-target-missing one, so it must never park.
+    await writeAcceptedRun(root, "song-url", ["https://suno.com/song/take-ready"], "2026-09-01T00:00:00.000Z");
+    connectorStatusMock.mockResolvedValue({ state: "connected" });
+    connectorImportMock.mockResolvedValue({
+      runId: "run-ready",
+      urls: [],
+      paths: [],
+      reason: "suno_cli_retryable"
+    });
+
+    await new ArtistAutopilotService().runCycle({
+      workspaceRoot: root,
+      config: {
+        artist: { workspaceRoot: root },
+        autopilot: { enabled: true, dryRun: false },
+        music: { suno: { driver: "playwright", submitMode: "live", authority: "auto_create_and_select_take" } },
+        telegram: { enabled: false },
+        songSpawn: { enabled: false }
+      }
+    });
+
+    expect(connectorImportMock).toHaveBeenCalledTimes(1);
+    expect(await readSongState(root, "song-url")).toMatchObject({ status: "suno_take_url_ready" });
   });
 
   it("resurfaces fresh URL-ready buttons when an old adoption button expired", async () => {

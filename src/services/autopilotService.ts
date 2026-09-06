@@ -1,6 +1,7 @@
 import { readFile } from "node:fs/promises";
 import { isAbsolute, join } from "node:path";
 import { resolveSunoConnector } from "../connectors/suno/resolveSunoConnector.js";
+import { SUNO_CLI_RETRYABLE_FEED_TARGET_MISSING_REASON } from "../connectors/suno/cliSunoConnector.js";
 import type { AutopilotRunState, AutopilotStage, AutopilotStatus, ArtistRuntimeConfig, CommissionBrief, CommissionBriefSource, ObservationSummary, SocialPublishLedgerEntry, SocialPublishResult, SongState, SpawnProposal, SunoRunRecord } from "../types.js";
 import { composeDailyVoice } from "./artistDailyVoiceComposer.js";
 import { markPulsed, shouldPulse } from "./artistPulseRateLimiter.js";
@@ -254,6 +255,48 @@ function isStaleAcceptedSunoRunWithoutUrls(createdAt: string | undefined, now = 
     return false;
   }
   return now - createdMs >= sunoImportStallMs();
+}
+
+// A song's accepted Suno run can have its take(s) deleted from the account's feed after
+// the fact (operator cleanup, Suno-side retention). The CLI download then fails with
+// SUNO_CLI_RETRYABLE_FEED_TARGET_MISSING_REASON on every sweep cycle forever, because the
+// clip will never come back. Suno's feed can also lag briefly right after a run completes,
+// so give it a bounded grace window before concluding the take is really gone.
+const SUNO_IMPORT_MISSING_GRACE_MS = 72 * 60 * 60 * 1000;
+export const SUNO_TAKES_MISSING_FROM_FEED_REASON = "suno_takes_missing_from_feed";
+
+function isSunoFeedTargetMissingReason(reason: string | undefined): boolean {
+  return reason === SUNO_CLI_RETRYABLE_FEED_TARGET_MISSING_REASON;
+}
+
+function isPastSunoImportMissingGrace(createdAt: string | undefined, now = Date.now()): boolean {
+  if (!createdAt) {
+    return false;
+  }
+  const createdMs = Date.parse(createdAt);
+  if (!Number.isFinite(createdMs)) {
+    return false;
+  }
+  return now - createdMs >= SUNO_IMPORT_MISSING_GRACE_MS;
+}
+
+// Park a song whose accepted run's takes are gone from the Suno feed for good, instead of
+// sweeping it every cycle forever. Song-state-only (no AutopilotRunState mutation): sweep
+// runs across every suno_take_url_ready song independently of the current lane.
+async function parkSongForMissingFeedTakes(root: string, songId: string, runId: string | undefined): Promise<void> {
+  const parkedReason = `parked_needs_operator: ${SUNO_TAKES_MISSING_FROM_FEED_REASON}`;
+  await updateSongState(root, songId, {
+    status: "failed",
+    reason: parkedReason
+  });
+  emitRuntimeEvent({
+    type: "suno_generate_failed",
+    songId,
+    reason: parkedReason,
+    retryCount: 0,
+    timestamp: Date.now()
+  });
+  console.error(`[artist-runtime] ${parkedReason}:${songId}${runId ? `:${runId}` : ""}`);
 }
 
 // Suno's lyrics box transiently degrades (5000 -> 1250 maxLength). The driver surfaces
@@ -821,6 +864,13 @@ async function sweepPendingTakeImports(root: string, config: ArtistRuntimeConfig
       return undefined;
     });
     if (result && !result.imported && result.reason) {
+      if (isSunoFeedTargetMissingReason(result.reason)) {
+        const latestRun = await readLatestSunoRun(root, song.songId).catch(() => undefined);
+        if (isPastSunoImportMissingGrace(latestRun?.createdAt)) {
+          await parkSongForMissingFeedTakes(root, song.songId, latestRun?.runId);
+          continue;
+        }
+      }
       emitRuntimeEvent({
         type: "error",
         source: "suno_pending_import_sweep",

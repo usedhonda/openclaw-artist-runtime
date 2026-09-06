@@ -78,6 +78,27 @@ const EXIT_REASONS: Record<number, string> = {
   70: "suno_cli_internal"
 };
 
+// A retryable (exit 50) download failure can mean two different things: Suno hasn't
+// finished rendering the audio yet (self-heals on the next poll), or the account's
+// feed no longer has the clip at all (the take was deleted, so retrying forever never
+// helps). The vendored CLI's feed client tags the latter with `code:
+// "suno_feed_target_missing"` on the thrown error (vendor/suno-cli/dist/src/http/feed.js),
+// which the CLI's top-level error handler serializes to stdout as
+// `{ error: "Suno feed response missing requested clip id(s): ..." }` under the same
+// exit 50. Detect that message text (never mutate the vendored CLI) so callers can stop
+// retrying a permanently missing take instead of treating it like "not ready yet".
+export const SUNO_CLI_RETRYABLE_FEED_TARGET_MISSING_REASON = "suno_cli_retryable:suno_feed_target_missing";
+
+function isFeedTargetMissingStdout(stdout: string): boolean {
+  try {
+    const parsed = JSON.parse(stdout) as Record<string, unknown>;
+    const message = typeof parsed?.error === "string" ? parsed.error : "";
+    return /missing requested clip id\(s\)/.test(message);
+  } catch {
+    return false;
+  }
+}
+
 function defaultRunner(entry: string, args: readonly string[], env: NodeJS.ProcessEnv): Promise<CliRunResult> {
   return new Promise((resolve) => {
     execFile("node", [entry, ...args], { env, maxBuffer: 16 * 1024 * 1024 }, (error, stdout, stderr) => {
@@ -334,12 +355,17 @@ export class CliSunoConnector implements SunoConnector {
         return { urls: [], runId, reason: "suno_cli_internal" };
       }
       if (run.exitCode !== 0) {
-        // Exit 50 (retryable_unknown) -> audio not ready yet. An empty urls result makes
-        // the autopilot/adoption import path retry the whole set rather than fail (matching
-        // how the browser worker signals "not ready yet"). Other non-zero codes map to
-        // their stable fail-closed reason. Never fabricate URLs. Judge by exit code only.
-        this.logger.warn(`[suno-cli] download failed exit=${run.exitCode} ${logContext}`);
-        return { urls: [], runId, reason: EXIT_REASONS[run.exitCode] ?? "suno_cli_internal" };
+        // Exit 50 (retryable_unknown) -> audio not ready yet, EXCEPT when stdout carries
+        // the feed's "missing requested clip id(s)" message: that clip is gone from the
+        // account's feed, not merely still rendering, so callers must stop treating it as
+        // transient. An empty urls result either way makes the autopilot/adoption import
+        // path retry the whole set rather than fail. Other non-zero codes map to their
+        // stable fail-closed reason. Never fabricate URLs.
+        const reason = run.exitCode === 50 && isFeedTargetMissingStdout(run.stdout)
+          ? SUNO_CLI_RETRYABLE_FEED_TARGET_MISSING_REASON
+          : EXIT_REASONS[run.exitCode] ?? "suno_cli_internal";
+        this.logger.warn(`[suno-cli] download failed exit=${run.exitCode} reason=${reason} ${logContext}`);
+        return { urls: [], runId, reason };
       }
       const parsed = parseDownloadClips(run.stdout);
       if (!parsed) {
