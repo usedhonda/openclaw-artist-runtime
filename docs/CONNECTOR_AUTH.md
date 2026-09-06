@@ -157,6 +157,13 @@ half-written line.
   and load `scripts/openclaw-local-env.sh`; the script exports
   `OPENCLAW_X_FIREFOX_PROFILE`, which makes runtime Bird calls add
   `--firefox-profile <name>`.
+- On a Linux gateway, `bird` reads the Firefox profile cookies named by
+  `OPENCLAW_X_FIREFOX_PROFILE` / `BIRD_FIREFOX_PROFILE`. That profile's cookie
+  database is not created on the Linux host by logging in there; it must be
+  copied from the operator's own Firefox profile directory into
+  `~/.mozilla/firefox/<profile>/` on the host that runs the gateway. Never
+  commit that profile directory or its cookie database; treat the copy as the
+  same sensitive authenticated state as any other local credential store.
 - `t.co` reply-target expansion is disabled by default. Set
   `OPENCLAW_X_TCO_FETCH_ENABLED=1` only when the operator explicitly wants
   dry-run reply validation to perform a real short-link GET before resolving the

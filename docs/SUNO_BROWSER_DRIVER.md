@@ -211,6 +211,42 @@ Architecture: the tested contract is the driver-agnostic state machine
 (`src/services/cdpHumanAssistDriver.ts`) is the operator-machine path; its Suno
 selectors are validated at the next live create, not in unit tests.
 
+## Browser ownership: launch vs attach
+
+`SunoBrowserService` (`src/services/sunoBrowserService.ts`) owns the Suno
+browser lifecycle and runs in one of two ownership modes, selected by whether
+`music.suno.browser.cdpEndpoint` (or the legacy `OPENCLAW_SUNO_USE_CDP` +
+`OPENCLAW_SUNO_CDP_ENDPOINT` env override) is set:
+
+- **Launch (default when no CDP endpoint is configured).** The plugin launches
+  its own persistent Chrome on a fixed non-zero `--remote-debugging-port` (see
+  the CDP endpoint section above for why the port must be fixed and non-zero).
+  On Linux the launch also appends `--disable-dev-shm-usage`, so a container's
+  small `/dev/shm` does not crash the renderer; Darwin launch arguments are
+  unchanged. Because the plugin owns this browser, releasing the last holder
+  closes the whole window — after a manual Create completes, the browser
+  window disappearing is expected behavior, not a crash.
+- **Attach.** With a configured `cdpEndpoint` (or the legacy env override), the
+  plugin attaches to an externally started Chrome instead of launching one, and
+  never closes it. On an accepted submit, a reused tab is returned to the Suno
+  home surface (`suno.com/`) rather than being left showing the filled Create
+  form; a failed submit still keeps the filled form as evidence for
+  diagnostics. This is the mode in effect whenever the operator starts Chrome
+  externally for the human-assist fallback.
+
+## Human-assist single-flight
+
+Only one manual-submit wait can be outstanding at a time. While a wait is in
+progress, every further create attempt is held with reason
+`human_assist_pending:<songId>` behind a durable
+`runtime/suno/human-assist-pending.json` marker. This closes the earlier
+failure mode where the stall-reset ticker started a fresh attempt every cycle,
+opening a new filled create tab and re-alerting the producer every 20 minutes.
+If the producer closes the tab or the browser disconnects while a wait is
+outstanding, the wait now fails fast with `human_assist_browser_gone` instead
+of polling a dead page forever, so the lane can retry. A marker left behind by
+a dead or unrelated process self-heals automatically on the next attempt.
+
 ## Prerequisites
 
 - Use an existing Suno account that the operator controls.
@@ -794,6 +830,13 @@ debug evidence.
 - Moving the Suno lane to another operator machine or account: follow
   Scenario C.
 - Live create fails with `budget_exhausted`: follow Scenario D.
+- A human-assist run ends as `suno_human_assist_cross_song_rejected` even
+  though Suno visibly generated the takes: the `suno-cli` session
+  (`runtime/suno/cli/session.json`) has expired, so feed-primary take harvest
+  and baseline are unavailable and the DOM harvest fallback can pick a
+  neighbouring older card instead of the run's own takes. Follow the session
+  re-mint and take-attach recovery in
+  [OPERATOR_RUNBOOK.md](OPERATOR_RUNBOOK.md#suno-session-expiry-recovery).
 - For the symptom-first decision tree, see
   [TROUBLESHOOTING.md#suno-profile-stale-or-corrupt](TROUBLESHOOTING.md#suno-profile-stale-or-corrupt)
   and [TROUBLESHOOTING.md#suno-budget-exhausted](TROUBLESHOOTING.md#suno-budget-exhausted).

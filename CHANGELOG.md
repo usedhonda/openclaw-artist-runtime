@@ -2,6 +2,35 @@
 
 ## Unreleased
 
+- fix: validate prompt packs against the song's structure. Duration-plan
+  validation now receives the song's structure variant from the pack
+  generators, so `hook_first` and `no_bridge_double_verse` songs stop emitting
+  false section/prehook warnings; callers without a creative decision keep
+  today's standard expectations.
+- feat: flag three-song structure streaks in the creative monotony watchdog.
+  Three consecutive songs with the same section structure now raise the
+  monotony warning; a missing structure on legacy entries breaks the run
+  instead of fabricating one.
+- fix: stop test callbacks leaking into the live workspace. The
+  producer-decision autopilot kick now resolves and passes the caller's
+  workspace-scoped config instead of undefined, so an isolated test root
+  actually overrides the schema default instead of firing a background
+  autopilot cycle against the operator's real workspace.
+- fix: in CDP attach mode, a reused Suno tab is now returned to the Suno home
+  surface after an accepted create submit instead of continuing to show the
+  filled Create form; owned (launch-mode) tabs are still closed, and failure
+  paths still keep the filled form as evidence.
+- fix: the plugin-launched Suno browser now appends `--disable-dev-shm-usage`
+  on Linux, matching the login helper's container-compat contract, so a Linux
+  gateway can launch its own Chrome per create.
+- fix: hold new Suno creates while a human-assist manual-submit wait is
+  outstanding. A durable `runtime/suno/human-assist-pending.json` marker now
+  refuses further creates with `human_assist_pending` until the outstanding
+  wait resolves, closing the earlier failure mode where the stall-reset ticker
+  opened a new filled create tab and re-alerted the producer every 20 minutes.
+  The wait now also fails fast with `human_assist_browser_gone` when the
+  producer closes the tab or the browser disconnects, instead of polling a dead
+  page forever.
 - Hosted creative AI calls now use OpenClaw's public runtime and native auth/model
   configuration, with tools and external delivery disabled; runtime failures fail
   closed without falling back to legacy auth files.

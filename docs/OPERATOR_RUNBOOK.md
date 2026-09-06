@@ -24,6 +24,7 @@ further down are implementation change history — skip them for routine
 operation.
 
 - [Quick checks](#quick-checks) — doctor and health
+- [Suno session-expiry recovery](#suno-session-expiry-recovery)
 - [Autopilot mode](#autopilot-mode)
 - [Telegram opt-in](#telegram-opt-in)
 - [First-run experience: artist persona](#first-run-experience-telegram-artist-persona)
@@ -68,6 +69,44 @@ Useful environment knobs:
 - `OPENCLAW_DOCTOR_PROFILE_STALE_DAYS`: Suno profile stale threshold, default `30`
 - `OPENCLAW_DOCTOR_DISK_WARN_GB`: runtime disk warning threshold, default `10`
 - `OPENCLAW_DOCTOR_DISK_FAIL_GB`: runtime disk failure threshold, default `50`
+
+## Suno session-expiry recovery
+
+Use this when a Suno human-assist run ends as
+`suno_human_assist_cross_song_rejected` even though Suno visibly generated new
+takes for that song. The underlying cause is an expired `suno-cli` session
+(`runtime/suno/cli/session.json`): with no valid session, feed-primary take
+harvest and baseline are unavailable, so the DOM harvest fallback can pick a
+neighbouring older card instead of the run's own takes, and the run is
+(correctly) rejected as cross-song.
+
+1. Confirm the diagnosis: a `suno-cli` feed/status call for the song fails with
+   a login/auth reason, or the CLI session file is visibly stale.
+2. Start a temporary Chrome against the same profile and re-mint the session:
+   ```bash
+   suno-cli login --cdp-endpoint <loopback CDP url> --data-dir <suno-cli data dir>
+   ```
+   Complete login manually in that browser, then close it once
+   `session.json` is refreshed. See
+   [SUNO_BROWSER_DRIVER.md](SUNO_BROWSER_DRIVER.md#first-login) for the
+   equivalent no-argument wrapper.
+3. Re-run a feed/status check through the refreshed session and confirm it now
+   sees the song's actual takes, not the neighbouring card the DOM harvest
+   picked up.
+4. Attach the feed-verified takes to the song instead of leaving the run
+   rejected: append an accepted run record for the song
+   (`songs/<id>/suno/runs.jsonl`) carrying the verified take URLs, then advance
+   the song's status to `suno_take_url_ready` so the normal import pipeline
+   picks it up. There is no dedicated operator API route for this step yet
+   (tracked as an open item); it currently requires a developer-assisted
+   manual write against the append-only run ledger and song state file, not a
+   destructive rewrite of either.
+5. Confirm the import proceeds normally afterward and the song reaches its
+   next stage.
+
+See also [SUNO_BROWSER_DRIVER.md](SUNO_BROWSER_DRIVER.md) for the browser
+ownership model and the human-assist single-flight behavior around this same
+path.
 
 ## Autopilot mode
 

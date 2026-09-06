@@ -177,6 +177,28 @@ tracked, public-safe, and placeholder-only (`__NAME__`) — nothing
 machine-specific is committed, the same "tracked template + local fill-in"
 split as the macOS launchd plist above.
 
+### Without systemd: tracked supervisor (containers)
+
+The `systemd --user` templates above apply only to a Linux host that actually
+runs systemd. On a container without systemd (no init, no `--user` session),
+use the same tracked supervisor documented for macOS instead:
+
+```sh
+scripts/openclaw-local-gateway start|stop|status|health
+```
+
+Machine-specific values still come from the gitignored overlay,
+`.local/openclaw-local-env.local.sh` (see "Environment: tracked defaults vs
+machine-specific overlay" above); on this kind of host the overlay is also
+where the operator reassigns the `openclaw_local_*` derivations (`prefix`,
+`state`, `config_dir`, `workspace`, `logs`, and the gateway `port`) to fit the
+container's filesystem layout, and exports `TZ=Asia/Tokyo`, `DISPLAY`, and any
+container-specific `PATH` entries the gateway process needs. The tracked
+`scripts/openclaw-local-env.sh` sources this overlay early and keeps only
+public-safe generic fallbacks, so none of that machine detail lands in a
+tracked file. Do not install the systemd templates on a host that cannot run
+them; the tracked supervisor is the intended lifecycle owner there.
+
 ### Install
 
 1. Write a gateway launcher script with the same shape as the manual command
