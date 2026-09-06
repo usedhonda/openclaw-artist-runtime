@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- fix: scheduled autopilot ticks now honor on-disk config overrides changed at
+  runtime. The ticker pinned the whole boot-time config snapshot as the tick
+  payload, so enabling autopilot (or any other override) from the Console after
+  boot only took effect for request-driven ticks; interval, fast-chain, and
+  import-poll ticks kept reporting `skipped:disabled` until a gateway restart.
 - fix: the local launcher now derives the in-box gateway HTTP/WS URLs from
   `127.0.0.1` when the gateway is bound to loopback. On a tailnet host the URLs
   previously used the tailnet address even for a loopback bind, so the ticker

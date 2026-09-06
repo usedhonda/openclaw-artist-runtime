@@ -174,7 +174,7 @@ export class AutopilotTicker {
     operatorRequestedSpawn = false,
     forceObservationRefresh = false
   ): Promise<AutopilotManualRunResult> {
-    const baseConfig = configOverride ?? this.options.getConfig?.();
+    const baseConfig = configOverride ?? this.scheduledBaseConfig();
     let resolved: ArtistRuntimeConfig;
     try {
       resolved = await resolveAutopilotTickConfig(baseConfig);
@@ -248,6 +248,21 @@ export class AutopilotTicker {
       running = false;
       runningStartedAt = undefined;
     }
+  }
+
+  // Scheduled ticks (interval / fast chain / import poll) carry no request config.
+  // Pin only the workspace from the boot-time snapshot: every other field of that
+  // snapshot goes stale the moment an operator changes an on-disk override (for
+  // example enabling autopilot from the Console), and passing the whole snapshot
+  // as the payload lets it win over the override. On the Linux box (2026-09-07)
+  // every scheduled tick stayed skipped:disabled after autopilot was enabled at
+  // runtime; only request-driven ticks (run-cycle, safe tick) saw the new value.
+  private scheduledBaseConfig(): PartialDeep<ArtistRuntimeConfig> | undefined {
+    const workspaceRoot = this.options.getConfig?.()?.artist?.workspaceRoot;
+    // PartialDeep does not recurse into the ArtistConfig interface, so the
+    // workspace-only pin needs an explicit cast; resolveRuntimeConfig merges it
+    // over the persisted config field by field.
+    return workspaceRoot ? ({ artist: { workspaceRoot } } as PartialDeep<ArtistRuntimeConfig>) : undefined;
   }
 
   private async failClosedOnUnresolvedConfig(

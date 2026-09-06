@@ -369,6 +369,21 @@ describe("AutopilotTicker config resolution (fail-closed)", () => {
     expect(resolved.autopilot.dryRun).toBe(false);
   });
 
+  it("lets a runtime override enable autopilot even when the boot-time snapshot had it disabled", async () => {
+    const root = makeWorkspace({ stage: "idle" });
+    await patchResolvedConfig(root, {
+      artist: { workspaceRoot: root },
+      autopilot: { enabled: true, dryRun: true }
+    });
+    const bootSnapshot = await resolveAutopilotTickConfig({ artist: { workspaceRoot: root }, autopilot: { enabled: false } });
+    expect(bootSnapshot.autopilot.enabled).toBe(false);
+    const ticker = new AutopilotTicker({ getConfig: () => bootSnapshot });
+
+    const result = await ticker.tick();
+
+    expect(result).toBe("ran");
+  });
+
   it("reads disk overrides for the default workspace when no in-memory config is supplied", async () => {
     const root = mkdtempSync(join(tmpdir(), "autopilot-ticker-cfg-default-"));
     await patchResolvedConfig(root, {
