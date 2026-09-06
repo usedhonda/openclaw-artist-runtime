@@ -169,6 +169,109 @@ Ownership notes:
 To go back to fully manual operation, run `uninstall` and then use
 `scripts/openclaw-local-gateway start` as before.
 
+## Linux (systemd --user) operation
+
+On a Linux host there is no launchd; supervise the gateway with a
+`systemd --user` unit instead. Templates live under `scripts/linux/` and are
+tracked, public-safe, and placeholder-only (`__NAME__`) — nothing
+machine-specific is committed, the same "tracked template + local fill-in"
+split as the macOS launchd plist above.
+
+### Install
+
+1. Write a gateway launcher script with the same shape as the manual command
+   documented above — export `HOME`, `OPENCLAW_LOCAL_WORKSPACE`,
+   `OPENCLAW_ARTIST_PRIVATE_ROOT`, `DISPLAY`, `OPENCLAW_TELEGRAM_NOTIFIER`,
+   then `exec openclaw --profile <profile> gateway run --bind loopback
+   --port <port>` — and keep it outside the repo, for example
+   `~/.openclaw-artist/start-artist-gateway.sh`.
+2. Copy the templates into `~/.config/systemd/user/`, dropping the
+   `.template` suffix, and fill in every `__PLACEHOLDER__`:
+
+   ```sh
+   mkdir -p ~/.config/systemd/user
+   cp scripts/linux/openclaw-artist-gateway.service.template \
+     ~/.config/systemd/user/openclaw-artist-gateway.service
+   cp scripts/linux/openclaw-artist-healthcheck.service.template \
+     ~/.config/systemd/user/openclaw-artist-healthcheck.service
+   cp scripts/linux/openclaw-artist-healthcheck.timer.template \
+     ~/.config/systemd/user/openclaw-artist-healthcheck.timer
+   $EDITOR ~/.config/systemd/user/openclaw-artist-gateway.service
+   $EDITOR ~/.config/systemd/user/openclaw-artist-healthcheck.service
+   ```
+
+3. **Enable linger.** Without it, `systemctl --user is-system-running`
+   reports `offline` and no `--user` unit starts without an active login
+   session — this is required, not optional, for boot start:
+
+   ```sh
+   loginctl enable-linger "$USER"
+   ```
+
+4. Load and start both units:
+
+   ```sh
+   systemctl --user daemon-reload
+   systemctl --user enable --now openclaw-artist-gateway.service
+   systemctl --user enable --now openclaw-artist-healthcheck.timer
+   ```
+
+### Reflecting a new build
+
+`Restart=always` recovers the gateway unit from a crash, but Node does not
+hot-reload a source change. After `npm run build:runtime` on the host,
+restart it explicitly:
+
+```sh
+systemctl --user restart openclaw-artist-gateway.service
+```
+
+### Reading logs
+
+The unit template logs to the journal (`StandardOutput=journal` /
+`StandardError=journal`):
+
+```sh
+journalctl --user -u openclaw-artist-gateway.service -f
+journalctl --user -u openclaw-artist-healthcheck.service -n 50
+```
+
+If a launcher instead redirects stdout/stderr to a plain file, rotate it with
+`scripts/linux/logrotate-openclaw-artist.conf.template` (fill in the log path
+placeholder first).
+
+### Healthcheck timer
+
+`scripts/linux/gateway-healthcheck.sh` polls the plugin status endpoint
+(`GET .../plugins/artist-runtime/api/status`) and the autopilot heartbeat
+file (`runtime/autopilot-heartbeat.json`, `updatedAt` field). It fails — one
+`fail ...` log line, non-zero reason recorded — when the HTTP response is not
+200, or the heartbeat is missing or older than `HEARTBEAT_MAX_AGE_SEC`
+(default 900s / 15 minutes). The script **always exits 0**, so the timer
+loop itself never stops on a failing check; the pass/fail state and a
+consecutive-failure counter are recorded in `STATE_FILE`
+(`runtime/gateway-healthcheck-state.json` by default). Once consecutive
+failures reach `FAIL_THRESHOLD` (default 3), and again once on recovery, an
+optional `NOTIFY_CMD` executable is invoked with a one-line message.
+`openclaw-artist-healthcheck.timer.template` runs it every 5 minutes,
+starting 2 minutes after boot.
+
+### Timezone
+
+The gateway unit template sets `Environment=TZ=Asia/Tokyo` explicitly. Only
+`src/services/newsObservationCollector.ts` pins this timezone in code — the
+rest of the artist's date-sensitive logic (song dating, daily cadence)
+follows the host's local timezone. A Linux host left at its default `UTC`
+would silently shift every other date-based decision by the JST offset, so
+the unit sets it rather than relying on the host default.
+
+### Boot must stay read-only
+
+The gateway unit starts only the gateway process, never a browser (AGENTS.md
+section 6, "Boot"). The Suno browser worker starts only from an explicit
+operator action. Do not add a browser launch to the launcher script or to
+any unit here.
+
 ## Applying a code change to the running gateway
 
 The gateway runs the compiled `dist/`. Node does **not** hot-reload, so after a

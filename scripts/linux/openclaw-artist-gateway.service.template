@@ -1,0 +1,57 @@
+# systemd --user unit template for the OpenClaw artist-runtime gateway.
+#
+# This unit supervises the same launcher script an operator would otherwise
+# run by hand: a shell script that exports HOME, OPENCLAW_LOCAL_WORKSPACE,
+# OPENCLAW_ARTIST_PRIVATE_ROOT, DISPLAY, and OPENCLAW_TELEGRAM_NOTIFIER, then
+# execs `openclaw --profile <profile> gateway run --bind loopback --port
+# <port>`. Restart=always plus RestartSec makes the gateway survive a crash;
+# `loginctl enable-linger` (see below) makes it survive a reboot without an
+# active login session.
+#
+# Boot must stay read-only: this unit starts only the gateway process, never
+# a browser. The Suno browser worker starts only from an explicit operator
+# action (AGENTS.md section 6, "Boot"). Do not add a browser launch to the
+# launcher script referenced here.
+#
+# Placeholders to fill in before installing:
+#   __LAUNCHER_PATH__  absolute path to your gateway launcher script, kept
+#                       outside the repo (for example
+#                       %h/.openclaw-artist/start-artist-gateway.sh, where %h
+#                       is systemd's specifier for your home directory).
+#   __ENV_FILE__        absolute path to an optional EnvironmentFile carrying
+#                       host-specific values (HOME, workspace paths, DISPLAY,
+#                       profile, port). The leading "-" makes a missing file
+#                       non-fatal; leave it in place if you do not use one.
+#
+# Install:
+#   mkdir -p ~/.config/systemd/user
+#   cp scripts/linux/openclaw-artist-gateway.service.template \
+#     ~/.config/systemd/user/openclaw-artist-gateway.service
+#   $EDITOR ~/.config/systemd/user/openclaw-artist-gateway.service
+#   loginctl enable-linger "$USER"   # required to start without a login session
+#   systemctl --user daemon-reload
+#   systemctl --user enable --now openclaw-artist-gateway.service
+#
+# `default.target` (not `graphical-session.target`) is used deliberately: a
+# --user manager with linger enabled reaches default.target with no GUI
+# session present, so this does not depend on a desktop login. If the
+# launcher needs a DISPLAY (for example a headless Xvfb), set it in the
+# EnvironmentFile, not from a graphical session that may not exist.
+
+[Unit]
+Description=OpenClaw Artist Runtime gateway
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+EnvironmentFile=-__ENV_FILE__
+Environment=TZ=Asia/Tokyo
+ExecStart=__LAUNCHER_PATH__
+Restart=always
+RestartSec=5
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=default.target

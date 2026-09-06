@@ -1,0 +1,32 @@
+# systemd --user unit template for a one-shot artist-runtime gateway
+# healthcheck. Runs scripts/linux/gateway-healthcheck.sh once and exits;
+# scheduling comes from the paired
+# openclaw-artist-healthcheck.timer.template.
+#
+# Placeholders to fill in before installing:
+#   __REPO_ROOT__       absolute path to this artist-runtime checkout.
+#   __GATEWAY_URL__     the plugin status endpoint, for example
+#                       http://127.0.0.1:43134/plugins/artist-runtime/api/status
+#   __WORKSPACE_ROOT__  absolute path to the local OpenClaw workspace (the
+#                       directory containing runtime/autopilot-heartbeat.json).
+#   __ENV_FILE__        absolute path to an optional EnvironmentFile for
+#                       overrides such as NOTIFY_CMD, HEARTBEAT_MAX_AGE_SEC,
+#                       or FAIL_THRESHOLD. The leading "-" makes a missing
+#                       file non-fatal.
+#
+# Install alongside openclaw-artist-gateway.service under
+# ~/.config/systemd/user/ (see docs/LOCAL_RUNTIME_OPS.md for the full flow),
+# then enable the timer, not this service, directly:
+#   systemctl --user daemon-reload
+#   systemctl --user enable --now openclaw-artist-healthcheck.timer
+
+[Unit]
+Description=OpenClaw Artist Runtime gateway healthcheck
+
+[Service]
+Type=oneshot
+EnvironmentFile=-__ENV_FILE__
+Environment=GATEWAY_URL=__GATEWAY_URL__
+Environment=WORKSPACE_ROOT=__WORKSPACE_ROOT__
+WorkingDirectory=__REPO_ROOT__
+ExecStart=__REPO_ROOT__/scripts/linux/gateway-healthcheck.sh
