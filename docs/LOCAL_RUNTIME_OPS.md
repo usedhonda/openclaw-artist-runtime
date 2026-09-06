@@ -340,6 +340,17 @@ scripts/openclaw-gateway-launchd.sh restart
 
 Confirm the new process is newer than the dist build time before trusting it.
 
+`scripts/openclaw-local-gateway stop` and `restart` refuse to run while a
+human-assist Suno create is waiting on the producer (marker file
+`<workspace>/runtime/suno/human-assist-pending.json` with a live `pid`):
+they print the waiting `songId` and exit `2` without touching the gateway, so
+an operator restart cannot silently kill a Create window a producer has not
+answered yet. A marker whose `pid` is no longer alive is treated as stale and
+does not block. Override with `scripts/openclaw-local-gateway stop --force`
+or `restart --force` once you have confirmed it is safe to interrupt the wait
+(for example, the producer has abandoned the take). `status` also prints
+`human_assist_wait=<songId>|none` so you can check before restarting.
+
 ## Suno degraded-box self-heal (shipped fix, commit adf57fb)
 
 Suno's lyrics textarea `maxLength` fluctuates between the normal box (5000) and a

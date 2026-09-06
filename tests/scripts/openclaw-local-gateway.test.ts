@@ -94,13 +94,26 @@ exit 1
   return { root, scripts, marker, gatewayCallMarker, env, supervisor: join(scripts, "openclaw-local-gateway-supervisor") };
 }
 
-function runWrapper(fixture: Awaited<ReturnType<typeof makeFixture>>, command: string) {
-  return spawnSync("bash", [join(fixture.scripts, "openclaw-local-gateway"), command], {
+function runWrapper(fixture: Awaited<ReturnType<typeof makeFixture>>, command: string, ...args: string[]) {
+  return spawnSync("bash", [join(fixture.scripts, "openclaw-local-gateway"), command, ...args], {
     cwd: fixture.root,
     env: fixture.env,
     encoding: "utf8",
     timeout: 15_000
   });
+}
+
+async function writeHumanAssistPending(
+  fixture: Awaited<ReturnType<typeof makeFixture>>,
+  marker: { songId: string; pid: number }
+) {
+  const dir = join(fixture.root, "openclaw", "workspace", "runtime", "suno");
+  await mkdir(dir, { recursive: true });
+  await writeFile(
+    join(dir, "human-assist-pending.json"),
+    `${JSON.stringify({ ...marker, startedAt: new Date().toISOString() }, null, 2)}\n`,
+    "utf8"
+  );
 }
 
 async function startOwner(fixture: Awaited<ReturnType<typeof makeFixture>>) {
@@ -182,5 +195,56 @@ describe("openclaw-local-gateway owner guards", () => {
       '{"reason":"artist-runtime.maintenance"}'
     ]));
     expect(args).not.toContain("--force");
+  });
+});
+
+describe("openclaw-local-gateway human-assist wait guard", () => {
+  it("refuses stop while a human-assist create is waiting, without touching the gateway", async () => {
+    const fixture = await makeFixture();
+    await writeHumanAssistPending(fixture, { songId: "song-042", pid: process.pid });
+    const result = runWrapper(fixture, "stop");
+    expect(result.status).toBe(2);
+    expect(result.stderr).toContain("song-042");
+    expect(result.stderr).toContain("stop --force");
+  });
+
+  it("proceeds past the stop guard once --force is passed", async () => {
+    const fixture = await makeFixture();
+    await writeHumanAssistPending(fixture, { songId: "song-042", pid: process.pid });
+    const result = runWrapper(fixture, "stop", "--force");
+    expect(result.status).toBe(0);
+    expect(result.stdout).toContain("Gateway is not running.");
+  });
+
+  it("treats a marker with a dead pid as stale and lets stop proceed without --force", async () => {
+    const fixture = await makeFixture();
+    const child = spawn("bash", ["-c", "exit 0"]);
+    const deadPid = child.pid!;
+    await new Promise((resolve) => child.on("exit", resolve));
+    await writeHumanAssistPending(fixture, { songId: "song-099", pid: deadPid });
+    const result = runWrapper(fixture, "stop");
+    expect(result.status).toBe(0);
+    expect(result.stdout).toContain("Gateway is not running.");
+  });
+
+  it("refuses restart while waiting, and proceeds once --force is passed", async () => {
+    const fixture = await makeFixture();
+    await writeHumanAssistPending(fixture, { songId: "song-042", pid: process.pid });
+    const blocked = runWrapper(fixture, "restart");
+    expect(blocked.status).toBe(2);
+    expect(blocked.stderr).toContain("song-042");
+    expect(blocked.stderr).toContain("restart --force");
+    const forced = runWrapper(fixture, "restart", "--force");
+    expect(forced.status).toBe(0);
+    expect(JSON.parse(forced.stdout)).toEqual({ status: "deferred" });
+  });
+
+  it("reports the pending songId in status, and none when no wait is active", async () => {
+    const fixture = await makeFixture();
+    const idle = runWrapper(fixture, "status");
+    expect(idle.stdout).toContain("human_assist_wait=none");
+    await writeHumanAssistPending(fixture, { songId: "song-042", pid: process.pid });
+    const waiting = runWrapper(fixture, "status");
+    expect(waiting.stdout).toContain("human_assist_wait=song-042");
   });
 });

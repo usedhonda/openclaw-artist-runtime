@@ -171,6 +171,44 @@ gateway_pid_is_live() {
   [[ -n "${pid}" ]] && kill -0 "${pid}" 2>/dev/null
 }
 
+human_assist_pending_path() {
+  printf '%s' "${OPENCLAW_LOCAL_WORKSPACE}/runtime/suno/human-assist-pending.json"
+}
+
+# Prints the pending songId and returns 0 when a human-assist Suno create is
+# genuinely waiting for the producer (marker exists, parses, and its pid is
+# alive). Returns 1 (silently) for a missing, malformed, or stale marker.
+human_assist_wait_active() {
+  local marker_path
+  marker_path="$(human_assist_pending_path)"
+  if [[ ! -f "${marker_path}" ]]; then
+    return 1
+  fi
+  node -e '
+const fs = require("node:fs");
+const markerPath = process.argv[1];
+let marker;
+try {
+  marker = JSON.parse(fs.readFileSync(markerPath, "utf8"));
+} catch {
+  process.exit(1);
+}
+const pid = marker && marker.pid;
+const songId = marker && marker.songId;
+if (!Number.isInteger(pid) || pid <= 0 || typeof songId !== "string" || !songId) {
+  process.exit(1);
+}
+try {
+  process.kill(pid, 0);
+} catch (error) {
+  if (!error || error.code !== "EPERM") {
+    process.exit(1);
+  }
+}
+process.stdout.write(songId);
+' "${marker_path}"
+}
+
 cleanup_stale_pid() {
   local pid
   pid="$(read_gateway_pid)"
@@ -297,6 +335,15 @@ case "${command}" in
     exit 1
     ;;
   stop)
+    force_stop=0
+    if [[ "${1:-}" == "--force" ]]; then
+      force_stop=1
+      shift
+    fi
+    if pending_song="$(human_assist_wait_active)" && [[ "${force_stop}" -ne 1 ]]; then
+      echo "Refusing to stop: a human-assist Suno create is waiting for the producer (songId=${pending_song}). Override with: scripts/openclaw-local-gateway stop --force" >&2
+      exit 2
+    fi
     if launchd_service_loaded; then
       echo "Gateway is launchd-managed; refusing manual stop. Use scripts/openclaw-gateway-launchd.sh stop or restart." >&2
       exit 1
@@ -321,6 +368,15 @@ case "${command}" in
     echo "Gateway force-stopped."
     ;;
   restart)
+    force_restart=0
+    if [[ "${1:-}" == "--force" ]]; then
+      force_restart=1
+      shift
+    fi
+    if pending_song="$(human_assist_wait_active)" && [[ "${force_restart}" -ne 1 ]]; then
+      echo "Refusing to restart: a human-assist Suno create is waiting for the producer (songId=${pending_song}). Override with: scripts/openclaw-local-gateway restart --force" >&2
+      exit 2
+    fi
     request_safe_restart
     ;;
   tail)
@@ -372,6 +428,11 @@ case "${command}" in
       echo "gateway_child_pid=stopped"
       echo "gateway_state=stopped"
       echo "gateway_log=${OPENCLAW_LOCAL_GATEWAY_LOG}"
+    fi
+    if pending_song="$(human_assist_wait_active)"; then
+      echo "human_assist_wait=${pending_song}"
+    else
+      echo "human_assist_wait=none"
     fi
     gateway_token="$(read_gateway_token)"
     if [[ -n "${gateway_token}" ]]; then
