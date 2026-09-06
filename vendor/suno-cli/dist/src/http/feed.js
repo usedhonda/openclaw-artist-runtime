@@ -35,8 +35,12 @@ export class FeedClient {
     }
 }
 export function normalizeClip(clip) {
-    const audioUrl = typeof clip.audio_url === "string" && clip.audio_url.length > 0 ? clip.audio_url : null;
-    const audioReady = isAudioReady(audioUrl);
+    const primaryUrl = typeof clip.audio_url === "string" && clip.audio_url.length > 0 ? clip.audio_url : null;
+    const primaryReady = isAudioReady(primaryUrl);
+    const fallback = primaryReady ? null : selectMediaUrlFallback(clip.media_urls);
+    const audioUrl = primaryReady ? primaryUrl : (fallback ? fallback.url : primaryUrl);
+    const audioReady = primaryReady || Boolean(fallback);
+    const audioFormat = fallback ? fallback.format : deriveAudioFormat(primaryUrl);
     const status = audioReady ? "audio_ready" : (clip.status ?? "url_ready");
     return {
         clipId: clip.id,
@@ -45,8 +49,36 @@ export function normalizeClip(clip) {
         ...(typeof clip.title === "string" ? { title: clip.title } : {}),
         audioReady,
         audioUrl,
+        ...(audioFormat ? { audioFormat } : {}),
         raw: clip
     };
+}
+// Suno's forbidden-placeholder `audio_url` (`/api/forbidden`, gated behind
+// `is_download_unlocked`) no longer carries the audio. `media_urls` still exposes an
+// anonymously downloadable CloudFront progressive stream (m4a/opus today), so fall
+// back to it when the primary `audio_url` is not ready.
+function selectMediaUrlFallback(mediaUrls) {
+    if (!Array.isArray(mediaUrls))
+        return null;
+    const candidates = mediaUrls.filter((entry) => entry && typeof entry === "object" && typeof entry.url === "string" && /^https:\/\//i.test(entry.url));
+    if (candidates.length === 0)
+        return null;
+    const picked = candidates.find((entry) => entry.delivery === "progressive") ?? candidates[0];
+    return { url: picked.url, format: deriveAudioFormat(picked.url, picked.content_type) };
+}
+function deriveAudioFormat(url, contentType) {
+    if (typeof contentType === "string") {
+        if (contentType.toLowerCase().startsWith("m4a"))
+            return "m4a";
+        if (contentType.toLowerCase().startsWith("mp3"))
+            return "mp3";
+    }
+    if (typeof url === "string") {
+        const match = url.match(/\.([a-z0-9]+)(?:\?|$)/i);
+        if (match)
+            return match[1].toLowerCase();
+    }
+    return null;
 }
 export function extractFeedClips(payload) {
     const candidates = collectCandidates(payload);

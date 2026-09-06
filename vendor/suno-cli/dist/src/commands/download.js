@@ -38,7 +38,8 @@ export async function downloadCommand(target, options, context) {
             return ExitCode.retryableUnknown;
         }
         const arrayBuffer = await response.arrayBuffer();
-        const filePath = path.join(options.outDir, `${clip.clipId}.mp3`);
+        const extension = typeof clip.audioFormat === "string" && clip.audioFormat.length > 0 ? clip.audioFormat : "mp3";
+        const filePath = path.join(options.outDir, `${clip.clipId}.${extension}`);
         await fs.writeFile(filePath, Buffer.from(arrayBuffer), { mode: 0o600 });
         downloadedFiles.push(filePath);
     }

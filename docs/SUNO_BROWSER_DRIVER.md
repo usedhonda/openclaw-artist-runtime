@@ -78,6 +78,10 @@ that single clip even when the ledger contains a group run containing it; only a
 run ID intentionally expands to all clips in the run.
 Keep this vendored patch when refreshing `vendor/suno-cli`; a vendor sync must
 retain target filtering and retryable missing-target classification.
+`normalizeClip` also falls back to a clip's `media_urls` (progressive
+CloudFront m4a/opus) when `audio_url` is the `/api/forbidden` placeholder, and
+`download` names the saved file by the resolved `audioFormat` instead of
+assuming `.mp3`; a vendor sync must retain both.
 
 Normal live `suno-cli create` requests no longer preflight `sunoCdpEndpoint` reachability.
 Endpoint configuration is still passed only for optional mint flows, so unreachable
