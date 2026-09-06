@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- fix: the local launcher now derives the in-box gateway HTTP/WS URLs from
+  `127.0.0.1` when the gateway is bound to loopback. On a tailnet host the URLs
+  previously used the tailnet address even for a loopback bind, so the ticker
+  watcher's safe tick and the status connectivity probe hit a closed port on
+  every attempt.
 - fix: park a song for the operator when its accepted Suno takes are missing
   from the feed for good, instead of the pending-import sweep retrying it
   every cycle forever. A grace period (72h) still tolerates the feed briefly

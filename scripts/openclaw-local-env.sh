@@ -67,8 +67,16 @@ if [[ "${openclaw_local_gateway_bind}" == "loopback" ]]; then
 else
   openclaw_local_gateway_auth="${OPENCLAW_LOCAL_GATEWAY_AUTH:-token}"
 fi
-openclaw_local_gateway_http_url="${OPENCLAW_LOCAL_GATEWAY_HTTP_URL:-http://${openclaw_gateway_public_host}:${openclaw_local_gateway_port}}"
-openclaw_local_gateway_ws_url="${OPENCLAW_LOCAL_GATEWAY_WS_URL:-ws://${openclaw_gateway_public_host}:${openclaw_local_gateway_port}}"
+# A loopback-bound gateway is only reachable on 127.0.0.1: deriving the local
+# URLs from the tailnet host there sends every in-box probe (ticker watcher safe
+# tick, status connectivity probe, smoke scripts) to a closed port.
+if [[ "${openclaw_local_gateway_bind}" == "loopback" ]]; then
+  openclaw_gateway_local_host="127.0.0.1"
+else
+  openclaw_gateway_local_host="${openclaw_gateway_public_host}"
+fi
+openclaw_local_gateway_http_url="${OPENCLAW_LOCAL_GATEWAY_HTTP_URL:-http://${openclaw_gateway_local_host}:${openclaw_local_gateway_port}}"
+openclaw_local_gateway_ws_url="${OPENCLAW_LOCAL_GATEWAY_WS_URL:-ws://${openclaw_gateway_local_host}:${openclaw_local_gateway_port}}"
 
 export OPENCLAW_LOCAL_ROOT="${openclaw_local_root}"
 export OPENCLAW_LOCAL_PREFIX="${openclaw_local_prefix}"
