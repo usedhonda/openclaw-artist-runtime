@@ -1,11 +1,11 @@
 #!/usr/bin/env bash
-# Polls the artist-runtime gateway status endpoint and the autopilot
-# heartbeat file, and reports pass/fail as one log line. Meant to be run
-# periodically by openclaw-artist-healthcheck.timer.template; always exits 0
-# so the timer loop itself never stops on a failing check.
+# Polls the artist-runtime gateway status endpoint and a heartbeat file, and
+# reports pass/fail as one log line. Meant to be run periodically by
+# openclaw-artist-healthcheck.timer.template; always exits 0 so the timer
+# loop itself never stops on a failing check.
 #
-# Failure = the HTTP status endpoint did not answer 200, OR the autopilot
-# heartbeat file is missing/older than HEARTBEAT_MAX_AGE_SEC.
+# Failure = the HTTP status endpoint did not answer 200, OR the heartbeat
+# file is missing/older than HEARTBEAT_MAX_AGE_SEC.
 set -euo pipefail
 
 GATEWAY_URL="${GATEWAY_URL:-http://127.0.0.1:43134/plugins/artist-runtime/api/status}"
@@ -16,7 +16,23 @@ HTTP_TIMEOUT_SEC="${HTTP_TIMEOUT_SEC:-10}"
 STATE_FILE="${STATE_FILE:-${WORKSPACE_ROOT%/}/runtime/gateway-healthcheck-state.json}"
 NOTIFY_CMD="${NOTIFY_CMD:-}"
 
-HEARTBEAT_FILE="${WORKSPACE_ROOT%/}/runtime/autopilot-heartbeat.json"
+# Heartbeat source: prefer runtime/supervisor-heartbeat.json (written every
+# ~15s by scripts/openclaw-local-gateway-supervisor whenever the gateway
+# process is up, regardless of autopilot activity) over
+# runtime/autopilot-heartbeat.json (only advances when an autopilot tick
+# runs, so it stays stale for hours/days on a host where autopilot is
+# intentionally disabled and would false-fail the check). HEARTBEAT_FILE
+# overrides this selection entirely.
+if [[ -z "${HEARTBEAT_FILE:-}" ]]; then
+  supervisor_heartbeat_default="${WORKSPACE_ROOT%/}/runtime/supervisor-heartbeat.json"
+  autopilot_heartbeat_default="${WORKSPACE_ROOT%/}/runtime/autopilot-heartbeat.json"
+  if [[ -f "${supervisor_heartbeat_default}" ]]; then
+    HEARTBEAT_FILE="${supervisor_heartbeat_default}"
+  else
+    HEARTBEAT_FILE="${autopilot_heartbeat_default}"
+  fi
+fi
+HEARTBEAT_FILE_NAME="$(basename "${HEARTBEAT_FILE}")"
 NOW_ISO="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
 
 log() {
@@ -40,7 +56,19 @@ if [[ -f "$HEARTBEAT_FILE" ]]; then
     const fs = require("fs");
     try {
       const data = JSON.parse(fs.readFileSync(process.argv[1], "utf8"));
-      const updatedMs = Date.parse(data.updatedAt);
+      // Accept either the autopilot heartbeat shape (updatedAt) or the
+      // supervisor heartbeat shape (timestamp); either may be an ISO
+      // string or an epoch-ms number.
+      const raw = data.updatedAt ?? data.timestamp;
+      let updatedMs = NaN;
+      if (typeof raw === "number") {
+        updatedMs = raw;
+      } else if (typeof raw === "string") {
+        updatedMs = Date.parse(raw);
+        if (!Number.isFinite(updatedMs) && /^[0-9]+$/.test(raw)) {
+          updatedMs = Number(raw);
+        }
+      }
       if (Number.isFinite(updatedMs)) {
         process.stdout.write(String(Math.max(0, Math.floor((Date.now() - updatedMs) / 1000))));
       }
@@ -82,7 +110,7 @@ if [[ "$http_ok" -ne 1 ]]; then
 fi
 if [[ "$heartbeat_ok" -ne 1 ]]; then
   [[ -n "$reason" ]] && reason="${reason} "
-  reason="${reason}heartbeat_age_sec=${heartbeat_age_sec}"
+  reason="${reason}heartbeat_file=${HEARTBEAT_FILE_NAME} heartbeat_age_sec=${heartbeat_age_sec}"
 fi
 
 node -e '
@@ -98,7 +126,7 @@ if [[ "$overall_ok" -eq 1 ]]; then
   if [[ "$prev_failures" -ge "$FAIL_THRESHOLD" ]]; then
     notify "gateway healthcheck recovered: ${GATEWAY_URL}"
   fi
-  log "ok http_status=${http_status} heartbeat_age_sec=${heartbeat_age_sec}"
+  log "ok http_status=${http_status} heartbeat_file=${HEARTBEAT_FILE_NAME} heartbeat_age_sec=${heartbeat_age_sec}"
   exit 0
 fi
 

@@ -8,7 +8,10 @@
 #   __GATEWAY_URL__     the plugin status endpoint, for example
 #                       http://127.0.0.1:43134/plugins/artist-runtime/api/status
 #   __WORKSPACE_ROOT__  absolute path to the local OpenClaw workspace (the
-#                       directory containing runtime/autopilot-heartbeat.json).
+#                       directory containing runtime/supervisor-heartbeat.json
+#                       and/or runtime/autopilot-heartbeat.json; see
+#                       docs/LOCAL_RUNTIME_OPS.md "Healthcheck timer" for the
+#                       default selection between the two).
 #   __ENV_FILE__        absolute path to an optional EnvironmentFile for
 #                       overrides such as NOTIFY_CMD, HEARTBEAT_MAX_AGE_SEC,
 #                       or FAIL_THRESHOLD. The leading "-" makes a missing

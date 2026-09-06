@@ -59,6 +59,20 @@ async function writeHeartbeat(workspace: string, ageMs: number): Promise<void> {
   await writeFile(join(dir, "autopilot-heartbeat.json"), `${JSON.stringify({ updatedAt, pid: 4242 }, null, 2)}\n`, "utf8");
 }
 
+// Mirrors src/services/supervisorHealth.ts's SupervisorHeartbeat shape
+// ("timestamp", not "updatedAt"), written every ~15s by
+// scripts/openclaw-local-gateway-supervisor regardless of autopilot activity.
+async function writeSupervisorHeartbeat(workspace: string, ageMs: number): Promise<void> {
+  const dir = join(workspace, "runtime");
+  await mkdir(dir, { recursive: true });
+  const timestamp = new Date(Date.now() - ageMs).toISOString();
+  await writeFile(
+    join(dir, "supervisor-heartbeat.json"),
+    `${JSON.stringify({ timestamp, pid: 9999, uptimeMs: ageMs, startedAt: timestamp, gateway: { state: "running" } }, null, 2)}\n`,
+    "utf8"
+  );
+}
+
 async function readState(stateFile: string): Promise<{ ok: boolean; consecutiveFailures: number; lastCheckedAt: string }> {
   return JSON.parse(await readFile(stateFile, "utf8"));
 }
@@ -96,9 +110,57 @@ describe("gateway-healthcheck.sh", () => {
 
     expect(result.status).toBe(0);
     expect(result.stdout).toContain("] ok ");
+    // No supervisor-heartbeat.json in this workspace, so the default
+    // selection must fall back to the autopilot heartbeat.
+    expect(result.stdout).toContain("heartbeat_file=autopilot-heartbeat.json");
     const state = await readState(stateFile);
     expect(state.ok).toBe(true);
     expect(state.consecutiveFailures).toBe(0);
+  });
+
+  it("prefers a fresh supervisor heartbeat over a stale autopilot heartbeat", async () => {
+    const workspace = await mkdtemp(join(tmpdir(), "artist-runtime-healthcheck-"));
+    await writeHeartbeat(workspace, 20 * 60 * 1_000); // stale: would fail HEARTBEAT_MAX_AGE_SEC=900 if used
+    await writeSupervisorHeartbeat(workspace, 7_000); // fresh
+    const gatewayUrl = await startStubServer(200);
+    const stateFile = join(workspace, "runtime", "healthcheck-state.json");
+
+    const result = await runHealthcheck({
+      GATEWAY_URL: gatewayUrl,
+      WORKSPACE_ROOT: workspace,
+      STATE_FILE: stateFile,
+      HEARTBEAT_MAX_AGE_SEC: "900"
+    });
+
+    expect(result.status).toBe(0);
+    expect(result.stdout).toContain("] ok ");
+    expect(result.stdout).toContain("heartbeat_file=supervisor-heartbeat.json");
+    const state = await readState(stateFile);
+    expect(state.ok).toBe(true);
+  });
+
+  it("honors a HEARTBEAT_FILE override with an epoch-ms timestamp field, bypassing both defaults", async () => {
+    const workspace = await mkdtemp(join(tmpdir(), "artist-runtime-healthcheck-"));
+    await writeHeartbeat(workspace, 20 * 60 * 1_000); // stale autopilot default; must be ignored
+    await writeSupervisorHeartbeat(workspace, 20 * 60 * 1_000); // stale supervisor default; must be ignored
+    const overrideFile = join(workspace, "custom-heartbeat.json");
+    await writeFile(overrideFile, `${JSON.stringify({ timestamp: Date.now() - 5_000 })}\n`, "utf8");
+    const gatewayUrl = await startStubServer(200);
+    const stateFile = join(workspace, "runtime", "healthcheck-state.json");
+
+    const result = await runHealthcheck({
+      GATEWAY_URL: gatewayUrl,
+      WORKSPACE_ROOT: workspace,
+      STATE_FILE: stateFile,
+      HEARTBEAT_MAX_AGE_SEC: "900",
+      HEARTBEAT_FILE: overrideFile
+    });
+
+    expect(result.status).toBe(0);
+    expect(result.stdout).toContain("] ok ");
+    expect(result.stdout).toContain("heartbeat_file=custom-heartbeat.json");
+    const state = await readState(stateFile);
+    expect(state.ok).toBe(true);
   });
 
   it("increments the failure count and logs fail on a non-200 response", async () => {

@@ -265,11 +265,22 @@ placeholder first).
 ### Healthcheck timer
 
 `scripts/linux/gateway-healthcheck.sh` polls the plugin status endpoint
-(`GET .../plugins/artist-runtime/api/status`) and the autopilot heartbeat
-file (`runtime/autopilot-heartbeat.json`, `updatedAt` field). It fails — one
-`fail ...` log line, non-zero reason recorded — when the HTTP response is not
-200, or the heartbeat is missing or older than `HEARTBEAT_MAX_AGE_SEC`
-(default 900s / 15 minutes). The script **always exits 0**, so the timer
+(`GET .../plugins/artist-runtime/api/status`) and a heartbeat file. By
+default it prefers `runtime/supervisor-heartbeat.json` (`timestamp` field,
+written every ~15s by `scripts/openclaw-local-gateway-supervisor` whenever
+the gateway process is up, independent of autopilot activity) and falls back
+to `runtime/autopilot-heartbeat.json` (`updatedAt` field) only when the
+supervisor heartbeat file does not exist. Use the autopilot heartbeat as the
+signal only when autopilot is expected to tick regularly — on a host where
+autopilot is intentionally disabled, the supervisor heartbeat is the correct
+default and avoids a false `fail` after autopilot's own idle window.
+`HEARTBEAT_FILE` overrides the selection entirely; either heartbeat shape may
+carry an ISO string or an epoch-ms number as its timestamp. The chosen file's
+basename is recorded in every log line as `heartbeat_file=...`. The script
+fails — one `fail ...` log line, non-zero reason recorded — when the HTTP
+response is not 200, or the heartbeat is missing or older than
+`HEARTBEAT_MAX_AGE_SEC` (default 900s / 15 minutes). The script **always
+exits 0**, so the timer
 loop itself never stops on a failing check; the pass/fail state and a
 consecutive-failure counter are recorded in `STATE_FILE`
 (`runtime/gateway-healthcheck-state.json` by default). Once consecutive
