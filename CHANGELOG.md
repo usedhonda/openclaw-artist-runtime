@@ -2,6 +2,14 @@
 
 ## Unreleased
 
+- fix: the automatic X post for a finished song is now written in the artist's
+  voice (brief + lyrics fragment through the artist voice prompt) and carries
+  the public Suno take link, instead of a builder template that echoed internal
+  state text. With a live AI provider the stage fails closed on a placeholder
+  provider response or a voice-contract violation, so nothing is published
+  from degraded copy; the `mock` provider keeps the offline template. The
+  prompt is stored next to the post and referenced from the song's prompt
+  ledger.
 - fix: scheduled autopilot ticks now honor on-disk config overrides changed at
   runtime. The ticker pinned the whole boot-time config snapshot as the tick
   payload, so enabling autopilot (or any other override) from the Console after

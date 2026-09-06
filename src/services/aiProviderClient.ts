@@ -109,6 +109,15 @@ export function isAiNotConfiguredResponse(raw: string): boolean {
   return /AI provider '[^']+' is not configured\./.test(raw);
 }
 
+/**
+ * True when the text is a synthetic placeholder (mock provider, provider fallback,
+ * provider not configured) rather than a real model response. Public-facing copy
+ * must never be built from such a response.
+ */
+export function isPlaceholderAiResponse(raw: string): boolean {
+  return raw.startsWith("Mock provider") || isAiNotConfiguredResponse(raw);
+}
+
 function mockResponse(prompt: string, prefix = "Mock provider"): string {
   return `${prefix}: ${truncate(prompt, 200)}`;
 }
