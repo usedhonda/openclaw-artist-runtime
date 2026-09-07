@@ -62,6 +62,9 @@ function assertSafe(stage: string, value: string): void {
 // Producer ruling (2026-09-07): lyrics get the maximum reasoning effort; every
 // other creative call follows the host's agents.defaults.thinkingDefault.
 const LYRICS_REASONING_EFFORT = "xhigh" as const;
+// xhigh reasoning routinely streams for longer than the generic 120 s AI timeout;
+// give the lyrics call room instead of degrading to a mock draft on a slow answer.
+const LYRICS_AI_TIMEOUT_MS = 15 * 60 * 1000;
 
 const SOFTENER_PATTERN = /個人攻撃ではない|悪者はいない|誰も悪くない|no villain|not (?:an )?attack|nothing personal/i;
 const SOFTENER_REPAIR_NOTE =
@@ -568,7 +571,7 @@ async function composeLyricsDraft(input: DraftLyricsInput, title: string, briefT
       ? mockStructuredDraft(title, briefText)
       // Lyrics are the one place the producer wants maximum thinking; every other
       // creative call keeps the host's default reasoning effort.
-      : await callAiProvider(prompt, { provider, reasoningEffort: LYRICS_REASONING_EFFORT });
+      : await callAiProvider(prompt, { provider, reasoningEffort: LYRICS_REASONING_EFFORT, timeoutMs: LYRICS_AI_TIMEOUT_MS });
     assertSafe("response", raw);
     if (isAiProviderMockFallbackResponse(raw)) {
       repairNotes = isAiNotConfiguredResponse(raw)
