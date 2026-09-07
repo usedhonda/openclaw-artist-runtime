@@ -516,6 +516,35 @@ describe("Suno take URL ready flow", () => {
     expect(await readSongState(root, "song-url")).toMatchObject({ status: "suno_take_url_ready" });
   });
 
+  it("imports accepted takes by reference without any download when audioImport is skip", async () => {
+    const root = workspace();
+    await ensureArtistWorkspace(root);
+    await updateSongState(root, "song-url", {
+      title: "URL Gate",
+      status: "suno_take_url_ready",
+      appendPublicLinks: ["https://suno.com/song/take-a", "https://suno.com/song/take-b"]
+    });
+    await writeAcceptedRun(root, "song-url", ["https://suno.com/song/take-a", "https://suno.com/song/take-b"], "2026-09-05T23:00:00.000Z");
+    connectorStatusMock.mockResolvedValue({ state: "connected" });
+
+    await new ArtistAutopilotService().runCycle({
+      workspaceRoot: root,
+      config: {
+        artist: { workspaceRoot: root },
+        autopilot: { enabled: true, dryRun: false },
+        music: { suno: { driver: "playwright", submitMode: "live", authority: "auto_create_and_select_take", audioImport: "skip" } },
+        telegram: { enabled: false },
+        songSpawn: { enabled: false }
+      }
+    });
+
+    expect(connectorImportMock).not.toHaveBeenCalled();
+    const song = await readSongState(root, "song-url");
+    expect(["takes_imported", "take_selected"]).toContain(song.status);
+    expect(song.publicLinks).toEqual(expect.arrayContaining(["https://suno.com/song/take-a", "https://suno.com/song/take-b"]));
+    expect(song.lastImportOutcome?.pathCount).toBe(0);
+  });
+
   it("leaves a non-missing retryable download failure unparked regardless of run age", async () => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date("2026-09-06T00:00:00.000Z"));

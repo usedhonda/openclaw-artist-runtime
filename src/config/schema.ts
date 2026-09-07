@@ -278,6 +278,7 @@ export function validateConfig(config: unknown): ValidationResult<ArtistRuntimeC
               "stopOnCaptcha",
               "stopOnPaymentPrompt",
               "promptLogging",
+              "audioImport",
               "cliEntry",
               "browser"
             ],
@@ -330,6 +331,9 @@ export function validateConfig(config: unknown): ValidationResult<ArtistRuntimeC
           }
           if ("promptLogging" in config.music.suno) {
             validateEnum("config.music.suno.promptLogging", config.music.suno.promptLogging, ["full"], errors);
+          }
+          if ("audioImport" in config.music.suno) {
+            validateEnum("config.music.suno.audioImport", config.music.suno.audioImport, ["download", "skip"], errors);
           }
           if ("cliEntry" in config.music.suno && typeof config.music.suno.cliEntry !== "string") {
             errors.push("config.music.suno.cliEntry must be a string");

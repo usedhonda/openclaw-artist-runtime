@@ -46,7 +46,7 @@ export const buttonVoiceLabels = {
     skip: "保留"
   },
   sunoUrlReady: {
-    archive: "採用して音源取得",
+    archive: "採用",
     discard: "破棄"
   }
 } as const;

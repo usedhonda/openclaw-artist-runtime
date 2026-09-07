@@ -284,7 +284,7 @@ describe("telegram bot worker", () => {
     const markup = JSON.parse(fetchImpl.mock.calls[2][1].body as string) as {
       reply_markup: { inline_keyboard: Array<Array<{ text: string; callback_data: string }>> };
     };
-    expect(markup.reply_markup.inline_keyboard.flat().map((button) => button.text)).toEqual(["採用して音源取得", "破棄"]);
+    expect(markup.reply_markup.inline_keyboard.flat().map((button) => button.text)).toEqual(["採用", "破棄"]);
     expect(markup.reply_markup.inline_keyboard.flat().every((button) => button.callback_data.startsWith("cb:"))).toBe(true);
     const pending = await listPendingCallbackActionSummaries(root, { category: "producer_decision" });
     expect(pending.recent.map((entry) => entry.action).sort()).toEqual(["song_archive", "song_discard"]);

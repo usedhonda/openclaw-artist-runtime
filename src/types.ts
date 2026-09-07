@@ -131,6 +131,13 @@ export interface SunoMusicConfig {
   stopOnPaymentPrompt: boolean;
   promptLogging: "full";
   /**
+   * How accepted Suno takes are brought into the workspace. "download" fetches the
+   * audio files through the connector (default). "skip" records the take URLs and
+   * metadata only and never downloads audio — for accounts whose Suno download
+   * quota is limited; the public Suno URL stays the take's only asset.
+   */
+  audioImport: "download" | "skip";
+  /**
    * Optional absolute path to a suno-cli entry (dist/src/cli.js). Takes precedence over
    * the legacy OPENCLAW_SUNO_CLI_ENTRY env var; when neither is set the connector
    * auto-resolves the bundled vendor/suno-cli copy, so this is only needed to point at a

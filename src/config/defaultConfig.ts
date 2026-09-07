@@ -42,6 +42,7 @@ export const defaultArtistRuntimeConfig: ArtistRuntimeConfig = {
       stopOnCaptcha: true,
       stopOnPaymentPrompt: true,
       promptLogging: "full",
+      audioImport: "download",
       // Empty by default so every browser field resolves through the accessor's
       // explicit-config > env > hardcoded-default precedence; baking values here would
       // shadow the OPENCLAW_SUNO_* env fallbacks.

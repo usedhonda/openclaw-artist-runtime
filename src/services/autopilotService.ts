@@ -672,6 +672,22 @@ async function importPendingSunoGeneration(
     return { imported: false, reason: "take_attribution_collision_blocked", pause: true };
   }
 
+  // Reference-only import: the operator's Suno download quota is limited, so the
+  // accepted take URLs become the song's assets as-is. No connector download, no
+  // feed reconciliation, no local audio files; the lifecycle continues exactly as
+  // after a downloaded import.
+  if (config.music.suno.audioImport === "skip") {
+    await importSunoResults({
+      workspaceRoot: root,
+      songId,
+      runId,
+      urls,
+      resultRefs: [],
+      config
+    });
+    return { imported: true };
+  }
+
   const result = await connector.importResults({ runId, urls });
   if (result.unmatchedUrls && result.unmatchedUrls.length > 0) {
     // Downloads unrelated to this run were excluded from import. Silent warning

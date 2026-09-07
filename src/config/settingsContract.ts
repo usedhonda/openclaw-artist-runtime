@@ -39,6 +39,7 @@ export const settingContract = [
   { path: "music.suno.stopOnCaptcha", kind: "enforcedInvariant" },
   { path: "music.suno.stopOnPaymentPrompt", kind: "enforcedInvariant" },
   { path: "music.suno.promptLogging", kind: "runtimeEffective" },
+  { path: "music.suno.audioImport", kind: "runtimeEffective" },
   { path: "distribution.enabled", kind: "runtimeEffective" },
   { path: "distribution.liveGoArmed", kind: "runtimeEffective" },
   { path: "distribution.dailySharing", kind: "runtimeEffective" },

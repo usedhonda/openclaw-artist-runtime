@@ -2,6 +2,13 @@
 
 ## Unreleased
 
+- feat: new operator knob `music.suno.audioImport` (`download` | `skip`). With
+  `skip`, accepted Suno takes are recorded by URL only: the pending-import sweep
+  no longer runs the connector download, the post-adoption download job is not
+  scheduled, and the song moves to `takes_imported` by reference so the rest
+  of the lifecycle (take selection, review cards, sharing) continues without
+  local audio files. Default stays `download`. The URL-ready review button is now
+  labeled 採用 instead of 採用して音源取得.
 - feat: lyrics drafting now requests the maximum reasoning effort (`xhigh`) from
   the host model for that one call; every other creative call keeps following
   the host's `agents.defaults.thinkingDefault`. `callAiProvider`'s

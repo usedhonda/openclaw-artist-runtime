@@ -301,6 +301,15 @@
                 ],
                 "default": "full"
               },
+              "audioImport": {
+                "type": "string",
+                "enum": [
+                  "download",
+                  "skip"
+                ],
+                "default": "download",
+                "description": "download = fetch accepted take audio into the workspace; skip = record take URLs only and never download audio (for limited Suno download quotas)."
+              },
               "cliEntry": {
                 "type": "string",
                 "description": "Optional absolute path to a suno-cli entry (dist/src/cli.js). Overrides OPENCLAW_SUNO_CLI_ENTRY; blank auto-resolves the bundled vendor/suno-cli copy."
@@ -802,6 +811,10 @@
     "music.suno.minMinutesBetweenCreates": {
       "label": "Minutes between creates",
       "help": "Cooldown between real Suno Create clicks."
+    },
+    "music.suno.audioImport": {
+      "label": "Take audio import",
+      "help": "download: fetch take audio files into the workspace. skip: keep only the Suno take URLs and never download audio (use when the Suno download quota is limited)."
     },
     "music.suno.cliEntry": {
       "label": "suno-cli entry path",

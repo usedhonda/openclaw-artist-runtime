@@ -471,6 +471,13 @@ export async function routeTelegramCallback(ctx: TelegramCallbackContext): Promi
       }
       let replyMessage = actionResult.message;
       if (entry.action === "song_archive" && actionResult.status === "applied" && previousSong?.status === "suno_take_url_ready" && entry.songId) {
+        const adoptionConfig = await resolveRuntimeConfig({ artist: { workspaceRoot: ctx.root } } as Parameters<typeof resolveRuntimeConfig>[0]);
+        if (adoptionConfig.music.suno.audioImport === "skip") {
+          replyMessage = [actionResult.message, "Suno URL を保持しました。音源ファイルは取得しません(設定 audioImport=skip)。"].join("\n");
+          await clearButtonsAndReply(ctx, entry, replyMessage);
+          kickAutopilotCycleAfterProducerDecision(ctx.root, entry.action);
+          return { processed: true, result: callbackResult, reason: auditReason, callbackId };
+        }
         const job = await scheduleDownloadAfterAdoptionJob({
           root: ctx.root,
           songId: entry.songId,

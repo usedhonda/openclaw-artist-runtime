@@ -1089,7 +1089,7 @@ export async function routeTelegramCommand(input: TelegramRouteInput): Promise<T
     const statusDecisionButtons = songReviewDecisionButtons(songState);
     const operationLine = statusDecisionButtons
       ? songState.status === "suno_take_url_ready"
-        ? `操作: この返信の「採用して音源取得」で採用 + 音源取得予約。「破棄」でこの曲を閉じる。ボタン不可なら /song adopt ${song.songId} または /song discard ${song.songId}`
+        ? `操作: この返信の「採用」で採用。「破棄」でこの曲を閉じる。ボタン不可なら /song adopt ${song.songId} または /song discard ${song.songId}`
         : `操作: この返信の「採用」で残す。「破棄」でこの曲を閉じる。ボタン不可なら /song adopt ${song.songId} または /song discard ${song.songId}`
       : undefined;
     const info = [

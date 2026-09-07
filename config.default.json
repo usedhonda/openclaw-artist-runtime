@@ -33,7 +33,8 @@
       "stopOnLoginChallenge": true,
       "stopOnCaptcha": true,
       "stopOnPaymentPrompt": true,
-      "promptLogging": "full"
+      "promptLogging": "full",
+      "audioImport": "download"
     }
   },
   "distribution": {

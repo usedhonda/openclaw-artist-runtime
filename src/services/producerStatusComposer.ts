@@ -175,11 +175,11 @@ export async function composeProducerStatus(root: string, options: ProducerStatu
       ? undefined
       : rawBlockedReason;
   const nextLine = firstPendingIsUrlReadyDecision
-    ? `次: この /status 返信のボタンで「採用して音源取得」か「破棄」を押す。ボタン不可なら /song adopt ${firstPending?.songId ?? "<songId>"} または /song discard ${firstPending?.songId ?? "<songId>"}。`
+    ? `次: この /status 返信のボタンで「採用」か「破棄」を押す。ボタン不可なら /song adopt ${firstPending?.songId ?? "<songId>"} または /song discard ${firstPending?.songId ?? "<songId>"}。`
     : firstPending
     ? latestWaiting.nextLine ?? `次: ${firstPending.label} を押すと、${firstPending.effect}`
     : awaitingUrlReady.length > 0
-      ? "次: この /status 返信のボタンで「採用して音源取得」か「破棄」を押す。ボタンが使えない時は /song adopt <songId> または /song discard <songId>。"
+      ? "次: この /status 返信のボタンで「採用」か「破棄」を押す。ボタンが使えない時は /song adopt <songId> または /song discard <songId>。"
     : isPromptPackReadyWait
       ? `次: この /status 返信のボタンで「Suno 生成へ」「lyrics-suno.md を編集」「保留」を選ぶ。ボタン不可なら /suno go ${currentSongId} / /suno edit ${currentSongId} / /suno hold ${currentSongId}。`
     : degradedLyricsSong
@@ -220,7 +220,7 @@ export async function composeProducerStatus(root: string, options: ProducerStatu
           "Suno URL 採用待ち:",
           ...awaitingUrlReady.slice(0, options.limit ?? 6).map((candidate) => [
             `- ${candidate.songId} / ${candidate.title}: ${candidate.publicLinks[0] ?? "URLなし"}`,
-            `  操作: /status 返信の「採用して音源取得」で採用 + 音源取得予約。「破棄」でこの曲を閉じる。ボタン不可なら /song adopt ${candidate.songId} または /song discard ${candidate.songId}`
+            `  操作: /status 返信の「採用」で採用。「破棄」でこの曲を閉じる。ボタン不可なら /song adopt ${candidate.songId} または /song discard ${candidate.songId}`
           ].join("\n"))
         ]
       : []),

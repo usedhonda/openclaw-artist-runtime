@@ -76,6 +76,6 @@ describe("Telegram result card", () => {
     expect(text).toContain("反応: X reaction / citywatch");
     expect(text).toContain("曲への変換:");
     expect(text).toContain("歌詞チェック:");
-    expect(text).toContain("採用して音源取得");
+    expect(text).toContain("採用");
   });
 });
