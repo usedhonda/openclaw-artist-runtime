@@ -461,7 +461,7 @@ export async function callAiProvider(prompt: string, options: AiProviderCallOpti
   const runtime = options.runtime ?? getOpenClawAiRuntime();
   if (runtime) {
     try {
-      const result = await callOpenClawAiRuntime(runtime, prompt, options.timeoutMs ?? 120000);
+      const result = await callOpenClawAiRuntime(runtime, prompt, options.timeoutMs ?? 120000, options.reasoningEffort);
       return result ?? nativeFailureResponse(prompt, "native_runtime_empty_response");
     } catch (error) {
       // Native runtime failures are fail-closed. Never fall back to legacy auth

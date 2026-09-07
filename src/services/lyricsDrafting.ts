@@ -59,6 +59,10 @@ function assertSafe(stage: string, value: string): void {
 // Exculpatory ("免罪句") phrases that pull the fang out of a diss by disclaiming
 // the attack inside the lyric body. The safety line is the writer's discipline,
 // not a caption the song sings, so these are lint-detected in a drafted lyric.
+// Producer ruling (2026-09-07): lyrics get the maximum reasoning effort; every
+// other creative call follows the host's agents.defaults.thinkingDefault.
+const LYRICS_REASONING_EFFORT = "xhigh" as const;
+
 const SOFTENER_PATTERN = /個人攻撃ではない|悪者はいない|誰も悪くない|no villain|not (?:an )?attack|nothing personal/i;
 const SOFTENER_REPAIR_NOTE =
   "softener_detected: 免罪句（「個人攻撃ではない」「悪者はいない」「誰も悪くない」「no villain here」類）を歌詞から全て削除し、punchline を弱めずに書き直せ。安全線は歌詞に但し書きとして書かない。";
@@ -562,7 +566,9 @@ async function composeLyricsDraft(input: DraftLyricsInput, title: string, briefT
     assertSafe("input", prompt);
     const raw = provider === "mock"
       ? mockStructuredDraft(title, briefText)
-      : await callAiProvider(prompt, { provider });
+      // Lyrics are the one place the producer wants maximum thinking; every other
+      // creative call keeps the host's default reasoning effort.
+      : await callAiProvider(prompt, { provider, reasoningEffort: LYRICS_REASONING_EFFORT });
     assertSafe("response", raw);
     if (isAiProviderMockFallbackResponse(raw)) {
       repairNotes = isAiNotConfiguredResponse(raw)

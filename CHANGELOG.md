@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- feat: lyrics drafting now requests the maximum reasoning effort (`xhigh`) from
+  the host model for that one call; every other creative call keeps following
+  the host's `agents.defaults.thinkingDefault`. `callAiProvider`'s
+  `reasoningEffort` option is now honored on the native OpenClaw runtime path
+  too, where it previously only applied to the legacy direct-API path.
 - fix: the automatic X post for a finished song is now written in the artist's
   voice (brief + lyrics fragment through the artist voice prompt) and carries
   the public Suno take link, instead of a builder template that echoed internal

@@ -86,10 +86,18 @@ export function extractOpenClawAssistantText(messages: unknown[]): string | unde
   return parts.join("\n").trim() || undefined;
 }
 
+export type OpenClawReasoningEffort = "low" | "medium" | "high" | "xhigh";
+
+/**
+ * @param reasoningOverride Per-call reasoning effort. When set it wins over the
+ * host's `agents.defaults.thinkingDefault`, so a caller can spend more thinking
+ * on one purpose (lyrics) while the rest of the runtime keeps the default.
+ */
 export async function callOpenClawAiRuntime(
   runtime: OpenClawAiRuntime,
   prompt: string,
-  timeoutMs: number
+  timeoutMs: number,
+  reasoningOverride?: OpenClawReasoningEffort
 ): Promise<string | undefined> {
   const sessionKey = `artist-runtime:creative:${Date.now()}-${++sessionCounter}`;
   const controller = new AbortController();
@@ -99,9 +107,10 @@ export async function callOpenClawAiRuntime(
       const currentConfig = runtime.config?.current?.();
       const defaults = isRecord(currentConfig) && isRecord(currentConfig.agents) ? currentConfig.agents.defaults : undefined;
       const thinkingDefault = isRecord(defaults) ? defaults.thinkingDefault : undefined;
-      const reasoning = thinkingDefault === "low" || thinkingDefault === "medium" || thinkingDefault === "high" || thinkingDefault === "xhigh"
+      const configuredReasoning = thinkingDefault === "low" || thinkingDefault === "medium" || thinkingDefault === "high" || thinkingDefault === "xhigh"
         ? thinkingDefault
         : undefined;
+      const reasoning = reasoningOverride ?? configuredReasoning;
       const result = await runtime.llm.complete({
         messages: [{ role: "user", content: prompt }],
         purpose: "artist-runtime creative AI",
