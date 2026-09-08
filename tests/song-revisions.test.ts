@@ -6,6 +6,7 @@ import { createHash } from "node:crypto";
 import { adoptLyricRevision, saveLyricRevision, restoreLyricRevision, listSongMaterialVersions } from "../src/services/songRevisions";
 import { readSongState } from "../src/services/artistState";
 import { registerSunoTools } from "../src/tools/sunoTools";
+import { registerRevisionTools } from "../src/tools/revisionTools";
 
 const hash = (text: string) => createHash("sha256").update(text).digest("hex");
 
@@ -34,7 +35,7 @@ describe("song-bound lyric revisions", () => {
     const source = "[Verse 1]\nold line\n\n[Hook]\nkeep this";
     const first = await saveLyricRevision({ workspaceRoot: root, songId: "fixture-song", instruction: "draft", source: { kind: "adopted_lyrics", version: 1 }, expectedSourceHash: hash(source), text: "first" });
     await expect(saveLyricRevision({ workspaceRoot: root, songId: "fixture-song", instruction: "stale", source: { kind: "adopted_lyrics", version: 1 }, expectedSourceHash: "wrong", text: "bad" })).rejects.toThrow("hash");
-    const restored = await restoreLyricRevision({ workspaceRoot: root, songId: "fixture-song", version: first.version, instruction: "restore", expectedText: first.text, kind: "candidate" });
+    const restored = await restoreLyricRevision({ workspaceRoot: root, songId: "fixture-song", restoredFromVersion: first.version, restoredFromKind: "candidate", ontoVersion: first.version, ontoKind: "candidate", instruction: "restore", expectedText: first.text });
     expect(restored.version).toBe(2);
     expect(await readFile(join(root, "songs", "fixture-song", "lyrics", "revisions", "candidate.v1.json"), "utf8")).toContain('"version": 1');
   });
@@ -44,17 +45,22 @@ describe("song-bound lyric revisions", () => {
     const source = "[Verse 1]\nold line\n\n[Hook]\nkeep this";
     const first = await saveLyricRevision({ workspaceRoot: root, songId: "fixture-song", instruction: "first pass", source: { kind: "adopted_lyrics", version: 1 }, expectedSourceHash: hash(source), changes: [{ section: "Verse 1", before: "old line", after: "new line" }] });
     const second = await saveLyricRevision({ workspaceRoot: root, songId: "fixture-song", instruction: "stronger pass", source: { kind: "candidate", version: first.version }, expectedSourceHash: first.textHash, changes: [{ section: "Verse 1", before: "new line", after: "aggressive line" }] });
-    const restored = await restoreLyricRevision({ workspaceRoot: root, songId: "fixture-song", version: first.version, kind: "candidate", targetVersion: second.version, targetKind: "candidate", instruction: "restore first verse", changes: [{ section: "Verse 1", before: "aggressive line", after: "new line" }], expectedText: first.text });
+    await expect(restoreLyricRevision({ workspaceRoot: root, songId: "fixture-song", restoredFromVersion: first.version, restoredFromKind: "candidate", ontoVersion: second.version, ontoKind: "candidate", instruction: "invalid restore", changes: [{ section: "Verse 1", before: "aggressive line", after: "missing old text" }], expectedText: first.text })).rejects.toThrow("not present");
+    const restored = await restoreLyricRevision({ workspaceRoot: root, songId: "fixture-song", restoredFromVersion: first.version, restoredFromKind: "candidate", ontoVersion: second.version, ontoKind: "candidate", instruction: "restore first verse", changes: [{ section: "Verse 1", before: "aggressive line", after: "new line" }], expectedText: first.text });
     expect(restored.text).toContain("new line");
     expect(restored.text).toContain("keep this");
     expect(restored.source).toEqual({ kind: "candidate", version: second.version });
+    expect(restored.restoredFrom).toEqual({ kind: "candidate", version: first.version });
   });
 
   it("pins every registered Suno generate call to the approved payload", () => {
     const registrations: Array<(context: { workspaceDir?: string }) => { name: string; parameters: Record<string, unknown> }> = [];
     registerSunoTools({ registerTool: (tool: unknown) => registrations.push(tool as typeof registrations[number]) });
+    registerRevisionTools({ registerTool: (tool: unknown) => registrations.push(tool as typeof registrations[number]) });
     const generate = registrations.find((registration) => registration({}).name === "artist_suno_generate")!({});
     expect(generate.parameters.required).toEqual(["songId", "expectedPayloadHash", "expectedPackVersion"]);
+    const restore = registrations.find((registration) => registration({}).name === "artist_lyrics_revision_restore")!({});
+    expect(restore.parameters.required).toEqual(["songId", "restoredFromKind", "restoredFromVersion", "ontoKind", "ontoVersion", "instruction"]);
   });
 
   it("keeps an archived song archived when an approved candidate fails validation", async () => {

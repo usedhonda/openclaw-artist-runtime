@@ -39,12 +39,11 @@ export interface RestoreLyricRevisionInput {
   workspaceRoot: string;
   songId: string;
   instruction: string;
-  version: number;
+  restoredFromVersion: number;
+  restoredFromKind: "adopted_lyrics" | "candidate";
+  ontoVersion: number;
+  ontoKind: "adopted_lyrics" | "candidate";
   changes?: LyricRevisionChange[] | Record<string, string>;
-  text?: string;
-  kind?: "adopted_lyrics" | "candidate";
-  targetVersion?: number;
-  targetKind?: "adopted_lyrics" | "candidate";
   expectedText?: string;
 }
 
@@ -211,13 +210,18 @@ export async function saveLyricRevision(input: SaveLyricRevisionInput): Promise<
 
 export async function restoreLyricRevision(input: RestoreLyricRevisionInput): Promise<LyricRevisionCandidate> {
   const songRoot = await assertExistingSong(input.workspaceRoot, input.songId);
-  const source = await readVersion(songRoot, input.kind ?? "candidate", input.version);
+  const source = await readVersion(songRoot, input.restoredFromKind, input.restoredFromVersion);
   if (input.expectedText !== undefined && input.expectedText !== source.text) throw new Error("candidate changed; exact-text check failed");
-  const target = input.targetVersion === undefined
-    ? source
-    : await readVersion(songRoot, input.targetKind ?? "candidate", input.targetVersion);
-  const restoredText = input.text ?? (input.changes ? applyChanges(target.text, input.changes).text : source.text);
-  return saveLyricRevision({ workspaceRoot: input.workspaceRoot, songId: input.songId, instruction: input.instruction, text: restoredText, source: input.targetVersion === undefined ? { kind: source.kind, version: source.version } : { kind: target.kind, version: target.version }, expectedSourceHash: target.textHash, restoredFrom: { kind: source.kind, version: source.version } });
+  const target = await readVersion(songRoot, input.ontoKind, input.ontoVersion);
+  let restoredText = source.text;
+  if (input.changes) {
+    const normalized = Array.isArray(input.changes) ? input.changes : Object.entries(input.changes).map(([section, after]) => ({ section, before: section, after }));
+    for (const change of normalized) {
+      if (!source.text.includes(change.after)) throw new Error(`restore text is not present in restoredFrom version${change.section ? ` for ${change.section}` : ""}`);
+    }
+    restoredText = applyChanges(target.text, input.changes).text;
+  }
+  return saveLyricRevision({ workspaceRoot: input.workspaceRoot, songId: input.songId, instruction: input.instruction, text: input.changes ? undefined : restoredText, changes: input.changes, source: { kind: target.kind, version: target.version }, expectedSourceHash: target.textHash, restoredFrom: { kind: source.kind, version: source.version } });
 }
 
 export async function adoptLyricRevision(input: AdoptLyricRevisionInput): Promise<{ candidate: LyricRevisionCandidate; promptPack: Awaited<ReturnType<typeof createAndPersistSunoPromptPack>> }> {
