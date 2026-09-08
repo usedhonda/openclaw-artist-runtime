@@ -1,4 +1,4 @@
-import { mkdir, readFile, readdir, writeFile } from "node:fs/promises";
+import { mkdir, readFile, readdir, rename, stat, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import type { ArtistRuntimeConfig, SunoImportResult, SunoRunRecord } from "../types.js";
 import { resolveSunoConnector } from "../connectors/suno/resolveSunoConnector.js";
@@ -25,6 +25,7 @@ export interface ProductionTrialJob {
   completedAt?: string;
   reason?: string;
   attempts: number;
+  completionEmitted?: boolean;
 }
 
 export interface EnqueueProductionTrialInput {
@@ -52,7 +53,10 @@ function jobPath(root: string, id: string): string {
 
 async function writeJob(root: string, job: ProductionTrialJob): Promise<void> {
   await mkdir(jobsDir(root), { recursive: true });
-  await writeFile(jobPath(root, job.jobId), `${JSON.stringify(job, null, 2)}\n`, "utf8");
+  const path = jobPath(root, job.jobId);
+  const temporary = `${path}.${process.pid}.tmp`;
+  await writeFile(temporary, `${JSON.stringify(job, null, 2)}\n`, "utf8");
+  await rename(temporary, path);
 }
 
 async function readJobs(root: string): Promise<ProductionTrialJob[]> {
@@ -66,7 +70,10 @@ async function readJobs(root: string): Promise<ProductionTrialJob[]> {
 
 async function acceptedRun(root: string, songId: string, runId: string): Promise<SunoRunRecord | undefined> {
   const runs = await readAllSunoRuns(root, songId);
-  return runs.find((run) => run.runId === runId && (run.status === "accepted" || run.status === "imported") && run.urls.length > 0);
+  const latest = new Map<string, SunoRunRecord>();
+  for (const run of runs) if (!latest.has(run.runId)) latest.set(run.runId, run);
+  const run = latest.get(runId);
+  return run && (run.status === "accepted" || run.status === "imported") && run.urls.length > 0 ? run : undefined;
 }
 
 function exactUrls(expected: string[], actual: string[]): boolean {
@@ -102,7 +109,8 @@ export async function enqueueProductionTrial(root: string, input: EnqueueProduct
 
 function transientAudio(reason: string | undefined): boolean {
   const text = (reason ?? "").toLowerCase();
-  return !/(login|captcha|payment|quota|attribution|dryrun|dry_run|forbidden|unauthorized|session|auth|challenge)/.test(text);
+  if (/(login|captcha|payment|quota|attribution|dryrun|dry_run|forbidden|unauthorized|session|auth|challenge)/.test(text)) return false;
+  return /(audio_pending|audio_asset_not_found|not.?ready|network|timeout|temporar|unavailable|\b404\b)/.test(text);
 }
 
 async function processJob(root: string, config: Partial<ArtistRuntimeConfig>, job: ProductionTrialJob): Promise<ProductionTrialJob> {
@@ -114,6 +122,8 @@ async function processJob(root: string, config: Partial<ArtistRuntimeConfig>, jo
   const binding = await readProductionRunBinding(root, job.songId, job.runId);
   if (!binding) return block("production_run_binding_missing");
   if (Date.now() - Date.parse(job.createdAt) > PRODUCTION_TRIAL_MAX_AGE_MS) return block("production_trial_audio_timeout");
+  const run = await acceptedRun(root, job.songId, job.runId);
+  if (!run || !job.urls.every((url) => run.urls.includes(url))) return block("production_trial_run_membership_changed");
   const connector = resolveSunoConnector(root, config);
   const result: SunoImportResult = await connector.importResults({ runId: job.runId, urls: job.urls }).catch((error) => ({ urls: [], paths: [], runId: job.runId, reason: error instanceof Error ? error.message : String(error) }));
   const dryRunPaths = findDryRunImportPaths(result.paths ?? []);
@@ -125,29 +135,55 @@ async function processJob(root: string, config: Partial<ArtistRuntimeConfig>, jo
   }
   if ((result.paths ?? []).length === 0 || result.urls.length === 0) {
     const reason = result.reason ?? "audio_asset_not_found";
-    return { ...job, status: transientAudio(reason) ? "pending" : "blocked", reason, updatedAt: new Date().toISOString(), attempts: job.attempts + 1 };
+    return transientAudio(reason)
+      ? { ...job, status: "pending", reason, updatedAt: new Date().toISOString(), attempts: job.attempts + 1 }
+      : block("production_trial_import_blocked");
   }
   if ((result.runId && result.runId !== job.runId) || !exactUrls(job.urls, result.urls)) return block("import_result_run_or_url_mismatch");
+  const missingPath = (await Promise.all((result.paths ?? []).map(async (path) => {
+    try {
+      const details = await stat(path);
+      return !details.isFile() || details.size === 0;
+    } catch {
+      return true;
+    }
+  }))).some(Boolean);
+  if (missingPath) return block("production_trial_import_path_missing");
   await importSunoResults({ workspaceRoot: root, songId: job.songId, runId: job.runId, urls: result.urls, resultRefs: result.paths ?? [], metadata: result.metadata, config, preserveSongLifecycle: true });
   await updateProductionRunConversation(root, binding, "submitted");
   const completedAt = new Date().toISOString();
-  emitRuntimeEvent({ type: "song_take_completed", songId: job.songId, urls: result.urls, timestamp: Date.now() });
   return { ...job, status: "imported", updatedAt: completedAt, completedAt, attempts: job.attempts + 1, reason: "audio_imported" };
 }
 
+const processingRoots = new Set<string>();
+
 export async function processPendingProductionTrials(root: string, config: Partial<ArtistRuntimeConfig>): Promise<ProductionTrialJob[]> {
+  if (processingRoots.has(root)) return [];
+  processingRoots.add(root);
   const results: ProductionTrialJob[] = [];
-  for (const job of await readJobs(root)) {
-    if (job.status !== "pending") continue;
-    const next = await processJob(root, config, job);
-    await writeJob(root, next);
-    results.push(next);
+  try {
+    for (const job of await readJobs(root)) {
+      if (job.status !== "pending") continue;
+      const next = await processJob(root, config, job);
+      const persisted = next.status === "imported" && !next.completionEmitted ? { ...next, completionEmitted: true } : next;
+      await writeJob(root, persisted);
+      if (persisted.status === "imported" && persisted.completionEmitted && !next.completionEmitted) {
+        emitRuntimeEvent({ type: "song_take_completed", songId: persisted.songId, urls: persisted.urls, timestamp: Date.now() });
+      }
+      results.push(persisted);
+    }
+  } finally {
+    processingRoots.delete(root);
   }
   return results;
 }
 
 export function startProductionTrialWorker(root: string, config: Partial<ArtistRuntimeConfig>): () => void {
-  const timer = setInterval(() => { void processPendingProductionTrials(root, config); }, PRODUCTION_TRIAL_INTERVAL_MS);
+  const timer = setInterval(() => {
+    void processPendingProductionTrials(root, config).catch(() => {
+      emitRuntimeEvent({ type: "error", source: "productionTrialWorker", reason: "production_trial_worker_tick_failed", timestamp: Date.now() });
+    });
+  }, PRODUCTION_TRIAL_INTERVAL_MS);
   timer.unref?.();
   return () => clearInterval(timer);
 }
