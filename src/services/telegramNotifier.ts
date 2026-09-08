@@ -318,9 +318,20 @@ export class TelegramNotifier {
         }
       }
     }
-    // Music submissions are conversation reports; they do not force an approve/
-    // discard decision through an operational callback card.
-    // URL-ready is a listening handoff, not an approve/discard gate.
+    if (event.type === "song_take_completed") {
+      const bound = await resolveSongSubmissionBinding(event, this.options.workspaceRoot);
+      if (!bound) {
+        await this.attachSongCompletionButtons(event, sent.message_id);
+      }
+    }
+    if (event.type === "suno_take_url_ready") {
+      const bound = this.options.workspaceRoot
+        ? await readProductionRunBinding(this.options.workspaceRoot, event.songId, event.runId).catch(() => undefined)
+        : undefined;
+      if (!bound) {
+        await this.attachSunoTakeUrlReadyButtons(event, sent.message_id);
+      }
+    }
     if (event.type === "prompt_pack_ready") {
       await this.attachPromptPackReadyButtons(event, sent.message_id);
     }
@@ -1213,7 +1224,7 @@ async function formatSongSubmission(
   const base = resolved?.base;
   const intended = revision
     ? [binding?.instruction ?? revision.producerInstruction]
-    : event.observationSummary?.motivation ? [event.observationSummary.motivation] : undefined;
+    : event.observationSummary?.motivation ? [safeMotivation(event.observationSummary.motivation)] : undefined;
   const changed = revision
     ? [
       base?.title && revision.effective.title !== base.title ? `タイトルを「${revision.effective.title}」にした` : undefined,
@@ -1226,7 +1237,7 @@ async function formatSongSubmission(
     ].filter((line): line is string => Boolean(line))
     : undefined;
   const previousUrl = binding?.baselineTake?.url;
-  return formatSongSubmissionReport({
+  const report = formatSongSubmissionReport({
     kind: "submission",
     title: revision?.effective.title ?? base?.title ?? "今回の曲",
     requestOrVersion: binding?.instruction ?? revision?.producerInstruction,
@@ -1246,6 +1257,14 @@ async function formatSongSubmission(
     previous: previousUrl ? { audioUrls: [previousUrl] } : undefined,
     listenFor: revision ? [binding?.instruction ?? revision.producerInstruction] : undefined
   });
+  if (!event.observationSummary) return report;
+  const observation = event.observationSummary;
+  return [
+    report,
+    `🌐 観察元: ${formatObservationAuthorPrefix(observation.author) || "@unknown"}`,
+    `💬 抜粋: 「${capQuote(observation.quote ?? "") || "(抜粋なし)"}」`,
+    `🎯 動機: ${safeMotivation(observation.motivation)}`
+  ].join("\n");
 }
 
 const TELEGRAM_AUDIO_MAX_BYTES = 50 * 1024 * 1024;
@@ -1568,8 +1587,7 @@ export async function formatRuntimeEvent(
   event: RuntimeEvent,
   options: Pick<TelegramNotifierOptions, "workspaceRoot" | "aiReviewProvider" | "dashboardBaseUrl"> = {}
 ): Promise<string> {
-  const musicReport = event.type === "song_spawn_proposed"
-    || event.type === "song_take_completed"
+  const musicReport = event.type === "song_take_completed"
     || event.type === "suno_take_url_ready"
     || event.type === "suno_adoption_download_imported";
   const rawBody = stripTelegramHtmlComments(await formatRuntimeEventRaw(event, options));
