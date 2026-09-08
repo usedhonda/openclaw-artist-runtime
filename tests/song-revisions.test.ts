@@ -3,7 +3,8 @@ import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { describe, expect, it } from "vitest";
 import { createHash } from "node:crypto";
-import { saveLyricRevision, restoreLyricRevision, listSongMaterialVersions } from "../src/services/songRevisions";
+import { adoptLyricRevision, saveLyricRevision, restoreLyricRevision, listSongMaterialVersions } from "../src/services/songRevisions";
+import { readSongState } from "../src/services/artistState";
 import { registerSunoTools } from "../src/tools/sunoTools";
 
 const hash = (text: string) => createHash("sha256").update(text).digest("hex");
@@ -54,5 +55,13 @@ describe("song-bound lyric revisions", () => {
     registerSunoTools({ registerTool: (tool: unknown) => registrations.push(tool as typeof registrations[number]) });
     const generate = registrations.find((registration) => registration({}).name === "artist_suno_generate")!({});
     expect(generate.parameters.required).toEqual(["songId", "expectedPayloadHash", "expectedPackVersion"]);
+  });
+
+  it("keeps an archived song archived when an approved candidate fails validation", async () => {
+    const root = await fixture();
+    const text = `[Verse 1]\n${"あ".repeat(12000)}`;
+    const candidate = await saveLyricRevision({ workspaceRoot: root, songId: "fixture-song", instruction: "oversized", source: { kind: "adopted_lyrics", version: 1 }, expectedSourceHash: hash("[Verse 1]\nold line\n\n[Hook]\nkeep this"), text });
+    await expect(adoptLyricRevision({ workspaceRoot: root, songId: "fixture-song", version: candidate.version, artistReason: "approved", expectedTextHash: candidate.textHash })).rejects.toThrow();
+    expect((await readSongState(root, "fixture-song")).status).toBe("archived");
   });
 });

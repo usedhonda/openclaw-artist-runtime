@@ -122,7 +122,7 @@ async function failClosedLyricsBoxOverflow(input: PersistSunoPromptPackInput, de
     await updateSongState(input.workspaceRoot, input.songId, {
       degradedLyrics: true,
       reason,
-      status: "brief"
+      ...(input.preserveSongStatus ? {} : { status: "brief" as const })
     });
   }
   const error = new Error(reason);
@@ -144,7 +144,7 @@ async function failClosedPromptPackValidation(input: PersistSunoPromptPackInput,
     await updateSongState(input.workspaceRoot, input.songId, {
       degradedLyrics: true,
       reason,
-      status: "brief"
+      ...(input.preserveSongStatus ? {} : { status: "brief" as const })
     });
   }
   const error = new Error(reason);
