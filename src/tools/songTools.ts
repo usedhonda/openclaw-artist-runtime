@@ -1,6 +1,8 @@
+import type { ArtistToolContext } from "../pluginApi.js";
 import { safeRegisterTool } from "../pluginApi.js";
 import { createSongIdea } from "../services/songIdeation.js";
 import { selectTake } from "../services/takeSelection.js";
+import { updateProductionConversation } from "../services/productionConversation.js";
 
 export function registerSongTools(api: unknown): void {
   safeRegisterTool(api, {
@@ -20,17 +22,43 @@ export function registerSongTools(api: unknown): void {
   safeRegisterTool(api, {
     name: "artist_take_select",
     description: "Select a generated Suno take for an Artist Runtime song in the active artist workspace.",
-    handler: async (input) => {
+    parameters: {
+      type: "object",
+      additionalProperties: false,
+      required: ["songId", "runId", "selectedTakeId", "reason"],
+      properties: {
+        songId: { type: "string", minLength: 1 },
+        runId: { type: "string", minLength: 1 },
+        selectedTakeId: { type: "string", minLength: 1 },
+        reason: { type: "string", minLength: 1 },
+        conversational: { type: "boolean", default: true }
+      }
+    },
+    handler: async (input, context?: ArtistToolContext) => {
       const payload = typeof input === "object" && input !== null ? (input as Record<string, unknown>) : {};
-      return selectTake({
-        workspaceRoot: typeof payload.workspaceRoot === "string" ? payload.workspaceRoot : ".",
-        songId: typeof payload.songId === "string" ? payload.songId : "song-001",
-        runId: typeof payload.runId === "string" ? payload.runId : undefined,
-        selectedTakeId: typeof payload.selectedTakeId === "string" ? payload.selectedTakeId : undefined,
-        reason: typeof payload.reason === "string" ? payload.reason : undefined,
-        conversational: payload.conversational === true,
+      if (context?.senderIsOwner === false) throw new Error("producer-only take selection");
+      if (typeof payload.songId !== "string" || typeof payload.runId !== "string" || typeof payload.selectedTakeId !== "string" || typeof payload.reason !== "string" || !payload.songId || !payload.runId || !payload.selectedTakeId || !payload.reason) {
+        throw new Error("songId, runId, selectedTakeId, and reason are required");
+      }
+      const workspaceRoot = typeof payload.workspaceRoot === "string" ? payload.workspaceRoot : ".";
+      const selection = await selectTake({
+        workspaceRoot,
+        songId: payload.songId,
+        runId: payload.runId,
+        selectedTakeId: payload.selectedTakeId,
+        reason: payload.reason,
+        conversational: payload.conversational !== false,
         producerDecision: true
       });
+      const conversation = await updateProductionConversation(workspaceRoot, context, {
+        songId: selection.songId,
+        runId: selection.runId,
+        acceptedTake: { runId: selection.runId, takeId: selection.selectedTakeId },
+        phase: "adopted",
+        pendingDecision: ""
+      });
+      if (!conversation) throw new Error("trusted Telegram conversation context is unavailable");
+      return selection;
     }
   });
 }
