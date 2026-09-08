@@ -87,6 +87,7 @@ export async function reviseSongProduction(input: ReviseSongProductionInput): Pr
   if (!input.producerInstruction.trim()) throw new Error("producer instruction is required");
   const patch = input.patch ?? {};
   if (patch.bpm !== undefined && (!Number.isInteger(patch.bpm) || patch.bpm < 40 || patch.bpm > 220)) throw new Error("bpm must be an integer between 40 and 220");
+  if (Array.isArray(patch.excludeStyles) && patch.excludeStyles.length === 0) throw new Error("empty exclusions are not allowed");
   return withSongMaterialLock(input.workspaceRoot, input.songId, async () => {
     const dir = revisionDir(input.workspaceRoot, input.songId);
     const effectiveKey = JSON.stringify({
@@ -107,6 +108,10 @@ export async function reviseSongProduction(input: ReviseSongProductionInput): Pr
     const baseBpm = Number(String(base.pack.style).match(/\b(\d{2,3})\s*BPM\b/i)?.[1]) || undefined;
     const bpm = patch.bpm ?? baseBpm;
     const excludeStyles = patch.excludeStyles?.length ? patch.excludeStyles : base.pack.exclude.split(",").map((item) => item.trim()).filter(Boolean);
+    const inheritedDirection = base.inheritedDirection.trim();
+    const revisionBasePack = patch.direction?.trim() && inheritedDirection && base.pack.style.endsWith(`, ${inheritedDirection}`)
+      ? { ...base.pack, style: base.pack.style.slice(0, -inheritedDirection.length - 2).trimEnd() }
+      : base.pack;
     const promptPack = await createAndPersistSunoPromptPack({
       workspaceRoot: input.workspaceRoot,
       songId: input.songId,
@@ -119,7 +124,7 @@ export async function reviseSongProduction(input: ReviseSongProductionInput): Pr
       currentStateSnapshot: undefined,
       preserveSongStatus: true,
       preserveExistingLyricsVersions: true,
-      productionOverrides: { basePack: base.pack, direction: patch.direction || base.inheritedDirection, inheritedDirection: base.inheritedDirection, excludeStyles }
+      productionOverrides: { basePack: revisionBasePack, direction: patch.direction || base.inheritedDirection, inheritedDirection: base.inheritedDirection, excludeStyles }
     });
     const revision: SongProductionRevision = {
       revisionId,
@@ -128,7 +133,7 @@ export async function reviseSongProduction(input: ReviseSongProductionInput): Pr
       basePayloadHash: input.expectedBasePayloadHash,
       lyric: input.lyric,
       producerInstruction: input.producerInstruction.trim(),
-      effective: { title, bpm, direction: patch.direction?.trim() ?? "", excludeStyles },
+      effective: { title, bpm, direction: patch.direction?.trim() || base.inheritedDirection, excludeStyles },
       baseline: { status: state.status, selectedTakeId: state.selectedTakeId },
       packVersion: promptPack.packVersion,
       payloadHash: promptPack.pack.payloadHash,

@@ -63,6 +63,22 @@ describe("bounded song production revisions", () => {
     expect(inherited.promptPack.pack.style).toContain("dry clipped drums");
   });
 
+  it("replaces an inherited direction and records it through a chained revision", async () => {
+    const { root, lyrics, base } = await fixture();
+    const first = await reviseSongProduction({ workspaceRoot: root, songId: "fixture-song", basePackVersion: 1, expectedBasePayloadHash: base.pack.payloadHash, lyric: { kind: "adopted_lyrics", version: 1, hash: hash(lyrics) }, producerInstruction: "first direction", patch: { direction: "dry clipped drums" } });
+    const titleOnly = await reviseSongProduction({ workspaceRoot: root, songId: "fixture-song", basePackVersion: first.packVersion, expectedBasePayloadHash: first.payloadHash, lyric: { kind: "adopted_lyrics", version: 1, hash: hash(lyrics) }, producerInstruction: "title only", patch: { title: "Retitled" } });
+    expect(titleOnly.effective.direction).toBe("dry clipped drums");
+    const replaced = await reviseSongProduction({ workspaceRoot: root, songId: "fixture-song", basePackVersion: titleOnly.packVersion, expectedBasePayloadHash: titleOnly.payloadHash, lyric: { kind: "adopted_lyrics", version: 1, hash: hash(lyrics) }, producerInstruction: "replace direction", patch: { direction: "wide bowed bass" } });
+    expect(replaced.effective.direction).toBe("wide bowed bass");
+    expect(replaced.promptPack.pack.style).toContain("wide bowed bass");
+    expect(replaced.promptPack.pack.style).not.toContain("dry clipped drums");
+  });
+
+  it("rejects explicit empty exclusions instead of silently inheriting", async () => {
+    const { root, lyrics, base } = await fixture();
+    await expect(reviseSongProduction({ workspaceRoot: root, songId: "fixture-song", basePackVersion: 1, expectedBasePayloadHash: base.pack.payloadHash, lyric: { kind: "adopted_lyrics", version: 1, hash: hash(lyrics) }, producerInstruction: "clear exclusions", patch: { excludeStyles: [] } })).rejects.toThrow("empty exclusions");
+  });
+
   it("fails closed on tampered payloads and direction overflow without changing state", async () => {
     const { root, lyrics, base } = await fixture();
     await writeFile(join(root, "songs/fixture-song/prompts/prompt-pack-v001/suno-payload.json"), "{}\n");
