@@ -45,16 +45,23 @@ The registered production tools look up adopted lyrics and candidate versions,
 save a candidate with the source version/hash, and restore whole drafts or exact
 text sections. Candidates live in `songs/<id>/lyrics/revisions/`; normal latest
 lyrics readers do not see them. Partial changes must match their source text
-exactly once. The artist should present the revised lyrics and briefly identify
+exactly once. Restoration explicitly names the old material (`restoredFromKind`
+and `restoredFromVersion`) and current edit target (`ontoKind` and `ontoVersion`);
+replacement text must exist in the old material. These references and changed
+sections are recorded in the new candidate, never by rewriting prior candidates.
+The artist should present the revised lyrics and briefly identify
 what changed, preserving unspecified sections.
 
 Revision alone neither adopts the lyrics nor starts Suno. An explicit production
 request adopts the presented candidate, creates its prompt pack, and pins both
 the pack version and payload hash for `artist_suno_generate`. A stale approval
 fails closed. Repeated adoption of one candidate reuses its adoption receipt;
-adoptions for the same song are serialized. Archived/published status is retained.
+adoptions for the same song are serialized. Archived/published status is retained,
+including when validation rejects a candidate.
 An existing human-assist Create wait is not replaced. In manual submit mode,
-preparation stops before Create; report success only from the tool result.
+preparation stops before Create; set `prepareOnly=true` on the generation request
+to make that manual-only safety assertion explicit, and report success only from
+the tool result.
 
 The plugin manifest's `contracts.tools` must declare every registered production
 tool. After installing a build that adds a tool, reload the plugin process; a

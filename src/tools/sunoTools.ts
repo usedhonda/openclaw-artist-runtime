@@ -44,7 +44,8 @@ export function registerSunoTools(api: unknown): void {
       properties: {
         songId: { type: "string", minLength: 1 },
         expectedPayloadHash: { type: "string", minLength: 1 },
-        expectedPackVersion: { type: "integer", minimum: 1 }
+        expectedPackVersion: { type: "integer", minimum: 1 },
+        prepareOnly: { type: "boolean", description: "Prepare-only safety assertion: allowed only with submitMode=manual; fills the form without Create." }
       }
     },
     handler: async (input) => {
@@ -60,7 +61,8 @@ export function registerSunoTools(api: unknown): void {
         songId: typeof payload.songId === "string" ? payload.songId : "song-001",
         config: await readResolvedConfig(workspaceRoot),
         expectedPayloadHash,
-        expectedPackVersion
+        expectedPackVersion,
+        prepareOnly: payload.prepareOnly === true
       });
     }
   });

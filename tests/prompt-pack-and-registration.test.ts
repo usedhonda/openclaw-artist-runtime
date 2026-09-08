@@ -133,7 +133,8 @@ describe("prompt pack", () => {
       songTitle: "Ghost Station",
       artistReason: "third",
       lyricsText: "three",
-      knowledgePackVersion: "test-pack"
+      knowledgePackVersion: "test-pack",
+      preserveExistingLyricsVersions: true
     });
     expect(next.packVersion).toBe(3);
     expect(readFileSync(lyricsPath, "utf8")).toBe(original);

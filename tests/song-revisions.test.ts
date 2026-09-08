@@ -70,4 +70,17 @@ describe("song-bound lyric revisions", () => {
     await expect(adoptLyricRevision({ workspaceRoot: root, songId: "fixture-song", version: candidate.version, artistReason: "approved", expectedTextHash: candidate.textHash })).rejects.toThrow();
     expect((await readSongState(root, "fixture-song")).status).toBe("archived");
   });
+
+  it("returns same-title lookup candidates instead of selecting one", async () => {
+    const root = await mkdtemp(join(tmpdir(), "artist-lookup-"));
+    for (const songId of ["first-song", "second-song"]) {
+      await mkdir(join(root, "songs", songId), { recursive: true });
+      await writeFile(join(root, "songs", songId, "song.md"), "# Same Title\n\nStatus: archived\n");
+    }
+    const registrations: Array<(context: { workspaceDir?: string }) => { name: string; execute: (id: string, params: unknown) => Promise<{ details: unknown }> }> = [];
+    registerRevisionTools({ registerTool: (tool: unknown) => registrations.push(tool as typeof registrations[number]) });
+    const lookup = registrations.find((registration) => registration({}).name === "artist_song_material_lookup")!({});
+    const result = await lookup.execute("lookup", { workspaceRoot: root, title: "Same Title" });
+    expect(result.details).toMatchObject({ candidates: [{ songId: "first-song" }, { songId: "second-song" }] });
+  });
 });

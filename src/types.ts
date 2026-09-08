@@ -987,6 +987,7 @@ export interface SunoCreateRequest {
   songId?: string;
   runId?: string;
   payloadHash?: string;
+  prepareOnly?: boolean;
 }
 
 export interface SunoCreateResult {
@@ -1139,6 +1140,7 @@ export interface PersistSunoPromptPackInput extends Omit<CreateSunoPromptPackInp
   aiReviewProvider?: AiReviewProvider;
   deferDegradedNotification?: boolean;
   preserveSongStatus?: boolean;
+  preserveExistingLyricsVersions?: boolean;
 }
 
 export interface PersistedPromptPackResult {

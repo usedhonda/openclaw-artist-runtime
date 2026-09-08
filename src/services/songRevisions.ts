@@ -240,7 +240,8 @@ export async function adoptLyricRevision(input: AdoptLyricRevisionInput): Promis
       songTitle: input.songTitle ?? song.title,
       artistReason: input.artistReason,
       lyricsText: candidate.text,
-      preserveSongStatus: true
+      preserveSongStatus: true,
+      preserveExistingLyricsVersions: true
     });
     await appendFile(join(candidateDir(songRoot), "adoptions.jsonl"), `${JSON.stringify({ candidateVersion: candidate.version, candidateHash: candidate.textHash, promptPack })}\n`, "utf8");
     return promptPack;

@@ -38,6 +38,7 @@ export interface GenerateSunoRunInput {
   /** Conversational callers must pin the exact approved payload they saw. */
   expectedPayloadHash?: string;
   expectedPackVersion?: number;
+  prepareOnly?: boolean;
 }
 
 export interface ImportSunoResultsInput {
@@ -50,6 +51,12 @@ export interface ImportSunoResultsInput {
   metadata?: SunoImportedAssetMetadata[];
   config?: Partial<ArtistRuntimeConfig>;
   preserveSongLifecycle?: boolean;
+}
+
+export function validatePrepareOnlySubmitMode(submitMode: ArtistRuntimeConfig["music"]["suno"]["submitMode"], prepareOnly: boolean | undefined): void {
+  if (prepareOnly && submitMode !== "manual") {
+    throw new Error("prepareOnly requires Suno submitMode=manual");
+  }
 }
 
 function hashPayload(value: unknown): string {
@@ -268,6 +275,7 @@ export async function buildSunoArtifactIndex(root: string): Promise<SunoArtifact
 
 export async function generateSunoRun(input: GenerateSunoRunInput): Promise<SunoRunRecord> {
   const config = applyRuntimeEnvOverrides(applyConfigDefaults(input.config));
+  validatePrepareOnlySubmitMode(config.music.suno.submitMode, input.prepareOnly);
   const connector = resolveSunoConnector(input.workspaceRoot, config);
   const workerStatus = input.workerState
     ? { state: input.workerState }
@@ -322,7 +330,8 @@ export async function generateSunoRun(input: GenerateSunoRunInput): Promise<Suno
             payload,
             songId: input.songId,
             runId: provisionalRunId,
-            payloadHash
+            payloadHash,
+            prepareOnly: input.prepareOnly
           })
       : undefined;
   } finally {

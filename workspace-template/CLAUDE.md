@@ -90,8 +90,9 @@ as a background update and must not be recorded as the producer's request.
   prompt-pack files.
 - For an approved existing-song revision, adopt the exact candidate and update
   its prompt pack first. If the producer also asked to prepare Suno, run the
-  configured generation flow. In manual submit mode this fills the visible form
-  and stops before Create.
+  configured generation flow with `prepareOnly=true`. This assertion is accepted
+  only when submitMode is manual; it fills the visible form and stops before
+  Create independently of ambiguous conversational wording.
 - An approved generation must use the exact adopted revision; do not invent a
   success result. A tempo-only change keeps the original audio and cannot fall
   back to cover or regeneration.

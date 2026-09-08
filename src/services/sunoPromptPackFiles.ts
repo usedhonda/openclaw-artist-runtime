@@ -10,13 +10,13 @@ import { resolveTempoBandFromBrief } from "../suno-production/durationPlan.js";
 import { extractObservationSummary } from "./songIdeation.js";
 import { emitRuntimeEvent } from "./runtimeEventBus.js";
 
-async function nextPromptPackVersion(promptsDir: string, lyricsDir?: string): Promise<number> {
+async function nextPromptPackVersion(promptsDir: string, lyricsDir?: string, preserveExistingLyricsVersions = false): Promise<number> {
   try {
     const entries = await readdir(promptsDir, { withFileTypes: true });
     const versions = entries
       .filter((entry) => entry.isDirectory() && /^prompt-pack-v\d{3}$/.test(entry.name))
       .map((entry) => Number(entry.name.replace("prompt-pack-v", "")));
-    if (lyricsDir) {
+    if (lyricsDir && preserveExistingLyricsVersions) {
       const lyricEntries = await readdir(lyricsDir, { withFileTypes: true }).catch(() => []);
       versions.push(...lyricEntries
         .filter((entry) => entry.isFile() && /^lyrics\.v\d+\.md$/.test(entry.name))
@@ -231,7 +231,7 @@ export async function createAndPersistSunoPromptPack(input: PersistSunoPromptPac
   const promptsDir = join(input.workspaceRoot, "songs", input.songId, "prompts");
   const lyricsDir = join(input.workspaceRoot, "songs", input.songId, "lyrics");
   const sunoDir = join(input.workspaceRoot, "songs", input.songId, "suno");
-  const version = await nextPromptPackVersion(promptsDir, lyricsDir);
+  const version = await nextPromptPackVersion(promptsDir, lyricsDir, input.preserveExistingLyricsVersions);
   const versionTag = `v${String(version).padStart(3, "0")}`;
   const snapshotDir = join(promptsDir, `prompt-pack-${versionTag}`);
   await mkdir(snapshotDir, { recursive: true });
