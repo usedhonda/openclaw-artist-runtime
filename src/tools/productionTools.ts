@@ -1,4 +1,5 @@
 import { safeRegisterTool } from "../pluginApi.js";
+import { assertProducer } from "../services/telegramAuth.js";
 import { reviseSongProduction, type ProductionRevisionPatch, type ProductionLyricRef } from "../services/songProductionRevisions.js";
 import { readProductionConversation, updateProductionConversation } from "../services/productionConversation.js";
 
@@ -24,7 +25,7 @@ export function registerProductionTools(api: unknown): void {
       const payload = objectInput(input);
       const root = workspace(payload);
       if (typeof payload.songId !== "string") return { conversation: await readProductionConversation(root, context) ?? null };
-      if (context?.senderIsOwner === false) throw new Error("producer-only conversation update");
+      assertProducer(context, "conversation update");
       const conversation = await updateProductionConversation(root, context, {
         songId: payload.songId,
         ...(typeof payload.instruction === "string" ? { instruction: payload.instruction } : {}),
@@ -55,7 +56,7 @@ export function registerProductionTools(api: unknown): void {
     },
     handler: async (input, context) => {
       const payload = objectInput(input);
-      if (context?.senderIsOwner === false) throw new Error("producer-only production revision");
+      assertProducer(context, "production revision");
       if (typeof payload.songId !== "string" || typeof payload.basePackVersion !== "number" || typeof payload.expectedBasePayloadHash !== "string" || typeof payload.producerInstruction !== "string") throw new Error("exact song, base pack, hash and producer instruction are required");
       const lyric = objectInput(payload.lyric);
       if ((lyric.kind !== "adopted_lyrics" && lyric.kind !== "candidate") || typeof lyric.version !== "number" || typeof lyric.hash !== "string") throw new Error("exact lyric reference is required");

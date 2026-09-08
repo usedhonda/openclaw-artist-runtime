@@ -26,11 +26,11 @@ describe("artist_suno_generate prepare boundary", () => {
       input.onPrepared?.({ runId: "run-prepared" });
       return deferred.promise;
     });
-    const registrations: Array<(context: { workspaceDir?: string }) => { name: string; execute: (id: string, params: unknown) => Promise<{ details: unknown }> }> = [];
+    const registrations: Array<(context: { workspaceDir?: string; senderIsOwner?: boolean }) => { name: string; execute: (id: string, params: unknown) => Promise<{ details: unknown }> }> = [];
     registerSunoTools({ registerTool: (tool: unknown) => registrations.push(tool as typeof registrations[number]) });
     const factory = registrations.find((registration) => registration({}).name === "artist_suno_generate");
     expect(factory).toBeDefined();
-    const tool = factory!({});
+    const tool = factory!({ senderIsOwner: true });
 
     const input = {
       workspaceRoot: "/tmp/prepare-boundary",
@@ -66,10 +66,10 @@ describe("artist_suno_generate prepare boundary", () => {
     const base = { runId: "run-old", songId: "song-1", createdAt: "2026-01-01T00:00:00Z", urls: ["https://suno.com/song/old"] };
     await writeFile(join(root, "songs/song-1/suno/runs.jsonl"), [JSON.stringify({ ...base, status: "accepted" }), JSON.stringify({ ...base, status: "failed" })].join("\n") + "\n");
     deferred.generate.mockClear();
-    const registrations: Array<(context: { workspaceDir?: string }) => { name: string; execute: (id: string, params: unknown) => Promise<{ details: unknown }> }> = [];
+    const registrations: Array<(context: { workspaceDir?: string; senderIsOwner?: boolean }) => { name: string; execute: (id: string, params: unknown) => Promise<{ details: unknown }> }> = [];
     registerSunoTools({ registerTool: (tool: unknown) => registrations.push(tool as typeof registrations[number]) });
     const factory = registrations.find((registration) => registration({}).name === "artist_suno_generate")!;
-    const result = await factory({ workspaceDir: root }).execute("repeat", { songId: "song-1", expectedPayloadHash: "hash", expectedPackVersion: 4, prepareOnly: true });
+    const result = await factory({ workspaceDir: root, senderIsOwner: true }).execute("repeat", { songId: "song-1", expectedPayloadHash: "hash", expectedPackVersion: 4, prepareOnly: true });
     expect(result.details).toMatchObject({ status: "failed", runId: "run-old" });
     expect(deferred.generate).not.toHaveBeenCalled();
   });

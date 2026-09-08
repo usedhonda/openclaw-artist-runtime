@@ -77,6 +77,15 @@ It is disabled by default and starts only when all of these are true:
 2. `TELEGRAM_BOT_TOKEN` is present in the operator environment.
 3. `TELEGRAM_OWNER_USER_IDS` contains at least one allowed Telegram user id.
 
+The same allowlist authorizes producer conversation updates, production revisions,
+Suno generation and take selection through native OpenClaw tools. These actions
+use only the tool factory's trusted `requesterSenderId`, never model arguments or
+the delivery chat target. Telegram producers do not need gateway owner/admin
+rights: `senderIsOwner=false` does not reject an allowlisted producer. Missing or
+unlisted sender IDs, an empty allowlist, and contradictory Telegram channel
+metadata are denied even when the native owner flag is true. Non-Telegram callers
+must have an explicit trusted `senderIsOwner=true`; absent context is denied.
+
 Suggested local setup:
 
 ```sh

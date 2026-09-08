@@ -2,13 +2,16 @@ import { createHash } from "node:crypto";
 import { mkdir, mkdtemp, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { safeRegisterTool, type ArtistToolContext } from "../src/pluginApi";
 import { updateSongState } from "../src/services/artistState";
 import { productionContextIdentity, productionPromptContext, readProductionConversation, recordProductionRunBinding, recordProductionSubmission, resolveProductionSubmission, updateProductionConversation, updateProductionRunConversation, type ProductionRunBinding } from "../src/services/productionConversation";
 import { formatRuntimeEvent } from "../src/services/telegramNotifier";
 import { registerProductionTools } from "../src/tools/productionTools";
 import { registerRevisionTools } from "../src/tools/revisionTools";
+import { registerSunoTools } from "../src/tools/sunoTools";
+import { registerSongTools } from "../src/tools/songTools";
+import { assertProducer } from "../src/services/telegramAuth";
 import { createAndPersistSunoPromptPack } from "../src/services/sunoPromptPackFiles";
 
 type Tool = { name: string; execute: (id: string, payload: unknown) => Promise<{ details: unknown }> };
@@ -29,6 +32,43 @@ async function fixture() {
 }
 
 describe("producer conversation continuity", () => {
+  beforeEach(() => vi.stubEnv("TELEGRAM_OWNER_USER_IDS", "123"));
+  afterEach(() => vi.unstubAllEnvs());
+
+  it("denies absent identity and empty allowlists while preserving explicit non-Telegram owners", () => {
+    expect(() => assertProducer(undefined, "test")).toThrow("producer-only");
+    expect(() => assertProducer({ messageChannel: "webchat", senderIsOwner: true }, "test")).not.toThrow();
+    vi.stubEnv("TELEGRAM_OWNER_USER_IDS", "");
+    expect(() => assertProducer({ messageChannel: "telegram", requesterSenderId: "123", senderIsOwner: true }, "test")).toThrow("producer-only");
+  });
+
+  it("authenticates all four producer actions using trusted identity, never payload claims", async () => {
+    const { context } = await fixture();
+    const cases = [
+      [registerProductionTools, "artist_production_conversation", { songId: "song-a" }],
+      [registerProductionTools, "artist_song_production_revise", {}],
+      [registerSunoTools, "artist_suno_generate", {}],
+      [registerSongTools, "artist_take_select", {}]
+    ] as const;
+    for (const [register, name, payload] of cases) {
+      for (const denied of [
+        { ...context, requesterSenderId: "456", senderIsOwner: true },
+        { ...context, requesterSenderId: undefined },
+        { ...context, requesterSenderId: "456", messageChannel: undefined },
+        { ...context, messageChannel: "webchat" },
+        { ...context, deliveryContext: { channel: "webchat" } },
+        {},
+        { messageChannel: "webchat", senderIsOwner: false }
+      ]) {
+        const tool = tools(register, denied).get(name)!;
+        await expect(tool.execute("spoof", { ...payload, requesterSenderId: "123", senderIsOwner: true, messageChannel: "webchat", deliveryContext: { channel: "webchat" } })).rejects.toThrow("producer-only");
+      }
+      const tool = tools(register, { ...context, senderIsOwner: false }).get(name)!;
+      const result = await tool.execute("producer", payload).catch((error: Error) => error);
+      if (result instanceof Error) expect(result.message).not.toContain("producer-only");
+      else expect(name).toBe("artist_production_conversation");
+    }
+  });
   it("passes trusted factory identity, never model-supplied identity or workspace", async () => {
     const { root, context } = await fixture();
     let captured: unknown;
@@ -69,6 +109,7 @@ describe("producer conversation continuity", () => {
 
   it("revises arrangement through the tool without inventing lyric edits or replacing adoption", async () => {
     const { root, context } = await fixture();
+    context.senderIsOwner = false;
     const lyrics = "[Verse]\nkeep this line\n[Hook]\nkeep this hook";
     const base = await createAndPersistSunoPromptPack({ workspaceRoot: root, songId: "song-a", songTitle: "song-a", artistReason: "dry rap", lyricsText: lyrics, bpm: 92, preserveSongStatus: true });
     const registered = tools(registerProductionTools, context);

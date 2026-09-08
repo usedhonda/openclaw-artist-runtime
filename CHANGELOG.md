@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- fix: producer conversation updates, production revisions, Suno generation and
+  take selection authenticate trusted Telegram senders against the existing plugin
+  producer allowlist, independently of gateway owner/admin status. Missing or
+  conflicting identity fails closed; model-supplied authorization is never trusted.
+
 - docs: align the producer conversation contract with the accepted
   musician-loop behavior: mixed tentative/clear remake requests are split,
   same-lyrics-faster means a new arrangement trial, exact adopted lyrics and

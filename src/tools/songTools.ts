@@ -1,5 +1,6 @@
 import type { ArtistToolContext } from "../pluginApi.js";
 import { safeRegisterTool } from "../pluginApi.js";
+import { assertProducer } from "../services/telegramAuth.js";
 import { createSongIdea } from "../services/songIdeation.js";
 import { selectTake } from "../services/takeSelection.js";
 import { updateProductionConversation } from "../services/productionConversation.js";
@@ -36,7 +37,7 @@ export function registerSongTools(api: unknown): void {
     },
     handler: async (input, context?: ArtistToolContext) => {
       const payload = typeof input === "object" && input !== null ? (input as Record<string, unknown>) : {};
-      if (context?.senderIsOwner === false) throw new Error("producer-only take selection");
+      assertProducer(context, "take selection");
       if (typeof payload.songId !== "string" || typeof payload.runId !== "string" || typeof payload.selectedTakeId !== "string" || typeof payload.reason !== "string" || !payload.songId || !payload.runId || !payload.selectedTakeId || !payload.reason) {
         throw new Error("songId, runId, selectedTakeId, and reason are required");
       }

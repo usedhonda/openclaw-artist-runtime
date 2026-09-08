@@ -1,6 +1,7 @@
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { safeRegisterTool } from "../pluginApi.js";
+import { assertProducer } from "../services/telegramAuth.js";
 import { createAndPersistSunoPromptPack } from "../services/sunoPromptPackFiles.js";
 import { generateSunoRun, importSunoResults } from "../services/sunoRuns.js";
 import type { SunoRunRecord } from "../types.js";
@@ -68,7 +69,7 @@ export function registerSunoTools(api: unknown): void {
       }
     },
     handler: async (input, context) => {
-      if (context?.senderIsOwner === false) throw new Error("producer-only Suno generation");
+      assertProducer(context, "Suno generation");
       const payload = typeof input === "object" && input !== null ? (input as Record<string, unknown>) : {};
       const workspaceRoot = typeof payload.workspaceRoot === "string" ? payload.workspaceRoot : ".";
       const expectedPayloadHash = typeof payload.expectedPayloadHash === "string" ? payload.expectedPayloadHash : undefined;
