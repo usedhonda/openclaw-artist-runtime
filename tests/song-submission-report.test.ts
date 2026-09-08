@@ -122,4 +122,41 @@ describe("song submission report", () => {
     });
     expect(calls).toBe(1);
   });
+
+  it("attaches the trial audio from the exact run results for song_take_completed", async () => {
+    const root = mkdtempSync(join(tmpdir(), "artist-runtime-telegram-trial-audio-"));
+    const runDir = join(root, "runtime", "suno", "run-trial");
+    const audioPath = join(runDir, "take.mp3");
+    await mkdir(runDir, { recursive: true });
+    await writeFile(audioPath, Buffer.from("trial-audio"));
+    await mkdir(join(root, "songs", "song-trial", "suno"), { recursive: true });
+    await writeFile(join(root, "songs", "song-trial", "suno", "runs.jsonl"), `${JSON.stringify({ runId: "run-trial", songId: "song-trial", createdAt: "2026-01-01T00:00:00.000Z", status: "accepted", urls: ["https://suno.com/song/trial"], dryRun: false })}\n`);
+    await writeFile(join(root, "songs", "song-trial", "suno", "run-trial.results.json"), JSON.stringify({ runId: "run-trial", urls: ["https://suno.com/song/trial"], resultRefs: ["runtime/suno/run-trial/take.mp3"] }));
+    let messageId = 20;
+    const fetchImpl = async (): Promise<Response> => ({ ok: true, status: 200, json: async () => ({ ok: true, result: { message_id: messageId++, chat: { id: 123 } } }) } as Response);
+    const notifier = new TelegramNotifier({ token: "token", chatId: 123, workspaceRoot: root, fetchImpl });
+    await notifier.notify({ type: "song_take_completed", songId: "song-trial", urls: ["https://suno.com/song/trial"], timestamp: 1 });
+    const receipts = (await readFile(join(root, "runtime", "telegram-deliveries.jsonl"), "utf8")).trim().split("\n");
+    expect(receipts).toHaveLength(2);
+  });
+
+  it("does not attach a newer run's audio when the completed URLs belong to an older run", async () => {
+    const root = mkdtempSync(join(tmpdir(), "artist-runtime-telegram-trial-run-"));
+    await mkdir(join(root, "songs", "song-run", "suno"), { recursive: true });
+    await mkdir(join(root, "runtime", "suno", "run-old"), { recursive: true });
+    await mkdir(join(root, "runtime", "suno", "run-new"), { recursive: true });
+    await writeFile(join(root, "runtime", "suno", "run-old", "old.mp3"), Buffer.from("old"));
+    await writeFile(join(root, "runtime", "suno", "run-new", "new.mp3"), Buffer.from("new"));
+    await writeFile(join(root, "songs", "song-run", "suno", "runs.jsonl"), [
+      { runId: "run-old", songId: "song-run", createdAt: "2026-01-01T00:00:00.000Z", status: "accepted", urls: ["https://suno.com/song/old"], dryRun: false },
+      { runId: "run-new", songId: "song-run", createdAt: "2026-01-02T00:00:00.000Z", status: "accepted", urls: ["https://suno.com/song/new"], dryRun: false }
+    ].map((run) => JSON.stringify(run)).join("\n"));
+    await writeFile(join(root, "songs", "song-run", "suno", "run-old.results.json"), JSON.stringify({ runId: "run-old", urls: ["https://suno.com/song/old"], resultRefs: ["runtime/suno/run-old/old.mp3"] }));
+    await writeFile(join(root, "songs", "song-run", "suno", "run-new.results.json"), JSON.stringify({ runId: "run-new", urls: ["https://suno.com/song/new"], resultRefs: ["runtime/suno/run-new/new.mp3"] }));
+    let calls = 0;
+    const fetchImpl = async (): Promise<Response> => { calls += 1; return { ok: true, status: 200, json: async () => ({ ok: true, result: { message_id: calls, chat: { id: 123 } } }) } as Response; };
+    const notifier = new TelegramNotifier({ token: "token", chatId: 123, workspaceRoot: root, fetchImpl });
+    await notifier.notify({ type: "song_take_completed", songId: "song-run", urls: ["https://suno.com/song/old"], timestamp: 1 });
+    expect(calls).toBe(2);
+  });
 });

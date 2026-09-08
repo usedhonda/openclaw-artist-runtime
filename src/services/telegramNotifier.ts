@@ -301,8 +301,10 @@ export class TelegramNotifier {
     });
     const sent = await this.client.sendMessage(this.options.chatId, text);
     await this.recordDelivery(event, sent.message_id);
-    if (event.type === "suno_adoption_download_imported") {
-      const audioPaths = await verifiedAudioPaths(this.options.workspaceRoot, event.runId, event.paths);
+    if (event.type === "suno_adoption_download_imported" || event.type === "song_take_completed") {
+      const audioPaths = event.type === "suno_adoption_download_imported"
+        ? await verifiedAudioPaths(this.options.workspaceRoot, event.runId, event.paths)
+        : await trialAudioPathsForEvent(this.options.workspaceRoot, event);
       for (const audioPath of audioPaths) {
         try {
           const data = await readFile(audioPath);
@@ -1469,6 +1471,17 @@ async function verifiedAudioPaths(workspaceRoot: string | undefined, runId: stri
     results.push(candidate);
   }
   return results;
+}
+
+async function trialAudioPathsForEvent(workspaceRoot: string | undefined, event: SongTakeCompletedEvent): Promise<string[]> {
+  if (!workspaceRoot) return [];
+  const runId = await resolveRunIdForUrls(workspaceRoot, event.songId, event.urls);
+  if (!runId) return [];
+  const resultPath = join(workspaceRoot, "songs", event.songId, "suno", `${runId}.results.json`);
+  const payload = JSON.parse(await readFile(resultPath, "utf8").catch(() => "{}")) as { runId?: unknown; urls?: unknown; resultRefs?: unknown };
+  if (payload.runId !== runId || !Array.isArray(payload.urls) || !payload.urls.every((url) => typeof url === "string" && event.urls.includes(url))) return [];
+  const refs = Array.isArray(payload.resultRefs) ? payload.resultRefs.filter((value): value is string => typeof value === "string") : [];
+  return verifiedAudioPaths(workspaceRoot, runId, refs);
 }
 
 async function formatSongTakeCompleted(
