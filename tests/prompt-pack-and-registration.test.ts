@@ -114,6 +114,31 @@ describe("prompt pack", () => {
     expect(detail.musicSummary.latestPromptPackVersion).toBe(2);
   });
 
+  it("allocates after the highest existing lyrics version without overwriting it", async () => {
+    const workspaceRoot = mkdtempSync(join(tmpdir(), "artist-runtime-pack-lyrics-version-"));
+    await createAndPersistSunoPromptPack({
+      workspaceRoot,
+      songId: "song-001",
+      songTitle: "Ghost Station",
+      artistReason: "first",
+      lyricsText: "one",
+      knowledgePackVersion: "test-pack"
+    });
+    const lyricsPath = join(workspaceRoot, "songs", "song-001", "lyrics", "lyrics.v2.md");
+    const original = "pre-existing lyrics v2\n";
+    writeFileSync(lyricsPath, original, "utf8");
+    const next = await createAndPersistSunoPromptPack({
+      workspaceRoot,
+      songId: "song-001",
+      songTitle: "Ghost Station",
+      artistReason: "third",
+      lyricsText: "three",
+      knowledgePackVersion: "test-pack"
+    });
+    expect(next.packVersion).toBe(3);
+    expect(readFileSync(lyricsPath, "utf8")).toBe(original);
+  });
+
   it("detects stale producer console bundles", async () => {
     const root = mkdtempSync(join(tmpdir(), "artist-runtime-ui-fresh-"));
     mkdirSync(join(root, "ui", "src", "components"), { recursive: true });
