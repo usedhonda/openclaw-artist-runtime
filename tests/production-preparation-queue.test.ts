@@ -1,7 +1,7 @@
 import { mkdtemp } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
-import { describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const { generate, pending, config } = vi.hoisted(() => ({ generate: vi.fn(), pending: vi.fn(async () => undefined), config: vi.fn(async () => ({ music: { suno: { submitMode: "manual" } } })) }));
 vi.mock("../src/services/sunoRuns", () => ({ generateSunoRun: generate }));
@@ -13,6 +13,13 @@ import { enqueueProductionPreparation, listProductionPreparationJobs, processPro
 const payloadHash = "a".repeat(64);
 
 describe("production preparation queue", () => {
+  beforeEach(() => {
+    generate.mockReset();
+    pending.mockReset();
+    pending.mockResolvedValue(undefined);
+    config.mockReset();
+    config.mockResolvedValue({ music: { suno: { submitMode: "manual" } } });
+  });
   it("persists an idempotent exact request and rejects stale-shaped inputs", async () => {
     const root = await mkdtemp(join(tmpdir(), "production-preparation-"));
     const first = await enqueueProductionPreparation(root, { songId: "song-1", packVersion: 3, payloadHash, contextKey: "ctx" });
@@ -41,10 +48,27 @@ describe("production preparation queue", () => {
     await processProductionPreparationQueue(root);
     await vi.waitFor(async () => expect((await listProductionPreparationJobs(root)).find((entry) => entry.id === job.id)?.status).toBe("prepared"));
     expect(generate).toHaveBeenCalledTimes(1);
-    expect(generate.mock.calls[0][0]).toMatchObject({ songId: "song-3", expectedPackVersion: 2, expectedPayloadHash: payloadHash, prepareOnly: true, conversational: true });
+    expect(generate.mock.calls[0][0]).toMatchObject({ songId: "song-3", expectedPackVersion: 2, expectedPayloadHash: payloadHash, prepareOnly: true, conversational: true, conversationKey: undefined });
     await processProductionPreparationQueue(root);
     expect(generate).toHaveBeenCalledTimes(1);
     resolveRun();
+  });
+
+  it("serializes simultaneous ticks and forwards contextKey without persisting exception text", async () => {
+    const root = await mkdtemp(join(tmpdir(), "production-preparation-race-"));
+    let rejectRun!: (error: Error) => void;
+    generate.mockImplementationOnce(() => new Promise((_resolve, reject) => { rejectRun = reject; }));
+    const job = await enqueueProductionPreparation(root, { songId: "song-race", packVersion: 1, payloadHash, contextKey: "reply-focus" });
+    const [first, second] = await Promise.all([processProductionPreparationQueue(root), processProductionPreparationQueue(root)]);
+    expect(first?.id).toBe(job.id);
+    expect(second).toBeUndefined();
+    await vi.waitFor(() => expect(generate).toHaveBeenCalledTimes(1));
+    expect(generate.mock.calls[0][0].conversationKey).toBe("reply-focus");
+    rejectRun(new Error("secret-token=do-not-persist"));
+    await vi.waitFor(async () => expect((await listProductionPreparationJobs(root)).find((entry) => entry.id === job.id)?.status).toBe("failed"));
+    const stored = (await listProductionPreparationJobs(root)).find((entry) => entry.id === job.id)!;
+    expect(stored.reason).toBe("preparation_failed");
+    expect(JSON.stringify(stored)).not.toContain("secret-token");
   });
 
   it("blocks non-manual mode and fail-closes interrupted started jobs", async () => {

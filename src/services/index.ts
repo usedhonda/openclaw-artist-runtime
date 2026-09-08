@@ -17,6 +17,7 @@ import { rearmQueuedAdoptionDownloadJobs } from "./sunoAdoptionDownloadJob.js";
 import { getTelegramOwnerUserIds } from "./telegramAuth.js";
 import { TelegramNotifier } from "./telegramNotifier.js";
 import { startProductionTrialWorker } from "./productionTrialWorker.js";
+import { processProductionPreparationQueue } from "./productionPreparationQueue.js";
 
 let telegramNotifierUnsubscribers: Array<() => void> = [];
 let runtimeEventLedgerUnsubscriber: (() => void) | null = null;
@@ -25,6 +26,7 @@ let stopAutopilotTicker: (() => void) | null = null;
 let stopFailedNotifyReplayWorker: (() => void) | null = null;
 let stopProducerDigestWorker: (() => void) | null = null;
 let stopProductionTrialWorker: (() => void) | null = null;
+let stopProductionPreparationQueueWorker: (() => void) | null = null;
 let resolvedConfigCache: ArtistRuntimeConfig | null = null;
 
 const SILENCE_RECOVERY_WINDOW_MS = 10 * 60 * 1000;
@@ -320,6 +322,33 @@ export function registerServices(api: unknown): void {
       stop: () => {
         stopProductionTrialWorker?.();
         stopProductionTrialWorker = null;
+      }
+    })
+  });
+
+  safeRegisterService(api, {
+    name: "productionPreparationQueue",
+    create: () => ({
+      start: async () => {
+        if (stopProductionPreparationQueueWorker) return { started: 0, reason: "already_started" };
+        const config = await resolveRuntimeConfig();
+        const timer = setInterval(() => {
+          void processProductionPreparationQueue(config.artist.workspaceRoot).catch(() => {
+            getRuntimeEventBus().emit({
+              type: "error",
+              source: "production_preparation_queue",
+              reason: "production_preparation_queue_tick_failed",
+              timestamp: Date.now()
+            });
+          });
+        }, 15_000);
+        timer.unref?.();
+        stopProductionPreparationQueueWorker = () => clearInterval(timer);
+        return { started: 1 };
+      },
+      stop: () => {
+        stopProductionPreparationQueueWorker?.();
+        stopProductionPreparationQueueWorker = null;
       }
     })
   });

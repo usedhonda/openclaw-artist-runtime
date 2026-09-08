@@ -86,16 +86,16 @@ function notify(root: string, job: ProductionPreparationJob, reason: string): vo
 }
 
 async function runJob(root: string, job: ProductionPreparationJob): Promise<void> {
-  const pending = await evaluateHumanAssistPending(root);
-  if (pending) return;
-  const config = await readResolvedConfig(root);
-  if (config.music.suno.submitMode !== "manual") {
-    await updateJob(root, job.id, { status: "blocked", reason: "prepareOnly requires Suno submitMode=manual" });
-    notify(root, job, "production preparation blocked: manual Suno submit mode is required");
-    return;
-  }
-  await updateJob(root, job.id, { status: "started", startedAt: new Date().toISOString(), startedPid: process.pid });
   try {
+    const pending = await evaluateHumanAssistPending(root);
+    if (pending) return;
+    const config = await readResolvedConfig(root);
+    if (config.music.suno.submitMode !== "manual") {
+      await updateJob(root, job.id, { status: "blocked", reason: "manual_mode_required" });
+      notify(root, job, "production preparation blocked: manual mode required");
+      return;
+    }
+    await updateJob(root, job.id, { status: "started", startedAt: new Date().toISOString(), startedPid: process.pid });
     await generateSunoRun({
       workspaceRoot: root,
       songId: job.songId,
@@ -104,28 +104,46 @@ async function runJob(root: string, job: ProductionPreparationJob): Promise<void
       expectedPayloadHash: job.payloadHash,
       prepareOnly: true,
       conversational: true,
+      conversationKey: job.contextKey,
       onPrepared: async ({ runId }) => { await updateJob(root, job.id, { status: "prepared", preparedRunId: runId }); }
     });
-  } catch (error) {
-    const reason = error instanceof Error ? error.message : String(error);
-    await updateJob(root, job.id, { status: "failed", reason });
-    notify(root, job, `production preparation failed: ${reason}`);
+  } catch {
+    await updateJob(root, job.id, { status: "failed", reason: "preparation_failed" });
+    notify(root, job, "production preparation failed");
   }
 }
 
 export async function processProductionPreparationQueue(root: string): Promise<ProductionPreparationJob | undefined> {
   const running = active.get(root);
   if (running) return undefined;
-  const jobs = await readJobs(root);
-  for (const job of jobs.filter((entry) => entry.status === "started")) {
-    await updateJob(root, job.id, { status: "failed", reason: "interrupted by process restart" });
-    notify(root, job, "production preparation failed closed after process restart");
+  let release!: () => void;
+  const reservation = new Promise<void>((resolve) => { release = resolve; });
+  active.set(root, reservation);
+  try {
+    const jobs = await readJobs(root);
+    for (const job of jobs.filter((entry) => entry.status === "started")) {
+      await updateJob(root, job.id, { status: "failed", reason: "interrupted_by_restart" });
+      notify(root, job, "production preparation failed closed after restart");
+    }
+    const current = (await readJobs(root)).find((job) => job.status === "queued");
+    if (!current) {
+      active.delete(root);
+      release();
+      return undefined;
+    }
+    void runJob(root, current).catch(async () => {
+      await updateJob(root, current.id, { status: "failed", reason: "preparation_failed" }).catch(() => undefined);
+      notify(root, current, "production preparation failed");
+    }).finally(() => {
+      active.delete(root);
+      release();
+    });
+    return current;
+  } catch {
+    active.delete(root);
+    release();
+    throw new Error("production preparation queue unavailable");
   }
-  const current = (await readJobs(root)).find((job) => job.status === "queued");
-  if (!current) return undefined;
-  const work = runJob(root, current).finally(() => active.delete(root));
-  active.set(root, work);
-  return current;
 }
 
 export async function listProductionPreparationJobs(root: string): Promise<ProductionPreparationJob[]> { return readJobs(root); }
