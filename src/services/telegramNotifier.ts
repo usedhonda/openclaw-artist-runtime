@@ -1175,6 +1175,8 @@ interface BoundPackDetails {
   title?: string;
   bpm?: number;
   excludeStyles: string[];
+  style: string;
+  lyrics?: string;
 }
 
 async function readBoundPackDetails(workspaceRoot: string, songId: string, packVersion: number | undefined): Promise<BoundPackDetails | undefined> {
@@ -1183,11 +1185,13 @@ async function readBoundPackDetails(workspaceRoot: string, songId: string, packV
   const payload = JSON.parse(await readFile(join(dir, "suno-payload.json"), "utf8").catch(() => "{}")) as { songName?: unknown };
   const style = await readFile(join(dir, "style.md"), "utf8").catch(() => "");
   const exclude = await readFile(join(dir, "exclude.md"), "utf8").catch(() => "");
+  const lyrics = await readFile(join(dir, "lyrics.md"), "utf8").then((text) => text.trimEnd()).catch(() => undefined);
   const bpm = style.match(/\b(\d{2,3})\s*BPM\b/i)?.[1];
   return {
     title: typeof payload.songName === "string" ? payload.songName : undefined,
     bpm: bpm ? Number(bpm) : undefined,
-    excludeStyles: exclude.split(",").map((item) => item.trim()).filter(Boolean)
+    excludeStyles: exclude.split(",").map((item) => item.trim()).filter(Boolean),
+    style, lyrics
   };
 }
 
@@ -1225,6 +1229,10 @@ async function formatSongSubmission(
   const binding = resolved?.binding;
   const revision = resolved?.revision;
   const base = resolved?.base;
+  const bpmChanged = Boolean(revision && base?.bpm !== undefined && revision.effective.bpm !== undefined && revision.effective.bpm !== base.bpm);
+  const directionChanged = Boolean(revision?.effective.direction && base && !base.style.includes(revision.effective.direction));
+  const revisionLyrics = revision?.promptPack?.pack?.lyricsBundle?.originalLyricsText?.trimEnd();
+  const lyricsUnchanged = base?.lyrics !== undefined && revisionLyrics !== undefined && base.lyrics === revisionLyrics;
   const request = binding?.instruction ?? revision?.producerInstruction;
   const intended = revision
     ? request?.trim() === revision.producerInstruction.trim() ? undefined : [revision.producerInstruction]
@@ -1235,6 +1243,7 @@ async function formatSongSubmission(
       base?.bpm !== undefined && revision.effective.bpm !== undefined && revision.effective.bpm !== base.bpm
         ? `${revision.effective.bpm} BPMを狙って組み直した`
         : undefined,
+      directionChanged ? `アレンジの狙い: ${revision.effective.direction}` : undefined,
       base && revision.effective.excludeStyles.join("\u0000") !== base.excludeStyles.join("\u0000")
         ? "避ける音像を組み替えた"
         : undefined
@@ -1256,10 +1265,16 @@ async function formatSongSubmission(
     } : undefined,
     intended,
     changed,
-    kept: revision?.lyric.kind === "adopted_lyrics" ? ["歌詞はそのまま"] : undefined,
+    kept: lyricsUnchanged ? ["歌詞はそのまま"] : undefined,
     audioUrls: event.urls,
     previous: previousUrl ? { audioUrls: [previousUrl] } : undefined,
-    listenFor: undefined
+    listenFor: revision ? [
+      bpmChanged ? (revision.effective.bpm! > base!.bpm!
+        ? "前の音源と比べて、言葉の抜けと疾走感が両立しているか。"
+        : "前の音源と比べて、間と声の置き方が狙いに合うか。") : undefined,
+      directionChanged ? `${revision.effective.direction} の狙いが、音として伝わるか。` : undefined,
+      !lyricsUnchanged && revisionLyrics !== undefined && base?.lyrics !== undefined ? "変えた言葉が、旋律に無理なく乗っているか。" : undefined
+    ].filter((line): line is string => Boolean(line)) : undefined
   });
   if (!event.observationSummary) return report;
   const observation = event.observationSummary;
