@@ -27,7 +27,9 @@ export function registerSongTools(api: unknown): void {
         songId: typeof payload.songId === "string" ? payload.songId : "song-001",
         runId: typeof payload.runId === "string" ? payload.runId : undefined,
         selectedTakeId: typeof payload.selectedTakeId === "string" ? payload.selectedTakeId : undefined,
-        reason: typeof payload.reason === "string" ? payload.reason : undefined
+        reason: typeof payload.reason === "string" ? payload.reason : undefined,
+        conversational: payload.conversational === true,
+        producerDecision: true
       });
     }
   });

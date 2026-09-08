@@ -2,6 +2,17 @@ import { readdir, readFile, stat } from "node:fs/promises";
 import { join } from "node:path";
 import type { DebugAiReviewInput } from "../types.js";
 import { readSongState } from "./artistState.js";
+import { listSongTakes, readTakeHistory, type SongTakeReference } from "./takeSelection.js";
+
+export interface SongMaterialHistory {
+  priorRuns: Array<{
+    runId: string;
+    createdAt: string;
+    urls: string[];
+    takes: SongTakeReference[];
+  }>;
+  selectedTakeReferences: Awaited<ReturnType<typeof readTakeHistory>>;
+}
 
 async function readTextIfExists(path: string): Promise<string | undefined> {
   const contents = await readFile(path, "utf8").catch(() => undefined);
@@ -64,12 +75,25 @@ function normalizeTakes(latestResults: unknown, fallback: unknown): unknown[] {
   return fallback ? [fallback] : [];
 }
 
-export async function readSongMaterial(root: string, songId: string): Promise<DebugAiReviewInput> {
+export async function readSongMaterial(root: string, songId: string): Promise<DebugAiReviewInput & SongMaterialHistory> {
   const songPath = join(root, "songs", songId, "song.md");
   await stat(songPath);
   const song = await readSongState(root, songId);
   const latestResults = await readJsonIfExists(join(root, "songs", songId, "suno", "latest-results.json"));
   const selectedTake = await readJsonIfExists(join(root, "songs", songId, "suno", "selected-take.json"));
+  const [takeReferences, selectedTakeReferences] = await Promise.all([
+    listSongTakes(root, songId),
+    readTakeHistory(root, songId)
+  ]);
+  const priorRuns = Array.from(new Set(takeReferences.map((take) => take.runId))).map((runId) => {
+    const takes = takeReferences.filter((take) => take.runId === runId);
+    return {
+      runId,
+      createdAt: takes[0]?.createdAt ?? "",
+      urls: takes.map((take) => take.url),
+      takes
+    };
+  });
   const brief = await readTextIfExists(song.briefPath ?? join(root, "songs", songId, "brief.md"));
   const lyrics = await readLatestLyrics(root, songId);
   return {
@@ -79,6 +103,8 @@ export async function readSongMaterial(root: string, songId: string): Promise<De
     lyrics,
     takes: normalizeTakes(latestResults, selectedTake ?? song.lastImportOutcome),
     selectedTake,
-    promptPackSummary: await readPromptPackSummary(root, songId)
+    promptPackSummary: await readPromptPackSummary(root, songId),
+    priorRuns,
+    selectedTakeReferences
   };
 }
