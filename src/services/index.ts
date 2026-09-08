@@ -16,6 +16,7 @@ import { startProducerDigestWorker } from "./producerDigestWorker.js";
 import { rearmQueuedAdoptionDownloadJobs } from "./sunoAdoptionDownloadJob.js";
 import { getTelegramOwnerUserIds } from "./telegramAuth.js";
 import { TelegramNotifier } from "./telegramNotifier.js";
+import { startProductionTrialWorker } from "./productionTrialWorker.js";
 
 let telegramNotifierUnsubscribers: Array<() => void> = [];
 let runtimeEventLedgerUnsubscriber: (() => void) | null = null;
@@ -23,6 +24,7 @@ let stopCallbackWatchdog: (() => void) | null = null;
 let stopAutopilotTicker: (() => void) | null = null;
 let stopFailedNotifyReplayWorker: (() => void) | null = null;
 let stopProducerDigestWorker: (() => void) | null = null;
+let stopProductionTrialWorker: (() => void) | null = null;
 let resolvedConfigCache: ArtistRuntimeConfig | null = null;
 
 const SILENCE_RECOVERY_WINDOW_MS = 10 * 60 * 1000;
@@ -302,6 +304,22 @@ export function registerServices(api: unknown): void {
       start: () => startRuntimeEventLedgerFromEnv(),
       stop: () => {
         stopRuntimeEventLedgerSubscription();
+      }
+    })
+  });
+
+  safeRegisterService(api, {
+    name: "productionTrialWorker",
+    create: () => ({
+      start: async () => {
+        if (stopProductionTrialWorker) return { started: 0, reason: "already_started" };
+        const config = await resolveRuntimeConfig();
+        stopProductionTrialWorker = startProductionTrialWorker(config.artist.workspaceRoot, config);
+        return { started: 1 };
+      },
+      stop: () => {
+        stopProductionTrialWorker?.();
+        stopProductionTrialWorker = null;
       }
     })
   });
