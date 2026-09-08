@@ -36,8 +36,10 @@ describe("production trial worker", () => {
     const urls = ["https://suno.com/song/take-a"];
     const job = await enqueueProductionTrial(root, { songId: "song-001", runId: "run-trial", urls });
     expect(job.status).toBe("pending");
-    importResults.mockResolvedValueOnce({ runId: "run-trial", urls: [], paths: [], reason: "audio_pending" });
+    importResults.mockResolvedValueOnce({ runId: "run-trial", urls: [], paths: [], reason: "network timeout secret-token=hidden" });
     expect((await processPendingProductionTrials(root, {}))[0]?.status).toBe("pending");
+    expect(JSON.parse(await readFile(join(root, "runtime/production-trials/trial_song-001_run-trial.json"), "utf8")).reason).toBe("production_trial_audio_pending");
+    expect(await readFile(join(root, "runtime/production-trials/trial_song-001_run-trial.json"), "utf8")).not.toContain("secret-token");
     const audioPath = join(root, "runtime", "take-a.mp3");
     await writeFile(audioPath, "audio", "utf8");
     importResults.mockResolvedValueOnce({ runId: "run-trial", urls, paths: [audioPath], metadata: [] });
@@ -57,6 +59,17 @@ describe("production trial worker", () => {
     const root = mkdtempSync(join(tmpdir(), "artist-runtime-production-trial-correction-"));
     await seed(root);
     await appendFile(join(root, "songs/song-001/suno/runs.jsonl"), `${JSON.stringify({ runId: "run-trial", songId: "song-001", createdAt: new Date(Date.now() + 1000).toISOString(), status: "failed", urls: [], dryRun: false })}\n`);
+    await expect(enqueueProductionTrial(root, { songId: "song-001", runId: "run-trial", urls: ["https://suno.com/song/take-a"] })).rejects.toThrow("not accepted");
+  });
+
+  it("uses append order when accepted and failed corrections share a timestamp", async () => {
+    const root = mkdtempSync(join(tmpdir(), "artist-runtime-production-trial-equal-timestamp-"));
+    await seed(root);
+    const runsPath = join(root, "songs/song-001/suno/runs.jsonl");
+    const raw = await readFile(runsPath, "utf8");
+    const accepted = raw.trim().split("\n").map((line) => JSON.parse(line) as Record<string, unknown>).find((entry) => entry.runId === "run-trial")!;
+    const sameTime = accepted.createdAt;
+    await writeFile(runsPath, `${JSON.stringify({ ...accepted, createdAt: sameTime, status: "accepted", urls: ["https://suno.com/song/take-a"] })}\n${JSON.stringify({ ...accepted, createdAt: sameTime, status: "failed", urls: [] })}\n`, "utf8");
     await expect(enqueueProductionTrial(root, { songId: "song-001", runId: "run-trial", urls: ["https://suno.com/song/take-a"] })).rejects.toThrow("not accepted");
   });
 

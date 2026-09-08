@@ -3,7 +3,7 @@ import { join } from "node:path";
 import type { ArtistRuntimeConfig, SunoImportResult, SunoRunRecord } from "../types.js";
 import { resolveSunoConnector } from "../connectors/suno/resolveSunoConnector.js";
 import { readSongState } from "./artistState.js";
-import { readAllSunoRuns, importSunoResults } from "./sunoRuns.js";
+import { importSunoResults } from "./sunoRuns.js";
 import { appendTakeAttributionAudit, findDryRunImportPaths, findTakeAttributionCollisions } from "./takeAttributionGuard.js";
 import { emitRuntimeEvent } from "./runtimeEventBus.js";
 import { readProductionRunBinding, updateProductionRunConversation, type ProductionRunBinding } from "./productionConversation.js";
@@ -69,10 +69,10 @@ async function readJobs(root: string): Promise<ProductionTrialJob[]> {
 }
 
 async function acceptedRun(root: string, songId: string, runId: string): Promise<SunoRunRecord | undefined> {
-  const runs = await readAllSunoRuns(root, songId);
-  const latest = new Map<string, SunoRunRecord>();
-  for (const run of runs) if (!latest.has(run.runId)) latest.set(run.runId, run);
-  const run = latest.get(runId);
+  const contents = await readFile(join(root, "songs", songId, "suno", "runs.jsonl"), "utf8").catch(() => "");
+  const run = contents.split("\n").filter(Boolean).reverse().map((line) => {
+    try { return JSON.parse(line) as SunoRunRecord; } catch { return undefined; }
+  }).find((entry) => entry?.runId === runId);
   return run && (run.status === "accepted" || run.status === "imported") && run.urls.length > 0 ? run : undefined;
 }
 
@@ -134,9 +134,9 @@ async function processJob(root: string, config: Partial<ArtistRuntimeConfig>, jo
     return block(reason);
   }
   if ((result.paths ?? []).length === 0 || result.urls.length === 0) {
-    const reason = result.reason ?? "audio_asset_not_found";
-    return transientAudio(reason)
-      ? { ...job, status: "pending", reason, updatedAt: new Date().toISOString(), attempts: job.attempts + 1 }
+    const classification = result.reason ?? "audio_asset_not_found";
+    return transientAudio(classification)
+      ? { ...job, status: "pending", reason: "production_trial_audio_pending", updatedAt: new Date().toISOString(), attempts: job.attempts + 1 }
       : block("production_trial_import_blocked");
   }
   if ((result.runId && result.runId !== job.runId) || !exactUrls(job.urls, result.urls)) return block("import_result_run_or_url_mismatch");
