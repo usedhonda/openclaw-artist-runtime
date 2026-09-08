@@ -22,6 +22,33 @@ async function fixture() {
 }
 
 describe("bounded song production revisions", () => {
+  it("normalizes submitted production directions without rewriting canonical or sung lyrics", async () => {
+    const { base } = await fixture();
+    const original = "[Intro - 2 bars, nu-jazz rap, 92 BPM, close-miked dry male]\nI remember 92 BPM\n[Hook]\nkeep this";
+    const yaml = "# META (hints; do not sing)\ntitle: Fixture Song\ntempo: 94\nduration_plan:\n  bpm_target: 92\nproduction_notes:\n  - keep vocal pacing dense but controlled at 92 BPM and avoid double-time delivery\ncues:\n  - enter at BPM 92\n\n=== LYRICS START (do not sing tags) ===\n" + original + "\n=== LYRICS END ===";
+    const renderedYaml = yaml.replace("duration_plan:", "vocals:\n  gender: male\nduration_plan:");
+    const legacy = { ...base.pack, style: "nu-jazz rap, BPM 94, male vocal", yamlLyrics: renderedYaml, lyricsBundle: { originalLyricsText: original, lyricsText: original, yamlLyrics: renderedYaml }, payload: { ...base.pack.payload, lyrics: original, lyricsText: original, payloadYaml: renderedYaml, lyricsYaml: renderedYaml } };
+    const before = JSON.stringify(legacy);
+    const revised = createProductionRevisionPromptPack({ songId: "fixture-song", songTitle: "Fixture Song", artistReason: "faster", lyricsText: original, bpm: 148 }, { basePack: legacy });
+    const submitted = original.replace("rap, 92 BPM", "rap, 148 BPM");
+    expect(revised.payload.lyrics).toBe(submitted);
+    expect(revised.payload.lyricsText).toBe(submitted);
+    expect(revised.lyricsBundle.lyricsText).toBe(submitted);
+    expect(revised.lyricsBundle.originalLyricsText).toBe(original);
+    expect(revised.yamlLyrics).toContain("controlled at 148 BPM");
+    expect(revised.yamlLyrics).toContain("enter at BPM 148");
+    expect(revised.yamlLyrics).toContain("bpm_target: 148");
+    expect(revised.yamlLyrics).toContain("tempo: 148");
+    expect(revised.yamlLyrics).toContain(submitted);
+    expect(revised.payload.payloadYaml).toBe(revised.yamlLyrics);
+    expect(revised.payload.lyricsYaml).toBe(revised.yamlLyrics);
+    expect(revised.lyricsBundle.yamlLyrics).toBe(revised.yamlLyrics);
+    expect(revised.payload.promptCharCounts).toMatchObject({ lyrics: submitted.length, submittedPayloadChars: revised.yamlLyrics.length });
+    expect(revised.payloadHash).toBe(hash(JSON.stringify(revised.payload)));
+    expect(JSON.stringify(legacy)).toBe(before);
+    expect(() => createProductionRevisionPromptPack({ songId: "fixture-song", songTitle: "Fixture Song", artistReason: "faster", lyricsText: original, bpm: 148 }, { basePack: { ...legacy, yamlLyrics: original } })).toThrow("explicit lyrics boundaries");
+  });
+
   it("inherits prefix BPM and replaces mixed tempo forms without touching unrelated numbers or lyrics", async () => {
     const { root, lyrics, base } = await fixture();
     const snapshot = join(root, "songs/fixture-song/prompts/prompt-pack-v001");

@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- fix: tempo revisions now synchronize non-sung YAML notes/cues, duration tempo,
+  and rendered section instructions across all submitted lyrics/YAML fields.
+  Canonical lyrics and sung BPM text remain unchanged; ambiguous lyrics boundaries
+  fail closed. Prompt counts and hashes reflect the rendered submission.
+
 - fix: production revisions recognize both `BPM 94` and `94 BPM` in inherited
   styles. Explicit tempo changes replace both forms consistently with the YAML
   tempo; title-only revisions retain the detected tempo, lyrics and original take.

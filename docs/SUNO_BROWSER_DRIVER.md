@@ -11,9 +11,13 @@ See also: [OPERATOR_QUICKSTART.md](OPERATOR_QUICKSTART.md),
 ## Status
 
 Producer BPM revisions recognize both `BPM 94` and `94 BPM` in an inherited
-production style. Before preparation, an explicit tempo change updates every
-recognized style annotation and the YAML `tempo` to the requested BPM, preserving
-the annotation spelling, unrelated numbers and lyrics. A title-only revision
+production style. Before preparation, an explicit tempo change updates recognized
+style annotations, non-sung YAML production notes/cues, `tempo`, `bpm_target`, and
+section instruction tags to the requested BPM. The rendered lyrics and YAML fields
+are synchronized; sung lines and canonical original lyrics remain unchanged, even
+when they contain literal BPM text. Unknown lyrics boundaries fail closed rather
+than risking a rewrite of sung text. Annotation spelling and unrelated numbers are
+preserved. A title-only revision
 inherits the detected tempo. Revisions create a new pack; previous packs and the
 original selected take remain unchanged.
 

@@ -229,6 +229,27 @@ export interface ProductionPromptPackOverrides {
   excludeStyles?: string[];
 }
 
+function replaceProductionTempo(text: string, bpm: number): string {
+  return text.replace(/\b(?:\d{2,3}\s*BPM|BPM\s*\d{2,3})\b/gi, (tempo) => tempo.replace(/\d{2,3}/, String(bpm)));
+}
+
+function renderProductionTempo(yaml: string, bpm: number): string {
+  // The canonical renderer separates non-sung metadata from the lyrics body.
+  // Refuse an unknown boundary instead of treating sung words as instructions.
+  const boundary = /^(?:=== LYRICS START(?: \(do not sing tags\))? ===|LYRICS START)\r?\n([\s\S]*?)^(?:=== LYRICS END ===|LYRICS END)[ \t]*$/m.exec(yaml);
+  if (!boundary) throw new Error("production tempo revision requires explicit lyrics boundaries");
+  const metadata = yaml.slice(0, boundary.index).split("\n").map((line) => {
+    if (/^\s*title:/.test(line)) return line;
+    return replaceProductionTempo(line, bpm).replace(/^(\s*(?:tempo|bpm_target):\s*)\d{2,3}\b/i, `$1${bpm}`);
+  }).join("\n");
+  const lyrics = boundary[1].split("\n").map((line) =>
+    /^\s*\[(?:Intro|Verse|Hook|Chorus|Bridge|Outro|Pre[- ]Chorus|Pre[- ]Hook|Final Hook|Final Chorus|Instrumental|Break|Solo)\b[^\]\r\n]*\]\s*$/i.test(line)
+      ? replaceProductionTempo(line, bpm) : line
+  ).join("\n");
+  const rendered = boundary[0].replace(boundary[1], () => lyrics);
+  return metadata + rendered + yaml.slice(boundary.index + boundary[0].length);
+}
+
 /** Production-only overlay used by producer revisions.  It deliberately reuses
  * the canonical generator, while making the producer direction part of the
  * style brief and replacing exclusions in the submitted payload. */
@@ -242,14 +263,15 @@ export function createProductionRevisionPromptPack(
     const bpm = input.bpm;
     const direction = overrides.direction?.trim();
     let style = base.style;
-    if (bpm !== undefined) style = style.replace(/\b(?:\d{2,3}\s*BPM|BPM\s*\d{2,3})\b/gi, (tempo) => tempo.replace(/\d{2,3}/, String(bpm)));
     if (direction && !style.toLowerCase().includes(direction.toLowerCase())) {
       if (style.length + direction.length + 2 > CANONICAL_STYLE_HARD_MAX_CHARS) throw new Error("production direction exceeds style limit");
       style = `${style}, ${direction}`;
     }
+    if (bpm !== undefined) style = replaceProductionTempo(style, bpm);
     let yamlLyrics = base.yamlLyrics;
     if (title !== base.songTitle) yamlLyrics = yamlLyrics.replace(/(^|\n)(\s*title:\s*).+$/im, `$1$2${title}`);
-    if (bpm !== undefined) yamlLyrics = yamlLyrics.replace(/(^|\n)(\s*tempo:\s*)\d{2,3}/im, `$1$2${bpm}`);
+    if (bpm !== undefined) yamlLyrics = renderProductionTempo(yamlLyrics, bpm);
+    const lyricsText = extractLyricsBody(yamlLyrics);
     if (overrides.excludeStyles && overrides.excludeStyles.join(", ").length > 240) throw new Error("production exclusions exceed 240 characters");
     const exclude = overrides.excludeStyles?.length ? overrides.excludeStyles.join(", ") : base.exclude;
     const previousCounts = (base.payload.promptCharCounts ?? {}) as Record<string, unknown>;
@@ -260,12 +282,14 @@ export function createProductionRevisionPromptPack(
       excludeStyles: exclude,
       payloadYaml: yamlLyrics,
       lyricsYaml: yamlLyrics,
+      lyrics: lyricsText,
+      lyricsText,
       promptCharCounts: {
         ...previousCounts,
         style: style.length,
         title: title.length,
         submittedPayloadChars: yamlLyrics.length,
-        lyrics: typeof base.payload.lyrics === "string" ? base.payload.lyrics.length : previousCounts.lyrics
+        lyrics: lyricsText.length
       }
     };
     const pack: SunoPromptPack = {
@@ -274,6 +298,7 @@ export function createProductionRevisionPromptPack(
       style,
       exclude,
       yamlLyrics,
+      lyricsBundle: { ...base.lyricsBundle, lyricsText, yamlLyrics },
       payload,
       promptHash: hashText(`${style}\n${exclude}\n${yamlLyrics}`),
       payloadHash: hashText(JSON.stringify(payload))
