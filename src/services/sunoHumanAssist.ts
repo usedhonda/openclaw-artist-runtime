@@ -76,6 +76,9 @@ export interface RunHumanAssistCreateInput {
   timeoutMs: number;
   /** Skip every machine Create attempt and wait for the producer to edit and submit. */
   manualSubmit?: boolean;
+  /** Fill and hand the form to the producer, then signal readiness before waiting. */
+  prepareOnly?: boolean;
+  onPrepared?: () => void | Promise<void>;
 }
 
 export type HumanAssistCreateResult =
@@ -93,7 +96,7 @@ export type HumanAssistCreateResult =
 export async function runHumanAssistCreate(
   input: RunHumanAssistCreateInput
 ): Promise<HumanAssistCreateResult> {
-  const { driver, notifier, songId, title, timeoutMs, manualSubmit = false } = input;
+  const { driver, notifier, songId, title, timeoutMs, manualSubmit = false, prepareOnly = false, onPrepared } = input;
   try {
     try {
       await driver.openAndFill();
@@ -101,7 +104,7 @@ export async function runHumanAssistCreate(
       return { status: "error", reason: describeError(error, "open_fill_failed") };
     }
 
-    if (!manualSubmit) {
+    if (!manualSubmit && !prepareOnly) {
       let submit: HumanAssistSubmitOutcome;
       try {
         submit = await driver.attemptMachineSubmit();
@@ -132,6 +135,9 @@ export async function runHumanAssistCreate(
     // producer can adjust remaining Suno parameters before pressing Create.
     await driver.bringToFront();
     await notifier.awaitingHumanCreate({ songId, title });
+    if (prepareOnly) {
+      await onPrepared?.();
+    }
 
     let waited: HumanAssistWaitOutcome;
     try {

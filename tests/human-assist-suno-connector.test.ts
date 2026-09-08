@@ -163,6 +163,35 @@ describe("HumanAssistSunoConnector", () => {
     });
   });
 
+  it("signals prepareOnly readiness while keeping the connector pending until the human result", async () => {
+    const { connector } = innerReturning({ accepted: false, runId: "run-1", reason: CLI_BLOCKED_CAPTCHA_REASON, urls: [] });
+    let releaseWait!: (value: { kind: "accepted"; urls: string[] }) => void;
+    const wait = new Promise<{ kind: "accepted"; urls: string[] }>((resolve) => { releaseWait = resolve; });
+    const onPrepared = vi.fn();
+    const driver: HumanAssistBrowserDriver = {
+      openAndFill: async () => undefined,
+      attemptMachineSubmit: async () => ({ kind: "captcha_challenge" }),
+      closeChallengeOverlay: async () => undefined,
+      bringToFront: async () => undefined,
+      waitForHumanSubmit: async () => wait,
+      close: async () => undefined
+    };
+    const decorated = new HumanAssistSunoConnector(connector, {
+      timeoutMs: 1000,
+      submitMode: "manual",
+      driverFactory: () => driver,
+      notifier: notifierSpy
+    });
+
+    let settled = false;
+    const resultPromise = decorated.create({ ...request, prepareOnly: true, payloadHash: "hash", packVersion: 3, onPrepared });
+    void resultPromise.then(() => { settled = true; });
+    await vi.waitFor(() => expect(onPrepared).toHaveBeenCalledWith({ runId: "run-1" }));
+    expect(settled).toBe(false);
+    releaseWait({ kind: "accepted", urls: ["https://suno.com/song/ffffffffffffffff"] });
+    await expect(resultPromise).resolves.toMatchObject({ accepted: true, runId: "run-1" });
+  });
+
   it("surfaces a timeout reason when the producer never presses Create", async () => {
     const { connector } = innerReturning({ accepted: false, runId: "run-1", reason: CLI_BLOCKED_CAPTCHA_REASON, urls: [] });
     const decorated = connectorWith(connector, stubDriver("captcha_then_timeout"));

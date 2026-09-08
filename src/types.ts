@@ -987,7 +987,9 @@ export interface SunoCreateRequest {
   songId?: string;
   runId?: string;
   payloadHash?: string;
+  packVersion?: number;
   prepareOnly?: boolean;
+  onPrepared?: (info: { runId: string }) => void | Promise<void>;
 }
 
 export interface SunoCreateResult {

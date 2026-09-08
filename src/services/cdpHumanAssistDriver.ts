@@ -358,10 +358,14 @@ export class CdpHumanAssistDriver implements HumanAssistBrowserDriver {
       const fresh = await this.freshTakeUrls().catch(() => [] as string[]);
       if (fresh.length > 0) {
         const reconciled = await this.reconcileTakesFromFeed(fresh, false);
-        if (reconciled.status === "unavailable") {
-          return { kind: "feed_unavailable" };
+        // A late/old DOM signal is not terminal: the feed may be temporarily
+        // unavailable or still lagging behind the producer's click. Keep the
+        // bounded wait alive and let the next poll retry reconciliation. The
+        // only immediate failure is assertBrowserAlive above, when the target
+        // page is genuinely gone.
+        if (reconciled.status !== "unavailable" && reconciled.urls.length > 0) {
+          return { kind: "accepted", urls: reconciled.urls };
         }
-        return { kind: "accepted", urls: reconciled.urls };
       }
       await sleep(POLL_INTERVAL_MS);
     }

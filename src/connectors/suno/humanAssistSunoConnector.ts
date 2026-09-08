@@ -83,6 +83,7 @@ export class HumanAssistSunoConnector implements SunoConnector {
   }
 
   async create(input: SunoCreateRequest): Promise<SunoCreateResult> {
+    const prepareOnly = input.prepareOnly === true;
     const manualSubmit = this.deps.submitMode === "manual";
     const result = manualSubmit && !input.dryRun
       ? {
@@ -119,7 +120,9 @@ export class HumanAssistSunoConnector implements SunoConnector {
         songId,
         title,
         timeoutMs: this.deps.timeoutMs,
-        manualSubmit
+        manualSubmit,
+        prepareOnly,
+        onPrepared: input.onPrepared ? () => input.onPrepared?.({ runId: result.runId }) : undefined
       });
     } finally {
       if (workspaceRoot) {

@@ -39,6 +39,7 @@ export interface GenerateSunoRunInput {
   expectedPayloadHash?: string;
   expectedPackVersion?: number;
   prepareOnly?: boolean;
+  onPrepared?: (info: { runId: string }) => void | Promise<void>;
 }
 
 export interface ImportSunoResultsInput {
@@ -331,7 +332,9 @@ export async function generateSunoRun(input: GenerateSunoRunInput): Promise<Suno
             songId: input.songId,
             runId: provisionalRunId,
             payloadHash,
-            prepareOnly: input.prepareOnly
+            packVersion: input.expectedPackVersion,
+            prepareOnly: input.prepareOnly,
+            onPrepared: input.onPrepared ? () => input.onPrepared?.({ runId: provisionalRunId }) : undefined
           })
       : undefined;
   } finally {
@@ -402,13 +405,15 @@ export async function generateSunoRun(input: GenerateSunoRunInput): Promise<Suno
       && createResult?.accepted
       && collectSunoTakeUrls(createResult.urls).length >= EXPECTED_SUNO_TAKE_URLS
   );
-  await updateSongState(input.workspaceRoot, input.songId, {
-    status: acceptedWithBothUrls ? "suno_take_url_ready" : authorityDecision.allowed && createResult?.accepted ? "suno_running" : "suno_prompt_pack",
-    reason: acceptedWithBothUrls ? "Suno take URL ready; audio rendering pending" : authorityDecision.reason,
-    selectedTakeId: firstTakeUrl ? extractSunoTakeId(firstTakeUrl) ?? firstTakeUrl : undefined,
-    appendPublicLinks: createResult?.accepted ? createResult.urls : undefined,
-    runCountDelta: 1
-  });
+  if (!(input.prepareOnly && createResult?.accepted !== true)) {
+    await updateSongState(input.workspaceRoot, input.songId, {
+      status: acceptedWithBothUrls ? "suno_take_url_ready" : authorityDecision.allowed && createResult?.accepted ? "suno_running" : "suno_prompt_pack",
+      reason: acceptedWithBothUrls ? "Suno take URL ready; audio rendering pending" : authorityDecision.reason,
+      selectedTakeId: firstTakeUrl ? extractSunoTakeId(firstTakeUrl) ?? firstTakeUrl : undefined,
+      appendPublicLinks: createResult?.accepted ? createResult.urls : undefined,
+      runCountDelta: 1
+    });
+  }
 
   return record;
 }

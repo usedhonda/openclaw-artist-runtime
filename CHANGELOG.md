@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- feat: prepare-only Suno generation now signals once the filled form is visible,
+  returns the approved song/run/hash/version packet at the tool boundary, and keeps
+  the connector's human-submit wait and pending marker alive until a terminal result.
+  Late or feed-unavailable DOM observations continue the bounded manual wait; only a
+  gone browser target fails immediately.
 - fix: declare the four song-revision tools in `openclaw.plugin.json` so the
   OpenClaw host exposes them to Telegram; registration tests now compare the
   manifest contract with the actual registered tool names.

@@ -56,14 +56,52 @@ export function registerSunoTools(api: unknown): void {
       if (expectedPayloadHash === undefined || expectedPackVersion === undefined) {
         throw new Error("conversational Suno generation requires expectedPayloadHash and expectedPackVersion");
       }
-      return generateSunoRun({
+      const generationInput = {
         workspaceRoot,
         songId: typeof payload.songId === "string" ? payload.songId : "song-001",
         config: await readResolvedConfig(workspaceRoot),
         expectedPayloadHash,
         expectedPackVersion,
         prepareOnly: payload.prepareOnly === true
+      };
+      if (!generationInput.prepareOnly) {
+        return generateSunoRun(generationInput);
+      }
+      let preparedRunId = "pending";
+      let signalReady!: () => void;
+      const preparedSignal = new Promise<void>((resolve) => {
+        signalReady = resolve;
       });
+      const generation = generateSunoRun({
+        ...generationInput,
+        onPrepared: ({ runId }) => {
+          preparedRunId = runId;
+          signalReady();
+        }
+      });
+      const raced = await Promise.race([
+        preparedSignal.then(() => ({ kind: "prepared" as const })),
+        generation.then((result) => ({ kind: "completed" as const, result }), () => ({ kind: "rejected" as const }))
+      ]);
+      if (raced.kind === "prepared") {
+        // The background create remains responsible for the eventual terminal
+        // result and ledger append. Consume a later rejection without exposing
+        // raw browser/network details to the tool caller.
+        void generation.then(() => undefined, () => undefined);
+        return {
+          status: "prepared",
+          songId: generationInput.songId,
+          runId: preparedRunId,
+          manualSubmitRequired: true,
+          payloadHash: expectedPayloadHash,
+          packVersion: expectedPackVersion,
+          createClicked: false
+        };
+      }
+      if (raced.kind === "rejected") {
+        throw new Error("Suno preparation failed");
+      }
+      return raced.result;
     }
   });
 
