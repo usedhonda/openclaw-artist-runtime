@@ -8,12 +8,21 @@ export interface ToolRegistration {
   name: string;
   description?: string;
   parameters?: Record<string, unknown>;
-  handler: UnknownHandler;
+  handler: (payload?: unknown, context?: ArtistToolContext) => unknown | Promise<unknown>;
 }
 
-interface PluginToolContextLike {
+export interface ArtistToolContext {
   workspaceDir?: string;
+  sessionKey?: string;
+  sessionId?: string;
+  messageChannel?: string;
+  requesterSenderId?: string;
+  senderIsOwner?: boolean;
+  deliveryContext?: { channel?: string; to?: string; accountId?: string; threadId?: string | number };
+  toolCallId?: string;
 }
+
+interface PluginToolContextLike extends ArtistToolContext {}
 
 interface AgentToolLike {
   name: string;
@@ -62,6 +71,7 @@ export interface InteractiveHandlerRegistration {
 }
 
 export interface PluginApiLike {
+  on?: (event: "before_prompt_build", handler: (event: unknown, context: { sessionKey?: string; workspaceDir?: string; messageProvider?: string; trigger?: string; channelId?: string }) => unknown | Promise<unknown>) => void;
   registerTool?: (
     tool: AgentToolLike | ((context: PluginToolContextLike) => AgentToolLike),
     opts?: { name?: string; names?: string[]; optional?: boolean }
@@ -216,14 +226,23 @@ export function safeRegisterTool(api: unknown, tool: ToolRegistration): void {
     label: tool.name,
     description: tool.description ?? `Artist Runtime tool: ${tool.name}`,
     parameters: tool.parameters ?? { type: "object", additionalProperties: true },
-    execute: async (_toolCallId, params) => {
+    execute: async (toolCallId, params) => {
       const payload = typeof params === "object" && params !== null && !Array.isArray(params)
         ? { ...(params as Record<string, unknown>) }
         : {};
       if (context.workspaceDir) {
         payload.workspaceRoot = context.workspaceDir;
       }
-      const details = await tool.handler(payload);
+      const details = await tool.handler(payload, {
+        workspaceDir: context.workspaceDir,
+        sessionKey: context.sessionKey,
+        sessionId: context.sessionId,
+        messageChannel: context.messageChannel,
+        requesterSenderId: context.requesterSenderId,
+        senderIsOwner: context.senderIsOwner,
+        deliveryContext: context.deliveryContext,
+        toolCallId
+      });
       const text = typeof details === "string" ? details : JSON.stringify(details, null, 2) ?? "null";
       return {
         content: [{ type: "text", text }],
@@ -231,6 +250,10 @@ export function safeRegisterTool(api: unknown, tool: ToolRegistration): void {
       };
     }
   }), { name: tool.name });
+}
+
+export function safeRegisterProductionPromptHook(api: unknown, handler: Parameters<NonNullable<PluginApiLike["on"]>>[1]): void {
+  asPluginApi(api).on?.("before_prompt_build", handler);
 }
 
 export function safeRegisterHook(api: unknown, hook: HookRegistration): void {

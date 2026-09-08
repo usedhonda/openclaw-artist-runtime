@@ -13,7 +13,11 @@ import type {
   SunoRunRecord,
   SunoRunStatus
 } from "../types.js";
-import { listSongStates, updateSongState } from "./artistState.js";
+import { listSongStates, readSongState, updateSongState } from "./artistState.js";
+import type { ArtistToolContext } from "../pluginApi.js";
+import { listSongProductionRevisions } from "./songProductionRevisions.js";
+import { attachProductionRunConversation, productionContextIdentity, readProductionRunBinding, recordProductionRunBinding, updateProductionConversation, updateProductionRunConversation, type ProductionRunBinding } from "./productionConversation.js";
+import { enqueueProductionTrial } from "./productionTrialWorker.js";
 import { appendPromptLedger, createPromptLedgerEntry, getSongPromptLedgerPath, inspectJsonlFile } from "./promptLedger.js";
 import { decideMusicAuthority } from "./musicAuthority.js";
 import { applyRuntimeEnvOverrides } from "./runtimeConfig.js";
@@ -40,6 +44,9 @@ export interface GenerateSunoRunInput {
   expectedPackVersion?: number;
   prepareOnly?: boolean;
   onPrepared?: (info: { runId: string }) => void | Promise<void>;
+  conversational?: boolean;
+  conversationContext?: ArtistToolContext;
+  conversationKey?: string;
 }
 
 export interface ImportSunoResultsInput {
@@ -300,6 +307,33 @@ export async function generateSunoRun(input: GenerateSunoRunInput): Promise<Suno
 
   const createdAt = new Date().toISOString();
   const provisionalRunId = runId();
+  let productionBinding: ProductionRunBinding | undefined;
+  if (input.conversational && input.expectedPackVersion !== undefined) {
+    const baseline = await readSongState(input.workspaceRoot, input.songId);
+    const revision = (await listSongProductionRevisions(input.workspaceRoot, input.songId))
+      .find((item) => item.packVersion === input.expectedPackVersion && item.payloadHash === payloadHash);
+    const selected = await readFile(join(input.workspaceRoot, "songs", input.songId, "suno", "selected-take.json"), "utf8")
+      .then((raw) => JSON.parse(raw) as { runId?: string; selectedTakeId?: string; sourceUrls?: string[] })
+      .catch((error: NodeJS.ErrnoException) => { if (error.code === "ENOENT") return undefined; throw error; });
+    const takeId = baseline.selectedTakeId;
+    const baselineUrl = takeId ? [...(selected?.sourceUrls ?? []), ...baseline.publicLinks].find((url) => url.endsWith(`/${takeId}`)) : undefined;
+    productionBinding = {
+      songId: input.songId, runId: provisionalRunId,
+      packVersion: input.expectedPackVersion, payloadHash,
+      revisionId: revision?.revisionId,
+      instruction: revision?.producerInstruction,
+      contextKey: productionContextIdentity(input.conversationContext)?.key ?? input.conversationKey,
+      baselineTake: takeId ? { takeId, runId: selected?.selectedTakeId === takeId ? selected.runId : undefined, url: baselineUrl } : undefined,
+      baselineStatus: baseline.status,
+      createdAt
+    };
+    await recordProductionRunBinding(input.workspaceRoot, productionBinding);
+    await updateProductionConversation(input.workspaceRoot, input.conversationContext, {
+      songId: input.songId, runId: provisionalRunId, packVersion: input.expectedPackVersion, payloadHash,
+      revisionId: revision?.revisionId, phase: "waiting"
+    });
+    await attachProductionRunConversation(input.workspaceRoot, productionBinding);
+  }
   const shouldReserveDailyCredits = !config.autopilot.dryRun && config.music.suno.submitMode === "live";
   const budgetTracker = new SunoBudgetTracker(input.workspaceRoot);
   const creditBudget = authorityDecision.allowed && shouldReserveDailyCredits
@@ -333,7 +367,10 @@ export async function generateSunoRun(input: GenerateSunoRunInput): Promise<Suno
             runId: provisionalRunId,
             payloadHash,
             prepareOnly: input.prepareOnly,
-            onPrepared: input.onPrepared ? () => input.onPrepared?.({ runId: provisionalRunId }) : undefined
+            onPrepared: async () => {
+              if (productionBinding) await updateProductionRunConversation(input.workspaceRoot, productionBinding, "prepared");
+              await input.onPrepared?.({ runId: provisionalRunId });
+            }
           })
       : undefined;
   } finally {
@@ -404,7 +441,7 @@ export async function generateSunoRun(input: GenerateSunoRunInput): Promise<Suno
       && createResult?.accepted
       && collectSunoTakeUrls(createResult.urls).length >= EXPECTED_SUNO_TAKE_URLS
   );
-  if (!(input.prepareOnly && createResult?.accepted !== true)) {
+  if (!productionBinding && !(input.prepareOnly && createResult?.accepted !== true)) {
     await updateSongState(input.workspaceRoot, input.songId, {
       status: acceptedWithBothUrls ? "suno_take_url_ready" : authorityDecision.allowed && createResult?.accepted ? "suno_running" : "suno_prompt_pack",
       reason: acceptedWithBothUrls ? "Suno take URL ready; audio rendering pending" : authorityDecision.reason,
@@ -412,6 +449,14 @@ export async function generateSunoRun(input: GenerateSunoRunInput): Promise<Suno
       appendPublicLinks: createResult?.accepted ? createResult.urls : undefined,
       runCountDelta: 1
     });
+  }
+
+  if (productionBinding) {
+    if (createResult?.accepted && record.urls.length > 0) {
+      await enqueueProductionTrial(input.workspaceRoot, { songId: input.songId, runId: finalRunId, urls: record.urls });
+    } else {
+      await updateProductionRunConversation(input.workspaceRoot, productionBinding, "blocked");
+    }
   }
 
   return record;
@@ -472,6 +517,7 @@ export async function appendOperatorAttachedSunoRun(
 export async function importSunoResults(input: ImportSunoResultsInput): Promise<SunoRunRecord> {
   const config = applyRuntimeEnvOverrides(applyConfigDefaults(input.config));
   const importedAt = new Date().toISOString();
+  const productionBinding = await readProductionRunBinding(input.workspaceRoot, input.songId, input.runId);
   const payload = {
     runId: input.runId,
     urls: input.urls,
@@ -552,9 +598,9 @@ export async function importSunoResults(input: ImportSunoResultsInput): Promise<
   };
 
   await updateSongState(input.workspaceRoot, input.songId, {
-    status: input.preserveSongLifecycle ? undefined : "takes_imported",
+    status: input.preserveSongLifecycle || productionBinding ? undefined : "takes_imported",
     reason: input.preserveSongLifecycle ? "Suno results imported after adoption" : "Suno results imported",
-    selectedTakeId: input.selectedTakeId,
+    selectedTakeId: productionBinding ? undefined : input.selectedTakeId,
     appendPublicLinks: input.urls,
     lastImportOutcome
   });
@@ -563,7 +609,7 @@ export async function importSunoResults(input: ImportSunoResultsInput): Promise<
   if (config.music.suno.driver !== "suno_cli") {
     await new SunoBrowserWorker(input.workspaceRoot).supersedeImportOutcome(lastImportOutcome);
   }
-  if (input.preserveSongLifecycle) {
+  if (input.preserveSongLifecycle && !productionBinding) {
     emitRuntimeEvent({
       type: "suno_adoption_download_imported",
       songId: input.songId,
@@ -573,7 +619,7 @@ export async function importSunoResults(input: ImportSunoResultsInput): Promise<
       selectedTakeId: input.selectedTakeId,
       timestamp: Date.now()
     });
-  } else {
+  } else if (!productionBinding) {
     emitRuntimeEvent({
       type: "take_imported",
       songId: input.songId,

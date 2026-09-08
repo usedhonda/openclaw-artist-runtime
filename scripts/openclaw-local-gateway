@@ -83,7 +83,10 @@ const requiredToolAlsoAllow = [
   "artist_lyrics_revision_save",
   "artist_lyrics_revision_restore",
   "artist_lyrics_revision_adopt",
-  "artist_suno_generate"
+  "artist_suno_generate",
+  "artist_production_conversation",
+  "artist_song_production_revise",
+  "artist_take_select"
 ];
 const configuredToolAlsoAllow = Array.isArray(config.tools.alsoAllow) ? config.tools.alsoAllow : [];
 config.tools.alsoAllow = [...new Set([...configuredToolAlsoAllow, ...requiredToolAlsoAllow])];

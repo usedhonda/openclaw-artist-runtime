@@ -412,10 +412,25 @@ submitted successfully at `maxLength=5000` (`readbackMatches: true`).
   file-mutation, and gateway-control tools to the public artist. This leaves
   read access and explicitly allows `artist_song_material_lookup`,
   `artist_lyrics_revision_save`, `artist_lyrics_revision_restore`,
-  `artist_lyrics_revision_adopt`, and `artist_suno_generate` through
+  `artist_lyrics_revision_adopt`, `artist_suno_generate`,
+  `artist_production_conversation`, `artist_song_production_revise`, and
+  `artist_take_select` through
   `tools.alsoAllow`, while ensuring normal final text is delivered without a
   `message` tool call. It does not automatically allow the whole plugin or
   social-publishing tools. Existing explicit operator allowances are preserved.
+- **Conversation continuity:** the conversation tool stores the current song,
+  request, preservation constraints, pending choice, and exact production/run
+  binding. Reply-message lookup resolves historical submissions within the trusted
+  Telegram conversation. Native prompt context is injected only for Telegram
+  direct-message-scoped sessions; shared sessions read the memo through the tool.
+  A late background trial cannot replace a newer conversation subject.
+- **Manual preparation is occupied:** an explicitly requested exact production
+  pack waits in the durable preparation queue. The managed service checks every
+  15 seconds, not at startup, and prepares it after the existing form clears.
+  Interrupted work fails closed; it does not automatically click Create or
+  regenerate. Accepted trial imports run separately from adoption and preserve
+  the previously selected take. The submission includes verified local MP3/M4A
+  attachments when supported, with Suno URLs retained if upload fails.
 - **Telegram shows internal commands:** the local gateway seeds
   `channels.telegram.streaming.preview.toolProgress=false` while retaining
   partial answer previews. Existing explicit streaming choices are preserved;

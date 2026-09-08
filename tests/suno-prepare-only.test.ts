@@ -11,7 +11,8 @@ const connector = vi.hoisted(() => ({
 }));
 vi.mock("../src/connectors/suno/resolveSunoConnector.js", () => ({ resolveSunoConnector: vi.fn(() => connector) }));
 
-import { generateSunoRun, validatePrepareOnlySubmitMode } from "../src/services/sunoRuns";
+import { generateSunoRun, importSunoResults, validatePrepareOnlySubmitMode } from "../src/services/sunoRuns";
+import { readProductionRunBinding } from "../src/services/productionConversation";
 import { ensureSongState, readSongState, updateSongState } from "../src/services/artistState";
 
 const payload = { songId: "fixture-song", songName: "Fixture", styleAndFeel: "minimal", excludeStyles: "noise", lyrics: "line", lyricsText: "line", payloadYaml: "line", sliders: { weirdness: 0.5, styleInfluence: 0.5, audioInfluence: 0.5 } };
@@ -60,5 +61,17 @@ describe("Suno prepare-only assertion", () => {
     await generateSunoRun({ workspaceRoot: root, songId: "fixture-song", config, workerState: "connected", expectedPayloadHash: payloadHash, expectedPackVersion: 1, prepareOnly: true });
 
     await expect(readSongState(root, "fixture-song")).resolves.toMatchObject({ status: "archived", selectedTakeId: "take-preserved" });
+  });
+
+  it("keeps adopted audio while an exact conversational trial is generated and imported", async () => {
+    const { root, payloadHash } = await fixture();
+    await ensureSongState(root, "fixture-song", "Fixture");
+    await updateSongState(root, "fixture-song", { status: "take_selected", selectedTakeId: "take-old" });
+    connector.create.mockImplementationOnce(async (input: unknown) => ({ accepted: true, runId: (input as { runId: string }).runId, reason: "accepted", urls: ["https://suno.com/song/take-new"], input }));
+    const generated = await generateSunoRun({ workspaceRoot: root, songId: "fixture-song", config, workerState: "connected", expectedPayloadHash: payloadHash, expectedPackVersion: 1, prepareOnly: true, conversational: true });
+    expect(generated.status).toBe("accepted");
+    expect(await readProductionRunBinding(root, "fixture-song", generated.runId)).toMatchObject({ packVersion: 1, payloadHash, baselineTake: { takeId: "take-old" } });
+    await importSunoResults({ workspaceRoot: root, songId: "fixture-song", runId: generated.runId, urls: generated.urls, selectedTakeId: "take-new", config });
+    expect(await readSongState(root, "fixture-song")).toMatchObject({ status: "take_selected", selectedTakeId: "take-old" });
   });
 });

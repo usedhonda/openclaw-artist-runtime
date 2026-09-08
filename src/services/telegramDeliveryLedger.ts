@@ -2,6 +2,7 @@ import { createHash } from "node:crypto";
 import { appendFile, mkdir, readFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import type { RuntimeEvent } from "./runtimeEventBus.js";
+import { readProductionRunBinding, recordProductionSubmission, resolveProductionRunForUrls } from "./productionConversation.js";
 
 export interface TelegramDeliveryReceipt {
   deliveryId: string;
@@ -43,6 +44,21 @@ export async function appendTelegramDeliveryReceipt(
   const path = telegramDeliveryLedgerPath(root);
   await mkdir(dirname(path), { recursive: true });
   await appendFile(path, `${JSON.stringify(receipt)}\n`, "utf8");
+  if (event.type === "song_take_completed" || event.type === "suno_take_url_ready" || event.type === "suno_adoption_download_imported") {
+    const binding = "runId" in event
+      ? await readProductionRunBinding(root, event.songId, event.runId)
+      : await resolveProductionRunForUrls(root, event.songId, event.urls);
+    if (binding) await recordProductionSubmission(root, {
+      songId: event.songId,
+      runId: binding.runId,
+      messageId,
+      urls: event.urls,
+      packVersion: binding.packVersion,
+      payloadHash: binding.payloadHash,
+      contextKey: binding.contextKey,
+      deliveredAt: receipt.deliveredAt
+    });
+  }
   return receipt;
 }
 

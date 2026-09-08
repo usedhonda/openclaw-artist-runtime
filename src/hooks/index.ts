@@ -1,7 +1,13 @@
-import { safeRegisterHook } from "../pluginApi.js";
+import { safeRegisterHook, safeRegisterProductionPromptHook } from "../pluginApi.js";
 import { bootstrapArtistContext } from "./bootstrapArtist.js";
+import { productionPromptContext } from "../services/productionConversation.js";
 
 export function registerHooks(api: unknown): void {
+  safeRegisterProductionPromptHook(api, async (_event, context) => {
+    if (!context.sessionKey || !context.workspaceDir) return undefined;
+    const prependContext = await productionPromptContext(context.workspaceDir, context.sessionKey);
+    return prependContext ? { prependContext } : undefined;
+  });
   safeRegisterHook(api, {
     event: "agent:bootstrap",
     handler: async (payload) => {

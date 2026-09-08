@@ -220,9 +220,11 @@ describe("registration shells", () => {
       "artist_song_material_lookup",
       "artist_lyrics_revision_save",
       "artist_lyrics_revision_restore",
-      "artist_lyrics_revision_adopt"
+      "artist_lyrics_revision_adopt",
+      "artist_production_conversation",
+      "artist_song_production_revise"
     ]));
-    expect(registered.toolDefinitions).toHaveLength(11);
+    expect(registered.toolDefinitions).toHaveLength(13);
     expect(registered.toolDefinitions.every((tool) => typeof tool.execute === "function")).toBe(true);
     expect(registered.toolDefinitions.every((tool) => typeof tool.parameters === "object" && tool.parameters !== null)).toBe(true);
     const promptPackTool = registered.toolDefinitions.find((tool) => tool.name === "artist_suno_create_prompt_pack");

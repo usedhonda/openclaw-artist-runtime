@@ -28,13 +28,16 @@ describe("artist_suno_generate prepare boundary", () => {
     expect(factory).toBeDefined();
     const tool = factory!({});
 
-    const result = await tool.execute("call-1", {
+    const input = {
       workspaceRoot: "/tmp/prepare-boundary",
       songId: "song-1",
       expectedPayloadHash: "hash",
       expectedPackVersion: 4,
       prepareOnly: true
-    });
+    };
+    const [result, duplicate] = await Promise.all([tool.execute("call-1", input), tool.execute("call-2", input)]);
+    expect(duplicate.details).toEqual(result.details);
+    expect(deferred.generate).toHaveBeenCalledTimes(1);
 
     expect(result.details).toEqual({
       status: "prepared",

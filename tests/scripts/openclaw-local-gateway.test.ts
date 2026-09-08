@@ -174,7 +174,10 @@ describe("openclaw-local-gateway owner guards", () => {
       "artist_lyrics_revision_save",
       "artist_lyrics_revision_restore",
       "artist_lyrics_revision_adopt",
-      "artist_suno_generate"
+      "artist_suno_generate",
+      "artist_production_conversation",
+      "artist_song_production_revise",
+      "artist_take_select"
     ]);
     expect(config.tools.deny).toEqual(
       expect.arrayContaining(["group:runtime", "write", "edit", "apply_patch", "gateway"])
@@ -211,7 +214,10 @@ describe("openclaw-local-gateway owner guards", () => {
       "artist_lyrics_revision_save",
       "artist_lyrics_revision_restore",
       "artist_lyrics_revision_adopt",
-      "artist_suno_generate"
+      "artist_suno_generate",
+      "artist_production_conversation",
+      "artist_song_production_revise",
+      "artist_take_select"
     ]);
     expect(config.tools.deny).toEqual(expect.arrayContaining(["exec", "group:runtime", "write", "edit", "apply_patch", "gateway"]));
     runWrapper(fixture, "stop");

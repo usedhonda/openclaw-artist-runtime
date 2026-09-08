@@ -40,7 +40,9 @@
       "artist_song_material_lookup",
       "artist_lyrics_revision_save",
       "artist_lyrics_revision_restore",
-      "artist_lyrics_revision_adopt"
+      "artist_lyrics_revision_adopt",
+      "artist_production_conversation",
+      "artist_song_production_revise"
     ]
   },
   "legacy": {

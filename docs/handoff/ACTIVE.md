@@ -1,5 +1,30 @@
 # Handoff: Linux host parity
 
+## Active goal: producer-musician creation loop (2026-09-09)
+
+The earlier preparation repair did not complete the producer's required workflow.
+The active task is to make conversation lead to an interpretable musical revision,
+an actual trial, a musician-facing submission, comparison, and a further revision
+or producer adoption. Do not equate tool success or form preparation with this goal.
+
+- Production revisions: implement arrangement/title/BPM changes independently of
+  lyric changes, preserving prior material and accepted audio.
+- Conversation: persist subject, request, constraints, exact trial and pending
+  decision; background events must not change the conversation subject.
+- History: compare and select a take from its actual song/run, not latest results.
+- Reports: exact submitted version, request/delta, playable references and grounded
+  listening guidance; operational diagnostics are not the song submission.
+- Verification: focused regressions, integrated required gate, Linux reflection,
+  actual Telegram trial submission and reply-driven continuation.
+- Current deployment access: Tailscale SSH requested an additional authentication
+  check. Local implementation continues; no authentication bypass or restart.
+- Boundaries: manual Create, no public publishing, no CAPTCHA automation, no
+  broader tool permissions, no existing ledger-format changes.
+
+Implementation ownership: production-revision worker owns revision persistence;
+report worker owns song notifications; history worker owns take selection/material
+history; root owns trusted conversation context, tools, run integration and rollout.
+
 ## Completed checkpoint: conversational production repair (2026-09-08)
 
 See [the archived completion record](archive/2026-09-08-telegram-production-repair.md).
