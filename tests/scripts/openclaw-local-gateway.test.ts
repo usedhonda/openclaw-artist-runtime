@@ -169,7 +169,13 @@ describe("openclaw-local-gateway owner guards", () => {
       preview: { toolProgress: false }
     });
     expect(config.messages.visibleReplies).toBe("automatic");
-    expect(config.tools.alsoAllow).toContain("artist-runtime");
+    expect(config.tools.alsoAllow).toEqual([
+      "artist_song_material_lookup",
+      "artist_lyrics_revision_save",
+      "artist_lyrics_revision_restore",
+      "artist_lyrics_revision_adopt",
+      "artist_suno_generate"
+    ]);
     expect(config.tools.deny).toEqual(
       expect.arrayContaining(["group:runtime", "write", "edit", "apply_patch", "gateway"])
     );
@@ -182,14 +188,14 @@ describe("openclaw-local-gateway owner guards", () => {
     expect(stopped.stdout).toContain("Gateway stopped");
   });
 
-  it("adds artist-runtime to alsoAllow without replacing an operator allowlist", async () => {
+  it("adds only the approved production tools without replacing an operator allowlist", async () => {
     const fixture = await makeFixture();
     const configPath = join(fixture.root, "openclaw/config/openclaw.json");
     await mkdir(join(fixture.root, "openclaw/config"), { recursive: true });
     await writeFile(configPath, JSON.stringify({
       tools: {
         profile: "coding",
-        alsoAllow: ["browser"],
+        alsoAllow: ["browser", "artist-runtime"],
         deny: ["exec"]
       }
     }), "utf8");
@@ -198,7 +204,15 @@ describe("openclaw-local-gateway owner guards", () => {
     expect(result.status).toBe(0);
     const config = JSON.parse(await readFile(configPath, "utf8"));
     expect(config.tools.profile).toBe("coding");
-    expect(config.tools.alsoAllow).toEqual(["browser", "artist-runtime"]);
+    expect(config.tools.alsoAllow).toEqual([
+      "browser",
+      "artist-runtime",
+      "artist_song_material_lookup",
+      "artist_lyrics_revision_save",
+      "artist_lyrics_revision_restore",
+      "artist_lyrics_revision_adopt",
+      "artist_suno_generate"
+    ]);
     expect(config.tools.deny).toEqual(expect.arrayContaining(["exec", "group:runtime", "write", "edit", "apply_patch", "gateway"]));
     runWrapper(fixture, "stop");
   });

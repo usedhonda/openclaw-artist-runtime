@@ -78,7 +78,13 @@ config.messages ??= {};
 config.messages.visibleReplies = "automatic";
 
 config.tools ??= {};
-const requiredToolAlsoAllow = ["artist-runtime"];
+const requiredToolAlsoAllow = [
+  "artist_song_material_lookup",
+  "artist_lyrics_revision_save",
+  "artist_lyrics_revision_restore",
+  "artist_lyrics_revision_adopt",
+  "artist_suno_generate"
+];
 const configuredToolAlsoAllow = Array.isArray(config.tools.alsoAllow) ? config.tools.alsoAllow : [];
 config.tools.alsoAllow = [...new Set([...configuredToolAlsoAllow, ...requiredToolAlsoAllow])];
 const requiredToolDenies = ["group:runtime", "write", "edit", "apply_patch", "gateway"];
