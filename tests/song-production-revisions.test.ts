@@ -32,6 +32,8 @@ describe("bounded song production revisions", () => {
     expect(revision.promptPack.pack.exclude).toBe("acoustic ballad, festival EDM drop");
     expect(revision.promptPack.pack.payload.songName).toBe("Faster Fixture");
     expect(revision.promptPack.pack.payload.payloadYaml).toContain("tempo: 148");
+    expect(revision.promptPack.pack.promptHash).toBe(hash(`${revision.promptPack.pack.style}\n${revision.promptPack.pack.exclude}\n${revision.promptPack.pack.yamlLyrics}`));
+    expect(revision.promptPack.pack.payloadHash).toBe(hash(JSON.stringify(revision.promptPack.pack.payload)));
     expect(await readFile(join(root, "songs/fixture-song/prompts/prompt-pack-v001/suno-payload.json"), "utf8")).toBe(oldSnapshot);
     expect(await readFile(join(root, "songs/fixture-song/lyrics/lyrics.v1.md"), "utf8")).toBe(oldLyrics);
     expect((await readSongState(root, "fixture-song")).selectedTakeId).toBe("take-old");
