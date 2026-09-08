@@ -108,6 +108,20 @@ describe("TelegramNotifier", () => {
     })).resolves.toBe("Autopilot stage: planning -> prompt_pack (song-001)");
   });
 
+  it("labels human-assist creation as a background notification", async () => {
+    const text = await formatRuntimeEvent({
+      type: "suno_human_assist_requested",
+      songId: "song-background",
+      title: "Background Take",
+      timeoutMinutes: 10,
+      mode: "manual_submit",
+      timestamp: 1
+    });
+
+    expect(text).toContain("【バックグラウンド通知】");
+    expect(text).toContain("今の会話への返答ではなく");
+  });
+
   it("explains manual Suno parameter editing without claiming captcha", async () => {
     const text = await formatRuntimeEvent({
       type: "suno_human_assist_requested",

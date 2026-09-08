@@ -78,6 +78,9 @@ config.messages ??= {};
 config.messages.visibleReplies = "automatic";
 
 config.tools ??= {};
+const requiredToolAlsoAllow = ["artist-runtime"];
+const configuredToolAlsoAllow = Array.isArray(config.tools.alsoAllow) ? config.tools.alsoAllow : [];
+config.tools.alsoAllow = [...new Set([...configuredToolAlsoAllow, ...requiredToolAlsoAllow])];
 const requiredToolDenies = ["group:runtime", "write", "edit", "apply_patch", "gateway"];
 const configuredToolDenies = Array.isArray(config.tools.deny) ? config.tools.deny : [];
 config.tools.deny = [...new Set([...configuredToolDenies, ...requiredToolDenies])];
