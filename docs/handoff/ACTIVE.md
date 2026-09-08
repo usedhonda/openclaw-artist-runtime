@@ -68,9 +68,14 @@ No Create was clicked for either prepared run. The agent closed the pack-5 Suno
 input tab as well; its pending marker cleared before reflection.
 Do not report this goal complete.
 
-Next: prepare an exact new revision through
-Telegram, and verify that the payload contains only the requested tempo before
-operator manual Create. Then verify actual audio import/submission and
+Live checkpoint: actual Telegram prepared pack 6 and acknowledged manual Create
+at `2026-09-08T18:10:18Z`, run `suno_mtszir4z`. Independent stored-payload readback
+found only 148 BPM in Style, submitted Lyrics and YAML, with canonical lyric bytes,
+lyric hash, title and original adopted take all preserved. The actual Linux Suno
+screen shows the bilingual title and an unclicked Create button. This run is
+pending manual submission: do not restart its gateway or close its input tab.
+
+Next: operator manual Create. Then verify actual audio import/submission and
 reply-driven revision or historical adoption. Never substitute fixtures for live
 proof.
 
