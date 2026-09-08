@@ -38,8 +38,6 @@ export interface GenerateSunoRunInput {
   /** Conversational callers must pin the exact approved payload they saw. */
   expectedPayloadHash?: string;
   expectedPackVersion?: number;
-  expectedAdoptedPayloadHash?: string;
-  expectedAdoptedPackVersion?: number;
 }
 
 export interface ImportSunoResultsInput {
@@ -276,8 +274,8 @@ export async function generateSunoRun(input: GenerateSunoRunInput): Promise<Suno
     : await connector.status().catch(() => undefined);
   const workerState = workerStatus?.state ?? "disconnected";
   const { payload, payloadHash, payloadPath } = await loadPayload(input.workspaceRoot, input.songId, {
-    payloadHash: input.expectedPayloadHash ?? input.expectedAdoptedPayloadHash,
-    packVersion: input.expectedPackVersion ?? input.expectedAdoptedPackVersion
+    payloadHash: input.expectedPayloadHash,
+    packVersion: input.expectedPackVersion
   });
   let authorityDecision = decideMusicAuthority({
     dryRun: config.autopilot.dryRun,

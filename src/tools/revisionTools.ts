@@ -52,14 +52,15 @@ export function registerRevisionTools(api: unknown): void {
       type: "object", additionalProperties: false, required: ["songId", "instruction"],
       properties: {
         songId: { type: "string", minLength: 1 }, instruction: { type: "string", minLength: 1 }, text: { type: "string" },
-        sourceVersion: { type: "integer", minimum: 1 }, expectedSourceText: { type: "string" },
+        sourceKind: { type: "string", enum: ["adopted_lyrics", "candidate"] }, sourceVersion: { type: "integer", minimum: 1 }, expectedSourceHash: { type: "string", minLength: 1 },
         changes: { type: "array", items: { type: "object", required: ["before", "after"], properties: { section: { type: "string" }, before: { type: "string" }, after: { type: "string" } }, additionalProperties: false } }
       }
     },
     handler: async (input) => {
       const payload = objectInput(input);
       const changes = Array.isArray(payload.changes) ? payload.changes : undefined;
-      return saveLyricRevision({ workspaceRoot: rootOf(payload), songId: songIdOf(payload), instruction: String(payload.instruction ?? ""), text: typeof payload.text === "string" ? payload.text : undefined, changes: changes as never, sourceVersion: typeof payload.sourceVersion === "number" ? payload.sourceVersion : undefined, expectedSourceText: typeof payload.expectedSourceText === "string" ? payload.expectedSourceText : undefined });
+      if ((payload.sourceKind !== "adopted_lyrics" && payload.sourceKind !== "candidate") || typeof payload.sourceVersion !== "number" || typeof payload.expectedSourceHash !== "string") throw new Error("sourceKind, sourceVersion, and expectedSourceHash are required");
+      return saveLyricRevision({ workspaceRoot: rootOf(payload), songId: songIdOf(payload), instruction: String(payload.instruction ?? ""), text: typeof payload.text === "string" ? payload.text : undefined, changes: changes as never, source: { kind: payload.sourceKind, version: payload.sourceVersion }, expectedSourceHash: payload.expectedSourceHash });
     }
   });
 
@@ -68,11 +69,11 @@ export function registerRevisionTools(api: unknown): void {
     description: "Restore an old lyric candidate into a new candidate; the source candidate is never rewritten.",
     parameters: {
       type: "object", additionalProperties: false, required: ["songId", "version", "instruction"],
-      properties: { songId: { type: "string", minLength: 1 }, version: { type: "integer", minimum: 1 }, instruction: { type: "string", minLength: 1 }, text: { type: "string" }, expectedText: { type: "string" }, changes: { type: "array", items: { type: "object", required: ["before", "after"], properties: { section: { type: "string" }, before: { type: "string" }, after: { type: "string" } }, additionalProperties: false } } }
+      properties: { songId: { type: "string", minLength: 1 }, version: { type: "integer", minimum: 1 }, kind: { type: "string", enum: ["adopted_lyrics", "candidate"] }, targetVersion: { type: "integer", minimum: 1 }, targetKind: { type: "string", enum: ["adopted_lyrics", "candidate"] }, instruction: { type: "string", minLength: 1 }, text: { type: "string" }, expectedText: { type: "string" }, changes: { type: "array", items: { type: "object", required: ["before", "after"], properties: { section: { type: "string" }, before: { type: "string" }, after: { type: "string" } }, additionalProperties: false } } }
     },
     handler: async (input) => {
       const payload = objectInput(input);
-      return restoreLyricRevision({ workspaceRoot: rootOf(payload), songId: songIdOf(payload), version: Number(payload.version), instruction: String(payload.instruction ?? ""), text: typeof payload.text === "string" ? payload.text : undefined, changes: Array.isArray(payload.changes) ? payload.changes as never : undefined, expectedText: typeof payload.expectedText === "string" ? payload.expectedText : undefined });
+      return restoreLyricRevision({ workspaceRoot: rootOf(payload), songId: songIdOf(payload), version: Number(payload.version), kind: payload.kind === "adopted_lyrics" ? "adopted_lyrics" : "candidate", targetVersion: typeof payload.targetVersion === "number" ? payload.targetVersion : undefined, targetKind: payload.targetKind === "adopted_lyrics" ? "adopted_lyrics" : "candidate", instruction: String(payload.instruction ?? ""), text: typeof payload.text === "string" ? payload.text : undefined, changes: Array.isArray(payload.changes) ? payload.changes as never : undefined, expectedText: typeof payload.expectedText === "string" ? payload.expectedText : undefined });
     }
   });
 

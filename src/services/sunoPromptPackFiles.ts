@@ -373,7 +373,7 @@ export async function createAndPersistSunoPromptPack(input: PersistSunoPromptPac
   ]);
 
   await updateSongState(input.workspaceRoot, input.songId, {
-    status: "suno_prompt_pack",
+    ...(input.preserveSongStatus ? {} : { status: "suno_prompt_pack" as const }),
     title: input.songTitle,
     reason: "Suno prompt pack persisted",
     lyricsVersion: version,

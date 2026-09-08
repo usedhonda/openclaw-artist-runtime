@@ -1,8 +1,8 @@
 import { createHash } from "node:crypto";
-import { mkdir, readdir, readFile, stat, writeFile } from "node:fs/promises";
-import { join, resolve } from "node:path";
+import { appendFile, mkdir, readdir, readFile, realpath, stat, writeFile } from "node:fs/promises";
+import { join, relative, resolve, sep } from "node:path";
 import { createAndPersistSunoPromptPack } from "./sunoPromptPackFiles.js";
-import { readSongState, updateSongState } from "./artistState.js";
+import { readSongState } from "./artistState.js";
 
 export interface LyricRevisionChange {
   section?: string;
@@ -29,12 +29,20 @@ export interface SaveLyricRevisionInput {
   instruction: string;
   text?: string;
   changes?: LyricRevisionChange[] | Record<string, string>;
-  sourceVersion?: number;
-  expectedSourceText?: string;
+  source: { kind: "adopted_lyrics" | "candidate"; version: number };
+  expectedSourceHash: string;
 }
 
-export interface RestoreLyricRevisionInput extends SaveLyricRevisionInput {
+export interface RestoreLyricRevisionInput {
+  workspaceRoot: string;
+  songId: string;
+  instruction: string;
   version: number;
+  changes?: LyricRevisionChange[] | Record<string, string>;
+  text?: string;
+  kind?: "adopted_lyrics" | "candidate";
+  targetVersion?: number;
+  targetKind?: "adopted_lyrics" | "candidate";
   expectedText?: string;
 }
 
@@ -56,6 +64,14 @@ export interface SongMaterialVersion {
   instruction?: string;
 }
 
+interface AdoptionReceipt {
+  candidateVersion: number;
+  candidateHash: string;
+  promptPack: Awaited<ReturnType<typeof createAndPersistSunoPromptPack>>;
+}
+
+const adoptionLocks = new Map<string, Promise<unknown>>();
+
 function hashText(text: string): string {
   return createHash("sha256").update(text).digest("hex");
 }
@@ -73,9 +89,15 @@ function rootSong(root: string, songId: string): string {
 
 async function assertExistingSong(root: string, songId: string): Promise<string> {
   const songRoot = rootSong(root, songId);
-  await stat(join(songRoot, "song.md")).catch(() => {
+  const rootReal = await realpath(resolve(root));
+  const songFile = join(songRoot, "song.md");
+  await stat(songFile).catch(() => {
     throw new Error(`existing song not found: ${songId}`);
   });
+  const songReal = await realpath(songFile);
+  if (relative(rootReal, songReal).startsWith(`..${sep}`) || relative(rootReal, songReal) === "..") {
+    throw new Error(`song path escapes workspace: ${songId}`);
+  }
   return songRoot;
 }
 
@@ -140,15 +162,32 @@ export async function readSongMaterialVersion(workspaceRoot: string, songId: str
   return kind === "candidate" ? (() => readCandidate(songRoot, version).then((candidate) => ({ kind, version, text: candidate.text, textHash: candidate.textHash, title: candidate.title, instruction: candidate.instruction })))() : readAdopted(songRoot, version);
 }
 
+async function readVersion(songRoot: string, kind: "adopted_lyrics" | "candidate", version: number): Promise<SongMaterialVersion> {
+  if (!Number.isInteger(version) || version < 1) throw new Error(`invalid material version: ${version}`);
+  return kind === "candidate"
+    ? readCandidate(songRoot, version).then((candidate) => ({ kind, version, text: candidate.text, textHash: candidate.textHash, title: candidate.title, instruction: candidate.instruction }))
+    : readAdopted(songRoot, version);
+}
+
+async function readAdoptionReceipt(songRoot: string, candidateVersion: number, candidateHash: string): Promise<AdoptionReceipt | undefined> {
+  const raw = await readFile(join(candidateDir(songRoot), "adoptions.jsonl"), "utf8").catch(() => "");
+  return raw.split("\n").filter(Boolean).map((line) => JSON.parse(line) as AdoptionReceipt)
+    .find((receipt) => receipt.candidateVersion === candidateVersion && receipt.candidateHash === candidateHash);
+}
+
 export async function saveLyricRevision(input: SaveLyricRevisionInput): Promise<LyricRevisionCandidate> {
   const songRoot = await assertExistingSong(input.workspaceRoot, input.songId);
   if (!input.instruction.trim()) throw new Error("revision instruction is required");
-  const source = await readAdopted(songRoot, input.sourceVersion);
-  if (input.expectedSourceText !== undefined && input.expectedSourceText !== source.text) throw new Error("source lyrics changed; exact-text check failed");
+  const source = await readVersion(songRoot, input.source.kind, input.source.version);
+  if (source.textHash !== input.expectedSourceHash) throw new Error("source lyrics changed; hash check failed");
   if (input.text === undefined && input.changes === undefined) throw new Error("revision requires text or partial changes");
   const applied = input.text !== undefined ? { text: input.text.trim(), labels: ["full"] } : applyChanges(source.text, input.changes!);
   if (!applied.text) throw new Error("revision lyrics must not be empty");
   await mkdir(candidateDir(songRoot), { recursive: true });
+  const candidateReal = await realpath(candidateDir(songRoot));
+  const workspaceReal = await realpath(resolve(input.workspaceRoot));
+  const candidateRelative = relative(workspaceReal, candidateReal);
+  if (candidateRelative.startsWith(`..${sep}`) || candidateRelative === "..") throw new Error("revision path escapes workspace");
   const versions = await candidateVersions(songRoot);
   const version = (versions.at(-1) ?? 0) + 1;
   const candidate: LyricRevisionCandidate = {
@@ -158,7 +197,7 @@ export async function saveLyricRevision(input: SaveLyricRevisionInput): Promise<
     text: applied.text,
     textHash: hashText(applied.text),
     changes: applied.labels,
-    source: { kind: "adopted_lyrics", version: source.version },
+    source: { kind: input.source.kind, version: source.version },
     sourceVersion: source.version,
     instruction: input.instruction.trim(),
     createdAt: new Date().toISOString()
@@ -169,28 +208,41 @@ export async function saveLyricRevision(input: SaveLyricRevisionInput): Promise<
 
 export async function restoreLyricRevision(input: RestoreLyricRevisionInput): Promise<LyricRevisionCandidate> {
   const songRoot = await assertExistingSong(input.workspaceRoot, input.songId);
-  const source = await readCandidate(songRoot, input.version);
+  const source = await readVersion(songRoot, input.kind ?? "candidate", input.version);
   if (input.expectedText !== undefined && input.expectedText !== source.text) throw new Error("candidate changed; exact-text check failed");
-  const restoredText = input.text ?? (input.changes ? applyChanges(source.text, input.changes).text : source.text);
-  return saveLyricRevision({ ...input, text: restoredText, sourceVersion: source.sourceVersion, changes: undefined, expectedSourceText: undefined });
+  const target = input.targetVersion === undefined
+    ? source
+    : await readVersion(songRoot, input.targetKind ?? "candidate", input.targetVersion);
+  const restoredText = input.text ?? (input.changes ? applyChanges(target.text, input.changes).text : source.text);
+  return saveLyricRevision({ workspaceRoot: input.workspaceRoot, songId: input.songId, instruction: input.instruction, text: restoredText, source: input.targetVersion === undefined ? { kind: source.kind, version: source.version } : { kind: target.kind, version: target.version }, expectedSourceHash: target.textHash });
 }
 
 export async function adoptLyricRevision(input: AdoptLyricRevisionInput): Promise<{ candidate: LyricRevisionCandidate; promptPack: Awaited<ReturnType<typeof createAndPersistSunoPromptPack>> }> {
-  const candidate = await readSongMaterialVersion(input.workspaceRoot, input.songId, input.version, "candidate").then((value) => readCandidate(rootSong(input.workspaceRoot, input.songId), value.version));
-  if (input.expectedTextHash && candidate.textHash !== input.expectedTextHash) throw new Error("candidate hash changed; adoption refused");
-  const song = await readSongState(input.workspaceRoot, input.songId);
-  const promptPack = await createAndPersistSunoPromptPack({
-    workspaceRoot: input.workspaceRoot,
-    songId: input.songId,
-    songTitle: input.songTitle ?? song.title,
-    artistReason: input.artistReason,
-    lyricsText: candidate.text
-  });
-  // Prompt-pack persistence normally advances a song into the production lane.
-  // An archived/published song is still a valid revision target, but adoption
-  // must not resurrect it or erase its lifecycle state.
-  if (song.status === "archived" || song.status === "published") {
-    await updateSongState(input.workspaceRoot, input.songId, { status: song.status });
+  const songRoot = await assertExistingSong(input.workspaceRoot, input.songId);
+  const candidate = await readCandidate(songRoot, input.version);
+  if (!input.expectedTextHash || candidate.textHash !== input.expectedTextHash) throw new Error("candidate hash changed; adoption refused");
+  const lockKey = `${songRoot}:${candidate.version}:${candidate.textHash}`;
+  const previous = adoptionLocks.get(lockKey);
+  if (previous) await previous;
+  const operation = (async () => {
+    const existing = await readAdoptionReceipt(songRoot, candidate.version, candidate.textHash);
+    if (existing) return existing.promptPack;
+    const song = await readSongState(input.workspaceRoot, input.songId);
+    const promptPack = await createAndPersistSunoPromptPack({
+      workspaceRoot: input.workspaceRoot,
+      songId: input.songId,
+      songTitle: input.songTitle ?? song.title,
+      artistReason: input.artistReason,
+      lyricsText: candidate.text,
+      preserveSongStatus: true
+    });
+    await appendFile(join(candidateDir(songRoot), "adoptions.jsonl"), `${JSON.stringify({ candidateVersion: candidate.version, candidateHash: candidate.textHash, promptPack })}\n`, "utf8");
+    return promptPack;
+  })();
+  adoptionLocks.set(lockKey, operation);
+  try {
+    return { candidate, promptPack: await operation };
+  } finally {
+    adoptionLocks.delete(lockKey);
   }
-  return { candidate, promptPack };
 }

@@ -1138,6 +1138,7 @@ export interface PersistSunoPromptPackInput extends Omit<CreateSunoPromptPackInp
   observationSummary?: ObservationSummary;
   aiReviewProvider?: AiReviewProvider;
   deferDegradedNotification?: boolean;
+  preserveSongStatus?: boolean;
 }
 
 export interface PersistedPromptPackResult {
