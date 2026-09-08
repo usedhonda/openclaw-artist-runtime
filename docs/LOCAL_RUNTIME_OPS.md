@@ -421,3 +421,12 @@ submitted successfully at `maxLength=5000` (`readbackMatches: true`).
   partial answer previews. Existing explicit streaming choices are preserved;
   set this field to `false` in the local OpenClaw config if an older config still
   exposes file reads or shell commands.
+- **New production tools remain unavailable after a build:** compare the live
+  Gateway `tools.catalog` result with the plugin manifest's `contracts.tools`.
+  Undeclared tools are rejected even when `tools.alsoAllow` names them. Also
+  inspect the restart log: a container's in-process restart can retain the old
+  JavaScript module graph. A code deployment requires a fresh gateway process.
+  Before replacing the supervisor-owned child, verify restart preflight reports
+  zero active work and there is no human-assist Create wait; retain the existing
+  lifecycle owner and never force a pending create closed. Confirm the new child
+  PID and live tool catalog before resuming the producer's request.

@@ -9,11 +9,18 @@ preparation while preserving manual Create, original takes, and restricted tools
   restoration provenance, idempotent adoption, and per-song adoption queues.
 - Added five explicit production tool allowances, producer-conversation rules,
   and neutral song-labelled production notifications.
-- Typecheck and lint pass. Full suite: 401 files passed; the sole failure was
-  the old registration count. That contract assertion and the queue cleanup race
-  were subsequently fixed; focused registration/adoption tests: 8 passed.
-- Runtime build passes. Linux deployment and Telegram inbound-to-Suno-form
-  verification remain outstanding at this checkpoint.
+- Linux deployment and real Telegram revision, partial restoration, adoption,
+  and exact adopted lyrics/style form readback are verified. The original audio
+  and previous lyric versions remain preserved.
+- The pre-incident-repair full suite passed all 2,040 tests. Fresh-take and
+  prepared-return lifecycle changes still require the final integrated gate.
+- Manual preparation exposed a false acceptance of pre-existing same-title
+  takes: the producer never clicked Create, but the browser closed. The song
+  was returned to its original archived/selected-audio state, and a failed
+  correction was appended without rewriting the historical run or prompt ledger.
+- Fresh feed timestamps are now required for manual acceptance. The remaining
+  repair returns form-prepared evidence promptly while keeping the manual wait
+  alive until its configured deadline; deployment/live verification is pending.
 - Tempo-only edits have no registered tool. The selected take's Suno menu
   exposes a disabled Adjust Speed button; no save, Cover, or generation occurred.
 - Keep existing workspace instructions outside the producer-conversation section
