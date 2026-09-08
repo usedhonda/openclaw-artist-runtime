@@ -1340,11 +1340,23 @@ type SongTakeCompletedEvent = Extract<RuntimeEvent, { type: "song_take_completed
 async function resolveRunIdForUrls(workspaceRoot: string, songId: string, urls: readonly string[]): Promise<string | undefined> {
   const wanted = new Set(urls.filter(Boolean));
   if (wanted.size === 0) return undefined;
-  const runs = await readAllSunoRuns(workspaceRoot, songId).catch(() => []);
-  const matches = runs
-    .filter((run) => run.status === "accepted" && run.urls.length > 0 && run.urls.filter(Boolean).every((url) => wanted.has(url)))
-    .sort((left, right) => right.createdAt.localeCompare(left.createdAt));
-  return matches[0]?.runId;
+  const raw = await readFile(join(workspaceRoot, "songs", songId, "suno", "runs.jsonl"), "utf8").catch(() => "");
+  const latestByRun = new Map<string, Awaited<ReturnType<typeof readAllSunoRuns>>[number]>();
+  for (const line of raw.split("\n").filter(Boolean)) {
+    try {
+      const run = JSON.parse(line) as Awaited<ReturnType<typeof readAllSunoRuns>>[number];
+      if (run.runId) latestByRun.set(run.runId, run);
+    } catch {
+      return undefined;
+    }
+  }
+  const matches = [...latestByRun.values()].filter((run) =>
+    (run.status === "accepted" || run.status === "imported")
+      && run.urls.length > 0
+      && run.urls.every((url) => wanted.has(url))
+      && wanted.size === new Set(run.urls).size
+  );
+  return matches.length === 1 ? matches[0]!.runId : undefined;
 }
 
 async function findPromptPackBindingByPayloadHash(
@@ -1379,10 +1391,30 @@ async function findPromptPackBindingByPayloadHash(
   return undefined;
 }
 
+interface BoundPackDetails {
+  title?: string;
+  bpm?: number;
+  excludeStyles: string[];
+}
+
+async function readBoundPackDetails(workspaceRoot: string, songId: string, packVersion: number | undefined): Promise<BoundPackDetails | undefined> {
+  if (packVersion === undefined) return undefined;
+  const dir = join(workspaceRoot, "songs", songId, "prompts", `prompt-pack-v${String(packVersion).padStart(3, "0")}`);
+  const payload = JSON.parse(await readFile(join(dir, "suno-payload.json"), "utf8").catch(() => "{}")) as { songName?: unknown };
+  const style = await readFile(join(dir, "style.md"), "utf8").catch(() => "");
+  const exclude = await readFile(join(dir, "exclude.md"), "utf8").catch(() => "");
+  const bpm = style.match(/\b(\d{2,3})\s*BPM\b/i)?.[1];
+  return {
+    title: typeof payload.songName === "string" ? payload.songName : undefined,
+    bpm: bpm ? Number(bpm) : undefined,
+    excludeStyles: exclude.split(",").map((item) => item.trim()).filter(Boolean)
+  };
+}
+
 async function resolveSongSubmissionBinding(
   event: SongTakeCompletedEvent,
   workspaceRoot?: string
-): Promise<{ binding?: ProductionRunBinding; revision?: Awaited<ReturnType<typeof readSongProductionRevision>> } | undefined> {
+): Promise<{ binding?: ProductionRunBinding; revision?: Awaited<ReturnType<typeof readSongProductionRevision>>; base?: BoundPackDetails } | undefined> {
   if (!workspaceRoot) return undefined;
   const runId = await resolveRunIdForUrls(workspaceRoot, event.songId, event.urls);
   if (!runId) return undefined;
@@ -1401,35 +1433,37 @@ async function resolveSongSubmissionBinding(
   const revision = binding.revisionId
     ? await readSongProductionRevision(workspaceRoot, event.songId, binding.revisionId).catch(() => undefined)
     : undefined;
-  return { binding, revision };
+  const base = await readBoundPackDetails(workspaceRoot, event.songId, revision?.basePackVersion ?? binding.packVersion);
+  return { binding, revision, base };
 }
 
 async function formatSongSubmission(
   event: SongTakeCompletedEvent,
   options: Pick<TelegramNotifierOptions, "workspaceRoot">
 ): Promise<string> {
-  const state = options.workspaceRoot ? await readSongState(options.workspaceRoot, event.songId).catch(() => undefined) : undefined;
   const resolved = await resolveSongSubmissionBinding(event, options.workspaceRoot);
   const binding = resolved?.binding;
   const revision = resolved?.revision;
-  const origin = revision ? "producer_revision" : "self_origin";
+  const base = resolved?.base;
   const intended = revision
     ? [binding?.instruction ?? revision.producerInstruction]
     : event.observationSummary?.motivation ? [event.observationSummary.motivation] : undefined;
   const changed = revision
     ? [
-      revision.effective.title !== state?.title ? `タイトルを「${revision.effective.title}」にした` : undefined,
-      revision.effective.bpm !== undefined ? `テンポを ${revision.effective.bpm} BPM にした` : undefined,
-      revision.effective.direction || undefined,
-      revision.effective.excludeStyles.length > 0 ? `避ける音像: ${revision.effective.excludeStyles.join("、")}` : undefined
+      base?.title && revision.effective.title !== base.title ? `タイトルを「${revision.effective.title}」にした` : undefined,
+      base?.bpm !== undefined && revision.effective.bpm !== undefined && revision.effective.bpm !== base.bpm
+        ? `${revision.effective.bpm} BPMを狙って組み直した`
+        : undefined,
+      base && revision.effective.excludeStyles.join("\u0000") !== base.excludeStyles.join("\u0000")
+        ? "避ける音像を組み替えた"
+        : undefined
     ].filter((line): line is string => Boolean(line))
     : undefined;
   const previousUrl = binding?.baselineTake?.url;
   return formatSongSubmissionReport({
     kind: "submission",
-    title: revision?.effective.title ?? state?.title ?? "今回の曲",
-    requestOrVersion: binding?.instruction ?? revision?.producerInstruction ?? (binding ? `v${binding.packVersion}` : undefined),
-    origin,
+    title: revision?.effective.title ?? base?.title ?? "今回の曲",
+    requestOrVersion: binding?.instruction ?? revision?.producerInstruction,
     binding: binding ? {
       runId: binding.runId,
       packVersion: binding.packVersion,
@@ -1441,7 +1475,7 @@ async function formatSongSubmission(
     } : undefined,
     intended,
     changed,
-    kept: revision ? ["前の曲の核は残した"] : undefined,
+    kept: revision?.lyric.kind === "adopted_lyrics" ? [`歌詞 v${revision.lyric.version} はそのまま`] : undefined,
     audioUrls: event.urls,
     previous: previousUrl ? { audioUrls: [previousUrl] } : undefined,
     listenFor: revision ? [binding?.instruction ?? revision.producerInstruction] : undefined

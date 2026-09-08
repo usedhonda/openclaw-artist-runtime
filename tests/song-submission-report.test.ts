@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { createHash } from "node:crypto";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -158,5 +159,36 @@ describe("song submission report", () => {
     const notifier = new TelegramNotifier({ token: "token", chatId: 123, workspaceRoot: root, fetchImpl });
     await notifier.notify({ type: "song_take_completed", songId: "song-run", urls: ["https://suno.com/song/old"], timestamp: 1 });
     expect(calls).toBe(2);
+  });
+
+  it("ignores a run whose later correction record is failed", async () => {
+    const root = mkdtempSync(join(tmpdir(), "artist-runtime-telegram-trial-correction-"));
+    await mkdir(join(root, "songs", "song-correction", "suno"), { recursive: true });
+    await writeFile(join(root, "songs", "song-correction", "suno", "runs.jsonl"), [
+      { runId: "run-correction", songId: "song-correction", createdAt: "2026-01-01T00:00:00.000Z", status: "accepted", urls: ["https://suno.com/song/correction"], dryRun: false },
+      { runId: "run-correction", songId: "song-correction", createdAt: "2026-01-01T00:01:00.000Z", status: "failed", urls: ["https://suno.com/song/correction"], dryRun: false }
+    ].map((run) => JSON.stringify(run)).join("\n"));
+    let calls = 0;
+    const fetchImpl = async (): Promise<Response> => { calls += 1; return { ok: true, status: 200, json: async () => ({ ok: true, result: { message_id: calls, chat: { id: 123 } } }) } as Response; };
+    const notifier = new TelegramNotifier({ token: "token", chatId: 123, workspaceRoot: root, fetchImpl });
+    await notifier.notify({ type: "song_take_completed", songId: "song-correction", urls: ["https://suno.com/song/correction"], timestamp: 1 });
+    expect(calls).toBe(1);
+  });
+
+  it("uses the immutable historical payload title instead of current song state", async () => {
+    const root = mkdtempSync(join(tmpdir(), "artist-runtime-telegram-historical-title-"));
+    const packDir = join(root, "songs", "song-history", "prompts", "prompt-pack-v001");
+    await mkdir(packDir, { recursive: true });
+    const payload = { songName: "Immutable Historical Title" };
+    const payloadHash = createHash("sha256").update(JSON.stringify(payload)).digest("hex");
+    await writeFile(join(packDir, "suno-payload.json"), JSON.stringify(payload));
+    await writeFile(join(packDir, "metadata.json"), JSON.stringify({ payloadHash }));
+    await writeFile(join(packDir, "style.md"), "118 BPM\n");
+    await writeFile(join(packDir, "exclude.md"), "noise");
+    await mkdir(join(root, "songs", "song-history", "suno"), { recursive: true });
+    await writeFile(join(root, "songs", "song-history", "suno", "runs.jsonl"), `${JSON.stringify({ runId: "run-history", songId: "song-history", createdAt: "2026-01-01T00:00:00.000Z", status: "accepted", payloadHash, urls: ["https://suno.com/song/history"], dryRun: false })}\n`);
+    const text = await formatRuntimeEvent({ type: "song_take_completed", songId: "song-history", urls: ["https://suno.com/song/history"], timestamp: 1 }, { workspaceRoot: root });
+    expect(text).toContain("Immutable Historical Title");
+    expect(text).not.toContain("今回の曲を提出する");
   });
 });
