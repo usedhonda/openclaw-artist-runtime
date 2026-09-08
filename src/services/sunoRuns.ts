@@ -35,6 +35,11 @@ export interface GenerateSunoRunInput {
   songId: string;
   config?: Partial<ArtistRuntimeConfig>;
   workerState?: "disconnected" | "connected" | "login_challenge" | "captcha" | "payment_prompt" | "ui_mismatch" | "quota_exhausted" | "paused";
+  /** Conversational callers must pin the exact approved payload they saw. */
+  expectedPayloadHash?: string;
+  expectedPackVersion?: number;
+  expectedAdoptedPayloadHash?: string;
+  expectedAdoptedPackVersion?: number;
 }
 
 export interface ImportSunoResultsInput {
@@ -84,14 +89,28 @@ async function readLastJsonlEntry<T>(path: string): Promise<T | undefined> {
   return JSON.parse(lines.at(-1) as string) as T;
 }
 
-async function loadPayload(root: string, songId: string): Promise<{ payload: Record<string, unknown>; payloadHash: string; payloadPath: string }> {
+async function loadPayload(root: string, songId: string, expected?: { payloadHash?: string; packVersion?: number }): Promise<{ payload: Record<string, unknown>; payloadHash: string; payloadPath: string }> {
   const payloadPath = getPayloadPath(root, songId);
   const payloadContents = await readFile(payloadPath, "utf8").catch(() => "");
   if (!payloadContents) {
     throw new Error(`missing Suno payload at ${payloadPath}`);
   }
   const payload = JSON.parse(payloadContents) as Record<string, unknown>;
-  return { payload, payloadHash: hashPayload(payload), payloadPath };
+  const payloadHash = hashPayload(payload);
+  if (expected?.payloadHash && expected.payloadHash !== payloadHash) {
+    throw new Error(`approved payload hash mismatch: expected ${expected.payloadHash}, found ${payloadHash}`);
+  }
+  if (expected?.packVersion !== undefined) {
+    const promptsRoot = join(root, "songs", songId, "prompts");
+    const entries = await readdir(promptsRoot, { withFileTypes: true }).catch(() => []);
+    const versions = entries.map((entry) => Number(entry.name.match(/^prompt-pack-v(\d+)$/)?.[1]))
+      .filter((value) => Number.isInteger(value));
+    const actualVersion = versions.length > 0 ? Math.max(...versions) : undefined;
+    if (actualVersion !== expected.packVersion) {
+      throw new Error(`approved payload version mismatch: expected ${expected.packVersion}, found ${actualVersion ?? "none"}`);
+    }
+  }
+  return { payload, payloadHash, payloadPath };
 }
 
 function toRunStatus(allowed: boolean, dryRun: boolean, accepted: boolean): SunoRunStatus {
@@ -256,7 +275,10 @@ export async function generateSunoRun(input: GenerateSunoRunInput): Promise<Suno
     ? { state: input.workerState }
     : await connector.status().catch(() => undefined);
   const workerState = workerStatus?.state ?? "disconnected";
-  const { payload, payloadHash, payloadPath } = await loadPayload(input.workspaceRoot, input.songId);
+  const { payload, payloadHash, payloadPath } = await loadPayload(input.workspaceRoot, input.songId, {
+    payloadHash: input.expectedPayloadHash ?? input.expectedAdoptedPayloadHash,
+    packVersion: input.expectedPackVersion ?? input.expectedAdoptedPackVersion
+  });
   let authorityDecision = decideMusicAuthority({
     dryRun: config.autopilot.dryRun,
     authority: config.music.suno.authority,

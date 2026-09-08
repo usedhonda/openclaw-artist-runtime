@@ -42,16 +42,29 @@ export function registerSunoTools(api: unknown): void {
       additionalProperties: false,
       required: ["songId"],
       properties: {
-        songId: { type: "string", minLength: 1 }
+        songId: { type: "string", minLength: 1 },
+        conversational: { type: "boolean", description: "When true, pin the exact approved payload hash and prompt-pack version." },
+        expectedPayloadHash: { type: "string", minLength: 1 },
+        expectedPackVersion: { type: "integer", minimum: 1 },
+        expectedAdoptedPayloadHash: { type: "string", minLength: 1 },
+        expectedAdoptedPackVersion: { type: "integer", minimum: 1 }
       }
     },
     handler: async (input) => {
       const payload = typeof input === "object" && input !== null ? (input as Record<string, unknown>) : {};
       const workspaceRoot = typeof payload.workspaceRoot === "string" ? payload.workspaceRoot : ".";
+      const conversational = payload.conversational === true;
+      const expectedPayloadHash = typeof payload.expectedPayloadHash === "string" ? payload.expectedPayloadHash : typeof payload.expectedAdoptedPayloadHash === "string" ? payload.expectedAdoptedPayloadHash : undefined;
+      const expectedPackVersion = typeof payload.expectedPackVersion === "number" ? payload.expectedPackVersion : typeof payload.expectedAdoptedPackVersion === "number" ? payload.expectedAdoptedPackVersion : undefined;
+      if (conversational && (expectedPayloadHash === undefined || expectedPackVersion === undefined)) {
+        throw new Error("conversational Suno generation requires expectedPayloadHash and expectedPackVersion");
+      }
       return generateSunoRun({
         workspaceRoot,
         songId: typeof payload.songId === "string" ? payload.songId : "song-001",
-        config: await readResolvedConfig(workspaceRoot)
+        config: await readResolvedConfig(workspaceRoot),
+        expectedPayloadHash,
+        expectedPackVersion
       });
     }
   });
