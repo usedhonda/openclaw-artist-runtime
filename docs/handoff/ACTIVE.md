@@ -1,5 +1,27 @@
 # Handoff: Linux host parity
 
+## Active checkpoint: conversational production repair (2026-09-08)
+
+Task Intent: restore song-bound Telegram revision, adoption, and pinned Suno
+preparation while preserving manual Create, original takes, and restricted tools.
+
+- Implemented isolated lyric candidates, title lookup, source hashes, partial
+  restoration provenance, idempotent adoption, and per-song adoption queues.
+- Added five explicit production tool allowances, producer-conversation rules,
+  and neutral song-labelled production notifications.
+- Typecheck and lint pass. Full suite: 401 files passed; the sole failure was
+  the old registration count. That contract assertion and the queue cleanup race
+  were subsequently fixed; focused registration/adoption tests: 8 passed.
+- Runtime build passes. Linux deployment and Telegram inbound-to-Suno-form
+  verification remain outstanding at this checkpoint.
+- Tempo-only edits have no registered tool. The selected take's Suno menu
+  exposes a disabled Adjust Speed button; no save, Cover, or generation occurred.
+- Keep existing workspace instructions outside the producer-conversation section
+  unchanged. Never replace the live workspace with the whole template.
+
+The historical parity checkpoint below is retained as prior context, not current
+evidence for Telegram enablement or live gateway configuration.
+
 Task ID: linux-host-parity-20260906
 Last updated: 2026-09-06 (UTC+9) by orchestrator
 Status: in-progress

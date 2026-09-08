@@ -410,8 +410,12 @@ submitted successfully at `maxLength=5000` (`readbackMatches: true`).
 - **Telegram producer turn edits code or disappears after a self-restart:** the
   local gateway seeds `messages.visibleReplies=automatic` and denies runtime,
   file-mutation, and gateway-control tools to the public artist. This leaves
-  read access and the registered `artist_*` production tools available while
-  ensuring normal final text is delivered without a `message` tool call.
+  read access and explicitly allows `artist_song_material_lookup`,
+  `artist_lyrics_revision_save`, `artist_lyrics_revision_restore`,
+  `artist_lyrics_revision_adopt`, and `artist_suno_generate` through
+  `tools.alsoAllow`, while ensuring normal final text is delivered without a
+  `message` tool call. It does not automatically allow the whole plugin or
+  social-publishing tools. Existing explicit operator allowances are preserved.
 - **Telegram shows internal commands:** the local gateway seeds
   `channels.telegram.streaming.preview.toolProgress=false` while retaining
   partial answer previews. Existing explicit streaming choices are preserved;

@@ -27,11 +27,46 @@ operation.
 - [Suno session-expiry recovery](#suno-session-expiry-recovery)
 - [Autopilot mode](#autopilot-mode)
 - [Telegram opt-in](#telegram-opt-in)
+- [Conversational song revisions](#conversational-song-revisions)
 - [First-run experience: artist persona](#first-run-experience-telegram-artist-persona)
 - [Runtime log rotation](#runtime-log-rotation)
 - [Runtime state snapshots](#runtime-state-snapshots)
 - [Cron examples](#cron-examples)
 - [See also](#see-also)
+
+## Conversational song revisions
+
+Name a song or reply to its message, then give a direct revision request such as
+"more internal rhyme", "make the verse longer", or "restore the old chorus".
+The artist resolves that song before editing; background production notifications
+are not a new conversation target. Ambiguous titles require one clarification.
+
+The registered production tools look up adopted lyrics and candidate versions,
+save a candidate with the source version/hash, and restore whole drafts or exact
+text sections. Candidates live in `songs/<id>/lyrics/revisions/`; normal latest
+lyrics readers do not see them. Partial changes must match their source text
+exactly once. The artist should present the revised lyrics and briefly identify
+what changed, preserving unspecified sections.
+
+Revision alone neither adopts the lyrics nor starts Suno. An explicit production
+request adopts the presented candidate, creates its prompt pack, and pins both
+the pack version and payload hash for `artist_suno_generate`. A stale approval
+fails closed. Repeated adoption of one candidate reuses its adoption receipt;
+adoptions for the same song are serialized. Archived/published status is retained.
+An existing human-assist Create wait is not replaced. In manual submit mode,
+preparation stops before Create; report success only from the tool result.
+
+Tempo-only requests are audio edits, not lyric regeneration or Cover requests.
+This integration does not currently expose an audio speed-edit tool. Verify the
+selected take and the account's enabled editor operation before offering an
+edit; if unavailable, report that limitation without substituting regeneration.
+Neither an editor save nor a paid generation is implied by lyric revision.
+
+For restricted OpenClaw profiles, explicitly allow the five tools documented in
+[Local Runtime Ops](LOCAL_RUNTIME_OPS.md), without enabling unrestricted shell,
+file mutation, gateway control, or the entire plugin. Existing workspaces must
+also receive the template's "Producer conversation comes first" section while
+preserving their private artist instructions.
 
 ## Quick checks
 

@@ -2,6 +2,15 @@
 
 ## Unreleased
 
+- feat: song-bound conversational lyric candidates support title lookup, chained
+  revisions, partial restoration, and explicit adoption. Unadopted candidates
+  stay separate from production lyrics; adoption preserves archived/published
+  status and serializes prompt-pack creation per song.
+- fix: registered Suno generation now requires the approved pack version and
+  payload hash. The local launcher explicitly permits only the five production
+  conversation tools alongside the existing restricted tool profile. Production
+  notifications carry a distinct heading and song title without changing the
+  producer conversation's subject.
 - feat: new operator knob `music.suno.audioImport` (`download` | `skip`). With
   `skip`, accepted Suno takes are recorded by URL only: the pending-import sweep
   no longer runs the connector download, the post-adoption download job is not
