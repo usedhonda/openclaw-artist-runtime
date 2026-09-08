@@ -5,7 +5,6 @@ import { updateSongState } from "./artistState.js";
 import { appendPromptLedger, createPromptLedgerEntry, getSongPromptLedgerPath } from "./promptLedger.js";
 import { emitRuntimeEvent } from "./runtimeEventBus.js";
 import { evaluateSunoTakeSelection } from "./sunoTakeSelector.js";
-import { readAllSunoRuns } from "./sunoRuns.js";
 import { evaluateSunoTakeUrlReadiness } from "./sunoTakeUrls.js";
 import { extractSunoTakeId } from "./takeAttributionGuard.js";
 
@@ -51,24 +50,24 @@ function assertSafeIdentifier(value: string, label: string): void {
 
 export async function listSongTakes(root: string, songId: string): Promise<SongTakeReference[]> {
   assertSafeIdentifier(songId, "songId");
-  const [runs, selections] = await Promise.all([
-    readAllSunoRuns(root, songId),
-    readTakeHistory(root, songId)
-  ]);
+  const runsPath = join(root, "songs", songId, "suno", "runs.jsonl");
+  const rawRuns = (await readFile(runsPath, "utf8").catch(() => ""))
+    .split("\n").filter(Boolean).map((line) => JSON.parse(line) as { runId: string; createdAt: string; status: string; urls: string[] });
+  const selections = await readTakeHistory(root, songId);
   const latestResultsPath = join(root, "songs", songId, "suno", "latest-results.json");
   const latestResults = JSON.parse(await readFile(latestResultsPath, "utf8").catch(() => "{}")) as {
     runId?: string;
     urls?: string[];
   };
-  const latestRunById = new Map<string, (typeof runs)[number]>();
-  for (const run of runs) {
+  const latestRunById = new Map<string, (typeof rawRuns)[number]>();
+  for (const run of [...rawRuns].reverse()) {
     if (!latestRunById.has(run.runId)) {
       latestRunById.set(run.runId, run);
     }
   }
   const authoritativeRuns = Array.from(latestRunById.values())
     .filter((run) => (run.status === "accepted" || run.status === "imported") && run.urls.length > 0);
-  const persistedRuns = runs.length > 0 ? authoritativeRuns : latestResults.urls?.length
+  const persistedRuns = rawRuns.length > 0 ? authoritativeRuns.sort((left, right) => right.createdAt.localeCompare(left.createdAt)) : latestResults.urls?.length
     ? [{ runId: latestResults.runId ?? "run-unknown", createdAt: new Date(0).toISOString(), urls: latestResults.urls }]
     : [];
   const references: SongTakeReference[] = [];

@@ -102,4 +102,16 @@ describe("historical Suno take selection", () => {
     await appendFile(join(root, "songs/song-001/suno/runs.jsonl"), `${JSON.stringify({ runId: "run-corrected", songId: "song-001", createdAt: new Date(Date.now() + 1000).toISOString(), mode: "cli", authorityDecision: { allowed: false, reason: "corrected", policyDecision: "failed" }, status: "failed", dryRun: false, urls: [] })}\n`);
     expect(await listSongTakes(root, "song-001")).toEqual([]);
   });
+
+  it("rejects an equal-timestamp failed correction by append order", async () => {
+    const root = mkdtempSync(join(tmpdir(), "artist-runtime-take-history-equal-time-"));
+    await ensureArtistWorkspace(root);
+    await createSongIdea({ workspaceRoot: root, title: "History Song", artistReason: "test" });
+    await importSunoResults({ workspaceRoot: root, songId: "song-001", runId: "run-same-time", urls: ["https://example.com/take"] });
+    const runsPath = join(root, "songs/song-001/suno/runs.jsonl");
+    const lines = (await readFile(runsPath, "utf8")).trim().split("\n");
+    const accepted = JSON.parse(lines[0]!) as { createdAt: string };
+    await appendFile(runsPath, `${JSON.stringify({ runId: "run-same-time", songId: "song-001", createdAt: accepted.createdAt, status: "failed", urls: [], dryRun: false })}\n`);
+    await expect(selectTake({ workspaceRoot: root, songId: "song-001", runId: "run-same-time", selectedTakeId: "take", producerDecision: true })).rejects.toThrow("unknown Suno run");
+  });
 });
