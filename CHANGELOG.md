@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- fix: declare the four song-revision tools in `openclaw.plugin.json` so the
+  OpenClaw host exposes them to Telegram; registration tests now compare the
+  manifest contract with the actual registered tool names.
 - feat: song-bound conversational lyric candidates support title lookup, chained
   revisions, partial restoration, and explicit adoption. Unadopted candidates
   stay separate from production lyrics; adoption preserves archived/published

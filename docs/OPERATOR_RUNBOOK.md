@@ -56,6 +56,11 @@ adoptions for the same song are serialized. Archived/published status is retaine
 An existing human-assist Create wait is not replaced. In manual submit mode,
 preparation stops before Create; report success only from the tool result.
 
+The plugin manifest's `contracts.tools` must declare every registered production
+tool. After installing a build that adds a tool, reload the plugin process; a
+runtime that registers a tool absent from this manifest rejects it before
+Telegram can invoke it.
+
 Tempo-only requests are audio edits, not lyric regeneration or Cover requests.
 This integration does not currently expose an audio speed-edit tool. Verify the
 selected take and the account's enabled editor operation before offering an

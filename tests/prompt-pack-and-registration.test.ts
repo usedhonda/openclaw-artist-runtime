@@ -186,6 +186,8 @@ describe("registration shells", () => {
     registerServices(api);
     registerRoutes(api);
 
+    const manifest = JSON.parse(readFileSync(join(process.cwd(), "openclaw.plugin.json"), "utf8")) as { contracts: { tools: string[] } };
+    expect([...registered.tools].sort()).toEqual([...manifest.contracts.tools].sort());
     expect(registered.tools).toContain("artist_suno_create_prompt_pack");
     expect(registered.tools).toContain("artist_song_ideate");
     expect(registered.tools).toEqual(expect.arrayContaining([
