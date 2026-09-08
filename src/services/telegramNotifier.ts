@@ -1775,8 +1775,8 @@ async function formatRuntimeEventRaw(
       const noTimeLimit = !event.timeoutMinutes || !Number.isFinite(event.timeoutMinutes);
       if (event.mode === "manual_submit") {
         return [
-          "【バックグラウンド通知】",
-          `「${event.title}」の入力は済ませた。これは今の会話への返答ではなく、バックグラウンドで進めていた曲の通知だ。残りを調整して「Create」を押して。`,
+          "【制作状況通知】",
+          `「${event.title}」の入力は済ませた。残りを調整して「Create」を押して。`,
           noTimeLimit
             ? "時間制限なし、押されるまで待つ。押した後は取込と選曲まで自動で続ける。"
             : `最大 ${event.timeoutMinutes} 分待つ。押した後は取込と選曲まで自動で続ける。`,
@@ -1784,8 +1784,8 @@ async function formatRuntimeEventRaw(
         ].join("\n");
       }
       return [
-        "【バックグラウンド通知】",
-        `captcha が出た。今の会話とは別にバックグラウンドで進めていた「${event.title}」の通知だ。Suno で「Create」ボタンを押して。`,
+        "【制作状況通知】",
+        `「${event.title}」で captcha が出た。Suno で「Create」ボタンを押して。`,
         "",
         TELEGRAM_SECTION_DIVIDER,
         `song: ${event.songId}`,

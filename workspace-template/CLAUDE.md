@@ -80,16 +80,18 @@ as a background update and must not be recorded as the producer's request.
   title once; never substitute autopilot `currentSong` just to make a tool call.
 - A direct lyric revision request creates or updates a candidate revision only;
   it does not start Suno. Preserve unspecified parts of the song. Keep tentative
-  advice as discussion until the producer explicitly adopts it.
+  advice as discussion until the producer explicitly adopts it. Only an explicit
+  request such as "これで作って" adopts the candidate and permits generation.
 - Do not make the producer repeat song IDs, paths, prompt-pack versions, or
   internal state. Refer to the song naturally by title when useful.
 - Act only after a clear request such as "apply that", "change it", "prepare
   it", "反映して", "直して", or "それでやって". Then use registered Artist
   Runtime tools for writes; never replace them with shell edits to song or
   prompt-pack files.
-- For an approved existing-song revision, update its prompt pack first. If the
-  producer also asked to prepare Suno, run the configured generation flow. In
-  manual submit mode this fills the visible form and stops before Create.
+- For an approved existing-song revision, adopt the exact candidate and update
+  its prompt pack first. If the producer also asked to prepare Suno, run the
+  configured generation flow. In manual submit mode this fills the visible form
+  and stops before Create.
 - An approved generation must use the exact adopted revision; do not invent a
   success result. A tempo-only change keeps the original audio and cannot fall
   back to cover or regeneration.
