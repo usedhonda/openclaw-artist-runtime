@@ -46,4 +46,28 @@ describe("bounded song production revisions", () => {
     expect(replay.revisionId).toBe(first.revisionId);
     await expect(reviseSongProduction({ ...input, producerInstruction: "different" })).rejects.toThrow("stale");
   });
+
+  it("inherits immutable production fields for title/BPM-only changes and carries direction forward", async () => {
+    const { root, lyrics, base } = await fixture();
+    const title = await reviseSongProduction({ workspaceRoot: root, songId: "fixture-song", basePackVersion: 1, expectedBasePayloadHash: base.pack.payloadHash, lyric: { kind: "adopted_lyrics", version: 1, hash: hash(lyrics) }, producerInstruction: "title", patch: { title: "New Title" } });
+    expect(title.promptPack.pack.style).toBe(base.pack.style);
+    expect(title.promptPack.pack.exclude).toBe(base.pack.exclude);
+    expect(title.promptPack.pack.sliders).toEqual(base.pack.sliders);
+    const bpm = await reviseSongProduction({ workspaceRoot: root, songId: "fixture-song", basePackVersion: title.packVersion, expectedBasePayloadHash: title.payloadHash, lyric: { kind: "adopted_lyrics", version: 1, hash: hash(lyrics) }, producerInstruction: "tempo", patch: { bpm: 140 } });
+    expect(bpm.promptPack.pack.style).toContain("140 BPM");
+    expect(bpm.promptPack.pack.style.replace("140 BPM", "92 BPM")).toBe(title.promptPack.pack.style);
+    const directed = await reviseSongProduction({ workspaceRoot: root, songId: "fixture-song", basePackVersion: bpm.packVersion, expectedBasePayloadHash: bpm.payloadHash, lyric: { kind: "adopted_lyrics", version: 1, hash: hash(lyrics) }, producerInstruction: "direction", patch: { direction: "dry clipped drums" } });
+    const inherited = await reviseSongProduction({ workspaceRoot: root, songId: "fixture-song", basePackVersion: directed.packVersion, expectedBasePayloadHash: directed.payloadHash, lyric: { kind: "adopted_lyrics", version: 1, hash: hash(lyrics) }, producerInstruction: "keep direction" });
+    expect(inherited.promptPack.pack.style).toContain("dry clipped drums");
+  });
+
+  it("fails closed on tampered payloads and direction overflow without changing state", async () => {
+    const { root, lyrics, base } = await fixture();
+    await writeFile(join(root, "songs/fixture-song/prompts/prompt-pack-v001/suno-payload.json"), "{}\n");
+    await expect(reviseSongProduction({ workspaceRoot: root, songId: "fixture-song", basePackVersion: 1, expectedBasePayloadHash: base.pack.payloadHash, lyric: { kind: "adopted_lyrics", version: 1, hash: hash(lyrics) }, producerInstruction: "tampered", patch: { title: "x" } })).rejects.toThrow("payload hash");
+    const fresh = await fixture();
+    const before = await readSongState(fresh.root, "fixture-song");
+    await expect(reviseSongProduction({ workspaceRoot: fresh.root, songId: "fixture-song", basePackVersion: 1, expectedBasePayloadHash: fresh.base.pack.payloadHash, lyric: { kind: "adopted_lyrics", version: 1, hash: hash(fresh.lyrics) }, producerInstruction: "too long", patch: { direction: "x".repeat(1000) } })).rejects.toThrow("style limit");
+    expect((await readSongState(fresh.root, "fixture-song")).status).toBe(before.status);
+  });
 });

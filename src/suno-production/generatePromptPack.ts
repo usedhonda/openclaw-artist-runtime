@@ -223,7 +223,9 @@ export function createSunoPromptPack(input: CreateSunoPromptPackInput): SunoProm
 }
 
 export interface ProductionPromptPackOverrides {
+  basePack?: SunoPromptPack;
   direction?: string;
+  inheritedDirection?: string;
   excludeStyles?: string[];
 }
 
@@ -234,13 +236,60 @@ export function createProductionRevisionPromptPack(
   input: CreateSunoPromptPackInput,
   overrides: ProductionPromptPackOverrides
 ): SunoPromptPack {
+  if (overrides.basePack) {
+    const base = overrides.basePack;
+    const title = input.songTitle;
+    const bpm = input.bpm;
+    const direction = overrides.direction?.trim();
+    let style = base.style;
+    if (bpm !== undefined) style = style.replace(/\b\d{2,3}\s*BPM\b/gi, `${bpm} BPM`);
+    if (direction && !style.toLowerCase().includes(direction.toLowerCase())) {
+      if (style.length + direction.length + 2 > CANONICAL_STYLE_HARD_MAX_CHARS) throw new Error("production direction exceeds style limit");
+      style = `${style}, ${direction}`;
+    }
+    let yamlLyrics = base.yamlLyrics;
+    if (title !== base.songTitle) yamlLyrics = yamlLyrics.replace(/(^|\n)(\s*title:\s*).+$/im, `$1$2${title}`);
+    if (bpm !== undefined) yamlLyrics = yamlLyrics.replace(/(^|\n)(\s*tempo:\s*)\d{2,3}/im, `$1$2${bpm}`);
+    if (overrides.excludeStyles && overrides.excludeStyles.join(", ").length > 240) throw new Error("production exclusions exceed 240 characters");
+    const exclude = overrides.excludeStyles?.length ? overrides.excludeStyles.join(", ") : base.exclude;
+    const previousCounts = (base.payload.promptCharCounts ?? {}) as Record<string, unknown>;
+    const payload = {
+      ...base.payload,
+      songName: title,
+      styleAndFeel: style,
+      excludeStyles: exclude,
+      payloadYaml: yamlLyrics,
+      lyricsYaml: yamlLyrics,
+      promptCharCounts: {
+        ...previousCounts,
+        style: style.length,
+        title: title.length,
+        submittedPayloadChars: yamlLyrics.length,
+        lyrics: typeof base.payload.lyrics === "string" ? base.payload.lyrics.length : previousCounts.lyrics
+      }
+    };
+    const pack: SunoPromptPack = {
+      ...base,
+      songTitle: title,
+      style,
+      exclude,
+      yamlLyrics,
+      payload,
+      promptHash: hashText(`${style}\n${exclude}\n${yamlLyrics}`),
+      payloadHash: hashText(JSON.stringify(payload))
+    };
+    pack.validation = validateSunoPromptPack(pack, "standard");
+    if (!pack.validation.valid) throw new Error(`production revision prompt pack invalid: ${pack.validation.errors.join("; ")}`);
+    return pack;
+  }
   const direction = overrides.direction?.trim();
   const pack = createSunoPromptPack({
     ...input,
     artistReason: direction ? `${input.artistReason}; arrangement direction: ${direction}` : input.artistReason
   });
   if (direction && !pack.style.toLowerCase().includes(direction.toLowerCase())) {
-    pack.style = `${pack.style}, ${direction}`.slice(0, CANONICAL_STYLE_HARD_MAX_CHARS);
+    if (pack.style.length + direction.length + 2 > CANONICAL_STYLE_HARD_MAX_CHARS) throw new Error("production direction exceeds style limit");
+    pack.style = `${pack.style}, ${direction}`;
     pack.payload = { ...pack.payload, styleAndFeel: pack.style };
   }
   if (overrides.excludeStyles && overrides.excludeStyles.length > 0) {
@@ -250,6 +299,21 @@ export function createProductionRevisionPromptPack(
     pack.promptHash = hashText(`${pack.style}\n${pack.exclude}\n${pack.yamlLyrics}`);
     pack.payloadHash = hashText(JSON.stringify(pack.payload));
   }
+  const counts = (pack.payload.promptCharCounts ?? {}) as Record<string, unknown>;
+  pack.payload = {
+    ...pack.payload,
+    promptCharCounts: {
+      ...counts,
+      style: pack.style.length,
+      title: pack.songTitle.length,
+      submittedPayloadChars: pack.yamlLyrics.length,
+      lyrics: typeof pack.payload.lyrics === "string" ? pack.payload.lyrics.length : counts.lyrics
+    }
+  };
+  pack.promptHash = hashText(`${pack.style}\n${pack.exclude}\n${pack.yamlLyrics}`);
+  pack.payloadHash = hashText(JSON.stringify(pack.payload));
+  pack.validation = validateSunoPromptPack(pack, "standard");
+  if (!pack.validation.valid) throw new Error(`production revision prompt pack invalid: ${pack.validation.errors.join("; ")}`);
   return pack;
 }
 

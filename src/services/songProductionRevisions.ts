@@ -1,7 +1,7 @@
 import { createHash } from "node:crypto";
 import { mkdir, readFile, readdir, writeFile } from "node:fs/promises";
 import { join } from "node:path";
-import type { PersistedPromptPackResult } from "../types.js";
+import type { PersistedPromptPackResult, SunoPromptPack, SunoSliders, SunoPromptPackValidation } from "../types.js";
 import { bandForBpm } from "../suno-production/durationPlan.js";
 import { createAndPersistSunoPromptPack, readLatestPromptPackMetadata } from "./sunoPromptPackFiles.js";
 import { readSongState } from "./artistState.js";
@@ -49,12 +49,32 @@ export interface SongProductionRevision {
 const revisionDir = (root: string, songId: string) => join(root, "songs", songId, "production-revisions");
 const hash = (value: string) => createHash("sha256").update(value).digest("hex");
 
-async function readBase(root: string, songId: string, version: number, payloadHash: string): Promise<{ version: number; metadata: Record<string, unknown>; payload: Record<string, unknown>; style: string; exclude: string }> {
+async function readBase(root: string, songId: string, version: number, payloadHash: string): Promise<{ version: number; metadata: Record<string, unknown>; payload: Record<string, unknown>; pack: SunoPromptPack; inheritedDirection: string }> {
+  if (!/^[A-Za-z0-9][A-Za-z0-9._-]*$/.test(songId) || !Number.isInteger(version) || version < 1) throw new Error("invalid production revision base");
   const latest = await readLatestPromptPackMetadata(root, songId);
   if (!latest || latest.version !== version || latest.metadata.payloadHash !== payloadHash) throw new Error("base prompt pack is stale or hash mismatch");
   const snapshot = join(root, "songs", songId, "prompts", `prompt-pack-v${String(version).padStart(3, "0")}`);
   const payload = JSON.parse(await readFile(join(snapshot, "suno-payload.json"), "utf8")) as Record<string, unknown>;
-  return { ...latest, payload, style: await readFile(join(snapshot, "style.md"), "utf8"), exclude: (await readFile(join(snapshot, "exclude.md"), "utf8")).trim() };
+  if (hash(JSON.stringify(payload)) !== payloadHash) throw new Error("base prompt pack payload hash mismatch");
+  const pack: SunoPromptPack = {
+    songId,
+    songTitle: String(payload.songName ?? songId),
+    artistReason: String(payload.artistReason ?? ""),
+    lyricsBundle: { originalLyricsText: (await readFile(join(snapshot, "lyrics.md"), "utf8")).replace(/\n$/, ""), lyricsText: (await readFile(join(snapshot, "lyrics-suno.md"), "utf8")).replace(/\n$/, ""), yamlLyrics: (await readFile(join(snapshot, "yaml-suno.md"), "utf8")).trimEnd() },
+    style: (await readFile(join(snapshot, "style.md"), "utf8")).trimEnd(),
+    exclude: (await readFile(join(snapshot, "exclude.md"), "utf8")).trim(),
+    yamlLyrics: (await readFile(join(snapshot, "yaml-suno.md"), "utf8")).trimEnd(),
+    sliders: JSON.parse(await readFile(join(snapshot, "sliders.json"), "utf8")) as SunoSliders,
+    payload,
+    validation: JSON.parse(await readFile(join(snapshot, "validation.json"), "utf8")) as SunoPromptPackValidation,
+    promptHash: String(latest.metadata.promptHash ?? ""),
+    payloadHash,
+    artistSnapshotHash: String(latest.metadata.artistSnapshotHash ?? ""),
+    currentStateHash: String(latest.metadata.currentStateHash ?? ""),
+    knowledgePackHash: String(latest.metadata.knowledgePackHash ?? "")
+  };
+  const prior = await listSongProductionRevisions(root, songId);
+  return { ...latest, payload, pack, inheritedDirection: prior.find((revision) => revision.packVersion === version)?.effective.direction ?? "" };
 }
 
 async function findExisting(dir: string, revisionId: string): Promise<SongProductionRevision | undefined> {
@@ -63,6 +83,7 @@ async function findExisting(dir: string, revisionId: string): Promise<SongProduc
 }
 
 export async function reviseSongProduction(input: ReviseSongProductionInput): Promise<SongProductionRevision> {
+  if (!/^[A-Za-z0-9][A-Za-z0-9._-]*$/.test(input.songId) || !Number.isInteger(input.basePackVersion) || input.basePackVersion < 1 || !Number.isInteger(input.lyric.version) || input.lyric.version < 1) throw new Error("invalid production revision input");
   if (!input.producerInstruction.trim()) throw new Error("producer instruction is required");
   const patch = input.patch ?? {};
   if (patch.bpm !== undefined && (!Number.isInteger(patch.bpm) || patch.bpm < 40 || patch.bpm > 220)) throw new Error("bpm must be an integer between 40 and 220");
@@ -83,9 +104,9 @@ export async function reviseSongProduction(input: ReviseSongProductionInput): Pr
     if (lyric.textHash !== input.lyric.hash) throw new Error("source lyrics changed; hash check failed");
     const state = await readSongState(input.workspaceRoot, input.songId);
     const title = patch.title?.trim() || String(base.payload.songName ?? state.title);
-    const baseBpm = Number(String(base.style).match(/\b(\d{2,3})\s*BPM\b/i)?.[1]) || undefined;
+    const baseBpm = Number(String(base.pack.style).match(/\b(\d{2,3})\s*BPM\b/i)?.[1]) || undefined;
     const bpm = patch.bpm ?? baseBpm;
-    const excludeStyles = patch.excludeStyles?.length ? patch.excludeStyles : base.exclude.split(",").map((item) => item.trim()).filter(Boolean);
+    const excludeStyles = patch.excludeStyles?.length ? patch.excludeStyles : base.pack.exclude.split(",").map((item) => item.trim()).filter(Boolean);
     const promptPack = await createAndPersistSunoPromptPack({
       workspaceRoot: input.workspaceRoot,
       songId: input.songId,
@@ -98,8 +119,8 @@ export async function reviseSongProduction(input: ReviseSongProductionInput): Pr
       currentStateSnapshot: undefined,
       preserveSongStatus: true,
       preserveExistingLyricsVersions: true,
-      productionOverrides: { direction: patch.direction, excludeStyles }
-    } as typeof createAndPersistSunoPromptPack extends (input: infer I) => unknown ? I & { productionOverrides: { direction?: string; excludeStyles?: string[] } } : never);
+      productionOverrides: { basePack: base.pack, direction: patch.direction || base.inheritedDirection, inheritedDirection: base.inheritedDirection, excludeStyles }
+    });
     const revision: SongProductionRevision = {
       revisionId,
       songId: input.songId,

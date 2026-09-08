@@ -183,9 +183,7 @@ export async function createAndPersistSunoPromptPack(input: PersistSunoPromptPac
     currentStateSnapshot: input.currentStateSnapshot || currentStateSnapshot
   };
   const useAi = input.aiReviewProvider && input.aiReviewProvider !== "mock";
-  const productionOverrides = (input as PersistSunoPromptPackInput & {
-    productionOverrides?: { direction?: string; excludeStyles?: string[] };
-  }).productionOverrides;
+  const productionOverrides = input.productionOverrides;
   const pack = await (async () => {
     try {
       return productionOverrides

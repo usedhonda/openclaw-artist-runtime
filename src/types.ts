@@ -1142,6 +1142,13 @@ export interface PersistSunoPromptPackInput extends Omit<CreateSunoPromptPackInp
   deferDegradedNotification?: boolean;
   preserveSongStatus?: boolean;
   preserveExistingLyricsVersions?: boolean;
+  productionOverrides?: {
+    basePack?: SunoPromptPack;
+    direction?: string;
+    inheritedDirection?: string;
+    excludeStyles?: string[];
+    bpm?: number;
+  };
 }
 
 export interface PersistedPromptPackResult {
