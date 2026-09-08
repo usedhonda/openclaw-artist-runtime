@@ -332,7 +332,6 @@ export async function generateSunoRun(input: GenerateSunoRunInput): Promise<Suno
             songId: input.songId,
             runId: provisionalRunId,
             payloadHash,
-            packVersion: input.expectedPackVersion,
             prepareOnly: input.prepareOnly,
             onPrepared: input.onPrepared ? () => input.onPrepared?.({ runId: provisionalRunId }) : undefined
           })

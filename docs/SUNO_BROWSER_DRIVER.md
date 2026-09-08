@@ -181,7 +181,9 @@ Flow when a live create returns `suno_cli_blocked_captcha`:
 5. when the producer presses Create, acceptance requires feed evidence for new
    title-matched `/song/<id>` clips created after form preparation and absent from
    the pre-fill feed baseline. A late old same-title DOM card is never accepted as
-   the manual submit; transient feed unavailability keeps the wait fail-closed;
+   the manual submit; transient feed unavailability or an old DOM signal keeps the
+   bounded wait polling rather than ending it early. A closed tab/browser is the
+   immediate-failure case;
 6. when the new feed proof arrives, the run is recorded as accepted and flows into
    the usual import/notify pipeline;
 7. if no manual click lands within `humanAssistTimeoutMinutes` (default 60), the
@@ -439,6 +441,11 @@ To control create behavior separately:
 visible authenticated form, fills the known payload fields, brings it forward,
 and waits while the producer adjusts remaining parameters and presses Create.
 After that human click, URL harvesting and import continue automatically.
+With the approved `prepareOnly: true` generation assertion, the tool returns an
+early `status: "prepared"` packet (song, run, payload hash, and pack version)
+after the form is visible and the producer notification is emitted. The browser
+wait and pending marker continue in the background until the human Create reaches
+a terminal result; a prepared response does not mean a Suno generation occurred.
 `submitMode: "live"` is the operator-approved path that clicks
 `Create` and waits for new Suno song URLs to appear first on `/create`, then in
 the library if the card view stays silent.

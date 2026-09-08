@@ -311,5 +311,5 @@ export async function reconcileFeedTakes(input: ReconcileFeedTakesInput): Promis
   if (!everAvailable) {
     return { status: "unavailable" };
   }
-      return input.allowDomFallback === false ? { status: "unavailable" } : { status: "dom_fallback", urls: domUrls };
+  return input.allowDomFallback === false ? { status: "unavailable" } : { status: "dom_fallback", urls: domUrls };
 }

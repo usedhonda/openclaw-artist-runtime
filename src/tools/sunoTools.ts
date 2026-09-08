@@ -2,6 +2,7 @@ import { safeRegisterTool } from "../pluginApi.js";
 import { createAndPersistSunoPromptPack } from "../services/sunoPromptPackFiles.js";
 import { generateSunoRun, importSunoResults } from "../services/sunoRuns.js";
 import { readResolvedConfig } from "../services/runtimeConfig.js";
+import { emitRuntimeEvent } from "../services/runtimeEventBus.js";
 
 export function registerSunoTools(api: unknown): void {
   safeRegisterTool(api, {
@@ -87,7 +88,16 @@ export function registerSunoTools(api: unknown): void {
         // The background create remains responsible for the eventual terminal
         // result and ledger append. Consume a later rejection without exposing
         // raw browser/network details to the tool caller.
-        void generation.then(() => undefined, () => undefined);
+        void generation.catch(() => {
+          console.error("[suno] prepare-only background generation failed");
+          emitRuntimeEvent({
+            type: "error",
+            source: "suno_prepare_only",
+            reason: "suno_prepare_only_background_failed",
+            songId: generationInput.songId,
+            timestamp: Date.now()
+          });
+        });
         return {
           status: "prepared",
           songId: generationInput.songId,

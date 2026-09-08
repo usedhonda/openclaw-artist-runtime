@@ -12,6 +12,7 @@ const connector = vi.hoisted(() => ({
 vi.mock("../src/connectors/suno/resolveSunoConnector.js", () => ({ resolveSunoConnector: vi.fn(() => connector) }));
 
 import { generateSunoRun, validatePrepareOnlySubmitMode } from "../src/services/sunoRuns";
+import { ensureSongState, readSongState, updateSongState } from "../src/services/artistState";
 
 const payload = { songId: "fixture-song", songName: "Fixture", styleAndFeel: "minimal", excludeStyles: "noise", lyrics: "line", lyricsText: "line", payloadYaml: "line", sliders: { weirdness: 0.5, styleInfluence: 0.5, audioInfluence: 0.5 } };
 const hash = (value: unknown) => createHash("sha256").update(JSON.stringify(value)).digest("hex");
@@ -48,5 +49,16 @@ describe("Suno prepare-only assertion", () => {
     connector.create.mockClear();
     await generateSunoRun({ workspaceRoot: root, songId: "fixture-song", config, workerState: "connected", expectedPayloadHash: payloadHash, expectedPackVersion: 1, prepareOnly: true });
     expect(connector.create).toHaveBeenCalledWith(expect.objectContaining({ prepareOnly: true }));
+  });
+
+  it("does not overwrite an archived or selected-take state for a nonaccepted prepare-only result", async () => {
+    const { root, payloadHash } = await fixture();
+    await ensureSongState(root, "fixture-song", "Fixture");
+    await updateSongState(root, "fixture-song", { status: "archived", selectedTakeId: "take-preserved" });
+    connector.create.mockResolvedValueOnce({ accepted: false, runId: "run-prepared", reason: "prepared", urls: [] });
+
+    await generateSunoRun({ workspaceRoot: root, songId: "fixture-song", config, workerState: "connected", expectedPayloadHash: payloadHash, expectedPackVersion: 1, prepareOnly: true });
+
+    await expect(readSongState(root, "fixture-song")).resolves.toMatchObject({ status: "archived", selectedTakeId: "take-preserved" });
   });
 });

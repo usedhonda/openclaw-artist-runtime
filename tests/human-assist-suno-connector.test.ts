@@ -184,7 +184,7 @@ describe("HumanAssistSunoConnector", () => {
     });
 
     let settled = false;
-    const resultPromise = decorated.create({ ...request, prepareOnly: true, payloadHash: "hash", packVersion: 3, onPrepared });
+    const resultPromise = decorated.create({ ...request, prepareOnly: true, payloadHash: "hash", onPrepared });
     void resultPromise.then(() => { settled = true; });
     await vi.waitFor(() => expect(onPrepared).toHaveBeenCalledWith({ runId: "run-1" }));
     expect(settled).toBe(false);

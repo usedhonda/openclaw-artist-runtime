@@ -369,6 +369,25 @@ describe("reconcileFeedTakes", () => {
     expect(fetchFeed).toHaveBeenCalledTimes(3);
   });
 
+  it("keeps retrying a stale DOM signal through bounded feed unavailability", async () => {
+    const fetchFeed = vi.fn(async (): Promise<SunoFeedFetchResult> => ({ clips: [], available: false, reason: "network_error" }));
+    const sleep = vi.fn(async () => undefined);
+    const result = await reconcileFeedTakes({
+      domUrls,
+      sessionFile: "/tmp/session.json",
+      title: "Cold Banquet",
+      sinceMs: SUBMIT_MS,
+      baselineIds: new Set(),
+      attempts: 3,
+      fetchFeed,
+      sleep,
+      allowDomFallback: false
+    });
+    expect(result).toEqual({ status: "unavailable" });
+    expect(fetchFeed).toHaveBeenCalledTimes(3);
+    expect(sleep).toHaveBeenCalledTimes(2);
+  });
+
   it("treats a fetchFeed rejection the same as an unavailable result (fail closed, no throw)", async () => {
     const fetchFeed = vi.fn(async (): Promise<SunoFeedFetchResult> => {
       throw new Error("boom");
