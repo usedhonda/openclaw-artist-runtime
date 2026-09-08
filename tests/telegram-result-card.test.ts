@@ -69,8 +69,8 @@ describe("Telegram result card", () => {
 
     expect(text).toContain("1. https://suno.com/song/take-ready-a");
     expect(text).toContain("2. https://suno.com/song/take-ready-b");
-    expect(text).toContain("完成報告じゃなく");
-    expect(text).toContain("聴こえ方の確認はまだしていない");
+    expect(text).toContain("まだ生成中");
+    expect(text).toContain("再生できる状態かはまだ確認していない");
     expect(text).not.toContain("news.google.com/rss/articles");
     expect(text).not.toContain("今回の起点:");
     expect(text).not.toContain("採用");

@@ -178,10 +178,10 @@ describe("TelegramNotifier", () => {
       urls: ["https://suno.com/song/a", "https://suno.com/song/b"],
       timestamp: 1
     });
-    expect(text).toContain("曲を一曲、提出する。");
+    expect(text).toContain("今回の曲を提出する。");
     expect(text).toContain("https://suno.com/song/a");
     expect(text).toContain("https://suno.com/song/b");
-    expect(text).toContain("こちらで音を聴いたとは言わない");
+    expect(text).toContain("音の確認はまだ");
     expect(text).not.toContain("採用/破棄");
   });
 
@@ -218,7 +218,7 @@ describe("TelegramNotifier", () => {
       urls: ["https://suno.com/song/a"],
       timestamp: 1
     });
-    expect(text).toContain("曲を一曲、提出する。");
+    expect(text).toContain("今回の曲を提出する。");
     expect(text).toContain("https://suno.com/song/a");
     expect(text).not.toContain("song-004");
   });
@@ -335,6 +335,6 @@ describe("TelegramNotifier", () => {
     await vi.waitFor(() => expect(fetchImpl).toHaveBeenCalledTimes(1));
     unsubscribe();
 
-    expect(JSON.parse(fetchImpl.mock.calls[0][1].body as string).text).toContain("曲を一曲、提出する。");
+    expect(JSON.parse(fetchImpl.mock.calls[0][1].body as string).text).toContain("今回の曲を提出する。");
   });
 });

@@ -10,9 +10,9 @@ describe("telegram formatting fixtures", () => {
       urls: ["https://suno.example/song-fixture"],
       timestamp: 1
     });
-    expect(text).toContain("曲を一曲、提出する。");
+    expect(text).toContain("今回の曲を提出する。");
     expect(text).toContain("https://suno.example/song-fixture");
-    expect(text).toContain("こちらで音を聴いたとは言わない");
+    expect(text).toContain("音の確認はまだ");
   });
 
   it("keeps song_spawn_proposed free of operational footer", async () => {

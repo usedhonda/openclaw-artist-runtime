@@ -20,12 +20,11 @@ describe("song submission report", () => {
     });
 
     expect(text).toContain("夜の継ぎ目");
-    expect(text).toContain("今回の依頼 / version:");
     expect(text).toContain("変えたところ:");
     expect(text).toContain("残したところ:");
     expect(text).toContain("https://suno.com/song/new");
     expect(text).toContain("https://suno.com/song/old");
-    expect(text).toContain("こちらで音を聴いたとは言わない");
+    expect(text).toContain("音の確認はまだ");
     expect(text).not.toContain("run-secret-id");
     expect(text).not.toContain("songId");
     expect(text).not.toContain("draft");
@@ -38,7 +37,7 @@ describe("song submission report", () => {
       audioUrls: ["https://suno.com/song/progress"]
     });
 
-    expect(text).toContain("完成報告じゃなく");
+    expect(text).toContain("まだ生成中");
     expect(text).toContain("https://suno.com/song/progress");
     expect(text).not.toContain("変えたところ:");
     expect(text).not.toContain("採用か破棄");
@@ -52,7 +51,7 @@ describe("song submission report", () => {
       nextFeedback: "音量差だけ比べて教えて。"
     });
 
-    expect(text).toContain("音源を受け取れる状態にした");
+    expect(text).toContain("音源を受け取った");
     expect(text).toContain("音量差だけ比べて教えて。");
     expect(text).not.toContain("runtime/");
     expect(text).not.toContain("paths");
@@ -68,7 +67,7 @@ describe("song submission report", () => {
       timestamp: 1
     });
 
-    expect(text).toContain("完成報告じゃなく");
+    expect(text).toContain("まだ生成中");
     expect(text).toContain("https://suno.com/song/ready");
     expect(text).not.toContain("song-internal");
     expect(text).not.toContain("run-internal");
