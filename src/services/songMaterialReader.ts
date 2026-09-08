@@ -12,6 +12,8 @@ export interface SongMaterialHistory {
     takes: SongTakeReference[];
   }>;
   selectedTakeReferences: Awaited<ReturnType<typeof readTakeHistory>>;
+  currentTakeReference?: SongTakeReference;
+  selectedTakeBinding?: unknown;
 }
 
 async function readTextIfExists(path: string): Promise<string | undefined> {
@@ -85,6 +87,10 @@ export async function readSongMaterial(root: string, songId: string): Promise<De
     listSongTakes(root, songId),
     readTakeHistory(root, songId)
   ]);
+  const selectedTakeBinding = selectedTake;
+  const currentTakeReference = typeof selectedTake === "object" && selectedTake !== null
+    ? takeReferences.find((take) => take.runId === (selectedTake as { runId?: string }).runId && take.takeId === (selectedTake as { selectedTakeId?: string }).selectedTakeId)
+    : undefined;
   const priorRuns = Array.from(new Set(takeReferences.map((take) => take.runId))).map((runId) => {
     const takes = takeReferences.filter((take) => take.runId === runId);
     return {
@@ -105,6 +111,8 @@ export async function readSongMaterial(root: string, songId: string): Promise<De
     selectedTake,
     promptPackSummary: await readPromptPackSummary(root, songId),
     priorRuns,
-    selectedTakeReferences
+    selectedTakeReferences,
+    currentTakeReference,
+    selectedTakeBinding
   };
 }

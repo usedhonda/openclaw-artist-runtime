@@ -24,7 +24,7 @@ export interface SongTakeReference {
   createdAt: string;
   takeId: string;
   url: string;
-  ready: boolean;
+  urlReady: boolean;
   readiness: ReturnType<typeof evaluateSunoTakeUrlReadiness>;
   selected: boolean;
   selection?: TakeSelectionRecord;
@@ -43,7 +43,14 @@ function takeIdForUrl(url: string, index: number): string {
   return extractSunoTakeId(url) ?? inferTakeId(url, index);
 }
 
+function assertSafeIdentifier(value: string, label: string): void {
+  if (!/^[A-Za-z0-9][A-Za-z0-9._-]*$/.test(value)) {
+    throw new Error(`invalid ${label}`);
+  }
+}
+
 export async function listSongTakes(root: string, songId: string): Promise<SongTakeReference[]> {
+  assertSafeIdentifier(songId, "songId");
   const [runs, selections] = await Promise.all([
     readAllSunoRuns(root, songId),
     readTakeHistory(root, songId)
@@ -53,7 +60,15 @@ export async function listSongTakes(root: string, songId: string): Promise<SongT
     runId?: string;
     urls?: string[];
   };
-  const persistedRuns = runs.length > 0 ? Array.from(new Map(runs.map((run) => [run.runId, run])).values()) : latestResults.urls?.length
+  const latestRunById = new Map<string, (typeof runs)[number]>();
+  for (const run of runs) {
+    if (!latestRunById.has(run.runId)) {
+      latestRunById.set(run.runId, run);
+    }
+  }
+  const authoritativeRuns = Array.from(latestRunById.values())
+    .filter((run) => (run.status === "accepted" || run.status === "imported") && run.urls.length > 0);
+  const persistedRuns = runs.length > 0 ? authoritativeRuns : latestResults.urls?.length
     ? [{ runId: latestResults.runId ?? "run-unknown", createdAt: new Date(0).toISOString(), urls: latestResults.urls }]
     : [];
   const references: SongTakeReference[] = [];
@@ -67,7 +82,7 @@ export async function listSongTakes(root: string, songId: string): Promise<SongT
         createdAt: run.createdAt,
         takeId,
         url,
-        ready: readiness.emit && readiness.urls.includes(url),
+        urlReady: readiness.emit && readiness.urls.includes(url),
         readiness,
         selected: Boolean(selection),
         selection
@@ -87,18 +102,21 @@ export async function readTakeHistory(root: string, songId: string): Promise<Tak
 }
 
 export async function selectTake(input: SelectTakeInput): Promise<TakeSelectionRecord> {
+  assertSafeIdentifier(input.songId, "songId");
+  if (input.runId) assertSafeIdentifier(input.runId, "runId");
+  if (input.selectedTakeId) assertSafeIdentifier(input.selectedTakeId, "selectedTakeId");
   const latestResultsPath = join(input.workspaceRoot, "songs", input.songId, "suno", "latest-results.json");
-  const latestResults = JSON.parse(await readFile(latestResultsPath, "utf8")) as {
+  const latestResults = JSON.parse(await readFile(latestResultsPath, "utf8").catch(() => "{}")) as {
     runId?: string;
     urls?: string[];
     selectedTakeId?: string;
   };
   const urls = Array.isArray(latestResults.urls) ? latestResults.urls : [];
-  if (urls.length === 0) {
+  const explicitHistorySelection = input.runId !== undefined || input.selectedTakeId !== undefined;
+  if (urls.length === 0 && !explicitHistorySelection) {
     throw new Error(`no imported Suno results available for ${input.songId}`);
   }
 
-  const explicitHistorySelection = input.runId !== undefined || input.selectedTakeId !== undefined;
   const history = explicitHistorySelection ? await listSongTakes(input.workspaceRoot, input.songId) : [];
   const requested = input.selectedTakeId;
   const candidates = input.runId ? history.filter((take) => take.runId === input.runId) : history;
@@ -114,7 +132,8 @@ export async function selectTake(input: SelectTakeInput): Promise<TakeSelectionR
   const runId = matched?.runId ?? input.runId ?? latestResults.runId ?? "run-unknown";
   const sourceUrls = matched ? history.filter((take) => take.runId === matched.runId).map((take) => take.url) : urls;
   const existing = (await readTakeHistory(input.workspaceRoot, input.songId)).find((entry) => entry.runId === runId && entry.selectedTakeId === selectedTakeId);
-  if (existing) {
+  const current = JSON.parse(await readFile(join(input.workspaceRoot, "songs", input.songId, "suno", "selected-take.json"), "utf8").catch(() => "{}")) as Partial<TakeSelectionRecord>;
+  if (existing && current.runId === runId && current.selectedTakeId === selectedTakeId) {
     return existing;
   }
   const reason = input.reason ?? (decision?.status === "selected" ? `selected best scored take (${decision.best.total})` : "selected imported take");
