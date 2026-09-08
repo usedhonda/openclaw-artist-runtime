@@ -260,6 +260,8 @@ export interface ReconcileFeedTakesInput {
   sleep?: (ms: number) => Promise<void>;
   /** Called once if the feed itself reports a scope anomaly (more fresh matches than expected). */
   onOverCount?: () => void;
+  /** Manual waits must never accept a DOM-only late card as a submitted take. */
+  allowDomFallback?: boolean;
 }
 
 /**
@@ -274,7 +276,7 @@ export interface ReconcileFeedTakesInput {
 export async function reconcileFeedTakes(input: ReconcileFeedTakesInput): Promise<FeedReconcileResult> {
   const { domUrls, sessionFile } = input;
   if (!sessionFile) {
-    return { status: "dom_fallback", urls: domUrls };
+    return input.allowDomFallback === false ? { status: "unavailable" } : { status: "dom_fallback", urls: domUrls };
   }
   const attempts = input.attempts ?? DEFAULT_FEED_RECONCILE_ATTEMPTS;
   const intervalMs = input.intervalMs ?? DEFAULT_FEED_RECONCILE_INTERVAL_MS;
@@ -309,5 +311,5 @@ export async function reconcileFeedTakes(input: ReconcileFeedTakesInput): Promis
   if (!everAvailable) {
     return { status: "unavailable" };
   }
-  return { status: "dom_fallback", urls: domUrls };
+      return input.allowDomFallback === false ? { status: "unavailable" } : { status: "dom_fallback", urls: domUrls };
 }

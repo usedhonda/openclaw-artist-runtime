@@ -269,6 +269,10 @@ export class CdpHumanAssistDriver implements HumanAssistBrowserDriver {
     // Leave the producer a usable form in manual-submit mode. Only safe
     // informational/upsell overlays are closed; sensitive surfaces stay visible.
     await dismissSafeSunoBlockingDialog(page);
+    // Manual submit has no click callback. Use the end of preparation as the
+    // non-zero freshness floor; feed-created timestamps and baseline ids must
+    // still prove that a take appeared after this form was handed to the producer.
+    this.submitAtMs = Date.now();
   }
 
   async attemptMachineSubmit(): Promise<HumanAssistSubmitOutcome> {
@@ -337,6 +341,8 @@ export class CdpHumanAssistDriver implements HumanAssistBrowserDriver {
   }
 
   async waitForHumanSubmit(timeoutMs: number): Promise<HumanAssistWaitOutcome> {
+    assertBrowserAlive(this.page);
+    if (this.submitAtMs <= 0) return { kind: "feed_unavailable" };
     const deadline = Date.now() + timeoutMs;
     while (Date.now() < deadline) {
       // If the producer closed the tab (or the browser disconnected) there is no live
@@ -351,7 +357,7 @@ export class CdpHumanAssistDriver implements HumanAssistBrowserDriver {
       // freshTakeUrls, so this never accepts unrelated existing songs.
       const fresh = await this.freshTakeUrls().catch(() => [] as string[]);
       if (fresh.length > 0) {
-        const reconciled = await this.reconcileTakesFromFeed(fresh);
+        const reconciled = await this.reconcileTakesFromFeed(fresh, false);
         if (reconciled.status === "unavailable") {
           return { kind: "feed_unavailable" };
         }
@@ -480,7 +486,7 @@ export class CdpHumanAssistDriver implements HumanAssistBrowserDriver {
    * caller must treat this as "unavailable", not as a silent DOM-trusting success --
    * see reconcileFeedTakes.
    */
-  private async reconcileTakesFromFeed(domUrls: string[]): Promise<FeedReconcileResult> {
+  private async reconcileTakesFromFeed(domUrls: string[], allowDomFallback = true): Promise<FeedReconcileResult> {
     const title = this.expectedTitle();
     const result = await reconcileFeedTakes({
       domUrls,
@@ -489,6 +495,7 @@ export class CdpHumanAssistDriver implements HumanAssistBrowserDriver {
       sinceMs: this.submitAtMs,
       baselineIds: this.baselineFeedIds,
       expectedCount: SUNO_EXPECTED_TAKE_COUNT,
+      allowDomFallback,
       onOverCount: () => {
         emitRuntimeEvent({
           type: "error",

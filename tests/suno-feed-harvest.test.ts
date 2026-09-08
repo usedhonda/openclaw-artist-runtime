@@ -289,6 +289,32 @@ describe("reconcileFeedTakes", () => {
     expect(result).toEqual({ status: "dom_fallback", urls: domUrls });
   });
 
+  it("does not accept a late DOM-only old card during a manual wait", async () => {
+    const result = await reconcileFeedTakes({
+      domUrls,
+      sessionFile: undefined,
+      title: "Cold Banquet",
+      sinceMs: SUBMIT_MS,
+      baselineIds: new Set(),
+      allowDomFallback: false
+    });
+    expect(result).toEqual({ status: "unavailable" });
+  });
+
+  it("accepts a genuinely new feed take after manual preparation", async () => {
+    const result = await reconcileFeedTakes({
+      domUrls,
+      sessionFile: "/tmp/session.json",
+      title: "Cold Banquet",
+      sinceMs: SUBMIT_MS,
+      baselineIds: new Set(["old-take"]),
+      fetchFeed: async () => ({ clips: [{ id: "new-take", title: "Cold Banquet", created_at: AFTER }], available: true }),
+      sleep: async () => undefined,
+      allowDomFallback: false
+    });
+    expect(result).toEqual({ status: "matched", urls: [feedClipSongUrl("new-take")] });
+  });
+
   it("returns matched urls as soon as the feed confirms a fresh title-scoped clip", async () => {
     const fetchFeed = vi.fn(async (): Promise<SunoFeedFetchResult> => ({
       clips: [{ id: "new-take", title: "Cold Banquet", created_at: AFTER }],

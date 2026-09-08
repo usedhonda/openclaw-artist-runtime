@@ -29,4 +29,10 @@ describe("CdpHumanAssistDriver.waitForHumanSubmit", () => {
     // Even an unbounded wait must reject at once when the target is dead.
     await expect(driver.waitForHumanSubmit(Infinity)).rejects.toThrow(HUMAN_ASSIST_BROWSER_GONE_REASON);
   });
+
+  it("fails closed when a manual wait has no preparation freshness floor", async () => {
+    const driver = new CdpHumanAssistDriver({ payload: {} } as never);
+    (driver as unknown as { page: Pick<Page, "isClosed"> }).page = { isClosed: () => false };
+    await expect(driver.waitForHumanSubmit(Infinity)).resolves.toEqual({ kind: "feed_unavailable" });
+  });
 });
