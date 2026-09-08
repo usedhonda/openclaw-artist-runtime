@@ -50,7 +50,7 @@ describe("cascade trace section", () => {
     expect(text).toContain("- style layer: low bass");
   });
 
-  it("adds the same five layers to song_take_completed", async () => {
+  it("keeps song submissions musical instead of appending operational trace layers", async () => {
     const root = await workspaceWithBrief("song-cascade");
     const text = await formatRuntimeEvent({
       type: "song_take_completed",
@@ -60,11 +60,10 @@ describe("cascade trace section", () => {
       timestamp: 1
     }, { workspaceRoot: root, aiReviewProvider: "mock" });
 
-    expect(text).toContain("行程 trace:");
-    expect(text).toContain("- 観察 source:");
-    expect(text).toContain("- artist voice:");
-    expect(text).toContain("- title: song-cascade");
-    expect(text).toContain("- lyrics theme: コピー機の白い光");
-    expect(text).toContain("- style layer: low bass");
+    expect(text).not.toContain("行程 trace:");
+    expect(text).not.toContain("artist voice:");
+    expect(text).not.toContain("song-cascade");
+    expect(text).toContain("今回の音源:");
+    expect(text).toContain("https://suno.com/song/take-1");
   });
 });

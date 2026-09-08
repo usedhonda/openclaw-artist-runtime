@@ -118,7 +118,7 @@ describe("v10.28-C Phase A: Resources section injection", () => {
     expect(body).toContain("🔗 Dashboard: https://example.test/plugins/artist-runtime#song=song-x1");
   });
 
-  it("emits song.md + suno/runs.jsonl + latest lyrics for song_take_completed", async () => {
+  it("keeps local resources out of musician-facing song submissions", async () => {
     const root = workspace();
     await prepareSongFiles(root, "song-x1", {
       "song.md": "state",
@@ -131,10 +131,9 @@ describe("v10.28-C Phase A: Resources section injection", () => {
       dashboardBaseUrl: "https://example.test"
     });
 
-    expect(body).toContain("songs/song-x1/song.md");
-    expect(body).toContain("songs/song-x1/suno/runs.jsonl");
-    expect(body).toContain("songs/song-x1/lyrics/lyrics.v3.md");
-    expect(body).toContain("🔗 Dashboard: https://example.test/plugins/artist-runtime#song=song-x1");
+    expect(body).not.toContain("songs/song-x1/");
+    expect(body).not.toContain("Dashboard:");
+    expect(body).toContain("https://suno.example/take-1");
   });
 
   it("keeps spawn proposal cards free of local-path and dashboard resource clutter", async () => {

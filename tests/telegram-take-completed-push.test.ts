@@ -11,11 +11,12 @@ describe("telegram take completed push", () => {
       timestamp: 1
     });
 
-    expect(message).toContain("できた。song-001。聴いて、感想ほしい。");
-    expect(message).toContain("─────");
-    expect(message).toContain("🌐 観察元: (記録なし)");
-    expect(message).toContain("🎵 song-001 (selected: take-1)");
+    expect(message).toContain("提出する。");
+    expect(message).toContain("今回の音源:");
+    expect(message).not.toContain("記録なし");
+    expect(message).not.toContain("song-001");
+    expect(message).not.toContain("selected:");
     expect(message).toContain("1. https://suno.example/take-1");
-    expect(message).toContain("非公開、御大のみ");
+    expect(message).not.toContain("採用/破棄");
   });
 });

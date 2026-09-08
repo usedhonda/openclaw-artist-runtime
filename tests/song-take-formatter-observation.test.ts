@@ -8,7 +8,7 @@ import { updateSongState } from "../src/services/artistState";
 import { formatRuntimeEvent } from "../src/services/telegramNotifier";
 
 describe("song take formatter observation source", () => {
-  it("renders song_take_completed as artist voice plus folded metadata", async () => {
+  it("uses event-bound inspiration without operational metadata", async () => {
     const root = mkdtempSync(join(tmpdir(), "artist-runtime-song-take-observation-"));
     await ensureArtistWorkspace(root);
     await updateSongState(root, "song-observe", {
@@ -28,27 +28,24 @@ describe("song take formatter observation source", () => {
       songId: "song-observe",
       selectedTakeId: "take-2",
       urls: ["https://suno.com/song/a", "https://suno.com/song/b"],
+      observationSummary: {
+        author: "citywatch",
+        url: "https://x.com/citywatch/status/42",
+        quote: "old live houses disappear under identical signs",
+        motivation: "ARTIST.md の都市観察と SOUL.md の静かな違和感に接続"
+      },
       timestamp: 1
     }, { workspaceRoot: root });
 
-    expect(message).toContain("─────");
-    const top = message.split("─────")[0];
-    expect(top).not.toContain("ゆずるさん");
-    expect(top).toContain("old live houses disappear under identical signs");
-    expect(top).toContain("自分の都市観察と、いまの静かな違和感を、ここに繋いだ");
-    expect(top).toContain("これ、どう聞こえる?");
-    expect(top).toContain("今回の起点:");
-    expect(top).toContain("曲への変換:");
-    expect(top).not.toContain("ARTIST.md");
-    expect(top).not.toContain("SOUL.md");
-    expect(message).toContain("🌐 観察元: @citywatch (https://x.com/citywatch/status/42)");
-    expect(message).toContain("💬 抜粋: 「old live houses disappear under identical signs」");
-    expect(message).toContain("🎯 動機: 自分の都市観察と、いまの静かな違和感を、ここに繋いだ。聴いてみて、どうだろう。");
-    expect(message).toContain("🎵 Civic Static (selected: take-2)");
-    expect(message).toContain("🔗 試聴:\n1. https://suno.com/song/a\n2. https://suno.com/song/b");
+    expect(message).toContain("自分の都市観察と、いまの静かな違和感を、ここに繋いだ");
+    expect(message).not.toContain("ARTIST.md");
+    expect(message).not.toContain("SOUL.md");
+    expect(message).not.toContain("selected:");
+    expect(message).not.toContain("Xで拾った反応:");
+    expect(message).toContain("1. https://suno.com/song/a\n2. https://suno.com/song/b");
   });
 
-  it("reads X reactions from Observation source blocks in brief.md", async () => {
+  it("does not attribute mutable latest brief observations to an unbound historical submission", async () => {
     const root = mkdtempSync(join(tmpdir(), "artist-runtime-song-take-brief-source-"));
     await ensureArtistWorkspace(root);
     await mkdir(join(root, "songs", "song-brief-x"), { recursive: true });
@@ -74,9 +71,9 @@ describe("song take formatter observation source", () => {
       timestamp: 1
     }, { workspaceRoot: root });
 
-    expect(message).toContain("Xで拾った反応:");
-    expect(message).toContain("反応: X reaction / X public reaction + manual news seed");
-    expect(message).toContain("惜しい、悔しい、ありがとう、田中碧を責めるな");
-    expect(message).not.toContain("2. X反応: 記録なし");
+    expect(message).not.toContain("Xで拾った反応:");
+    expect(message).not.toContain("惜しい、悔しい、ありがとう、田中碧を責めるな");
+    expect(message).not.toContain("記録なし");
+    expect(message).toContain("https://suno.com/song/a");
   });
 });

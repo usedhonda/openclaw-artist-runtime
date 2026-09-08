@@ -30,7 +30,8 @@ describe("autopilot to Telegram notifier e2e", () => {
 
       await vi.waitFor(() => expect(fetchImpl).toHaveBeenCalled());
       const payloads = fetchImpl.mock.calls.map((call) => JSON.parse(call[1].body as string) as { text: string });
-      expect(payloads.some((payload) => payload.text.includes("song-001"))).toBe(true);
+      expect(payloads.some((payload) => payload.text.includes("https://suno.com/song/a"))).toBe(true);
+      expect(payloads.every((payload) => !payload.text.includes("song-001"))).toBe(true);
       expect(payloads.every((payload) => payload.text.includes("publish"))).toBe(false);
     } finally {
       unsubscribe();
