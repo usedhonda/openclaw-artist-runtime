@@ -15,14 +15,6 @@ function jsonResponse(body: unknown): Response {
   } as Response;
 }
 
-const songCompletionButtonEffects = [
-  "",
-  "─────",
-  "次:",
-  "ボタンで選ぶ",
-  "ボタン不可: /song adopt song-004 / /song discard song-004"
-];
-
 describe("TelegramNotifier", () => {
   it("appends a metadata-only delivery receipt after Telegram accepts a completed-song message", async () => {
     const root = mkdtempSync(join(tmpdir(), "artist-runtime-telegram-delivery-"));
@@ -179,40 +171,18 @@ describe("TelegramNotifier", () => {
   });
 
   it("formats completed Suno take URLs for private Telegram notification", async () => {
-    await expect(formatRuntimeEvent({
+    const text = await formatRuntimeEvent({
       type: "song_take_completed",
       songId: "song-004",
       selectedTakeId: "take-2",
       urls: ["https://suno.com/song/a", "https://suno.com/song/b"],
       timestamp: 1
-    })).resolves.toBe([
-      "できた。song-004。聴いて、感想ほしい。",
-      "🎵 song-004 (selected: take-2)",
-      "🔗 試聴:",
-      "1. https://suno.com/song/a",
-      "2. https://suno.com/song/b",
-      "",
-      "今回の起点:",
-      "元ネタ: 記録なし",
-      "",
-      "Xで拾った反応:",
-      "反応: 記録なし",
-      "",
-      "曲への変換:",
-      "1. ニュース/観察: 未記録",
-      "2. X反応: 記録なし",
-      "3. 音: 未記録",
-      "4. 構造: 高速多展開プログレッシブ・ラップの譜割り/展開/英日比率は prompt pack と artist 設定に従う",
-      "",
-      "歌詞チェック: 記録なし",
-      "",
-      "🎯 動機: 観察 summary なし",
-      "🌐 観察元: (記録なし)",
-      "💬 抜粋: (記録なし)",
-      "完成しました。採用/破棄は後からで結構です。",
-      "非公開、御大のみ",
-      ...songCompletionButtonEffects
-    ].join("\n"));
+    });
+    expect(text).toContain("曲を一曲、提出する。");
+    expect(text).toContain("https://suno.com/song/a");
+    expect(text).toContain("https://suno.com/song/b");
+    expect(text).toContain("こちらで音を聴いたとは言わない");
+    expect(text).not.toContain("採用/破棄");
   });
 
   it("adds a creative quality line to the song completion card when a ledger entry exists", async () => {
@@ -238,42 +208,19 @@ describe("TelegramNotifier", () => {
       timestamp: 1
     }, { workspaceRoot: root });
 
-    expect(text).toContain("creative: high-velocity-prog=overt, bare 2080/58行, diss-bank 5 hits");
+    expect(text).not.toContain("creative: high-velocity-prog");
   });
 
   it("formats a completed take without selectedTakeId", async () => {
-    await expect(formatRuntimeEvent({
+    const text = await formatRuntimeEvent({
       type: "song_take_completed",
       songId: "song-004",
       urls: ["https://suno.com/song/a"],
       timestamp: 1
-    })).resolves.toBe([
-      "できた。song-004。聴いて、感想ほしい。",
-      "🎵 song-004",
-      "🔗 試聴:",
-      "1. https://suno.com/song/a",
-      "",
-      "今回の起点:",
-      "元ネタ: 記録なし",
-      "",
-      "Xで拾った反応:",
-      "反応: 記録なし",
-      "",
-      "曲への変換:",
-      "1. ニュース/観察: 未記録",
-      "2. X反応: 記録なし",
-      "3. 音: 未記録",
-      "4. 構造: 高速多展開プログレッシブ・ラップの譜割り/展開/英日比率は prompt pack と artist 設定に従う",
-      "",
-      "歌詞チェック: 記録なし",
-      "",
-      "🎯 動機: 観察 summary なし",
-      "🌐 観察元: (記録なし)",
-      "💬 抜粋: (記録なし)",
-      "完成しました。採用/破棄は後からで結構です。",
-      "非公開、御大のみ",
-      ...songCompletionButtonEffects
-    ].join("\n"));
+    });
+    expect(text).toContain("曲を一曲、提出する。");
+    expect(text).toContain("https://suno.com/song/a");
+    expect(text).not.toContain("song-004");
   });
 
   it("formats completed take notification when no URL is available", async () => {
@@ -366,9 +313,7 @@ describe("TelegramNotifier", () => {
     const sendCalls = fetchImpl.mock.calls.filter((call) => String(call[0]).includes("/sendMessage"));
     const markupCalls = fetchImpl.mock.calls.filter((call) => String(call[0]).includes("/editMessageReplyMarkup"));
     expect(sendCalls).toHaveLength(4);
-    expect(markupCalls).toHaveLength(4);
-    expect(markupCalls.map((call) => String((call[1] as RequestInit).body)).join("\n")).toContain("採用");
-    expect(markupCalls.map((call) => String((call[1] as RequestInit).body)).join("\n")).toContain("破棄");
+    expect(markupCalls).toHaveLength(2);
     expect(markupCalls.map((call) => String((call[1] as RequestInit).body)).join("\n")).toContain("作る");
     expect(markupCalls.map((call) => String((call[1] as RequestInit).body)).join("\n")).toContain("Suno 生成へ");
   });
@@ -390,6 +335,6 @@ describe("TelegramNotifier", () => {
     await vi.waitFor(() => expect(fetchImpl).toHaveBeenCalledTimes(1));
     unsubscribe();
 
-    expect(JSON.parse(fetchImpl.mock.calls[0][1].body as string).text).toContain("song-001");
+    expect(JSON.parse(fetchImpl.mock.calls[0][1].body as string).text).toContain("曲を一曲、提出する。");
   });
 });

@@ -69,13 +69,10 @@ describe("Telegram result card", () => {
 
     expect(text).toContain("1. https://suno.com/song/take-ready-a");
     expect(text).toContain("2. https://suno.com/song/take-ready-b");
-    expect(text).toContain("今回の起点:");
-    expect(text).toContain("元ニュース: News / example.com");
+    expect(text).toContain("完成報告じゃなく");
+    expect(text).toContain("聴こえ方の確認はまだしていない");
     expect(text).not.toContain("news.google.com/rss/articles");
-    expect(text).toContain("Xで拾った反応:");
-    expect(text).toContain("反応: X reaction / citywatch");
-    expect(text).toContain("曲への変換:");
-    expect(text).toContain("歌詞チェック:");
-    expect(text).toContain("採用");
+    expect(text).not.toContain("今回の起点:");
+    expect(text).not.toContain("採用");
   });
 });

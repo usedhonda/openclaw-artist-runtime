@@ -130,8 +130,9 @@ describe("producer daily digest", () => {
     });
 
     const text = await composeProducerDigest(root, NOW);
-    expect(text).toContain("完成したテイク: 2 曲");
-    expect(text).toContain("ブロッカー/要対応: 1 件");
+    expect(text).toContain("できた作品:");
+    expect(text.match(/一曲を提出した。聴き比べの返事待ち/g)?.length).toBe(2);
+    expect(text).toContain("重要な停止:");
     expect(text).toContain("待ち: waiting for Suno result import");
   });
 

@@ -4,6 +4,7 @@ import type { ProducerDigestMode } from "../types.js";
 import { TelegramClient, type TelegramFetch } from "./telegramClient.js";
 import { readRuntimeEvents } from "./runtimeEventsLedger.js";
 import { readAutopilotRunState } from "./autopilotService.js";
+import { readSongState } from "./artistState.js";
 import type { RuntimeEvent } from "./runtimeEventBus.js";
 
 // The producer digest is the one routine "everything is fine, here is what moved"
@@ -54,12 +55,11 @@ async function writeLastSentDateKey(root: string, dateKey: string): Promise<void
   await writeFile(path, `${dateKey}\n`, "utf8");
 }
 
-interface DigestCounts {
-  takesCompleted: number;
-  newProposals: number;
-  sunoResults: number;
-  humanAssist: number;
-  blockers: number;
+interface DigestMusic {
+  progress: string[];
+  works: string[];
+  decisions: string[];
+  stops: string[];
 }
 
 const BLOCKER_EVENT_TYPES: ReadonlySet<RuntimeEvent["type"]> = new Set([
@@ -73,28 +73,37 @@ const BLOCKER_EVENT_TYPES: ReadonlySet<RuntimeEvent["type"]> = new Set([
   "planning_skeleton_incomplete"
 ]);
 
-function countRecentEvents(events: RuntimeEvent[], sinceMs: number): DigestCounts {
-  const counts: DigestCounts = { takesCompleted: 0, newProposals: 0, sunoResults: 0, humanAssist: 0, blockers: 0 };
+function collectRecentMusic(events: RuntimeEvent[], sinceMs: number): DigestMusic {
+  const music: DigestMusic = { progress: [], works: [], decisions: [], stops: [] };
   for (const event of events) {
     if (event.timestamp < sinceMs) continue;
     switch (event.type) {
-      case "song_take_completed":
-        counts.takesCompleted += 1;
-        break;
-      case "song_spawn_proposed":
-        counts.newProposals += 1;
+      case "prompt_pack_ready":
+        music.progress.push(`「${event.title}」の歌詞と制作設計が固まった`);
         break;
       case "suno_take_url_ready":
-        counts.sunoResults += 1;
+        music.progress.push("音源URLが届いた。まだ完成報告ではない");
+        break;
+      case "song_take_completed":
+        music.works.push("一曲を提出した。聴き比べの返事待ち");
+        break;
+      case "song_spawn_proposed":
+        music.progress.push(`「${event.brief.title}」を作る理由が立った`);
+        break;
+      case "suno_adoption_download_imported":
+        music.works.push("音源を受け取れる状態にした");
+        break;
+      case "planning_skeleton_incomplete":
+        music.decisions.push("制作の骨組みについて返事待ち");
         break;
       case "suno_human_assist_requested":
-        counts.humanAssist += 1;
+        music.decisions.push("Suno の手動確認待ち");
         break;
       default:
-        if (BLOCKER_EVENT_TYPES.has(event.type)) counts.blockers += 1;
+        if (BLOCKER_EVENT_TYPES.has(event.type)) music.stops.push(event.type === "lyrics_generation_degraded" ? "歌詞の仕上げで停止" : "制作上の停止が残っている");
     }
   }
-  return counts;
+  return music;
 }
 
 async function composeNextLine(root: string): Promise<string> {
@@ -103,23 +112,28 @@ async function composeNextLine(root: string): Promise<string> {
   if (state.hardStopReason) return `停止中（要対応）: ${state.hardStopReason}`;
   if (state.paused) return `一時停止中${state.pausedReason ? `: ${state.pausedReason}` : ""}`;
   if (state.blockedReason) return `待ち: ${state.blockedReason}`;
-  const song = state.currentSongId ? `${state.currentSongId}（${state.stage}）` : `アイドル（${state.stage}）`;
-  return `進行中: ${song} — 次サイクルで自動継続`;
+  const song = state.currentSongId
+    ? (await readSongState(root, state.currentSongId).catch(() => undefined))?.title ?? "曲"
+    : "アイドル";
+  return `進行中: 「${song}」 — 次サイクルで自動継続`;
 }
 
 export async function composeProducerDigest(root: string, now: Date = new Date()): Promise<string> {
   const events = await readRuntimeEvents(root, Number.MAX_SAFE_INTEGER).catch(() => [] as RuntimeEvent[]);
-  const counts = countRecentEvents(events, now.getTime() - DIGEST_WINDOW_MS);
+  const music = collectRecentMusic(events, now.getTime() - DIGEST_WINDOW_MS);
   const nextLine = await composeNextLine(root);
   const lines = [
     `📋 デイリーダイジェスト（${localDateKey(now)}）`,
     "",
-    "直近24hの動き:",
-    `・完成したテイク: ${counts.takesCompleted} 曲`,
-    `・新しい曲の提案: ${counts.newProposals} 件`,
-    `・Suno 生成結果: ${counts.sunoResults} 回`,
-    `・human-assist 依頼: ${counts.humanAssist} 件`,
-    `・ブロッカー/要対応: ${counts.blockers} 件`,
+    "音楽の進み:",
+    ...(music.progress.length > 0 ? music.progress.map((line) => `・${line}`) : ["・大きな進展はなし"]),
+    "",
+    "できた作品:",
+    ...(music.works.length > 0 ? music.works.map((line) => `・${line}`) : ["・提出・受取の更新はなし"]),
+    "",
+    "返事待ち:",
+    ...(music.decisions.length > 0 ? music.decisions.map((line) => `・${line}`) : ["・なし"]),
+    ...(music.stops.length > 0 ? ["", "重要な停止:", ...music.stops.map((line) => `・${line}`)] : []),
     "",
     `次の予定: ${nextLine}`
   ];

@@ -24,6 +24,9 @@ import { readLatestCreativeQualityEntry } from "./creativeQualityLedger.js";
 import { composeDraftBoxNextAction, formatDraftBoxNextActionSection } from "./draftBoxNextAction.js";
 import { emitDraftBoxProactiveNoticeIfNeeded } from "./draftBoxProactiveNotice.js";
 import { formatSongSubmissionReport } from "./songSubmissionReport.js";
+import { readProductionRunBinding, type ProductionRunBinding } from "./productionConversation.js";
+import { readAllSunoRuns } from "./sunoRuns.js";
+import { readSongProductionRevision } from "./songProductionRevisions.js";
 import {
   TELEGRAM_SECTION_DIVIDER,
   appendTelegramSection,
@@ -298,12 +301,9 @@ export class TelegramNotifier {
     });
     const sent = await this.client.sendMessage(this.options.chatId, text);
     await this.recordDelivery(event, sent.message_id);
-    if (event.type === "song_take_completed") {
-      await this.attachSongCompletionButtons(event, sent.message_id);
-    }
-    if (event.type === "suno_take_url_ready") {
-      await this.attachSunoTakeUrlReadyButtons(event, sent.message_id);
-    }
+    // Music submissions are conversation reports; they do not force an approve/
+    // discard decision through an operational callback card.
+    // URL-ready is a listening handoff, not an approve/discard gate.
     if (event.type === "prompt_pack_ready") {
       await this.attachPromptPackReadyButtons(event, sent.message_id);
     }
@@ -1317,6 +1317,119 @@ async function readBriefForTrace(songId: string, workspaceRoot?: string): Promis
     : "";
 }
 
+type SongTakeCompletedEvent = Extract<RuntimeEvent, { type: "song_take_completed" }>;
+
+async function resolveRunIdForUrls(workspaceRoot: string, songId: string, urls: readonly string[]): Promise<string | undefined> {
+  const wanted = new Set(urls.filter(Boolean));
+  if (wanted.size === 0) return undefined;
+  const runs = await readAllSunoRuns(workspaceRoot, songId).catch(() => []);
+  const matches = runs
+    .filter((run) => run.status === "accepted" && run.urls.length > 0 && run.urls.filter(Boolean).every((url) => wanted.has(url)))
+    .sort((left, right) => right.createdAt.localeCompare(left.createdAt));
+  return matches[0]?.runId;
+}
+
+async function findPromptPackBindingByPayloadHash(
+  workspaceRoot: string,
+  songId: string,
+  runId: string,
+  payloadHash: string
+): Promise<ProductionRunBinding | undefined> {
+  const promptsRoot = join(workspaceRoot, "songs", songId, "prompts");
+  const entries = await readdir(promptsRoot, { withFileTypes: true }).catch(() => []);
+  const versions = entries
+    .map((entry) => entry.name.match(/^prompt-pack-v(\d+)$/)?.[1])
+    .filter((version): version is string => Boolean(version))
+    .map((version) => Number(version))
+    .filter((version) => Number.isInteger(version))
+    .sort((left, right) => right - left);
+  for (const packVersion of versions) {
+    const metadataPath = join(promptsRoot, `prompt-pack-v${String(packVersion).padStart(3, "0")}`, "metadata.json");
+    const metadata = JSON.parse(await readFile(metadataPath, "utf8").catch(() => "{}")) as { payloadHash?: unknown };
+    if (metadata.payloadHash === payloadHash) {
+      const state = await readSongState(workspaceRoot, songId).catch(() => undefined);
+      return {
+        songId,
+        runId,
+        packVersion,
+        payloadHash,
+        baselineStatus: state?.status ?? "idea",
+        createdAt: new Date(0).toISOString()
+      };
+    }
+  }
+  return undefined;
+}
+
+async function resolveSongSubmissionBinding(
+  event: SongTakeCompletedEvent,
+  workspaceRoot?: string
+): Promise<{ binding?: ProductionRunBinding; revision?: Awaited<ReturnType<typeof readSongProductionRevision>> } | undefined> {
+  if (!workspaceRoot) return undefined;
+  const runId = await resolveRunIdForUrls(workspaceRoot, event.songId, event.urls);
+  if (!runId) return undefined;
+  const direct = await readProductionRunBinding(workspaceRoot, event.songId, runId).catch(() => undefined);
+  let binding = direct;
+  if (!binding) {
+    // Historical accepted runs carry the creation payload hash in runs.jsonl.
+    // Imported-result hashes are deliberately not used for attribution.
+    const accepted = (await readAllSunoRuns(workspaceRoot, event.songId).catch(() => []))
+      .find((run) => run.runId === runId && run.status === "accepted" && run.payloadHash);
+    if (accepted?.payloadHash) {
+      binding = await findPromptPackBindingByPayloadHash(workspaceRoot, event.songId, runId, accepted.payloadHash);
+    }
+  }
+  if (!binding) return undefined;
+  const revision = binding.revisionId
+    ? await readSongProductionRevision(workspaceRoot, event.songId, binding.revisionId).catch(() => undefined)
+    : undefined;
+  return { binding, revision };
+}
+
+async function formatSongSubmission(
+  event: SongTakeCompletedEvent,
+  options: Pick<TelegramNotifierOptions, "workspaceRoot">
+): Promise<string> {
+  const state = options.workspaceRoot ? await readSongState(options.workspaceRoot, event.songId).catch(() => undefined) : undefined;
+  const resolved = await resolveSongSubmissionBinding(event, options.workspaceRoot);
+  const binding = resolved?.binding;
+  const revision = resolved?.revision;
+  const origin = revision ? "producer_revision" : "self_origin";
+  const intended = revision
+    ? [binding?.instruction ?? revision.producerInstruction]
+    : event.observationSummary?.motivation ? [event.observationSummary.motivation] : undefined;
+  const changed = revision
+    ? [
+      revision.effective.title !== state?.title ? `タイトルを「${revision.effective.title}」にした` : undefined,
+      revision.effective.bpm !== undefined ? `テンポを ${revision.effective.bpm} BPM にした` : undefined,
+      revision.effective.direction || undefined,
+      revision.effective.excludeStyles.length > 0 ? `避ける音像: ${revision.effective.excludeStyles.join("、")}` : undefined
+    ].filter((line): line is string => Boolean(line))
+    : undefined;
+  const previousUrl = binding?.baselineTake?.url;
+  return formatSongSubmissionReport({
+    kind: "submission",
+    title: revision?.effective.title ?? state?.title ?? "今回の曲",
+    requestOrVersion: binding?.instruction ?? revision?.producerInstruction ?? (binding ? `v${binding.packVersion}` : undefined),
+    origin,
+    binding: binding ? {
+      runId: binding.runId,
+      packVersion: binding.packVersion,
+      payloadHash: binding.payloadHash,
+      revisionId: binding.revisionId,
+      baselineTake: binding.baselineTake,
+      instruction: binding.instruction,
+      contextKey: binding.contextKey
+    } : undefined,
+    intended,
+    changed,
+    kept: revision ? ["前の曲の核は残した"] : undefined,
+    audioUrls: event.urls,
+    previous: previousUrl ? { audioUrls: [previousUrl] } : undefined,
+    listenFor: revision ? [binding?.instruction ?? revision.producerInstruction] : undefined
+  });
+}
+
 async function formatSongTakeCompleted(
   event: Extract<RuntimeEvent, { type: "song_take_completed" }>,
   options: Pick<TelegramNotifierOptions, "workspaceRoot" | "aiReviewProvider"> = {}
@@ -1637,6 +1750,7 @@ export async function formatRuntimeEvent(
   options: Pick<TelegramNotifierOptions, "workspaceRoot" | "aiReviewProvider" | "dashboardBaseUrl"> = {}
 ): Promise<string> {
   const musicReport = event.type === "song_spawn_proposed"
+    || event.type === "song_take_completed"
     || event.type === "suno_take_url_ready"
     || event.type === "suno_adoption_download_imported";
   const rawBody = stripTelegramHtmlComments(await formatRuntimeEventRaw(event, options));
@@ -1697,7 +1811,7 @@ async function formatRuntimeEventRaw(
       ].filter((line): line is string => Boolean(line)).join("\n");
     }
     case "song_take_completed":
-      return formatSongTakeCompleted(event, options);
+      return formatSongSubmission(event as SongTakeCompletedEvent, options);
     case "suno_take_url_ready": {
       const state = options.workspaceRoot ? await readSongState(options.workspaceRoot, event.songId).catch(() => undefined) : undefined;
       return formatSongSubmissionReport({
