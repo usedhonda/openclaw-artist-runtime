@@ -6,6 +6,7 @@ import {
   saveLyricRevision
 } from "../services/songRevisions.js";
 import { readSongMaterial } from "../services/songMaterialReader.js";
+import { listSongStates } from "../services/artistState.js";
 
 function objectInput(input: unknown): Record<string, unknown> {
   return typeof input === "object" && input !== null ? input as Record<string, unknown> : {};
@@ -25,13 +26,20 @@ export function registerRevisionTools(api: unknown): void {
     name: "artist_song_material_lookup",
     description: "Look up an existing song's adopted material and isolated lyric revision candidates.",
     parameters: {
-      type: "object", additionalProperties: false, required: ["songId"],
-      properties: { songId: { type: "string", minLength: 1 }, includeMaterial: { type: "boolean" } }
+      type: "object", additionalProperties: false,
+      properties: { songId: { type: "string", minLength: 1 }, query: { type: "string", minLength: 1 }, title: { type: "string", minLength: 1 }, includeMaterial: { type: "boolean" } }
     },
     handler: async (input) => {
       const payload = objectInput(input);
       const workspaceRoot = rootOf(payload);
-      const songId = songIdOf(payload);
+      const explicitSongId = typeof payload.songId === "string" && payload.songId ? payload.songId : undefined;
+      const query = typeof payload.query === "string" ? payload.query : typeof payload.title === "string" ? payload.title : undefined;
+      if (!explicitSongId && !query) throw new Error("songId or title/query is required");
+      const states = explicitSongId ? [] : (await listSongStates(workspaceRoot)).filter((song) => song.title.toLocaleLowerCase().includes(query!.toLocaleLowerCase()) || song.songId.toLocaleLowerCase() === query!.toLocaleLowerCase());
+      if (!explicitSongId && states.length !== 1) {
+        return { query, candidates: states.map((song) => ({ songId: song.songId, title: song.title, status: song.status, updatedAt: song.updatedAt })) };
+      }
+      const songId = explicitSongId ?? states[0]!.songId;
       const versions = await listSongMaterialVersions(workspaceRoot, songId);
       return payload.includeMaterial === false ? { songId, versions } : { songId, material: await readSongMaterial(workspaceRoot, songId), versions };
     }
