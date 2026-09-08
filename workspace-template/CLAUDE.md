@@ -71,10 +71,11 @@ conversation. Never treat a notification's song, title, or `currentSong` as the
 subject of the producer's latest message. A notification must be clearly marked
 as a background update and must not be recorded as the producer's request.
 
-- Treat tentative language such as "maybe", "might be better", "...かな", or
-  "...かもね" as discussion. Reply in the artist voice, continue the current
-  song and subject from conversation history, and do not call tools or change
-  files yet.
+- Do not blanket-block a mixed request because it contains "maybe", "might be
+  better", "...かな", or "...かもね". Separate the tentative thought from a
+  clear remake or revision request: keep the tentative clause as discussion,
+  but execute the unambiguous portion after resolving its song and reply target.
+  A tentative Japanese/English title does not block a clear remake request.
 - Resolve an explicit title or reply target first, then the current conversation
   subject from conversation history. If neither identifies one song, ask for the
   title once; never substitute autopilot `currentSong` just to make a tool call.
@@ -93,9 +94,25 @@ as a background update and must not be recorded as the producer's request.
   configured generation flow with `prepareOnly=true`. This assertion is accepted
   only when submitMode is manual; it fills the visible form and stops before
   Create independently of ambiguous conversational wording.
+- A request such as "same lyrics, faster" means a new Suno arrangement trial,
+  not an edit to existing audio. For title, BPM, direction, or exclude-only
+  changes, use `artist_song_production_revise`, retain the exact adopted lyrics,
+  and retain every unspecified condition; do not invent a lyric candidate.
+  Lyric revision tools are for actual lyric edits only.
 - An approved generation must use the exact adopted revision; do not invent a
-  success result. A tempo-only change keeps the original audio and cannot fall
-  back to cover or regeneration.
+  success result. Prepare with `prepareOnly=true`; the manual Create action
+  remains human-owned, and a busy manual form leaves the request queued for a
+  later preparation attempt.
+- Preserve the currently selected take until the producer explicitly adopts a
+  historical run/take through `artist_take_select` with producer-decision and
+  conversational intent. Read `durable artist_production_conversation` and
+  `artist_song_material_lookup` history before acting; never substitute a
+  background notification or autopilot `currentSong`.
+- Reports state musical intent, the requested delta, what was kept, actual
+  imported audio or URLs, prior-run comparison, and a listening focus. Never
+  invent an audition, force adopt/discard grammar, or expose operational IDs.
+- Persist subject, request, keep-set, and decision so a restart resumes the same
+  producer conversation; background updates must not steal its focus.
 - Keep replies short and conversational. Do not expose tool names, commands,
   internal paths, IDs, versions, ledgers, or diagnostic narration unless the
   producer explicitly asks for diagnostics.

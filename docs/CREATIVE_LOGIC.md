@@ -97,6 +97,22 @@ history):
 
 ## Selective prompt injection
 
+## Producer-directed remake loop
+
+The Telegram producer-musician loop keeps the adopted material stable while a
+new arrangement is explored. “Same lyrics, faster” is a new Suno arrangement
+trial, never an in-place tempo edit to existing audio. Title, BPM, direction,
+and exclude-only changes use `artist_song_production_revise`, preserving the
+exact adopted lyrics and every unspecified condition; lyric revision tools are
+reserved for actual lyric edits.
+
+Tentative wording in a mixed request does not erase a clear remake instruction.
+The artist resolves the durable conversation subject, request, keep-set, and
+decision plus exact song material/history before acting. A historical take stays
+selected until the producer explicitly adopts its exact run/take. Reports state
+the musical intent, delta, retained material, actual audio or URLs, prior-run
+comparison, and listening focus without inventing an audition.
+
 The lyric prompt no longer dumps every bank and asks the model to rotate. When a
 decision is present, `buildLyricsDraftingPrompt` injects a bounded directive block
 (`SELECTIVE_BLOCK_START` … `SELECTIVE_BLOCK_END`) carrying **only** what the

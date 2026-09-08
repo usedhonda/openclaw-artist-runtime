@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+- docs: align the producer conversation contract with the accepted
+  musician-loop behavior: mixed tentative/clear remake requests are split,
+  same-lyrics-faster means a new arrangement trial, exact adopted lyrics and
+  historical take references are preserved, and reports describe actual audio
+  or URLs without invented auditions.
+
 - feat: prepare-only Suno generation now signals once the filled form is visible,
   returns the approved song/run/hash/version packet at the tool boundary, and keeps
   the connector's human-submit wait and pending marker alive until a terminal result.

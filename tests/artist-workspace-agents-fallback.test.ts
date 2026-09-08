@@ -63,7 +63,12 @@ describe("ensureArtistWorkspace AGENTS.md fallback", () => {
     ]);
     expect(agents).toBe(claude);
     expect(agents).toContain("Producer conversation comes first");
-    expect(agents).toContain("do not call tools or change");
+    expect(agents).toContain("execute the unambiguous portion");
+    expect(agents).toContain("Do not blanket-block a mixed request");
+    expect(agents).toContain("same lyrics, faster");
+    expect(agents).toContain("artist_song_production_revise");
+    expect(agents).toContain("historical run/take");
+    expect(agents).toContain("Persist subject, request, keep-set, and decision");
     expect(result.created).toContain("AGENTS.md");
 
     rmSync(templateRoot, { recursive: true, force: true });
