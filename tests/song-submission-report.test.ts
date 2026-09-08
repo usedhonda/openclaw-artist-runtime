@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { createHash } from "node:crypto";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { mkdtempSync } from "node:fs";
@@ -155,10 +155,13 @@ describe("song submission report", () => {
     await writeFile(join(root, "songs", "song-run", "suno", "run-old.results.json"), JSON.stringify({ runId: "run-old", urls: ["https://suno.com/song/old"], resultRefs: ["runtime/suno/run-old/old.mp3"] }));
     await writeFile(join(root, "songs", "song-run", "suno", "run-new.results.json"), JSON.stringify({ runId: "run-new", urls: ["https://suno.com/song/new"], resultRefs: ["runtime/suno/run-new/new.mp3"] }));
     let calls = 0;
-    const fetchImpl = async (): Promise<Response> => { calls += 1; return { ok: true, status: 200, json: async () => ({ ok: true, result: { message_id: calls, chat: { id: 123 } } }) } as Response; };
+    const requests: string[] = [];
+    const fetchImpl = async (input: string): Promise<Response> => { calls += 1; requests.push(input); return { ok: true, status: 200, json: async () => ({ ok: true, result: { message_id: calls, chat: { id: 123 } } }) } as Response; };
     const notifier = new TelegramNotifier({ token: "token", chatId: 123, workspaceRoot: root, fetchImpl });
     await notifier.notify({ type: "song_take_completed", songId: "song-run", urls: ["https://suno.com/song/old"], timestamp: 1 });
-    expect(calls).toBe(2);
+    expect(requests.filter((input) => input.includes("/sendMessage"))).toHaveLength(1);
+    expect(requests.filter((input) => input.includes("/sendAudio"))).toHaveLength(1);
+    expect(requests.filter((input) => input.includes("/editMessageReplyMarkup"))).toHaveLength(1);
   });
 
   it("ignores a run whose later correction record is failed", async () => {
@@ -169,10 +172,13 @@ describe("song submission report", () => {
       { runId: "run-correction", songId: "song-correction", createdAt: "2026-01-01T00:01:00.000Z", status: "failed", urls: ["https://suno.com/song/correction"], dryRun: false }
     ].map((run) => JSON.stringify(run)).join("\n"));
     let calls = 0;
-    const fetchImpl = async (): Promise<Response> => { calls += 1; return { ok: true, status: 200, json: async () => ({ ok: true, result: { message_id: calls, chat: { id: 123 } } }) } as Response; };
+    const requests: string[] = [];
+    const fetchImpl = async (input: string): Promise<Response> => { calls += 1; requests.push(input); return { ok: true, status: 200, json: async () => ({ ok: true, result: { message_id: calls, chat: { id: 123 } } }) } as Response; };
     const notifier = new TelegramNotifier({ token: "token", chatId: 123, workspaceRoot: root, fetchImpl });
     await notifier.notify({ type: "song_take_completed", songId: "song-correction", urls: ["https://suno.com/song/correction"], timestamp: 1 });
-    expect(calls).toBe(1);
+    expect(requests.filter((input) => input.includes("/sendMessage"))).toHaveLength(1);
+    expect(requests.filter((input) => input.includes("/sendAudio"))).toHaveLength(0);
+    expect(requests.filter((input) => input.includes("/editMessageReplyMarkup"))).toHaveLength(1);
   });
 
   it("uses the immutable historical payload title instead of current song state", async () => {
@@ -190,5 +196,25 @@ describe("song submission report", () => {
     const text = await formatRuntimeEvent({ type: "song_take_completed", songId: "song-history", urls: ["https://suno.com/song/history"], timestamp: 1 }, { workspaceRoot: root });
     expect(text).toContain("Immutable Historical Title");
     expect(text).not.toContain("今回の曲を提出する");
+  });
+
+  it("keeps callbacks for an accepted legacy run with only an immutable prompt pack", async () => {
+    const root = mkdtempSync(join(tmpdir(), "artist-runtime-telegram-legacy-callbacks-"));
+    const packDir = join(root, "songs", "song-legacy", "prompts", "prompt-pack-v001");
+    await mkdir(packDir, { recursive: true });
+    const payload = { songName: "Legacy Take" };
+    const payloadHash = createHash("sha256").update(JSON.stringify(payload)).digest("hex");
+    await writeFile(join(packDir, "suno-payload.json"), JSON.stringify(payload));
+    await writeFile(join(packDir, "metadata.json"), JSON.stringify({ payloadHash }));
+    await mkdir(join(root, "songs", "song-legacy", "suno"), { recursive: true });
+    await writeFile(join(root, "songs", "song-legacy", "suno", "runs.jsonl"), `${JSON.stringify({ runId: "run-legacy", songId: "song-legacy", createdAt: "2026-01-01T00:00:00.000Z", status: "accepted", payloadHash, urls: ["https://suno.com/song/legacy"], dryRun: false })}\n`);
+    const fetchImpl = vi.fn()
+      .mockResolvedValueOnce(new Response(JSON.stringify({ ok: true, result: { message_id: 77, chat: { id: 123 } } }), { status: 200 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify({ ok: true, result: true }), { status: 200 }));
+    const notifier = new TelegramNotifier({ token: "token", chatId: 123, workspaceRoot: root, fetchImpl });
+
+    await notifier.notify({ type: "song_take_completed", songId: "song-legacy", urls: ["https://suno.com/song/legacy"], timestamp: 1 });
+
+    expect(fetchImpl).toHaveBeenCalledWith(expect.stringContaining("/editMessageReplyMarkup"), expect.anything());
   });
 });

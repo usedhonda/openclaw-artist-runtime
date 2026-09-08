@@ -54,6 +54,20 @@ function workspace(): string {
   return mkdtempSync(join(tmpdir(), "artist-runtime-suno-url-ready-"));
 }
 
+async function bindProductionTrial(root: string, songId = "song-url", runId = "run-ready"): Promise<void> {
+  await mkdir(join(root, "songs", songId, "production-runs"), { recursive: true });
+  await writeFile(join(root, "songs", songId, "production-runs", `${runId}.json`), JSON.stringify({
+    songId,
+    runId,
+    packVersion: 1,
+    payloadHash: "trial-payload",
+    baselineStatus: "take_selected",
+    createdAt: "2026-06-16T00:00:00.000Z"
+  }));
+  await mkdir(join(root, "songs", songId, "suno"), { recursive: true });
+  await writeFile(join(root, "songs", songId, "suno", "runs.jsonl"), `${JSON.stringify({ runId, songId, status: "accepted", urls: ["https://suno.com/song/take-ready"] })}\n`);
+}
+
 function telegramResponse(result: unknown): Response {
   return new Response(JSON.stringify({ ok: true, result }), { status: 200 });
 }
@@ -298,6 +312,7 @@ describe("Suno take URL ready flow", () => {
   it("sends URL-ready text without adoption buttons to Telegram", async () => {
     const root = workspace();
     await ensureArtistWorkspace(root);
+    await bindProductionTrial(root);
     await expect(formatRuntimeEvent({
       type: "suno_take_url_ready",
       songId: "song-url",
@@ -628,6 +643,7 @@ describe("Suno take URL ready flow", () => {
   it("keeps URL-ready and completed-take notifications button-free", async () => {
     const root = workspace();
     await ensureArtistWorkspace(root);
+    await bindProductionTrial(root);
     const fetchImpl = vi.fn()
       .mockResolvedValueOnce(telegramResponse({ message_id: 77, chat: { id: 123 } }))
       .mockResolvedValueOnce(telegramResponse({ message_id: 78, chat: { id: 123 } }));

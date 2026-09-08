@@ -36,7 +36,7 @@ describe("telegram formatting fixtures", () => {
       timestamp: 1
     });
     expect(text).toContain("素案: 信号の犬");
-    expect(text).not.toContain("ボタンで選ぶ");
+    expect(text).toContain("次:\nボタンで選ぶ");
   });
 
   it("keeps prompt_pack_ready body byte-stable", async () => {

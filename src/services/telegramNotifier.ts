@@ -319,8 +319,11 @@ export class TelegramNotifier {
       }
     }
     if (event.type === "song_take_completed") {
-      const bound = await resolveSongSubmissionBinding(event, this.options.workspaceRoot);
-      if (!bound) {
+      const resolved = await resolveSongSubmissionBinding(event, this.options.workspaceRoot);
+      const directBinding = resolved?.binding && this.options.workspaceRoot
+        ? await readProductionRunBinding(this.options.workspaceRoot, event.songId, resolved.binding.runId).catch(() => undefined)
+        : undefined;
+      if (!directBinding) {
         await this.attachSongCompletionButtons(event, sent.message_id);
       }
     }
@@ -1222,8 +1225,9 @@ async function formatSongSubmission(
   const binding = resolved?.binding;
   const revision = resolved?.revision;
   const base = resolved?.base;
+  const request = binding?.instruction ?? revision?.producerInstruction;
   const intended = revision
-    ? [binding?.instruction ?? revision.producerInstruction]
+    ? request?.trim() === revision.producerInstruction.trim() ? undefined : [revision.producerInstruction]
     : event.observationSummary?.motivation ? [safeMotivation(event.observationSummary.motivation)] : undefined;
   const changed = revision
     ? [
@@ -1240,7 +1244,7 @@ async function formatSongSubmission(
   const report = formatSongSubmissionReport({
     kind: "submission",
     title: revision?.effective.title ?? base?.title ?? "今回の曲",
-    requestOrVersion: binding?.instruction ?? revision?.producerInstruction,
+    requestOrVersion: request,
     binding: binding ? {
       runId: binding.runId,
       packVersion: binding.packVersion,
@@ -1252,10 +1256,10 @@ async function formatSongSubmission(
     } : undefined,
     intended,
     changed,
-    kept: revision?.lyric.kind === "adopted_lyrics" ? [`歌詞 v${revision.lyric.version} はそのまま`] : undefined,
+    kept: revision?.lyric.kind === "adopted_lyrics" ? ["歌詞はそのまま"] : undefined,
     audioUrls: event.urls,
     previous: previousUrl ? { audioUrls: [previousUrl] } : undefined,
-    listenFor: revision ? [binding?.instruction ?? revision.producerInstruction] : undefined
+    listenFor: undefined
   });
   if (!event.observationSummary) return report;
   const observation = event.observationSummary;
@@ -1590,12 +1594,13 @@ export async function formatRuntimeEvent(
   const musicReport = event.type === "song_take_completed"
     || event.type === "suno_take_url_ready"
     || event.type === "suno_adoption_download_imported";
+  const suppressOperationalSections = musicReport || event.type === "song_spawn_proposed";
   const rawBody = stripTelegramHtmlComments(await formatRuntimeEventRaw(event, options));
   const body = musicReport ? rawBody : appendButtonEffectSection(event, rawBody);
   // Music reports are the producer's listening conversation. Do not append the
   // operational resource dump or generic draft-box footer to them; diagnostics
   // remain in the ledgers and the dedicated stop events still expose them.
-  if (musicReport) {
+  if (suppressOperationalSections) {
     return body;
   }
   const withNextAction = await appendDraftBoxNextActionSection(event, options, body);

@@ -313,7 +313,7 @@ describe("TelegramNotifier", () => {
     const sendCalls = fetchImpl.mock.calls.filter((call) => String(call[0]).includes("/sendMessage"));
     const markupCalls = fetchImpl.mock.calls.filter((call) => String(call[0]).includes("/editMessageReplyMarkup"));
     expect(sendCalls).toHaveLength(4);
-    expect(markupCalls).toHaveLength(2);
+    expect(markupCalls).toHaveLength(4);
     expect(markupCalls.map((call) => String((call[1] as RequestInit).body)).join("\n")).toContain("作る");
     expect(markupCalls.map((call) => String((call[1] as RequestInit).body)).join("\n")).toContain("Suno 生成へ");
   });
