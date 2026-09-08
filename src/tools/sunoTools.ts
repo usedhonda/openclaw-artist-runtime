@@ -2,7 +2,8 @@ import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { safeRegisterTool } from "../pluginApi.js";
 import { createAndPersistSunoPromptPack } from "../services/sunoPromptPackFiles.js";
-import { generateSunoRun, importSunoResults, readAllSunoRuns } from "../services/sunoRuns.js";
+import { generateSunoRun, importSunoResults } from "../services/sunoRuns.js";
+import type { SunoRunRecord } from "../types.js";
 import { readResolvedConfig } from "../services/runtimeConfig.js";
 import { emitRuntimeEvent } from "../services/runtimeEventBus.js";
 import { findProductionRunForPack, productionContextIdentity, updateProductionConversation } from "../services/productionConversation.js";
@@ -89,7 +90,9 @@ export function registerSunoTools(api: unknown): void {
       if (generationInput.prepareOnly && generationInput.config.music.suno.submitMode !== "manual") throw new Error("prepareOnly requires Suno submitMode=manual");
       const existing = await findProductionRunForPack(workspaceRoot, generationInput.songId, expectedPackVersion, expectedPayloadHash);
       if (existing) {
-        const result = (await readAllSunoRuns(workspaceRoot, generationInput.songId)).find((run) => run.runId === existing.runId);
+        const runLedger = await readFile(join(workspaceRoot, "songs", generationInput.songId, "suno", "runs.jsonl"), "utf8")
+          .catch((error: NodeJS.ErrnoException) => { if (error.code === "ENOENT") return ""; throw error; });
+        const result = runLedger.split("\n").filter(Boolean).map((line) => JSON.parse(line) as SunoRunRecord).reverse().find((run) => run.runId === existing.runId);
         if (result && (result.status === "accepted" || result.status === "imported")) return result;
         const marker = await readFile(join(workspaceRoot, "runtime", "suno", "human-assist-pending.json"), "utf8")
           .then((raw) => JSON.parse(raw) as { pid?: number; runId?: string }).catch(() => undefined);

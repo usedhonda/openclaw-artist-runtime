@@ -1,4 +1,8 @@
 import { describe, expect, it, vi } from "vitest";
+import { mkdir, mkdtemp, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { recordProductionRunBinding } from "../src/services/productionConversation";
 
 const deferred = vi.hoisted(() => {
   let resolve!: (value: unknown) => void;
@@ -53,5 +57,20 @@ describe("artist_suno_generate prepare boundary", () => {
     expect(terminal).toBe(false);
     deferred.resolve({ status: "failed" });
     await deferred.promise;
+  });
+
+  it("honors an append-order failed correction instead of replaying an earlier acceptance", async () => {
+    const root = await mkdtemp(join(tmpdir(), "prepare-correction-"));
+    await recordProductionRunBinding(root, { songId: "song-1", runId: "run-old", packVersion: 4, payloadHash: "hash", baselineStatus: "take_selected", createdAt: "2026-01-01T00:00:00Z" });
+    await mkdir(join(root, "songs/song-1/suno"), { recursive: true });
+    const base = { runId: "run-old", songId: "song-1", createdAt: "2026-01-01T00:00:00Z", urls: ["https://suno.com/song/old"] };
+    await writeFile(join(root, "songs/song-1/suno/runs.jsonl"), [JSON.stringify({ ...base, status: "accepted" }), JSON.stringify({ ...base, status: "failed" })].join("\n") + "\n");
+    deferred.generate.mockClear();
+    const registrations: Array<(context: { workspaceDir?: string }) => { name: string; execute: (id: string, params: unknown) => Promise<{ details: unknown }> }> = [];
+    registerSunoTools({ registerTool: (tool: unknown) => registrations.push(tool as typeof registrations[number]) });
+    const factory = registrations.find((registration) => registration({}).name === "artist_suno_generate")!;
+    const result = await factory({ workspaceDir: root }).execute("repeat", { songId: "song-1", expectedPayloadHash: "hash", expectedPackVersion: 4, prepareOnly: true });
+    expect(result.details).toMatchObject({ status: "failed", runId: "run-old" });
+    expect(deferred.generate).not.toHaveBeenCalled();
   });
 });

@@ -25,6 +25,14 @@ Implementation ownership: production-revision worker owns revision persistence;
 report worker owns song notifications; history worker owns take selection/material
 history; root owns trusted conversation context, tools, run integration and rollout.
 
+Local checkpoint: immutable production revisions, durable trusted conversation
+and reply bindings, queued manual preparation, trial import, historical adoption,
+and Telegram audio transport are implemented. The first full integration gate
+found report formatting and legacy callback regressions; those are being corrected
+without removing existing normal X/SONGBOOK controls. Local runtime/UI build and
+boundary/maintainer scans passed. Live Linux reflection remains unverified behind
+the additional SSH authentication check. Do not report this goal complete.
+
 ## Completed checkpoint: conversational production repair (2026-09-08)
 
 See [the archived completion record](archive/2026-09-08-telegram-production-repair.md).
