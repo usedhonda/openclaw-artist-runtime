@@ -5,7 +5,7 @@ import type { PersistSunoPromptPackInput, PersistedPromptPackResult, PromptLedge
 import { ensureArtistWorkspace, readArtistSnapshots } from "./artistWorkspace.js";
 import { readSongState, updateSongState } from "./artistState.js";
 import { appendPromptLedger, createPromptLedgerEntry, getSongPromptLedgerPath } from "./promptLedger.js";
-import { createSunoPromptPack, createSunoPromptPackWithAi } from "../suno-production/generatePromptPack.js";
+import { createProductionRevisionPromptPack, createSunoPromptPack, createSunoPromptPackWithAi } from "../suno-production/generatePromptPack.js";
 import { resolveTempoBandFromBrief } from "../suno-production/durationPlan.js";
 import { extractObservationSummary } from "./songIdeation.js";
 import { emitRuntimeEvent } from "./runtimeEventBus.js";
@@ -183,9 +183,14 @@ export async function createAndPersistSunoPromptPack(input: PersistSunoPromptPac
     currentStateSnapshot: input.currentStateSnapshot || currentStateSnapshot
   };
   const useAi = input.aiReviewProvider && input.aiReviewProvider !== "mock";
+  const productionOverrides = (input as PersistSunoPromptPackInput & {
+    productionOverrides?: { direction?: string; excludeStyles?: string[] };
+  }).productionOverrides;
   const pack = await (async () => {
     try {
-      return useAi
+      return productionOverrides
+        ? createProductionRevisionPromptPack(promptPackInput, productionOverrides)
+        : useAi
         ? await createSunoPromptPackWithAi({ ...promptPackInput, aiReviewProvider: input.aiReviewProvider })
         : createSunoPromptPack(promptPackInput);
     } catch (error) {

@@ -73,6 +73,18 @@ interface AdoptionReceipt {
 
 const adoptionLocks = new Map<string, Promise<unknown>>();
 
+export async function withSongMaterialLock<T>(workspaceRoot: string, songId: string, operation: () => Promise<T>): Promise<T> {
+  const lockKey = rootSong(workspaceRoot, songId);
+  const previous = adoptionLocks.get(lockKey) ?? Promise.resolve();
+  const current = previous.catch(() => undefined).then(operation);
+  adoptionLocks.set(lockKey, current);
+  try {
+    return await current;
+  } finally {
+    if (adoptionLocks.get(lockKey) === current) adoptionLocks.delete(lockKey);
+  }
+}
+
 function hashText(text: string): string {
   return createHash("sha256").update(text).digest("hex");
 }
@@ -228,9 +240,7 @@ export async function adoptLyricRevision(input: AdoptLyricRevisionInput): Promis
   const songRoot = await assertExistingSong(input.workspaceRoot, input.songId);
   const candidate = await readCandidate(songRoot, input.version);
   if (!input.expectedTextHash || candidate.textHash !== input.expectedTextHash) throw new Error("candidate hash changed; adoption refused");
-  const lockKey = songRoot;
-  const previous = adoptionLocks.get(lockKey) ?? Promise.resolve();
-  const operation = previous.catch(() => undefined).then(async () => {
+  const promptPack = await withSongMaterialLock(input.workspaceRoot, input.songId, async () => {
     const existing = await readAdoptionReceipt(songRoot, candidate.version, candidate.textHash);
     if (existing) return existing.promptPack;
     const song = await readSongState(input.workspaceRoot, input.songId);
@@ -246,12 +256,5 @@ export async function adoptLyricRevision(input: AdoptLyricRevisionInput): Promis
     await appendFile(join(candidateDir(songRoot), "adoptions.jsonl"), `${JSON.stringify({ candidateVersion: candidate.version, candidateHash: candidate.textHash, promptPack })}\n`, "utf8");
     return promptPack;
   });
-  adoptionLocks.set(lockKey, operation);
-  try {
-    return { candidate, promptPack: await operation };
-  } finally {
-    if (adoptionLocks.get(lockKey) === operation) {
-      adoptionLocks.delete(lockKey);
-    }
-  }
+  return { candidate, promptPack };
 }

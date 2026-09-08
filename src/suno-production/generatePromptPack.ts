@@ -222,6 +222,37 @@ export function createSunoPromptPack(input: CreateSunoPromptPackInput): SunoProm
   return pack;
 }
 
+export interface ProductionPromptPackOverrides {
+  direction?: string;
+  excludeStyles?: string[];
+}
+
+/** Production-only overlay used by producer revisions.  It deliberately reuses
+ * the canonical generator, while making the producer direction part of the
+ * style brief and replacing exclusions in the submitted payload. */
+export function createProductionRevisionPromptPack(
+  input: CreateSunoPromptPackInput,
+  overrides: ProductionPromptPackOverrides
+): SunoPromptPack {
+  const direction = overrides.direction?.trim();
+  const pack = createSunoPromptPack({
+    ...input,
+    artistReason: direction ? `${input.artistReason}; arrangement direction: ${direction}` : input.artistReason
+  });
+  if (direction && !pack.style.toLowerCase().includes(direction.toLowerCase())) {
+    pack.style = `${pack.style}, ${direction}`.slice(0, CANONICAL_STYLE_HARD_MAX_CHARS);
+    pack.payload = { ...pack.payload, styleAndFeel: pack.style };
+  }
+  if (overrides.excludeStyles && overrides.excludeStyles.length > 0) {
+    const exclude = [...new Set(overrides.excludeStyles.map((item) => item.trim()).filter(Boolean))].join(", ").slice(0, 240);
+    pack.exclude = exclude;
+    pack.payload = { ...pack.payload, excludeStyles: exclude };
+    pack.promptHash = hashText(`${pack.style}\n${pack.exclude}\n${pack.yamlLyrics}`);
+    pack.payloadHash = hashText(JSON.stringify(pack.payload));
+  }
+  return pack;
+}
+
 export async function createSunoPromptPackWithAi(
   input: CreateSunoPromptPackInput & { aiReviewProvider?: AiReviewProvider }
 ): Promise<SunoPromptPack> {
