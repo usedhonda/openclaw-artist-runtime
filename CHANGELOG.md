@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- fix: production revisions recognize both `BPM 94` and `94 BPM` in inherited
+  styles. Explicit tempo changes replace both forms consistently with the YAML
+  tempo; title-only revisions retain the detected tempo, lyrics and original take.
+
 - fix: producer conversation updates, production revisions, Suno generation and
   take selection authenticate trusted Telegram senders against the existing plugin
   producer allowlist, independently of gateway owner/admin status. Missing or

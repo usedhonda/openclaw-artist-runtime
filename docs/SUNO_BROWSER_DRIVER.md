@@ -10,6 +10,13 @@ See also: [OPERATOR_QUICKSTART.md](OPERATOR_QUICKSTART.md),
 
 ## Status
 
+Producer BPM revisions recognize both `BPM 94` and `94 BPM` in an inherited
+production style. Before preparation, an explicit tempo change updates every
+recognized style annotation and the YAML `tempo` to the requested BPM, preserving
+the annotation spelling, unrelated numbers and lyrics. A title-only revision
+inherits the detected tempo. Revisions create a new pack; previous packs and the
+original selected take remain unchanged.
+
 Round 41 keeps the real Playwright probe plus manual first-login helper, allows
 `submitMode: "live"` to click `Create`, polls the Suno library for new song
 URLs, and can now import finished runs by downloading mp3 assets into the local

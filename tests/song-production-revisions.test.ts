@@ -6,6 +6,7 @@ import { describe, expect, it } from "vitest";
 import { createAndPersistSunoPromptPack } from "../src/services/sunoPromptPackFiles";
 import { readSongState, updateSongState } from "../src/services/artistState";
 import { reviseSongProduction } from "../src/services/songProductionRevisions";
+import { createProductionRevisionPromptPack } from "../src/suno-production/generatePromptPack";
 
 const hash = (text: string) => createHash("sha256").update(text).digest("hex");
 
@@ -21,6 +22,31 @@ async function fixture() {
 }
 
 describe("bounded song production revisions", () => {
+  it("inherits prefix BPM and replaces mixed tempo forms without touching unrelated numbers or lyrics", async () => {
+    const { root, lyrics, base } = await fixture();
+    const snapshot = join(root, "songs/fixture-song/prompts/prompt-pack-v001");
+    // Model a legacy immutable pack whose style uses the prefix tempo spelling.
+    const style = "nu-jazz rap, BPM 94, 808 bass, 16 bars";
+    const payload = { ...base.pack.payload, styleAndFeel: style };
+    await writeFile(join(snapshot, "style.md"), `${style}\n`);
+    await writeFile(join(snapshot, "suno-payload.json"), JSON.stringify(payload));
+    const metadata = JSON.parse(await readFile(join(snapshot, "metadata.json"), "utf8"));
+    await writeFile(join(snapshot, "metadata.json"), JSON.stringify({ ...metadata, payloadHash: hash(JSON.stringify(payload)) }));
+    const mixed = createProductionRevisionPromptPack({ songId: "fixture-song", songTitle: "Fixture Song", artistReason: "faster", lyricsText: lyrics, bpm: 148 }, { basePack: { ...base.pack, style: `${style}, 94 BPM` } });
+    expect(mixed.style).toBe("nu-jazz rap, BPM 148, 808 bass, 16 bars, 148 BPM");
+    const input = { workspaceRoot: root, songId: "fixture-song", lyric: { kind: "adopted_lyrics" as const, version: 1, hash: hash(lyrics) } };
+    const title = await reviseSongProduction({ ...input, basePackVersion: 1, expectedBasePayloadHash: hash(JSON.stringify(payload)), producerInstruction: "title only", patch: { title: "Retitled" } });
+    expect(title.effective.bpm).toBe(94);
+    expect(title.promptPack.pack.payload.payloadYaml).toContain("tempo: 94");
+    const faster = await reviseSongProduction({ ...input, basePackVersion: title.packVersion, expectedBasePayloadHash: title.payloadHash, producerInstruction: "faster", patch: { bpm: 148 } });
+    expect(faster.promptPack.pack.payload.styleAndFeel).toBe("nu-jazz rap, BPM 148, 808 bass, 16 bars");
+    expect(faster.promptPack.pack.payload.payloadYaml).toContain("tempo: 148");
+    expect(faster.promptPack.pack.payload.lyricsYaml).toContain("tempo: 148");
+    expect(faster.promptPack.pack.lyricsBundle.originalLyricsText).toBe(lyrics);
+    expect((await readSongState(root, "fixture-song")).selectedTakeId).toBe("take-old");
+    expect(await readFile(join(snapshot, "style.md"), "utf8")).toBe(`${style}\n`);
+  });
+
   it("creates an immutable production revision with coherent BPM and direction", async () => {
     const { root, lyrics, base } = await fixture();
     const oldSnapshot = await readFile(join(root, "songs/fixture-song/prompts/prompt-pack-v001/suno-payload.json"), "utf8");
@@ -57,7 +83,7 @@ describe("bounded song production revisions", () => {
     expect(title.promptPack.pack.sliders).toEqual(base.pack.sliders);
     const bpm = await reviseSongProduction({ workspaceRoot: root, songId: "fixture-song", basePackVersion: title.packVersion, expectedBasePayloadHash: title.payloadHash, lyric: { kind: "adopted_lyrics", version: 1, hash: hash(lyrics) }, producerInstruction: "tempo", patch: { bpm: 140 } });
     expect(bpm.promptPack.pack.style).toContain("140 BPM");
-    expect(bpm.promptPack.pack.style.replace("140 BPM", "92 BPM")).toBe(title.promptPack.pack.style);
+    expect(bpm.promptPack.pack.style.replace("140 BPM", "92 BPM").replace("BPM 140", "BPM 92")).toBe(title.promptPack.pack.style);
     const directed = await reviseSongProduction({ workspaceRoot: root, songId: "fixture-song", basePackVersion: bpm.packVersion, expectedBasePayloadHash: bpm.payloadHash, lyric: { kind: "adopted_lyrics", version: 1, hash: hash(lyrics) }, producerInstruction: "direction", patch: { direction: "dry clipped drums" } });
     const inherited = await reviseSongProduction({ workspaceRoot: root, songId: "fixture-song", basePackVersion: directed.packVersion, expectedBasePayloadHash: directed.payloadHash, lyric: { kind: "adopted_lyrics", version: 1, hash: hash(lyrics) }, producerInstruction: "keep direction" });
     expect(inherited.promptPack.pack.style).toContain("dry clipped drums");

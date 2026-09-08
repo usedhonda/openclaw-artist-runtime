@@ -105,7 +105,8 @@ export async function reviseSongProduction(input: ReviseSongProductionInput): Pr
     if (lyric.textHash !== input.lyric.hash) throw new Error("source lyrics changed; hash check failed");
     const state = await readSongState(input.workspaceRoot, input.songId);
     const title = patch.title?.trim() || String(base.payload.songName ?? state.title);
-    const baseBpm = Number(String(base.pack.style).match(/\b(\d{2,3})\s*BPM\b/i)?.[1]) || undefined;
+    const baseTempo = String(base.pack.style).match(/\b(?:(\d{2,3})\s*BPM|BPM\s*(\d{2,3}))\b/i);
+    const baseBpm = Number(baseTempo?.[1] ?? baseTempo?.[2]) || undefined;
     const bpm = patch.bpm ?? baseBpm;
     const excludeStyles = patch.excludeStyles?.length ? patch.excludeStyles : base.pack.exclude.split(",").map((item) => item.trim()).filter(Boolean);
     const inheritedDirection = base.inheritedDirection.trim();

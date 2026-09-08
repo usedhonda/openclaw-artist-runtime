@@ -242,7 +242,7 @@ export function createProductionRevisionPromptPack(
     const bpm = input.bpm;
     const direction = overrides.direction?.trim();
     let style = base.style;
-    if (bpm !== undefined) style = style.replace(/\b\d{2,3}\s*BPM\b/gi, `${bpm} BPM`);
+    if (bpm !== undefined) style = style.replace(/\b(?:\d{2,3}\s*BPM|BPM\s*\d{2,3})\b/gi, (tempo) => tempo.replace(/\d{2,3}/, String(bpm)));
     if (direction && !style.toLowerCase().includes(direction.toLowerCase())) {
       if (style.length + direction.length + 2 > CANONICAL_STYLE_HARD_MAX_CHARS) throw new Error("production direction exceeds style limit");
       style = `${style}, ${direction}`;
