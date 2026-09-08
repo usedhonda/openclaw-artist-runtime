@@ -245,6 +245,8 @@ export async function adoptLyricRevision(input: AdoptLyricRevisionInput): Promis
   try {
     return { candidate, promptPack: await operation };
   } finally {
-    adoptionLocks.delete(lockKey);
+    if (adoptionLocks.get(lockKey) === operation) {
+      adoptionLocks.delete(lockKey);
+    }
   }
 }

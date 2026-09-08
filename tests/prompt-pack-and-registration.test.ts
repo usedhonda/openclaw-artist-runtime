@@ -188,7 +188,13 @@ describe("registration shells", () => {
 
     expect(registered.tools).toContain("artist_suno_create_prompt_pack");
     expect(registered.tools).toContain("artist_song_ideate");
-    expect(registered.toolDefinitions).toHaveLength(7);
+    expect(registered.tools).toEqual(expect.arrayContaining([
+      "artist_song_material_lookup",
+      "artist_lyrics_revision_save",
+      "artist_lyrics_revision_restore",
+      "artist_lyrics_revision_adopt"
+    ]));
+    expect(registered.toolDefinitions).toHaveLength(11);
     expect(registered.toolDefinitions.every((tool) => typeof tool.execute === "function")).toBe(true);
     expect(registered.toolDefinitions.every((tool) => typeof tool.parameters === "object" && tool.parameters !== null)).toBe(true);
     const promptPackTool = registered.toolDefinitions.find((tool) => tool.name === "artist_suno_create_prompt_pack");
@@ -199,7 +205,7 @@ describe("registration shells", () => {
     const generateTool = registered.toolDefinitions.find((tool) => tool.name === "artist_suno_generate");
     expect(generateTool?.parameters).toMatchObject({
       additionalProperties: false,
-      required: ["songId"]
+      required: ["songId", "expectedPayloadHash", "expectedPackVersion"]
     });
     expect(registered.hooks).toContain("agent:bootstrap");
     expect(registered.services).toContain("artistAutopilotService");
