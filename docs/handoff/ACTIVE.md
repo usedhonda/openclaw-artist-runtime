@@ -1,4 +1,4 @@
-# Handoff: Linux host parity
+# Handoff: Producer-musician creation loop
 
 ## Active goal: producer-musician creation loop (2026-09-09)
 
@@ -25,13 +25,26 @@ Implementation ownership: production-revision worker owns revision persistence;
 report worker owns song notifications; history worker owns take selection/material
 history; root owns trusted conversation context, tools, run integration and rollout.
 
-Local checkpoint: immutable production revisions, durable trusted conversation
-and reply bindings, queued manual preparation, trial import, historical adoption,
-and Telegram audio transport are implemented. The first full integration gate
-found report formatting and legacy callback regressions; those are being corrected
-without removing existing normal X/SONGBOOK controls. Local runtime/UI build and
-boundary/maintainer scans passed. Live Linux reflection remains unverified behind
-the additional SSH authentication check. Do not report this goal complete.
+Local implementation checkpoint: immutable production revisions, durable trusted
+conversation and reply bindings, queued manual preparation, trial import,
+historical adoption, and Telegram audio transport are implemented. Reporting now
+compares immutable material, keeps original audio, and gives concrete listening
+points without claiming audition. Existing normal X/SONGBOOK controls remain.
+
+Verification: all 411 test files / 2,094 tests passed after the final source
+change. Full lint passed; the final report delta also passed scoped lint.
+Typecheck and runtime/UI builds passed; the runtime was rebuilt after the final
+report change. Boundary and maintainer scans passed. Local implementation tip:
+`155ac80`. Live Linux reflection remains unverified behind additional SSH
+authentication; the previous SSH request timed out without remote changes.
+Do not report this goal complete.
+
+Next: authenticate normal Linux SSH, inspect pending manual work and repository
+state, deploy the committed build with a fresh gateway process only when the
+existing Create window is clear, reflect the narrow conversation tools/template,
+then verify actual Telegram request -> manual Create -> audio submission ->
+reply-driven revision/historical adoption. Never substitute fixture results for
+that live production loop.
 
 ## Completed checkpoint: conversational production repair (2026-09-08)
 
