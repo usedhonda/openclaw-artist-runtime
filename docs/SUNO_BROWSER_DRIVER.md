@@ -178,9 +178,13 @@ Flow when a live create returns `suno_cli_blocked_captcha`:
    — it is never solved or bypassed), keep the filled form, bring the window to
    the front, and send one Telegram alert asking the producer to press Create on
    the Mac (with the song title). State is `awaiting_human_create`;
-5. when the producer presses Create and new `/song/<id>` cards appear, the run is
-   recorded as accepted and flows into the usual import/notify pipeline;
-6. if no manual click lands within `humanAssistTimeoutMinutes` (default 60), the
+5. when the producer presses Create, acceptance requires feed evidence for new
+   title-matched `/song/<id>` clips created after form preparation and absent from
+   the pre-fill feed baseline. A late old same-title DOM card is never accepted as
+   the manual submit; transient feed unavailability keeps the wait fail-closed;
+6. when the new feed proof arrives, the run is recorded as accepted and flows into
+   the usual import/notify pipeline;
+7. if no manual click lands within `humanAssistTimeoutMinutes` (default 60), the
    browser reference is released and the song returns to the generation pipeline
    for a later retry. This is **not** a hard stop: the producer is re-prompted at
    most once per cycle (the alert fires once per attempt), throttled by the daily
