@@ -102,4 +102,32 @@ describe("TelegramClient retry", () => {
     expect(fetchImpl).toHaveBeenCalledTimes(2);
     expect(telegramAttemptsFromError(caught)).toBe(2);
   });
+
+  it("uploads audio using multipart sendAudio and keeps the response message id", async () => {
+    const fetchImpl = vi.fn().mockResolvedValue(jsonResponse({ ok: true, result: { message_id: 44, chat: { id: 123 } } }));
+    const client = new TelegramClient("token", fetchImpl);
+    const result = await client.sendAudio(123, new TextEncoder().encode("mp3"), {
+      filename: "take.mp3",
+      mimeType: "audio/mpeg"
+    });
+    expect(result.message_id).toBe(44);
+    expect(fetchImpl.mock.calls[0][0]).toContain("/sendAudio");
+    const body = fetchImpl.mock.calls[0][1].body as FormData;
+    expect(body).toBeInstanceOf(FormData);
+    expect(body.get("chat_id")).toBe("123");
+    expect(body.get("audio")).toBeInstanceOf(File);
+  });
+
+  it("sanitizes exhausted sendAudio failures", async () => {
+    process.env.OPENCLAW_TELEGRAM_RETRY_MAX = "1";
+    const fetchImpl = vi.fn().mockResolvedValue(jsonResponse({ ok: false }, 400));
+    await expect(new TelegramClient("secret-token", fetchImpl).sendAudio(123, new Uint8Array([1]), {
+      filename: "take.m4a",
+      mimeType: "audio/mp4"
+    })).rejects.toThrow("telegram_sendAudio_failed");
+    await expect(new TelegramClient("secret-token", fetchImpl).sendAudio(123, new Uint8Array([1]), {
+      filename: "take.m4a",
+      mimeType: "audio/mp4"
+    })).rejects.not.toThrow("secret-token");
+  });
 });

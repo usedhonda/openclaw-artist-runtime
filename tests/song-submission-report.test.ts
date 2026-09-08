@@ -1,5 +1,10 @@
 import { describe, expect, it } from "vitest";
+import { mkdir, readFile, writeFile } from "node:fs/promises";
+import { mkdtempSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { formatRuntimeEvent } from "../src/services/telegramNotifier";
+import { TelegramNotifier } from "../src/services/telegramNotifier";
 import { formatSongSubmissionReport } from "../src/services/songSubmissionReport";
 
 describe("song submission report", () => {
@@ -72,5 +77,49 @@ describe("song submission report", () => {
     expect(text).not.toContain("song-internal");
     expect(text).not.toContain("run-internal");
     expect(text).not.toContain("現在地:");
+  });
+
+  it("uploads only a verified run-bound audio file and records its Telegram message id", async () => {
+    const root = mkdtempSync(join(tmpdir(), "artist-runtime-telegram-audio-"));
+    const audioPath = join(root, "runtime", "suno", "run-audio", "take.mp3");
+    await mkdir(join(root, "runtime", "suno", "run-audio"), { recursive: true });
+    await writeFile(audioPath, Buffer.from("valid-audio"));
+    let messageId = 10;
+    const fetchImpl = async (input: string): Promise<Response> => ({
+      ok: true,
+      status: 200,
+      json: async () => ({ ok: true, result: { message_id: messageId++, chat: { id: 123 } } })
+    } as Response);
+    const notifier = new TelegramNotifier({ token: "token", chatId: 123, workspaceRoot: root, fetchImpl });
+    await notifier.notify({
+      type: "suno_adoption_download_imported",
+      songId: "song-audio",
+      runId: "run-audio",
+      urls: ["https://suno.com/song/audio"],
+      paths: ["runtime/suno/run-audio/take.mp3"],
+      timestamp: 1
+    });
+    const receipts = (await readFile(join(root, "runtime", "telegram-deliveries.jsonl"), "utf8"))
+      .trim().split("\n").map((line) => JSON.parse(line) as { messageId: number });
+    expect(receipts.map((receipt) => receipt.messageId)).toEqual([10, 11]);
+  });
+
+  it("falls back to the URL when an audio path is outside the workspace", async () => {
+    const root = mkdtempSync(join(tmpdir(), "artist-runtime-telegram-audio-safe-"));
+    let calls = 0;
+    const fetchImpl = async (): Promise<Response> => {
+      calls += 1;
+      return { ok: true, status: 200, json: async () => ({ ok: true, result: { message_id: 1, chat: { id: 123 } } }) } as Response;
+    };
+    const notifier = new TelegramNotifier({ token: "token", chatId: 123, workspaceRoot: root, fetchImpl });
+    await notifier.notify({
+      type: "suno_adoption_download_imported",
+      songId: "song-safe",
+      runId: "run-safe",
+      urls: ["https://suno.com/song/safe"],
+      paths: ["/etc/passwd"],
+      timestamp: 1
+    });
+    expect(calls).toBe(1);
   });
 });

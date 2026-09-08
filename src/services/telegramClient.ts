@@ -16,6 +16,12 @@ export interface TelegramSendMessageOptions {
   replyMarkup?: TelegramReplyMarkup;
 }
 
+export interface TelegramSendAudioOptions {
+  filename: string;
+  mimeType: "audio/mpeg" | "audio/mp4";
+  caption?: string;
+}
+
 export interface TelegramAnswerCallbackQueryOptions {
   text?: string;
   showAlert?: boolean;
@@ -137,6 +143,48 @@ export class TelegramClient {
       throw new Error("telegram_sendMessage_empty");
     }
     return last;
+  }
+
+  async sendAudio(chatId: number | string, data: Uint8Array, options: TelegramSendAudioOptions): Promise<TelegramMessage> {
+    const maxAttempts = retryMaxForMethod("sendAudio");
+    let lastError: unknown;
+    for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
+      const controller = new AbortController();
+      const timer = setTimeout(() => controller.abort(), requestTimeoutMs("sendAudio"));
+      try {
+        const form = new FormData();
+        form.append("chat_id", String(chatId));
+        const copy = new ArrayBuffer(data.byteLength);
+        new Uint8Array(copy).set(data);
+        form.append("audio", new Blob([copy], { type: options.mimeType }), options.filename);
+        if (options.caption) form.append("caption", options.caption);
+        const response = await this.fetchImpl(`${this.baseUrl}/sendAudio`, {
+          method: "POST",
+          body: form,
+          signal: controller.signal
+        });
+        if (!response.ok) {
+          if (isTransientHttpStatus(response.status) && attempt < maxAttempts) {
+            await sleep(retryDelayMs(attempt));
+            continue;
+          }
+          throw new Error("telegram_sendAudio_http_failure");
+        }
+        const payload = await response.json() as TelegramApiResponse<TelegramMessage>;
+        if (!payload.ok || !payload.result) throw new Error("telegram_sendAudio_api_failure");
+        return payload.result;
+      } catch (error) {
+        lastError = error;
+        if (attempt < maxAttempts && (error instanceof Error && (error.name === "AbortError" || isTransientFetchError(error)))) {
+          await sleep(retryDelayMs(attempt));
+          continue;
+        }
+      } finally {
+        clearTimeout(timer);
+      }
+    }
+    console.error(`[telegram-client] sendAudio failed: attempts=${maxAttempts}`);
+    throw new Error("telegram_sendAudio_failed");
   }
 
   async answerCallbackQuery(callbackQueryId: string, options: TelegramAnswerCallbackQueryOptions = {}): Promise<boolean> {

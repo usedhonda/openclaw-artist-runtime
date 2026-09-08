@@ -14,8 +14,8 @@ import { buttonVoiceLabels } from "./buttonVoiceLabels.js";
 import { summarizeLyricsDegradedReason } from "./lyricsDegradedSummary.js";
 import { summarizeStopReason } from "./producerStopReason.js";
 import { HUMAN_ASSIST_FEED_UNAVAILABLE_REASON } from "./sunoHumanAssist.js";
-import { access, readdir, readFile } from "node:fs/promises";
-import { join } from "node:path";
+import { access, lstat, readdir, readFile, realpath, stat } from "node:fs/promises";
+import { basename, isAbsolute, join, relative, resolve } from "node:path";
 import { buildCascadeTrace } from "./cascadeTrace.js";
 import { appendFailedNotification, isCriticalNotificationEvent } from "./failedNotifyLedger.js";
 import { appendTelegramDeliveryReceipt } from "./telegramDeliveryLedger.js";
@@ -301,6 +301,22 @@ export class TelegramNotifier {
     });
     const sent = await this.client.sendMessage(this.options.chatId, text);
     await this.recordDelivery(event, sent.message_id);
+    if (event.type === "suno_adoption_download_imported") {
+      const audioPaths = await verifiedAudioPaths(this.options.workspaceRoot, event.runId, event.paths);
+      for (const audioPath of audioPaths) {
+        try {
+          const data = await readFile(audioPath);
+          const mimeType = audioPath.toLowerCase().endsWith(".mp3") ? "audio/mpeg" : "audio/mp4";
+          const audio = await this.client.sendAudio(this.options.chatId, data, {
+            filename: basename(audioPath),
+            mimeType
+          });
+          await this.recordDelivery(event, audio.message_id);
+        } catch {
+          console.warn("[telegram-notify] verified audio upload failed; URL fallback retained");
+        }
+      }
+    }
     // Music submissions are conversation reports; they do not force an approve/
     // discard decision through an operational callback card.
     // URL-ready is a listening handoff, not an approve/discard gate.
@@ -1428,6 +1444,31 @@ async function formatSongSubmission(
     previous: previousUrl ? { audioUrls: [previousUrl] } : undefined,
     listenFor: revision ? [binding?.instruction ?? revision.producerInstruction] : undefined
   });
+}
+
+const TELEGRAM_AUDIO_MAX_BYTES = 50 * 1024 * 1024;
+
+async function verifiedAudioPaths(workspaceRoot: string | undefined, runId: string, paths: readonly string[]): Promise<string[]> {
+  if (!workspaceRoot || !runId || paths.length === 0) return [];
+  const root = resolve(workspaceRoot);
+  const results: string[] = [];
+  for (const value of paths) {
+    const candidate = isAbsolute(value) ? resolve(value) : resolve(root, value);
+    const rel = relative(root, candidate);
+    if (!rel || rel.startsWith("..") || isAbsolute(rel)) continue;
+    if (!rel.split(/[\\/]/).includes(runId)) continue;
+    const extension = candidate.toLowerCase().endsWith(".mp3") ? "audio/mpeg" : candidate.toLowerCase().endsWith(".m4a") ? "audio/mp4" : undefined;
+    if (!extension) continue;
+    const info = await lstat(candidate).catch(() => undefined);
+    if (!info || !info.isFile() || info.size <= 0 || info.size > TELEGRAM_AUDIO_MAX_BYTES) continue;
+    const canonical = await realpath(candidate).catch(() => undefined);
+    const canonicalRoot = await realpath(root).catch(() => undefined);
+    if (!canonical || !canonicalRoot) continue;
+    const canonicalRel = relative(canonicalRoot, canonical);
+    if (!canonicalRel || canonicalRel.startsWith("..") || isAbsolute(canonicalRel)) continue;
+    results.push(candidate);
+  }
+  return results;
 }
 
 async function formatSongTakeCompleted(
