@@ -86,7 +86,7 @@ describe("song submission report", () => {
     await mkdir(join(root, "runtime", "suno", "run-audio"), { recursive: true });
     await writeFile(audioPath, Buffer.from("valid-audio"));
     let messageId = 10;
-    const fetchImpl = async (input: string): Promise<Response> => ({
+    const fetchImpl = async (): Promise<Response> => ({
       ok: true,
       status: 200,
       json: async () => ({ ok: true, result: { message_id: messageId++, chat: { id: 123 } } })

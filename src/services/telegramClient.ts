@@ -147,7 +147,6 @@ export class TelegramClient {
 
   async sendAudio(chatId: number | string, data: Uint8Array, options: TelegramSendAudioOptions): Promise<TelegramMessage> {
     const maxAttempts = retryMaxForMethod("sendAudio");
-    let lastError: unknown;
     for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
       const controller = new AbortController();
       const timer = setTimeout(() => controller.abort(), requestTimeoutMs("sendAudio"));
@@ -174,7 +173,6 @@ export class TelegramClient {
         if (!payload.ok || !payload.result) throw new Error("telegram_sendAudio_api_failure");
         return payload.result;
       } catch (error) {
-        lastError = error;
         if (attempt < maxAttempts && (error instanceof Error && (error.name === "AbortError" || isTransientFetchError(error)))) {
           await sleep(retryDelayMs(attempt));
           continue;

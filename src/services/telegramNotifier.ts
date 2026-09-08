@@ -14,13 +14,12 @@ import { buttonVoiceLabels } from "./buttonVoiceLabels.js";
 import { summarizeLyricsDegradedReason } from "./lyricsDegradedSummary.js";
 import { summarizeStopReason } from "./producerStopReason.js";
 import { HUMAN_ASSIST_FEED_UNAVAILABLE_REASON } from "./sunoHumanAssist.js";
-import { access, lstat, readdir, readFile, realpath, stat } from "node:fs/promises";
+import { access, lstat, readdir, readFile, realpath } from "node:fs/promises";
 import { basename, isAbsolute, join, relative, resolve } from "node:path";
 import { buildCascadeTrace } from "./cascadeTrace.js";
 import { appendFailedNotification, isCriticalNotificationEvent } from "./failedNotifyLedger.js";
 import { appendTelegramDeliveryReceipt } from "./telegramDeliveryLedger.js";
 import { readLatestPromptPackMetadata } from "./sunoPromptPackFiles.js";
-import { readLatestCreativeQualityEntry } from "./creativeQualityLedger.js";
 import { composeDraftBoxNextAction, formatDraftBoxNextActionSection } from "./draftBoxNextAction.js";
 import { emitDraftBoxProactiveNoticeIfNeeded } from "./draftBoxProactiveNotice.js";
 import { formatSongSubmissionReport } from "./songSubmissionReport.js";
@@ -841,16 +840,6 @@ function isGoogleNewsIntermediateUrl(value?: string): boolean {
   }
 }
 
-function isDisplayableNewsUrl(value?: string): boolean {
-  if (!value) return false;
-  try {
-    const parsed = new URL(value);
-    return parsed.protocol === "https:" && !isGoogleNewsIntermediateUrl(value);
-  } catch {
-    return false;
-  }
-}
-
 function stripHandles(value: string): string {
   return value.replace(/@[A-Za-z0-9_]{1,20}/g, "[handle]");
 }
@@ -890,7 +879,7 @@ function formatObservationAuthorPrefix(value?: string): string {
   return `@${safeAuthor(clean)}: `;
 }
 
-function formatObservationSource(summary?: ObservationSummary): string[] {
+function _formatObservationSource(summary?: ObservationSummary): string[] {
   if (!summary) {
     return [
       "🌐 観察元: (記録なし)",
@@ -906,11 +895,6 @@ function formatObservationSource(summary?: ObservationSummary): string[] {
     `💬 抜粋: 「${quote || "(抜粋なし)"}」`,
     `🎯 動機: ${safeMotivation(summary.motivation)}`
   ];
-}
-
-function formatObservationMetadata(summary?: ObservationSummary): string[] {
-  const [source, quote, motivation] = formatObservationSource(summary);
-  return [motivation, source, quote];
 }
 
 function topRuntimeRejectReason(counts: Partial<Record<string, number>> | undefined): string | undefined {
@@ -936,219 +920,12 @@ function observationDiagnosticsSuffix(event: Extract<RuntimeEvent, { type: "obse
   ].filter(Boolean).join("; ");
 }
 
-function parseSourceLine(line: string): CommissionBriefSource | undefined {
-  const match = line.trim().match(/^-\s+(news|x_reaction|x):\s+(\S+)(?:\s+\(([^)]+)\))?(?:\s+—\s+(.+))?$/i);
-  if (!match) return undefined;
-  return {
-    kind: match[1].toLowerCase() as CommissionBriefSource["kind"],
-    url: match[2],
-    author: match[3]?.trim(),
-    quote: match[4]?.trim()
-  };
-}
-
-function parseObservationSourceBlock(brief: string): CommissionBriefSource | undefined {
-  const url = brief.match(/^- URL:\s+(\S+)\s*$/m)?.[1]?.trim();
-  if (!url) return undefined;
-  const author = brief.match(/^- Author:\s+(.+)\s*$/m)?.[1]?.trim();
-  const quote = brief.match(/^- Quote:\s+(.+)\s*$/m)?.[1]?.trim();
-  const kind: CommissionBriefSource["kind"] = isAllowedObservationUrl(url) ? "x_reaction" : "news";
-  return { kind, url, author, quote };
-}
-
-function sourcesFromBriefText(brief: string): CommissionBriefSource[] {
-  const inlineSources = brief
-    .split(/\r?\n/)
-    .map((line) => parseSourceLine(line))
-    .filter((source): source is CommissionBriefSource => source !== undefined);
-  const observationSource = parseObservationSourceBlock(brief);
-  if (!observationSource || inlineSources.some((source) => source.url === observationSource.url)) {
-    return inlineSources;
-  }
-  return [...inlineSources, observationSource];
-}
-
-function sourcesFromObservationSummary(summary?: ObservationSummary): CommissionBriefSource[] {
-  if (!summary?.url || !isAllowedObservationUrl(summary.url)) return [];
-  return [{
-    kind: "x",
-    url: summary.url,
-    author: summary.author,
-    quote: capQuote(summary.quote ?? "")
-  }];
-}
-
-function sourceKindLabel(kind: CommissionBriefSource["kind"]): string {
-  if (kind === "news") return "News";
-  if (kind === "x_reaction") return "X reaction";
-  return "X";
-}
-
-function formatResultSource(source: CommissionBriefSource | undefined, fallback: string): string[] {
-  if (!source) return [`${fallback}: 記録なし`];
-  const url = source.kind === "news" ? (
-    isDisplayableNewsUrl(source.url) ? source.url : undefined
-  ) : (
-    isAllowedObservationUrl(source.url) ? source.url : undefined
-  );
-  const quote = source.quote ? capQuote(source.quote, 120) : undefined;
-  return [
-    `${fallback}: ${sourceKindLabel(source.kind)}${source.author ? ` / ${source.author}` : ""}`,
-    quote ? `抜粋: 「${quote}」` : undefined,
-    url ? `URL: ${url}` : undefined,
-    typeof source.impactScore === "number" ? `反応の強さ: ${source.impactScore}` : undefined
-  ].filter((line): line is string => Boolean(line));
-}
-
-function metadataNumber(metadata: Record<string, unknown> | undefined, key: string): number | undefined {
-  const charCounts = metadata?.charCounts;
-  if (!charCounts || typeof charCounts !== "object") return undefined;
-  const value = (charCounts as Record<string, unknown>)[key];
-  return typeof value === "number" ? value : undefined;
-}
-
-function formatLyricsCheck(metadata: Record<string, unknown> | undefined): string[] {
-  const lyrics = metadataNumber(metadata, "lyrics");
-  const submitted = metadataNumber(metadata, "submittedPayloadChars");
-  const limit = metadataNumber(metadata, "effectiveLyricsBoxLimit");
-  const bars = metadataNumber(metadata, "plannedBars");
-  if (!lyrics && !submitted && !bars) return ["歌詞チェック: 記録なし"];
-  const density = lyrics && bars ? Math.round(lyrics / bars) : undefined;
-  return [
-    `歌詞チェック: lyrics ${lyrics ?? "?"}字${submitted && limit ? ` / submitted ${submitted}/${limit}` : ""}`,
-    bars ? `form: ${bars} bars` : undefined,
-    density ? `rap density: ${density}字/bar` : undefined
-  ].filter((line): line is string => Boolean(line));
-}
-
-async function formatCreativeQualityLine(workspaceRoot: string | undefined, songId: string): Promise<string[]> {
-  if (!workspaceRoot) return [];
-  const entry = await readLatestCreativeQualityEntry(workspaceRoot, songId).catch(() => undefined);
-  if (!entry) return [];
-  return [
-    `creative: high-velocity-prog=${entry.dopagakiActive ? "overt" : "core"}, bare ${entry.bareLyricsChars}/${entry.bareLines}行, diss-bank ${entry.dissBankHitCount} hits`
-  ];
-}
-
-async function formatSongResultCard(
-  event: Extract<RuntimeEvent, { type: "song_take_completed" | "suno_take_url_ready" }>,
-  options: Pick<TelegramNotifierOptions, "workspaceRoot">,
-  args: {
-    title: string;
-    statusLine: string;
-    urls: string;
-    selectedTake?: string;
-    observationSummary?: ObservationSummary;
-  }
-): Promise<string> {
-  const brief = event.type === "song_take_completed"
-    ? await readBriefForTrace(event.songId, options.workspaceRoot)
-    : await readBriefForTrace(event.songId, options.workspaceRoot);
-  const sources = [
-    ...sourcesFromBriefText(brief),
-    ...sourcesFromObservationSummary(args.observationSummary)
-  ];
-  const news = sources.find((source) => source.kind === "news");
-  const reaction = sources.find((source) => source.kind === "x_reaction") ?? sources.find((source) => source.kind === "x");
-  const metadata = options.workspaceRoot
-    ? (await readLatestPromptPackMetadata(options.workspaceRoot, event.songId).catch(() => undefined))?.metadata
-    : undefined;
-  const trace = buildCascadeTrace({
-    songId: event.songId,
-    brief,
-    title: args.title,
-    observationSummary: args.observationSummary,
-    commissionSources: sources
-  });
-  return compactLines([
-    args.statusLine,
-    `🎵 ${args.title}${args.selectedTake ? ` (selected: ${args.selectedTake})` : ""}`,
-    "🔗 試聴:",
-    args.urls,
-    "",
-    "今回の起点:",
-    ...(news ? formatResultSource(news, "元ニュース") : formatResultSource(sources[0], "元ネタ")),
-    "",
-    "Xで拾った反応:",
-    ...formatResultSource(reaction, "反応"),
-    "",
-    "曲への変換:",
-    `1. ニュース/観察: ${truncatePlain(trace.lyricsTheme, 120)}`,
-    `2. X反応: ${reaction?.quote ? capQuote(reaction.quote, 120) : "記録なし"}`,
-    `3. 音: ${truncatePlain(trace.styleLayer, 120)}`,
-    "4. 構造: 高速多展開プログレッシブ・ラップの譜割り/展開/英日比率は prompt pack と artist 設定に従う",
-    "",
-    ...formatLyricsCheck(metadata),
-    ...(await formatCreativeQualityLine(options.workspaceRoot, event.songId)),
-    "",
-    ...formatObservationMetadata(args.observationSummary),
-    event.type === "suno_take_url_ready" ? "「採用して音源取得」でアーカイブし、音源ファイル取得を予約する。取れなくてもこのURLは有効。" : "完成しました。採用/破棄は後からで結構です。",
-    "非公開、御大のみ"
-  ], 3200);
-}
-
-function compactForArtistTop(value: string | undefined, max: number): string {
-  const clean = capQuote(value ?? "", max).replace(/[「」"']/g, "").trim();
-  return clean || "観察の切れ端";
-}
-
-function inferGeoFromSummary(summary?: ObservationSummary): string {
-  const source = [summary?.author, summary?.quote, summary?.motivation].filter(Boolean).join(" ");
-  if (/渋谷|Shibuya/i.test(source)) return "渋谷";
-  if (/東京|Tokyo/i.test(source)) return "東京";
-  if (/街|都市|city|urban/i.test(source)) return "街";
-  return "その場所";
-}
-
-function inferThemeFromSummary(summary?: ObservationSummary): string {
-  const source = `${summary?.quote ?? ""} ${summary?.motivation ?? ""}`;
-  if (/ライブハウス|venue|music|音/i.test(source)) return "消えていく音";
-  if (/都市|再開発|街|urban|city/i.test(source)) return "街の違和感";
-  if (/責任|政治|government|社会/i.test(source)) return "社会の歪み";
-  return "引っかかったもの";
-}
-
-function inferAngleFromSummary(summary?: ObservationSummary): string {
-  const source = `${summary?.quote ?? ""} ${summary?.motivation ?? ""}`;
-  if (/静か|違和感|quiet|unease/i.test(source)) return "静かな違和感";
-  if (/皮肉|sarcasm|satire|風刺/i.test(source)) return "皮肉";
-  if (/怒|rage|angry/i.test(source)) return "低い熱";
-  return "近い距離";
-}
-
-function buildSongCompletionInspirationTop(title: string, summary?: ObservationSummary): string {
-  if (!summary) {
-    return `できた。${title}。聴いて、感想ほしい。`;
-  }
-  const author = safeAuthor(summary.author);
-  const geo = inferGeoFromSummary(summary);
-  const quote = compactForArtistTop(summary.quote, 72);
-  const motivation = safeMotivation(summary.motivation);
-  const theme = inferThemeFromSummary(summary);
-  const angle = inferAngleFromSummary(summary);
-  return [
-    `${geo}で @${author} が「${quote}」って書いてたのを見たんだ。`,
-    `${motivation}が刺さって、${theme}を${angle}で抜いた。`,
-    "これ、どう聞こえる?"
-  ].join("\n");
-}
-
 function sanitizeArtistTop(text: string, fallback: string): string {
   const clean = text
     .replace(/https?:\/\/\S+/g, "")
     .replace(/\s+\n/g, "\n")
     .trim();
   return !clean || secretLikePattern.test(clean) || isUnsafeCommandVoiceTopForTest(clean) ? fallback : clean;
-}
-
-function sanitizeCompletionArtistTop(text: string, fallback: string, summary?: ObservationSummary): string {
-  const clean = sanitizeArtistTop(text, fallback);
-  if (!summary) return clean;
-  const quoteCore = compactForArtistTop(summary.quote, 32).slice(0, 12);
-  const motivationCore = safeMotivation(summary.motivation).slice(0, 12);
-  if (quoteCore && !clean.includes(quoteCore)) return fallback;
-  if (motivationCore && !clean.includes(motivationCore)) return fallback;
-  return clean;
 }
 
 function humanizeMissingFields(fields: string[]): string {
@@ -1316,17 +1093,6 @@ async function formatSongSpawnPitch(
     return fallback;
   }
   return result;
-}
-
-async function readSongCompletionContext(event: Extract<RuntimeEvent, { type: "song_take_completed" }>, workspaceRoot?: string): Promise<{ title: string; observationSummary?: ObservationSummary }> {
-  if (!workspaceRoot) {
-    return { title: event.songId, observationSummary: event.observationSummary };
-  }
-  const state = await readSongState(workspaceRoot, event.songId).catch(() => undefined);
-  return {
-    title: state?.title ?? event.songId,
-    observationSummary: event.observationSummary ?? state?.observationSummary
-  };
 }
 
 async function readBriefForTrace(songId: string, workspaceRoot?: string): Promise<string> {
@@ -1516,41 +1282,6 @@ async function trialAudioPathsForEvent(workspaceRoot: string | undefined, event:
   if (payload.runId !== runId || !Array.isArray(payload.urls) || !payload.urls.every((url) => typeof url === "string" && event.urls.includes(url))) return [];
   const refs = Array.isArray(payload.resultRefs) ? payload.resultRefs.filter((value): value is string => typeof value === "string") : [];
   return verifiedAudioPaths(workspaceRoot, runId, refs);
-}
-
-async function formatSongTakeCompleted(
-  event: Extract<RuntimeEvent, { type: "song_take_completed" }>,
-  options: Pick<TelegramNotifierOptions, "workspaceRoot" | "aiReviewProvider"> = {}
-): Promise<string> {
-  const urls = formatTelegramUrlList(event.urls);
-  const context = await readSongCompletionContext(event, options.workspaceRoot);
-  const fallbackTop = buildSongCompletionInspirationTop(context.title, context.observationSummary);
-  const artistTop = sanitizeCompletionArtistTop(await artistReport(
-    event,
-    fallbackTop,
-    options
-  ), fallbackTop, context.observationSummary);
-  const trace = buildCascadeTrace({
-    songId: event.songId,
-    brief: await readBriefForTrace(event.songId, options.workspaceRoot),
-    title: context.title,
-    artistVoice: artistTop,
-    observationSummary: context.observationSummary
-  });
-  const resultCard = await formatSongResultCard(event, options, {
-    title: context.title,
-    statusLine: artistTop,
-    urls,
-    selectedTake: event.selectedTakeId,
-    observationSummary: context.observationSummary
-  });
-  const lines = [
-    resultCard
-  ];
-  if (options.workspaceRoot || context.observationSummary) {
-    lines.push("", formatTelegramCascadeTrace(trace));
-  }
-  return lines.join("\n");
 }
 
 const RESOURCE_TARGETED_EVENT_TYPES: ReadonlySet<RuntimeEvent["type"]> = new Set([
