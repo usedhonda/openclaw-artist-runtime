@@ -21,6 +21,7 @@ export interface LyricRevisionCandidate {
   sourceVersion: number;
   instruction: string;
   createdAt: string;
+  restoredFrom?: { kind: "adopted_lyrics" | "candidate"; version: number };
 }
 
 export interface SaveLyricRevisionInput {
@@ -31,6 +32,7 @@ export interface SaveLyricRevisionInput {
   changes?: LyricRevisionChange[] | Record<string, string>;
   source: { kind: "adopted_lyrics" | "candidate"; version: number };
   expectedSourceHash: string;
+  restoredFrom?: { kind: "adopted_lyrics" | "candidate"; version: number };
 }
 
 export interface RestoreLyricRevisionInput {
@@ -200,7 +202,8 @@ export async function saveLyricRevision(input: SaveLyricRevisionInput): Promise<
     source: { kind: input.source.kind, version: source.version },
     sourceVersion: source.version,
     instruction: input.instruction.trim(),
-    createdAt: new Date().toISOString()
+    createdAt: new Date().toISOString(),
+    restoredFrom: input.restoredFrom
   };
   await writeFile(join(candidateDir(songRoot), `candidate.v${version}.json`), `${JSON.stringify(candidate, null, 2)}\n`, { flag: "wx" });
   return candidate;
@@ -214,17 +217,16 @@ export async function restoreLyricRevision(input: RestoreLyricRevisionInput): Pr
     ? source
     : await readVersion(songRoot, input.targetKind ?? "candidate", input.targetVersion);
   const restoredText = input.text ?? (input.changes ? applyChanges(target.text, input.changes).text : source.text);
-  return saveLyricRevision({ workspaceRoot: input.workspaceRoot, songId: input.songId, instruction: input.instruction, text: restoredText, source: input.targetVersion === undefined ? { kind: source.kind, version: source.version } : { kind: target.kind, version: target.version }, expectedSourceHash: target.textHash });
+  return saveLyricRevision({ workspaceRoot: input.workspaceRoot, songId: input.songId, instruction: input.instruction, text: restoredText, source: input.targetVersion === undefined ? { kind: source.kind, version: source.version } : { kind: target.kind, version: target.version }, expectedSourceHash: target.textHash, restoredFrom: { kind: source.kind, version: source.version } });
 }
 
 export async function adoptLyricRevision(input: AdoptLyricRevisionInput): Promise<{ candidate: LyricRevisionCandidate; promptPack: Awaited<ReturnType<typeof createAndPersistSunoPromptPack>> }> {
   const songRoot = await assertExistingSong(input.workspaceRoot, input.songId);
   const candidate = await readCandidate(songRoot, input.version);
   if (!input.expectedTextHash || candidate.textHash !== input.expectedTextHash) throw new Error("candidate hash changed; adoption refused");
-  const lockKey = `${songRoot}:${candidate.version}:${candidate.textHash}`;
-  const previous = adoptionLocks.get(lockKey);
-  if (previous) await previous;
-  const operation = (async () => {
+  const lockKey = songRoot;
+  const previous = adoptionLocks.get(lockKey) ?? Promise.resolve();
+  const operation = previous.catch(() => undefined).then(async () => {
     const existing = await readAdoptionReceipt(songRoot, candidate.version, candidate.textHash);
     if (existing) return existing.promptPack;
     const song = await readSongState(input.workspaceRoot, input.songId);
@@ -238,7 +240,7 @@ export async function adoptLyricRevision(input: AdoptLyricRevisionInput): Promis
     });
     await appendFile(join(candidateDir(songRoot), "adoptions.jsonl"), `${JSON.stringify({ candidateVersion: candidate.version, candidateHash: candidate.textHash, promptPack })}\n`, "utf8");
     return promptPack;
-  })();
+  });
   adoptionLocks.set(lockKey, operation);
   try {
     return { candidate, promptPack: await operation };

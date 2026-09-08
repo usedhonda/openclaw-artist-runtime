@@ -14,7 +14,7 @@ const hash = (text: string) => createHash("sha256").update(text).digest("hex");
 describe("lyric adoption receipt", () => {
   beforeEach(() => {
     createPack.mockReset();
-    createPack.mockResolvedValue({ songId: "fixture-song", packVersion: 2, pack: { payloadHash: "payload" }, artifactPaths: {}, ledgerEntryIds: [] });
+    createPack.mockImplementation(async () => ({ songId: "fixture-song", packVersion: createPack.mock.calls.length + 1, pack: { payloadHash: "payload" }, artifactPaths: {}, ledgerEntryIds: [] }));
   });
 
   it("is idempotent and single-flight for the same approved candidate", async () => {
@@ -28,5 +28,20 @@ describe("lyric adoption receipt", () => {
     const [first, second] = await Promise.all([adoptLyricRevision(input), adoptLyricRevision(input)]);
     expect(createPack).toHaveBeenCalledTimes(1);
     expect(first.promptPack.packVersion).toBe(second.promptPack.packVersion);
+  });
+
+  it("serializes different candidates for one song", async () => {
+    const root = await mkdtemp(join(tmpdir(), "artist-adopt-"));
+    const text = "[Verse 1]\nline";
+    await mkdir(join(root, "songs", "fixture-song", "lyrics"), { recursive: true });
+    await writeFile(join(root, "songs", "fixture-song", "song.md"), "# Fixture Song\n\nStatus: archived\n");
+    await writeFile(join(root, "songs", "fixture-song", "lyrics", "lyrics.v1.md"), `${text}\n`);
+    const first = await saveLyricRevision({ workspaceRoot: root, songId: "fixture-song", instruction: "one", source: { kind: "adopted_lyrics", version: 1 }, expectedSourceHash: hash(text), text: "one" });
+    const second = await saveLyricRevision({ workspaceRoot: root, songId: "fixture-song", instruction: "two", source: { kind: "adopted_lyrics", version: 1 }, expectedSourceHash: hash(text), text: "two" });
+    await Promise.all([
+      adoptLyricRevision({ workspaceRoot: root, songId: "fixture-song", version: first.version, artistReason: "one", expectedTextHash: first.textHash }),
+      adoptLyricRevision({ workspaceRoot: root, songId: "fixture-song", version: second.version, artistReason: "two", expectedTextHash: second.textHash })
+    ]);
+    expect(createPack).toHaveBeenCalledTimes(2);
   });
 });

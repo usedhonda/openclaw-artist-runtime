@@ -49,7 +49,7 @@ export function registerRevisionTools(api: unknown): void {
     name: "artist_lyrics_revision_save",
     description: "Save a durable, unadopted lyric candidate for an existing song. It never changes adopted material.",
     parameters: {
-      type: "object", additionalProperties: false, required: ["songId", "instruction"],
+      type: "object", additionalProperties: false, required: ["songId", "instruction", "sourceKind", "sourceVersion", "expectedSourceHash"],
       properties: {
         songId: { type: "string", minLength: 1 }, instruction: { type: "string", minLength: 1 }, text: { type: "string" },
         sourceKind: { type: "string", enum: ["adopted_lyrics", "candidate"] }, sourceVersion: { type: "integer", minimum: 1 }, expectedSourceHash: { type: "string", minLength: 1 },
