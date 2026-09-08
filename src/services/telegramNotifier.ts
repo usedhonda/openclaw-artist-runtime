@@ -23,6 +23,7 @@ import { readLatestPromptPackMetadata } from "./sunoPromptPackFiles.js";
 import { readLatestCreativeQualityEntry } from "./creativeQualityLedger.js";
 import { composeDraftBoxNextAction, formatDraftBoxNextActionSection } from "./draftBoxNextAction.js";
 import { emitDraftBoxProactiveNoticeIfNeeded } from "./draftBoxProactiveNotice.js";
+import { formatSongSubmissionReport } from "./songSubmissionReport.js";
 import {
   TELEGRAM_SECTION_DIVIDER,
   appendTelegramSection,
@@ -1635,8 +1636,15 @@ export async function formatRuntimeEvent(
   event: RuntimeEvent,
   options: Pick<TelegramNotifierOptions, "workspaceRoot" | "aiReviewProvider" | "dashboardBaseUrl"> = {}
 ): Promise<string> {
-  const body = appendButtonEffectSection(event, stripTelegramHtmlComments(await formatRuntimeEventRaw(event, options)));
-  if (event.type === "song_spawn_proposed") {
+  const musicReport = event.type === "song_spawn_proposed"
+    || event.type === "suno_take_url_ready"
+    || event.type === "suno_adoption_download_imported";
+  const rawBody = stripTelegramHtmlComments(await formatRuntimeEventRaw(event, options));
+  const body = musicReport ? rawBody : appendButtonEffectSection(event, rawBody);
+  // Music reports are the producer's listening conversation. Do not append the
+  // operational resource dump or generic draft-box footer to them; diagnostics
+  // remain in the ledgers and the dedicated stop events still expose them.
+  if (musicReport) {
     return body;
   }
   const withNextAction = await appendDraftBoxNextActionSection(event, options, body);
@@ -1653,16 +1661,17 @@ async function formatRuntimeEventRaw(
     case "take_imported":
       return `Take imported: ${event.songId} (${event.paths.length} path(s))`;
     case "suno_adoption_download_imported":
-      return [
-        `音源ファイルも取れた。${event.songId}。`,
-        "",
-        TELEGRAM_SECTION_DIVIDER,
-        event.selectedTakeId ? `take: ${event.selectedTakeId}` : undefined,
-        `run: ${event.runId}`,
-        event.paths.length > 0 ? `保存: ${event.paths.join(", ")}` : "保存: 取得済み",
-        "🔗 試聴:",
-        formatTelegramUrlList(event.urls)
-      ].filter((line): line is string => Boolean(line)).join("\n");
+      {
+        const state = options.workspaceRoot
+          ? await readSongState(options.workspaceRoot, event.songId).catch(() => undefined)
+          : undefined;
+      return formatSongSubmissionReport({
+        kind: "download",
+        title: state?.title ?? "今回の音源",
+        binding: { runId: event.runId },
+        audioUrls: event.urls
+      });
+      }
     case "suno_adoption_download_failed":
       return [
         `音源ファイルは取れなかった。${event.songId}。Suno URLは有効、ここから聴ける。`,
@@ -1691,12 +1700,11 @@ async function formatRuntimeEventRaw(
       return formatSongTakeCompleted(event, options);
     case "suno_take_url_ready": {
       const state = options.workspaceRoot ? await readSongState(options.workspaceRoot, event.songId).catch(() => undefined) : undefined;
-      return formatSongResultCard(event, options, {
-        title: state?.title ?? event.songId,
-        statusLine: `生成中、じき完成。${state?.title ?? event.songId}。先にURLだけ届ける。`,
-        urls: formatTelegramUrlList(event.urls),
-        selectedTake: event.selectedTakeId,
-        observationSummary: state?.observationSummary
+      return formatSongSubmissionReport({
+        kind: "progress",
+        title: state?.title ?? "今回の音源",
+        binding: { runId: event.runId },
+        audioUrls: event.urls
       });
     }
     case "theme_generated":
