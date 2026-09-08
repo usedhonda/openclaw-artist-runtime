@@ -40,4 +40,16 @@ describe("artist_take_select tool contract", () => {
     expect(selectTake).not.toHaveBeenCalled();
     expect(updateProductionConversation).not.toHaveBeenCalled();
   });
+
+  it("keeps a successful non-Telegram selection when no conversation context exists", async () => {
+    selectTake.mockResolvedValue({ songId: "song-001", runId: "run-old", selectedTakeId: "take-a", sourceUrls: [] });
+    updateProductionConversation.mockResolvedValue(undefined);
+    let definition: { execute: (id: string, input: unknown) => Promise<unknown> } | undefined;
+    registerSongTools({
+      registerTool(factory: (context: unknown) => unknown) {
+        definition = factory({ workspaceDir: "/workspace", senderIsOwner: true, messageChannel: "cli" }) as typeof definition;
+      }
+    });
+    await expect(definition!.execute("call-3", { songId: "song-001", runId: "run-old", selectedTakeId: "take-a", reason: "local producer choice" })).resolves.toMatchObject({ details: { runId: "run-old", selectedTakeId: "take-a" } });
+  });
 });

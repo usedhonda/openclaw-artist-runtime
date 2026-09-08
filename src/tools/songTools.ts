@@ -50,14 +50,13 @@ export function registerSongTools(api: unknown): void {
         conversational: payload.conversational !== false,
         producerDecision: true
       });
-      const conversation = await updateProductionConversation(workspaceRoot, context, {
+      await updateProductionConversation(workspaceRoot, context, {
         songId: selection.songId,
         runId: selection.runId,
         acceptedTake: { runId: selection.runId, takeId: selection.selectedTakeId },
         phase: "adopted",
         pendingDecision: ""
       });
-      if (!conversation) throw new Error("trusted Telegram conversation context is unavailable");
       return selection;
     }
   });
