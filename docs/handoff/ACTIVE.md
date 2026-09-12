@@ -16,6 +16,11 @@ Current acceptance target: full local gate, commit, Linux reflection, then one
 operator-requested song through lyrics, V6 prompt pack, prepared Suno form, and
 Telegram receipt. No public publish, CAPTCHA handling, login action, or Max Mode.
 
+Checkpoint: commit `fb35d38` is pushed to `origin/main`; the local gate is green
+(2100 tests). Linux reflection is waiting only for the operator to complete the
+Tailscale SSH additional-auth page already opened in Chrome. The live gateway is
+still on the prior build; do not launch the trial song until reflection completes.
+
 ## Active goal: producer-musician creation loop (2026-09-09)
 
 The earlier preparation repair did not complete the producer's required workflow.
