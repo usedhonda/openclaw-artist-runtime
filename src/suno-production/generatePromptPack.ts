@@ -36,6 +36,7 @@ function buildPayload(input: CreateSunoPromptPackInput, style: string, exclude: 
   return {
     songId: input.songId,
     songName: input.songTitle,
+    model: "v6",
     artistReason: input.artistReason,
     styleAndFeel: style,
     excludeStyles: exclude,

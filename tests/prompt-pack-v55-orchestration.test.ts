@@ -23,7 +23,7 @@ const lyrics = [
   "あさのてまえでまだいきをかぞえる"
 ].join("\n");
 
-describe("Suno V5.5 prompt pack orchestration", () => {
+describe("Suno V6 prompt pack orchestration", () => {
   it("orchestrates lyrics through style, exclude, YAML, sliders, and payload contract", () => {
     const pack = createSunoPromptPack({
       songId: "song-010",
@@ -46,6 +46,7 @@ describe("Suno V5.5 prompt pack orchestration", () => {
     expect(String(pack.payload.lyricsText)).toContain(lyrics);
     expect(String(pack.payload.lyrics).length).toBeLessThan(1500);
     expect(pack.payload.payloadYaml).toBe(pack.yamlLyrics);
+    expect(pack.payload.model).toBe("v6");
     expect(pack.sliders.weirdness).toBeGreaterThanOrEqual(15);
     expect(pack.sliders.weirdness).toBeLessThanOrEqual(85);
     expect(pack.validation.valid).toBe(true);

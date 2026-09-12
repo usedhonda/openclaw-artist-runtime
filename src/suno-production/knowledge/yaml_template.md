@@ -1,6 +1,6 @@
 <!-- Source: sunomanual (MIT, Copyright 2025-2026 usedhonda) -->
 
-# Output Templates for Suno Style Analyzer V5.5
+# Output Templates for Suno Style Analyzer
 
 This file contains the exact output templates. The GPT must follow these structures precisely.
 
@@ -17,7 +17,7 @@ This file contains the exact output templates. The GPT must follow these structu
 
 ```yaml
 # META (hints; do not sing)
-version: v5.5
+version: v6   # 使用モデル。既定 v6。他に v6-wild / v6-mini。v5.5 以前は退役済み
 meta:
   tempo: <int>
   key: "<e.g., F# major>"
@@ -51,6 +51,29 @@ notes:
 
 **No per-section arrays.** The old `sections` array (vocals/cues/remix_hints per section) ate ~2000 chars. Annotation tags like `[Verse 1 - description]` already carry production hints in the lyrics. META stays global-only.
 
+### V6 用の任意フィールド
+
+**すべて任意** — 書かなくても既存のフローは何も変わらない。
+詳細は `suno_v6_reference.md`。
+
+| フィールド | 用途 | 例 |
+|---|---|---|
+| `model_intent` | precision / exploration / fast のどれを狙うか | `exploration` |
+| `vibe_scene` | 情景そのもの。形容詞では届かない質感に使う | `"midnight on a rooftop"` |
+| `must_preserve` | 局所編集で**変えてはいけない**もの | `["lead vocal melody", "tempo", "key"]` |
+| `must_change` | 局所編集で変える対象 | `["second chorus instrumentation"]` |
+| `references` | 参照素材と**その役割**（素材名だけでは足りない） | `[{ source: "A", role: "vocal phrasing only" }]` |
+
+```yaml
+# 任意フィールドの記入例
+model_intent: exploration
+vibe_scene: "last train home after deciding not to send the message"
+must_preserve: ["lead vocal melody", "tempo", "key"]
+```
+
+これらは**このキットの内部表現**であり、Suno がこのフィールド名を解釈するわけではない。
+最終的に Style / Lyrics / 局所編集の文へ展開して使う。
+
 ### Kanji → Hiragana Conversion Examples
 - 愛してる → あいしてる
 - 夜空 → よぞら
@@ -64,7 +87,11 @@ notes:
 - Keep English as-is: love → love
 
 ### Section Matching Rule
-The `sections` in YAML and the lyrics sections MUST exactly match the input lyrics:
+
+The lyrics section tags MUST exactly match the input lyrics.
+(There is no `sections` array in YAML — it was removed, see above. This rule applies to the
+section headers inside the `=== LYRICS START/END ===` block only.)
+
 - Same section names
 - Same order
 - No additions, deletions, or reordering
@@ -81,8 +108,11 @@ If YAML block exceeds 4500 characters, reduce META only (NEVER touch lyrics):
 
 ## Style Template
 
-**V5.5 準拠: タグ形式、4-7 descriptors、120文字以内。**
-**プローズ（散文）禁止。短いカンマ区切りの名詞句で書く。**
+**✅ V6 既定: 属性どうしの関係を述べる。** どの楽器が主役か、verse と chorus をどう対比させるか。
+**❓ 公式未記載: V6 の Style 文字数上限。** 以下の数値は**キットの目標値**であって Suno の公表値ではない。
+
+**🧪 V5.5 由来 / V6 未検証: タグ形式、4-7 descriptors、120文字以内。**
+**短いカンマ区切りの名詞句で書く形式も引き続き有効。**
 **100% English. Zero Japanese.**
 **Front-load: genre → BPM → key → mood → vocal → instruments → mix の順。**
 **Max genres: 2 genre pairs（3+ は不安定）。**
@@ -100,7 +130,8 @@ If YAML block exceeds 4500 characters, reduce META only (NEVER touch lyrics):
 
 ### Performance Direction（Style 内に追加、任意）
 
-V5.5 はセクション別の演出を Style 内のロールラベルで制御できる。
+🧪 V5.5 由来 / V6 未検証: セクション別の演出を Style 内のロールラベルで制御する書き方。
+V6 では「どのセクションで何がどう変わるか」を関係として述べる文に吸収できる。
 annotation tag への長文よりこちらが効果が高い。
 
 **Format**: Style タグの後に改行して `<Section>: <2-3 descriptors>` を追加
@@ -116,8 +147,15 @@ Bridge: piano ghost drums only
 ```
 
 **注意**:
-- Performance Direction を含めると Style が 120 文字を超える。合計上限は Suno UI の Style フィールド上限（1000文字）に従う
-- コアタグ（120文字以内）+ Performance Direction（必要分のみ）= 実用上 200-400 文字が目安
+- **Style の3つの数値を混同しない**（別々の層の話）:
+
+| 層 | 値 | 意味 |
+|---|---|---|
+| コアタグ | **120文字以内** | 本キットの必須ルール。1行目のタグ列のみ |
+| Style 欄 全体 | **400文字以内** | 本キットの目標値。コアタグ + Performance Direction |
+| Suno UI の上限 | 1000文字 | Suno 側のハード上限。キットは意図的にここまで使わない |
+
+- Performance Direction を含めるとコアタグの 120 文字は超えるが、Style 欄全体で 400 文字以内に収める
 - ジャンル・音色は正しいが演奏の態度/デリバリーが違う → Performance Direction を追加
 - 基本的な音作りが違う → Style タグ自体を変更
 
@@ -159,7 +197,8 @@ If core Style tags exceed 120 characters:
 1. **Remove secondary adjectives** (keep primary genre + mood)
 2. **Compress instruments** (keep 2-3 key instruments)
 3. **Move detail to Performance Direction block** (separate from core tags)
-If Performance Direction is needed, total Style field can go up to 400 characters.
+If Performance Direction is needed, the kit target for the whole Style field is 400 characters.
+(Suno's own UI cap is 1000 characters; the kit deliberately stays well under it.)
 
 ---
 
@@ -184,7 +223,12 @@ Trap, Dubstep, distorted guitars, EDM supersaws, female humming
 
 ---
 
-## Remix Hints Recommended Values
+## 🧪 V5.5 レガシー: Remix Hints Recommended Values（V6 未検証）
+
+> 以下は **V5.5 で有効だった数値**。V6 ではスライダーの意味そのものが公式に未記載で、本キットでも未再現。
+> 削除はしないが、V6 では**出発点**として使い、結果を見て調整する。A/B の片側としてのみ扱う。
+> Weirdness は Suno の creative control であって、公開されたサンプリング温度ではない。
+> 判定根拠: `v55_to_v6_migration.md` §10
 
 | Section | Weirdness | Style Influence | Audio Influence (Cover/Sample) |
 |---------|-----------|-----------------|-------------------------------|
@@ -208,7 +252,7 @@ Trap, Dubstep, distorted guitars, EDM supersaws, female humming
 | Verse 1 統合 | `[Verse 1 - starts spoken then erupts]` | イントロなしで即歌い出し |
 | イントロ省略 | `[Verse 1]` から開始 | 完全にイントロを排除 |
 | Hook 先頭 | `[Short Instrumental Intro]` の直後に `[Hook]` を置き、そこから歌い出す | 4-8 小節の短イントロを確保しつつ、最初の歌唱を強いフックで先出し |
-| 即歌唱 prose | Style 側に `start immediately with guitar and vocal, no intro, no humming` | stutter / 冒頭ハミングを減らす。成功率は 50% 程度との報告あり |
+| 即歌唱 prose | Style 側に `start immediately with guitar and vocal, no intro, no humming` | `no X` を Style に入れる例外ワークアラウンド。stutter / 冒頭ハミングを減らす報告あり（成功率は 50% 程度）。まず構造タグで試し、A/B 用に限定。**V6 では要再検証** — V6 期のコミュニティ報告は、Style 内の否定語がむしろ当の要素を呼び込む例を挙げている（`suno_v6_reference.md` の Community findings）。肯定形で書いて Exclude 側へ寄せた版と A/B すること |
 
 `[Intro]` を使う場合は長いインストが入ることを許容する前提で。
 推奨 descriptors: atmospheric, fade in, soft pads, ambient, building, sparse

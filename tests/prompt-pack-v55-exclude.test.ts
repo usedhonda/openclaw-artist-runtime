@@ -39,7 +39,7 @@ describe("Suno V5.5 exclude builder", () => {
     });
 
     expect(prompt.sourceAttribution).toContain("mygpts/style-analyzer/instructions.md");
-    expect(EXCLUDE_SYNTHESIS_SYSTEM_PROMPT).toContain("2-8 items");
+    expect(EXCLUDE_SYNTHESIS_SYSTEM_PROMPT).toContain("2-5 items");
     expect(EXCLUDE_SYNTHESIS_SYSTEM_PROMPT).toContain("No \"no X\" phrasing");
     expect(EXCLUDE_SYNTHESIS_SYSTEM_PROMPT).toContain("style_catalog.md");
     expect(EXCLUDE_SYNTHESIS_KNOWLEDGE_REFERENCES).toContain("style_catalog.md");

@@ -43,6 +43,8 @@ const DURATION_ALIGNED_LYRICS_WRITER_SYSTEM_PROMPT = LYRICS_WRITER_SYSTEM_PROMPT
 export const LYRICS_KNOWLEDGE_DIGEST_FILES = [
   "lyric_craft.md",
   "song_structures.md",
+  "suno_v6_reference.md",
+  "v55_to_v6_migration.md",
   "suno_v55_reference.md",
   "rap_and_flow.md",
   "english_lyrics.md",
@@ -183,7 +185,7 @@ function moodFromBrief(briefText: string): string | undefined {
 
 // Per-file budget tuned to keep the full digest under ~120k chars while still
 // shipping each knowledge file at near-original depth so the AI can actually
-// pull craft-level detail (rhyme tables, structure formulas, V5.5 metatag
+// pull craft-level detail (rhyme tables, structure formulas, and V6 guidance)
 // vocabulary) into the draft instead of paraphrasing a few headers.
 // Per-file budget tuned to keep the digest near ~32k chars (~8k tokens) so we
 // inject genuine craft depth without blowing the codex/codex-style provider
@@ -199,6 +201,8 @@ const KNOWLEDGE_FILE_BUDGETS: Record<string, number> = {
   "style_catalog.md": 2000,
   "rap_and_flow.md": 1500,
   "english_lyrics.md": 1500,
+  "suno_v6_reference.md": 3000,
+  "v55_to_v6_migration.md": 2000,
   "suno_v55_reference.md": 2000
 };
 
@@ -245,7 +249,7 @@ export function buildLyricsDraftingPrompt(input: BuildLyricsPromptInput): string
     "Extract one motif from the observation-bearing brief, metabolize it through the artist persona, and avoid generic placeholder lyrics.",
     "Write a song, not a business briefing or a press release. Let the source-grounded human stakes and the artist's specific feeling drive the scenes and turns. Do not automatically translate every event into prices, balance sheets, or the same urban critique. Imagined scenes are artistic expression, not additional reported facts; never attribute them to the source as fact.",
     "If the brief contains both news and x_reaction sources, use both: news supplies the event, x_reaction supplies crowd temperature, irritation, irony, or sympathy. Do not merely summarize them; assign them to lyric sections.",
-    "Prioritize 韻, 伏線, 情景, genre-aware flow, hook design, Suno V5.5 section tags, and singable line length.",
+    "Prioritize 韻, 伏線, 情景, genre-aware flow, hook design, V6 semantic section direction, and singable line length. Treat V5.5 inline tags as experimental secondary signals.",
     "Rap density rule: for rap/trap/drill/fast social songs, produce at least two 12-16 bar verses, physical hook repeats, internal rhyme in each verse, and one punchline/perspective turn per verse. If the first draft feels short, expand verse detail before returning JSON.",
     "Repetition rule: physically repeat a meaningful Hook phrase across Hook sections, but never pad the intro, verses, or hook with syllable stutters or filler such as だ、だ、だ / よよよ / da-da-da. A repeated word must carry a different rhythmic or semantic job; do not open the song with a stutter.",
     "Opening rule: invent this song's opening from its particular observation, rather than selecting a stock intro pattern. An opening is either [Instrumental Intro - concrete sound/action, no vocals] with zero lyric lines, or [Intro - concrete delivery/action] with one intentional written vocal event: a complete intelligible lyric line, or a brief deliberate scat when it carries the song's rhythm. Vocal chops are allowed as an occasional texture when they serve this song, never as the default substitute for an idea. Never emit an empty Intro, a count-in, phonetic filler, or a standalone production cue such as [processed vocals]. Keep fast/double-density delivery inside Verse sections, never before the first written lyric line.",
@@ -268,10 +272,10 @@ export function buildLyricsDraftingPrompt(input: BuildLyricsPromptInput): string
     "",
     "DurationPlan SoT (overrides any older source text that asks for compact section cues or shorter forms):",
     formatDurationPlanForPrompt(durationPlan),
-    "Use the full knowledge digest below — quote rhyme tables, structure formulas, and V5.5 metatag vocabulary explicitly when they apply. Do not paraphrase the references away.",
+    "Use the full knowledge digest below — quote rhyme tables, structure formulas, and V6 semantic guidance explicitly when they apply. Use legacy V5.5 tag vocabulary only where the migration guide keeps or demotes it. Do not paraphrase the references away.",
     input.repairNotes?.length ? `Repair notes from previous draft: ${input.repairNotes.join("; ")}` : "",
     "",
-    "Suno V5.5 knowledge digest (read the full text — it is the craft reference):",
+    "Suno V6 knowledge digest (read the full text — it is the craft reference):",
     truncate(input.knowledgeDigest, 20000),
     "",
     "ARTIST.md (full persona — adapt voice and motifs to it):",

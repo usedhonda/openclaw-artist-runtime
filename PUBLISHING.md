@@ -43,6 +43,11 @@ scripts/sync-suno-cli-vendor.sh
 scripts/sync-suno-cli-vendor.sh /path/to/suno-kit/suno-cli
 ```
 
+The sync refuses to replace the vendor tree when the source checkout is missing
+artist-runtime's protected exact-target, audio fallback, or CDP login patches.
+Merge those patches upstream first, or merge a narrowly reviewed feature delta
+into the current vendor tree; never overwrite the protected build wholesale.
+
 The script builds the CLI (`npm run build`), refuses to vendor a build missing the
 `token_validation_failed` (blocked_captcha 422) classification, copies the built
 `dist/src` and metadata into `vendor/suno-cli/`, and records the source commit in

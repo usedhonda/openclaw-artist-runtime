@@ -24,6 +24,9 @@ describe("style synthesis prompt", () => {
     expect(prompt.system).not.toContain("Do not pad");
     expect(STYLE_SYNTHESIS_KNOWLEDGE_REFERENCES).toContain("style_catalog.md");
     expect(STYLE_SYNTHESIS_KNOWLEDGE_REFERENCES).toContain("master_reference.md");
+    expect(STYLE_SYNTHESIS_KNOWLEDGE_REFERENCES).toContain("suno_v6_reference.md");
+    expect(prompt.system).toContain("Suno V6 Style synthesizer");
+    expect(prompt.system).not.toContain("Suno Style Analyzer V5.5");
     expect(prompt.user).toContain("Rhodes, sax, upright bass");
     expect(prompt.user).toContain("Target 760-900 characters");
     expect(prompt.user).not.toContain("total target <=400 characters");

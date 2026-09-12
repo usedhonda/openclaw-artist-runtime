@@ -127,6 +127,9 @@ Useful optional controls:
 | Flag | Meaning |
 |---|---|
 | `--exclude <text>` | Styles or sounds to avoid |
+| `--model <name>` | Generation model. Defaults to `v6`; free accounts should pass `v6-mini` |
+| `--variety <0-100>` | V6 Variety; use `0` when the authored Style must stay unchanged |
+| `--max-mode` | V6 Max Mode; costs additional credits |
 | `--vocal-gender m|f` | Vocal gender hint |
 | `--weirdness <0-100>` | Suno weirdness slider |
 | `--style-influence <0-100>` | Suno style influence slider |

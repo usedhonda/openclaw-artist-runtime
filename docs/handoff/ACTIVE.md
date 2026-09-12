@@ -1,5 +1,21 @@
 # Handoff: Producer-musician creation loop
 
+## Active incident: autonomous song timeout and Suno V6 migration (2026-09-12)
+
+Live status showed three consecutive songs parked before Suno with
+`native_runtime_timeout`; the Suno worker and ticker remained connected. The
+lyrics-only `xhigh` override is being replaced by the proven `high` level.
+
+The updated suno-kit adds V6 model identifiers and controls, but a wholesale
+vendor sync removed artist-runtime's protected exact-target feed, audio fallback,
+and CDP-login patches and failed 12 focused tests. The vendor tree now carries
+only the reviewed V6 delta on top of those protected patches. The sync script
+fails before replacement until suno-kit absorbs the protected patches.
+
+Current acceptance target: full local gate, commit, Linux reflection, then one
+operator-requested song through lyrics, V6 prompt pack, prepared Suno form, and
+Telegram receipt. No public publish, CAPTCHA handling, login action, or Max Mode.
+
 ## Active goal: producer-musician creation loop (2026-09-09)
 
 The earlier preparation repair did not complete the producer's required workflow.

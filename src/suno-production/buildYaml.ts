@@ -188,7 +188,7 @@ function renderYaml(input: BuildYamlInput, level: YamlBudgetLevel): string {
     `language: ${cleanLine(input.meta.language, "ja")}`
   ] : [
     "# META (hints; do not sing)",
-    "version: v5.5",
+    "version: v6",
     `title: ${cleanLine(input.title, "untitled")}`,
     `tempo: ${cleanLine(input.meta.tempo, "124")}`,
     `key: ${cleanLine(input.meta.key, "minor")}`,

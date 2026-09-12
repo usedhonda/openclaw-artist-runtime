@@ -12,7 +12,7 @@ import { isCommandLeakLine } from "../src/services/lyricsValidator.js";
 
 describe("Plan v10.7 distribution smoke", () => {
   it("ships every sunomanual file as inline string constants", () => {
-    expect(KNOWLEDGE_FILES.length).toBe(9);
+    expect(KNOWLEDGE_FILES.length).toBe(11);
     for (const filename of KNOWLEDGE_FILES) {
       expect(KNOWLEDGE_BUNDLE[filename].length, filename).toBeGreaterThan(0);
     }

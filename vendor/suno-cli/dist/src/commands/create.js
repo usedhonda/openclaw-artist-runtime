@@ -79,6 +79,10 @@ export async function createCommand(options) {
         bodyInput.weirdness = completedOptions.weirdness;
     if (completedOptions.styleInfluence !== undefined)
         bodyInput.styleInfluence = completedOptions.styleInfluence;
+    if (completedOptions.variety !== undefined)
+        bodyInput.variety = completedOptions.variety;
+    if (completedOptions.maxMode !== undefined)
+        bodyInput.maxMode = completedOptions.maxMode;
     if (completedOptions.personaId)
         bodyInput.personaId = completedOptions.personaId;
     if (completedOptions.coverClipId)

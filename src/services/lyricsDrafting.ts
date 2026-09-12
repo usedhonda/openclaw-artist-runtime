@@ -59,11 +59,11 @@ function assertSafe(stage: string, value: string): void {
 // Exculpatory ("免罪句") phrases that pull the fang out of a diss by disclaiming
 // the attack inside the lyric body. The safety line is the writer's discipline,
 // not a caption the song sings, so these are lint-detected in a drafted lyric.
-// Producer ruling (2026-09-07): lyrics get the maximum reasoning effort; every
-// other creative call follows the host's agents.defaults.thinkingDefault.
-const LYRICS_REASONING_EFFORT = "xhigh" as const;
-// xhigh reasoning routinely streams for longer than the generic 120 s AI timeout;
-// give the lyrics call room instead of degrading to a mock draft on a slow answer.
+// Keep lyrics on the proven high setting. The xhigh override repeatedly exhausted
+// this bounded call and parked otherwise healthy autonomous songs before Suno.
+const LYRICS_REASONING_EFFORT = "high" as const;
+// Long lyric responses can exceed the generic 120 s AI timeout even at high;
+// keep the existing bounded allowance instead of degrading on a slow answer.
 const LYRICS_AI_TIMEOUT_MS = 15 * 60 * 1000;
 
 const SOFTENER_PATTERN = /個人攻撃ではない|悪者はいない|誰も悪くない|no villain|not (?:an )?attack|nothing personal/i;

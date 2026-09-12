@@ -19,6 +19,8 @@ const expectedKnowledgeFiles: readonly KnowledgeFile[] = [
   "song_structures.md",
   "style_catalog.md",
   "suno_v55_reference.md",
+  "suno_v6_reference.md",
+  "v55_to_v6_migration.md",
   "yaml_template.md"
 ];
 

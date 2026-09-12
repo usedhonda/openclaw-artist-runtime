@@ -98,6 +98,19 @@ Community-sourced, not confirmed official; effect is context-dependent — A/B t
   (corroborated by a second tag-list source), 2026-06.
 - `[modulate up a key]` in the chorus: reported to force an upward key modulation at that section.
   Confidence: medium (single source). Source: openmusicprompt.com, 2026-06.
+- Bracket-type reliability hierarchy: `[square brackets]` are the most reliably honored tag container
+  (hard directives — structure, vocal delivery, instrumentation), `(parentheses)` are a softer secondary
+  tier read as ad-libs / background / production cues rather than hard directives, and `{curly braces}`
+  are the least reliable. Practical effect: place anything that must be obeyed in square brackets and
+  reserve parentheses for non-critical color. Confidence: medium (two independent domains; one quantifies
+  it as ~90/70/50% compliance — treat the figures as illustrative). Source: acetaggen.com (2026-04),
+  hookgenius.app (2026-05).
+- Inline chord-name brackets in the lyric box: writing chord symbols as their own bracketed tokens
+  (e.g. `[Am7] [G] [Cmaj7]` or `[Bm] [A] [G]`) on a separate line above/between the sung lines is
+  reported to raise the likelihood that the generated harmony follows that chord progression. Keep the
+  chord tokens on their own line, separated from lyric text, so they are not vocalized. Confidence:
+  medium (two independent domains; one reports partial hands-on verification). Source: zenn.dev,
+  note.com, 2026-08.
 
 ---
 
@@ -121,6 +134,7 @@ Community-sourced, not confirmed official; effect is context-dependent — A/B t
 - 25-50%: Moderate reference (increment +5% to find "latch on")
 - 60-75%: Featured, voice-forward (Cover sweet spot)
 - >75%: ⚠️ WARNING — artifacts, pronunciation breakdown, diminishing returns
+- Exception recipes below may intentionally use 85-100% (whole-song Sample preservation / v5.5 vocal upgrade). Treat those as A/B exceptions, not the default safety range.
 
 ### Section-Specific Recommendations
 
@@ -136,6 +150,10 @@ Community-sourced, not confirmed official; effect is context-dependent — A/B t
 - Safe operating range for all sliders: **15-85**
 - Red zone (0-14, 86-100) → unpredictable output, structure collapse
 - Default values are often the safest starting point
+- **Known deliberate exceptions** (these enter the red zone on purpose, with a specific goal):
+  - Convergence pass of the two-phase slider workflow — Weirdness 5-15 (see below)
+  - Whole-song Sampling / Cover preservation recipes — Weirdness 0, Style 100, Audio 100
+  - Outside these named recipes, stay inside 15-85
 
 ### V5.5 Combo Finding
 - Weirdness HIGH + Style Influence HIGH = better lyric tag compliance
@@ -206,7 +224,7 @@ Community-sourced, not confirmed official; effect is context-dependent — A/B t
   2. Generate vocals in v5.5 using Add Vocals / Cover (Audio: 85-90% recommended)
   3. Export stems and replace/combine externally
 - Best use case: keep v5.5 vocal expression without inheriting unstable v5.5 backing
-- Audio=100% maximizes preservation but increases glitch risk
+- Audio=85-100% is an exception recipe for preservation; it increases glitch risk and should be backed down if artifacts appear
 - ⚠️ Add Vocals path may not support Voices/Persona — use Cover if Persona is needed
 - Caution: stem reverb / phase / ambience may not align cleanly
 
@@ -231,7 +249,9 @@ Community-sourced, not confirmed official; effect is context-dependent — A/B t
 ### Slider Two-Phase Workflow
 - Treat sliders as a **two-pass system**:
   - **Exploration**: Style 50-60, Weirdness 10-20
-  - **Convergence**: Style 20-40, Weirdness 5-15
+  - **Convergence**: Style 20-40, Weirdness 5-15 — note this dips below the 15-85 safe range on
+    purpose, to stop the model from wandering once the genre is already right. It is a deliberate
+    exception to the Red Zone rule, not a contradiction of it.
 - Do not rush to Style 100 in the first pass. It often over-locks the output and increases genre drift or unstable vocals.
 - Use this when the broad genre is right but the song still needs several takes to "latch on."
 
@@ -270,9 +290,13 @@ Community-sourced, not confirmed official; effect is context-dependent — A/B t
   - Style Influence around 35
 - Keep this lighter than a full specification dump. Overlong tag text still breaks.
 
-### Song Duration Control (length levers)
+### Song Duration Control (V5.5 slider + structural fallback)
 
-Suno has **no seconds field** — duration is an emergent property of structure, not a setting. Cross-project corpus testing (artist-runtime field corpus, 2026-06) quantified what actually moves it.
+**V5.5 Web has a Duration Slider.** Suno officially added it on 2026-07-20 to pick song length in the Web Create form; the release is specifically marked for V5.5. Treat the selected length as a creative target, not a guaranteed rendered duration. Current community reports describe early lyric cutoffs and padded endings, especially when the selected length fights the song material. Confidence: high for availability/scope (official), medium for reliability caveats (community reports, 2026-07 to 2026-08).
+
+`suno-cli` does **not** currently expose `--duration`: this project has no verified current request-field name, type, or mode constraints for the slider. Do not invent a seconds/range field in the CLI body. Until that wire contract is captured and verified, use the Web control when available and the structural levers below as the CLI-compatible fallback.
+
+When the slider is unavailable or unsuitable, duration remains an emergent property of structure. Cross-project corpus testing (2026-06) quantified what actually moves it.
 
 - **Lyric body length ≠ duration.** Body char count (excluding YAML META) correlates with final duration at only **r≈0.11** — effectively uncorrelated. "More lyrics = longer song" is false. Worse: very long bodies (5000-7000 chars) get **compressed/truncated** down to 40-76 seconds; a ~1300-char body reliably yields 2-2.5 minutes.
 - **What actually drives length:** section count + bar hints (`[Verse - 16 bars]`) + **physical chorus re-show** (write the chorus out ~3×, don't rely on the model to repeat) + pacing + BPM. See `song_structures.md` patterns A-H: 6-section patterns land "under 2 min", 9-section (3-verse) patterns run long.
@@ -281,7 +305,9 @@ Suno has **no seconds field** — duration is an emergent property of structure,
 - **Syllable contrast is also a length lever.** Varying syllable count between sections (Verse 8-10 → Chorus 5-7) sharpens Suno's section-boundary recognition (see `song_structures.md` energy-curve principle, `lyric_craft.md` §5), so all sections actually render instead of being merged/skipped — protecting length, not just singability.
 - **Extend is a weak length lever.** Build length in the first generation via structure. Extend drags tempo and pulls unresolved loops forward (see `Ending Control Workflow` above).
 
-Confidence: medium-high (r≈0.11 and the truncation thresholds are corpus-quantified; the Style-bloat mechanism is synthesized from `Bracket Theory` + `Lyrics-as-Control-Panel` and field-confirmed). Source: artist-runtime field corpus + community Bracket Theory.
+Confidence: medium-high for the fallback levers (r≈0.11 and the truncation thresholds are corpus-quantified; the Style-bloat mechanism is synthesized from `Bracket Theory` + `Lyrics-as-Control-Panel` and field-confirmed). Source: project corpus + community Bracket Theory.
+
+Sources: official release note https://suno.com/release-notes/duration-slider-on-web; community reliability reports https://www.reddit.com/r/SunoAI/comments/1v1ynhm/ and https://www.reddit.com/r/SunoAI/comments/1vkmvtq/.
 
 ### Studio Stem Duet Workflow
 - For "real" duets, do not force the first generation to sing both roles at once.
@@ -356,7 +382,7 @@ Confidence: medium-high (r≈0.11 and the truncation thresholds are corpus-quant
   - `desperate`, `late-night confession`, `cracked voice` (情動語)
   - `building intensity`, `anthemic chorus`, `low headroom` (展開と質感ガード)
 - Suggested ordering: `[情動語], [場面/時刻], [強度の動き], [声の物理描写], [サビ性質], [質感ガード]`.
-  - Example: `desperate, late-night confession, building intensity, cracked voice, anthemic chorus, low headroom, no glossy polish`
+  - Example: `desperate, late-night confession, building intensity, cracked voice, anthemic chorus, low headroom, matte unpolished finish`
 - Do not drop acoustic vocabulary entirely. Lead with emotion + motion, keep acoustic control (register, attack, mix) in the **second half** of the Style prose.
 - Risk: over-loading emotion words blurs genre edges, and `anthemic chorus` pushed too far makes every take sound oversized.
 - Confidence: medium. Reddit / u/Budget_Coach9124 and related threads (late March 2026).
@@ -478,7 +504,7 @@ Style にも Lyrics にも分散配置する。
 
 #### E. シード戦略（最堅牢）
 
-**言語誘導より堅い**。Upload Audio で 5/4 や 7/8 のクリック/ドラムループを入れ、Extend で延長する。公式の Upload Audio は 6-60 秒（Pro/Premier は最大 120 秒）。
+**言語誘導より堅い**。Upload Audio で 5/4 や 7/8 のクリック/ドラムループを入れ、Extend で延長する。公式の一般 Upload Audio 上限は plan により異なる（Free は最大 8 分、Pro/Premier は最大 30 分）。変拍子シード素材としては、拍頭が明確な 6-60 秒程度のクリック/ドラムループが実用的。
 
 拍頭が分かるよう、各拍頭にクラッシュ/キック等を明確に入れるのがコツ（日本語コミュニティ検証記事より）。
 
@@ -502,7 +528,7 @@ Style にも Lyrics にも分散配置する。
 
 **Style:**
 ```
-progressive rock, tight drums, base 120 BPM, quintuplet-driven groove, accent 3+2, clear downbeats, no straight four-on-the-floor
+progressive rock, tight drums, base 120 BPM, quintuplet-driven groove, accent 3+2, clear downbeats, broken pulse
 ```
 
 **Lyrics (Intro):**
@@ -532,7 +558,7 @@ math rock, quintuple meter feel, accent 3+2, locked to uploaded click track, dry
 ```
 
 **運用:**
-1. 5/4 や 7/8 のクリック/ドラムループ（6-60秒）を Upload Audio
+1. 5/4 や 7/8 のクリック/ドラムループ（実用目安 6-60秒）を Upload Audio
 2. Extend で曲を構築
 3. Style に「locked to uploaded click track」を含める
 4. Audio Influence 60-75% でシード拍頭を維持
@@ -617,6 +643,7 @@ Critical for Japanese lyrics. Suno's voice synthesis requires hiragana.
 
 ## V5.5 Official Sources
 - https://suno.com/blog/v5-5
+- https://suno.com/release-notes/duration-slider-on-web
 - https://help.suno.com/en/articles/11362305
 - https://help.suno.com/en/articles/11362369 (Voices)
 - https://help.suno.com/en/articles/11362497 (Custom Models)

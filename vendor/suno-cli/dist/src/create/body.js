@@ -1,18 +1,26 @@
 import { createHash, randomUUID } from "node:crypto";
 const MODEL_ALIASES = {
     "v5.5": "chirp-fenix",
-    "chirp-fenix": "chirp-fenix"
+    "chirp-fenix": "chirp-fenix",
+    "v6": "chirp-hawk",
+    "chirp-hawk": "chirp-hawk",
+    "v6-mini": "chirp-goose",
+    "chirp-goose": "chirp-goose"
 };
+const RETIRED_MODELS = new Set(["v5.5", "chirp-fenix"]);
+export function isRetiredModel(model) {
+    return model !== undefined && RETIRED_MODELS.has(model);
+}
 export function buildCreateBody(input) {
     if (!input.title)
         throw new Error("create requires --title.");
     if (!input.style)
         throw new Error("create requires --style.");
-    const model = MODEL_ALIASES[input.model ?? "v5.5"] ?? input.model ?? "chirp-fenix";
+    const model = MODEL_ALIASES[input.model ?? "v6"] ?? input.model ?? "chirp-hawk";
     const transactionUuid = input.transactionUuid ?? randomUUID();
     const metadata = {
         create_mode: "custom",
-        is_max_mode: false,
+        is_max_mode: input.maxMode ?? false,
         is_mumble: false,
         disable_volume_normalization: false,
         web_client_pathname: "/create"
@@ -32,6 +40,8 @@ export function buildCreateBody(input) {
         controlSliders.style_weight = input.styleInfluence;
     if (input.audioInfluence !== undefined)
         controlSliders.audio_weight = input.audioInfluence;
+    if (input.variety !== undefined)
+        controlSliders.aug_creativity = input.variety / 100;
     if (Object.keys(controlSliders).length > 0)
         metadata.control_sliders = controlSliders;
     const body = {

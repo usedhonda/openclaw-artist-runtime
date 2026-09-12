@@ -67,7 +67,7 @@ describe("CliSunoConnector.create", () => {
     expect(result.dryRun).toBe(false);
   });
 
-  it("passes mapped song params as execFile flags (title/style/lyrics/exclude/sliders/vocal/run-id)", async () => {
+  it("passes mapped song params and the V6 model as execFile flags", async () => {
     const runner = vi.fn(async () => ({
       stdout: JSON.stringify({ clips: [{ clipId: "x", songUrl: "https://suno.com/song/x" }] }),
       stderr: "",
@@ -91,6 +91,8 @@ describe("CliSunoConnector.create", () => {
         "[Verse]\nlines here",
         "--exclude",
         "edm, autotune",
+        "--model",
+        "v6",
         "--captcha-token",
         CAPTCHA_TOKEN,
         "--token-provider",

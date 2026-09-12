@@ -59,6 +59,8 @@ describe("AI lyrics drafting", () => {
     expect(LYRICS_KNOWLEDGE_DIGEST_FILES).toContain("rap_and_flow.md");
     expect(LYRICS_KNOWLEDGE_DIGEST_FILES).toContain("english_lyrics.md");
     expect(LYRICS_KNOWLEDGE_DIGEST_FILES).toContain("master_reference.md");
+    expect(LYRICS_KNOWLEDGE_DIGEST_FILES).toContain("suno_v6_reference.md");
+    expect(LYRICS_KNOWLEDGE_DIGEST_FILES).toContain("v55_to_v6_migration.md");
 
     const digest = await readLyricsKnowledgeDigest();
     expect(digest).toContain("## rap_and_flow.md");

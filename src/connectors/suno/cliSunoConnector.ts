@@ -544,6 +544,9 @@ export class CliSunoConnector implements SunoConnector {
       args.push("--exclude", exclude);
     }
 
+    const model = readText(payload.model) ?? "v6";
+    args.push("--model", model);
+
     if (captcha) {
       args.push("--captcha-token", captcha.token);
       args.push("--token-provider", String(captcha.provider));

@@ -1,6 +1,6 @@
 # Suno Knowledge Bundle
 
-This directory vendors the seven-file Suno knowledge bundle from:
+This directory vendors the Suno knowledge bundle from:
 
 `sunomanual/skills/suno/knowledge/`
 
@@ -24,6 +24,8 @@ plan changes.
 - `song_structures.md`
 - `style_catalog.md`
 - `suno_v55_reference.md`
+- `suno_v6_reference.md`
+- `v55_to_v6_migration.md`
 - `yaml_template.md`
 - `english_lyrics.md`
 - `rap_and_flow.md`

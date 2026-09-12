@@ -35,6 +35,31 @@ if ! grep -rq "token_validation_failed" "$SRC/dist/src"; then
   exit 1
 fi
 
+# artist-runtime carries safety fixes that must exist in the source before a
+# wholesale refresh. Fail before replacing the vendor tree when suno-kit has not
+# absorbed them yet; V6 feature deltas can then be merged without losing these
+# protected contracts.
+required_vendor_markers=(
+  "http/feed.js:Suno feed response missing requested clip id(s)"
+  "http/feed.js:media_urls"
+  "commands/resolve-target.js:isClipId"
+  "browser/login.js:normalizeLoopbackCdpEndpoint"
+)
+for requirement in "${required_vendor_markers[@]}"; do
+  file="${requirement%%:*}"
+  marker="${requirement#*:}"
+  if ! grep -Fq "$marker" "$SRC/dist/src/$file"; then
+    echo "verification failed: protected artist-runtime vendor patch missing: $file ($marker)" >&2
+    echo "merge the protected patch into suno-kit before a wholesale vendor refresh" >&2
+    exit 1
+  fi
+done
+
+if ! grep -Fq '"v6": "chirp-hawk"' "$SRC/dist/src/create/body.js"; then
+  echo "verification failed: V6 model mapping missing from built suno-cli" >&2
+  exit 1
+fi
+
 echo "Vendoring dist/src into $DEST"
 rm -rf "$DEST"
 mkdir -p "$DEST/dist"

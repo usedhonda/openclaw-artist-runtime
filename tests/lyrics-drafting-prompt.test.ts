@@ -87,6 +87,7 @@ describe("lyrics drafting prompt", () => {
     expect(prompt).toContain("Do not use 渋谷 / Shibuya as a recurring hook, refrain, or default label");
     expect(prompt).toContain("at most once in the lyric body");
     expect(LYRICS_KNOWLEDGE_DIGEST_FILES).toContain("master_reference.md");
+    expect(LYRICS_KNOWLEDGE_DIGEST_FILES).toContain("suno_v6_reference.md");
 
     const digest = await readLyricsKnowledgeDigest();
     expect(digest).toContain("## rap_and_flow.md");

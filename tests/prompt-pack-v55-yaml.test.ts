@@ -12,7 +12,7 @@ const lyrics = [
   "朝の手前でまだ息を数える"
 ].join("\n");
 
-describe("Suno V5.5 YAML builder", () => {
+describe("Suno V6 YAML builder", () => {
   it("wraps metadata, vocals, production notes, notes, and lyrics delimiters", () => {
     const yaml = buildYaml({
       title: "Civic Echo",
@@ -36,7 +36,7 @@ describe("Suno V5.5 YAML builder", () => {
 
     expect(yaml.length).toBeLessThanOrEqual(4500);
     expect(yaml).toContain("# META");
-    expect(yaml).toContain("version: v5.5");
+    expect(yaml).toContain("version: v6");
     expect(yaml).toContain("vocals:");
     expect(yaml).toContain("parts:");
     expect(yaml).toContain("rules:");

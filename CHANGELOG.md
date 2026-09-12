@@ -2,6 +2,15 @@
 
 ## Unreleased
 
+- fix: lyrics drafting now uses the proven `high` reasoning level instead of the
+  lyrics-only `xhigh` override, which repeatedly exhausted the bounded runtime
+  call and parked autonomous songs before Suno generation.
+
+- feat: update the vendored `suno-cli` to 0.4.0 and make V6 explicit in generated
+  payloads and CLI creates. Bundle the V6 reference and V5.5 migration guidance;
+  Variety remains opt-in because its wire field is not yet first-party verified,
+  and Max Mode remains off because it spends additional credits.
+
 - fix: tempo revisions now synchronize non-sung YAML notes/cues, duration tempo,
   and rendered section instructions across all submitted lyrics/YAML fields.
   Canonical lyrics and sung BPM text remain unchanged; ambiguous lyrics boundaries

@@ -11,6 +11,7 @@ import { resolveTarget } from "./commands/resolve-target.js";
 import { statusCommand } from "./commands/status.js";
 import { urlsCommand } from "./commands/urls.js";
 import { resolvePathConfig } from "./config/paths.js";
+import { isRetiredModel } from "./create/body.js";
 import { LedgerStore } from "./ledger/store.js";
 import { redactString } from "./safety/redact.js";
 export async function cliMain(argv) {
@@ -99,8 +100,12 @@ async function runCreate(args) {
         Object.assign(createOptions, { lyrics: args.lyrics });
     if (args.instrumental !== undefined)
         Object.assign(createOptions, { instrumental: args.instrumental });
-    if (args.model)
+    if (args.model) {
         Object.assign(createOptions, { model: args.model });
+        if (isRetiredModel(args.model)) {
+            process.stderr.write(`warning: Suno retired "${args.model}" on 2026-09-09; the request may be refused.\n`);
+        }
+    }
     if (args.vocalGender)
         Object.assign(createOptions, { vocalGender: args.vocalGender });
     if (args.captchaToken)
@@ -109,6 +114,10 @@ async function runCreate(args) {
         Object.assign(createOptions, { tokenProvider: args.tokenProvider });
     if (args.weirdness !== undefined)
         Object.assign(createOptions, { weirdness: args.weirdness });
+    if (args.variety !== undefined)
+        Object.assign(createOptions, { variety: args.variety });
+    if (args.maxMode !== undefined)
+        Object.assign(createOptions, { maxMode: args.maxMode });
     if (args.styleInfluence !== undefined)
         Object.assign(createOptions, { styleInfluence: args.styleInfluence });
     if (args.personaId)
@@ -268,6 +277,13 @@ function parseArgs(argv) {
             result.tokenProvider = parseTokenProviderFlag(argv[index + 1]);
             index += 1;
         }
+        else if (arg === "--variety") {
+            result.variety = parsePercentFlag("--variety", argv[index + 1]);
+            index += 1;
+        }
+        else if (arg === "--max-mode") {
+            result.maxMode = true;
+        }
         else if (arg === "--weirdness") {
             result.weirdness = parsePercentFlag("--weirdness", argv[index + 1]);
             index += 1;
@@ -346,7 +362,7 @@ function usage() {
             "suno-cli status <run-id|clip-id|song-url> [--json] [--data-dir <dir>] [--cookie-file <file>] [--jwt <token>]",
             "suno-cli urls <run-id|clip-id|song-url> [--json] [--data-dir <dir>] [--cookie-file <file>] [--jwt <token>]",
             "suno-cli download <run-id|clip-id|song-url> --out <dir> [--timeout-ms <ms>] [--poll-ms <ms>] [--jwt <token>]",
-            "advanced create: [--exclude <text>] [--weirdness 0-100] [--style-influence 0-100] [--audio-influence 0-100] [--persona-id <id>] [--cover-clip-id <id> --cover-start-s <sec> --cover-end-s <sec>]",
+            "advanced create: [--exclude <text>] [--model <name>] [--variety 0-100] [--max-mode] [--weirdness 0-100] [--style-influence 0-100] [--audio-influence 0-100] [--persona-id <id>] [--cover-clip-id <id> --cover-start-s <sec> --cover-end-s <sec>]",
             "advanced auth/live: [--jwt <token>] [--session-token <token>] [--user-tier <uuid>] [--captcha-token <token> --token-provider <integer>] [--cdp-endpoint <loopback-url>]"
         ]
     });

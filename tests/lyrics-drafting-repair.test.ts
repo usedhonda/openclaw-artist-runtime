@@ -204,8 +204,8 @@ describe("lyrics drafting repair-not-reject orchestration", () => {
     const result = await draftLyrics({ workspaceRoot: root, songId: "song-001", aiReviewProvider: "openai-codex" });
 
     expect(callAiProviderMock).toHaveBeenCalledTimes(1);
-    // Lyrics are the one call that asks the host for maximum reasoning effort.
-    expect(callAiProviderMock).toHaveBeenCalledWith(expect.any(String), { provider: "openai-codex", reasoningEffort: "xhigh", timeoutMs: 15 * 60 * 1000 });
+    // Lyrics use the proven high setting so xhigh latency cannot park the song.
+    expect(callAiProviderMock).toHaveBeenCalledWith(expect.any(String), { provider: "openai-codex", reasoningEffort: "high", timeoutMs: 15 * 60 * 1000 });
     expect(result.lyricsText).toContain("[Verse 1 - tight civic flow]");
     expect((await readSongState(root, "song-001")).degradedLyrics).toBe(false);
   });

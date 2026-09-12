@@ -12,6 +12,8 @@ export const KNOWLEDGE_FILES = [
   "song_structures.md",
   "style_catalog.md",
   "suno_v55_reference.md",
+  "suno_v6_reference.md",
+  "v55_to_v6_migration.md",
   "yaml_template.md",
 ] as const;
 
@@ -20,7 +22,7 @@ export type KnowledgeFile = (typeof KNOWLEDGE_FILES)[number];
 export const KNOWLEDGE_BUNDLE: Record<KnowledgeFile, string> = {
   "README.md": `# Suno Knowledge Bundle
 
-This directory vendors the seven-file Suno knowledge bundle from:
+This directory vendors the Suno knowledge bundle from:
 
 \`sunomanual/skills/suno/knowledge/\`
 
@@ -44,6 +46,8 @@ plan changes.
 - \`song_structures.md\`
 - \`style_catalog.md\`
 - \`suno_v55_reference.md\`
+- \`suno_v6_reference.md\`
+- \`v55_to_v6_migration.md\`
 - \`yaml_template.md\`
 - \`english_lyrics.md\`
 - \`rap_and_flow.md\`
@@ -3347,6 +3351,19 @@ Community-sourced, not confirmed official; effect is context-dependent — A/B t
   (corroborated by a second tag-list source), 2026-06.
 - \`[modulate up a key]\` in the chorus: reported to force an upward key modulation at that section.
   Confidence: medium (single source). Source: openmusicprompt.com, 2026-06.
+- Bracket-type reliability hierarchy: \`[square brackets]\` are the most reliably honored tag container
+  (hard directives — structure, vocal delivery, instrumentation), \`(parentheses)\` are a softer secondary
+  tier read as ad-libs / background / production cues rather than hard directives, and \`{curly braces}\`
+  are the least reliable. Practical effect: place anything that must be obeyed in square brackets and
+  reserve parentheses for non-critical color. Confidence: medium (two independent domains; one quantifies
+  it as ~90/70/50% compliance — treat the figures as illustrative). Source: acetaggen.com (2026-04),
+  hookgenius.app (2026-05).
+- Inline chord-name brackets in the lyric box: writing chord symbols as their own bracketed tokens
+  (e.g. \`[Am7] [G] [Cmaj7]\` or \`[Bm] [A] [G]\`) on a separate line above/between the sung lines is
+  reported to raise the likelihood that the generated harmony follows that chord progression. Keep the
+  chord tokens on their own line, separated from lyric text, so they are not vocalized. Confidence:
+  medium (two independent domains; one reports partial hands-on verification). Source: zenn.dev,
+  note.com, 2026-08.
 
 ---
 
@@ -3370,6 +3387,7 @@ Community-sourced, not confirmed official; effect is context-dependent — A/B t
 - 25-50%: Moderate reference (increment +5% to find "latch on")
 - 60-75%: Featured, voice-forward (Cover sweet spot)
 - >75%: ⚠️ WARNING — artifacts, pronunciation breakdown, diminishing returns
+- Exception recipes below may intentionally use 85-100% (whole-song Sample preservation / v5.5 vocal upgrade). Treat those as A/B exceptions, not the default safety range.
 
 ### Section-Specific Recommendations
 
@@ -3385,6 +3403,10 @@ Community-sourced, not confirmed official; effect is context-dependent — A/B t
 - Safe operating range for all sliders: **15-85**
 - Red zone (0-14, 86-100) → unpredictable output, structure collapse
 - Default values are often the safest starting point
+- **Known deliberate exceptions** (these enter the red zone on purpose, with a specific goal):
+  - Convergence pass of the two-phase slider workflow — Weirdness 5-15 (see below)
+  - Whole-song Sampling / Cover preservation recipes — Weirdness 0, Style 100, Audio 100
+  - Outside these named recipes, stay inside 15-85
 
 ### V5.5 Combo Finding
 - Weirdness HIGH + Style Influence HIGH = better lyric tag compliance
@@ -3455,7 +3477,7 @@ Community-sourced, not confirmed official; effect is context-dependent — A/B t
   2. Generate vocals in v5.5 using Add Vocals / Cover (Audio: 85-90% recommended)
   3. Export stems and replace/combine externally
 - Best use case: keep v5.5 vocal expression without inheriting unstable v5.5 backing
-- Audio=100% maximizes preservation but increases glitch risk
+- Audio=85-100% is an exception recipe for preservation; it increases glitch risk and should be backed down if artifacts appear
 - ⚠️ Add Vocals path may not support Voices/Persona — use Cover if Persona is needed
 - Caution: stem reverb / phase / ambience may not align cleanly
 
@@ -3480,7 +3502,9 @@ Community-sourced, not confirmed official; effect is context-dependent — A/B t
 ### Slider Two-Phase Workflow
 - Treat sliders as a **two-pass system**:
   - **Exploration**: Style 50-60, Weirdness 10-20
-  - **Convergence**: Style 20-40, Weirdness 5-15
+  - **Convergence**: Style 20-40, Weirdness 5-15 — note this dips below the 15-85 safe range on
+    purpose, to stop the model from wandering once the genre is already right. It is a deliberate
+    exception to the Red Zone rule, not a contradiction of it.
 - Do not rush to Style 100 in the first pass. It often over-locks the output and increases genre drift or unstable vocals.
 - Use this when the broad genre is right but the song still needs several takes to "latch on."
 
@@ -3519,9 +3543,13 @@ Community-sourced, not confirmed official; effect is context-dependent — A/B t
   - Style Influence around 35
 - Keep this lighter than a full specification dump. Overlong tag text still breaks.
 
-### Song Duration Control (length levers)
+### Song Duration Control (V5.5 slider + structural fallback)
 
-Suno has **no seconds field** — duration is an emergent property of structure, not a setting. Cross-project corpus testing (artist-runtime field corpus, 2026-06) quantified what actually moves it.
+**V5.5 Web has a Duration Slider.** Suno officially added it on 2026-07-20 to pick song length in the Web Create form; the release is specifically marked for V5.5. Treat the selected length as a creative target, not a guaranteed rendered duration. Current community reports describe early lyric cutoffs and padded endings, especially when the selected length fights the song material. Confidence: high for availability/scope (official), medium for reliability caveats (community reports, 2026-07 to 2026-08).
+
+\`suno-cli\` does **not** currently expose \`--duration\`: this project has no verified current request-field name, type, or mode constraints for the slider. Do not invent a seconds/range field in the CLI body. Until that wire contract is captured and verified, use the Web control when available and the structural levers below as the CLI-compatible fallback.
+
+When the slider is unavailable or unsuitable, duration remains an emergent property of structure. Cross-project corpus testing (2026-06) quantified what actually moves it.
 
 - **Lyric body length ≠ duration.** Body char count (excluding YAML META) correlates with final duration at only **r≈0.11** — effectively uncorrelated. "More lyrics = longer song" is false. Worse: very long bodies (5000-7000 chars) get **compressed/truncated** down to 40-76 seconds; a ~1300-char body reliably yields 2-2.5 minutes.
 - **What actually drives length:** section count + bar hints (\`[Verse - 16 bars]\`) + **physical chorus re-show** (write the chorus out ~3×, don't rely on the model to repeat) + pacing + BPM. See \`song_structures.md\` patterns A-H: 6-section patterns land "under 2 min", 9-section (3-verse) patterns run long.
@@ -3530,7 +3558,9 @@ Suno has **no seconds field** — duration is an emergent property of structure,
 - **Syllable contrast is also a length lever.** Varying syllable count between sections (Verse 8-10 → Chorus 5-7) sharpens Suno's section-boundary recognition (see \`song_structures.md\` energy-curve principle, \`lyric_craft.md\` §5), so all sections actually render instead of being merged/skipped — protecting length, not just singability.
 - **Extend is a weak length lever.** Build length in the first generation via structure. Extend drags tempo and pulls unresolved loops forward (see \`Ending Control Workflow\` above).
 
-Confidence: medium-high (r≈0.11 and the truncation thresholds are corpus-quantified; the Style-bloat mechanism is synthesized from \`Bracket Theory\` + \`Lyrics-as-Control-Panel\` and field-confirmed). Source: artist-runtime field corpus + community Bracket Theory.
+Confidence: medium-high for the fallback levers (r≈0.11 and the truncation thresholds are corpus-quantified; the Style-bloat mechanism is synthesized from \`Bracket Theory\` + \`Lyrics-as-Control-Panel\` and field-confirmed). Source: project corpus + community Bracket Theory.
+
+Sources: official release note https://suno.com/release-notes/duration-slider-on-web; community reliability reports https://www.reddit.com/r/SunoAI/comments/1v1ynhm/ and https://www.reddit.com/r/SunoAI/comments/1vkmvtq/.
 
 ### Studio Stem Duet Workflow
 - For "real" duets, do not force the first generation to sing both roles at once.
@@ -3605,7 +3635,7 @@ Confidence: medium-high (r≈0.11 and the truncation thresholds are corpus-quant
   - \`desperate\`, \`late-night confession\`, \`cracked voice\` (情動語)
   - \`building intensity\`, \`anthemic chorus\`, \`low headroom\` (展開と質感ガード)
 - Suggested ordering: \`[情動語], [場面/時刻], [強度の動き], [声の物理描写], [サビ性質], [質感ガード]\`.
-  - Example: \`desperate, late-night confession, building intensity, cracked voice, anthemic chorus, low headroom, no glossy polish\`
+  - Example: \`desperate, late-night confession, building intensity, cracked voice, anthemic chorus, low headroom, matte unpolished finish\`
 - Do not drop acoustic vocabulary entirely. Lead with emotion + motion, keep acoustic control (register, attack, mix) in the **second half** of the Style prose.
 - Risk: over-loading emotion words blurs genre edges, and \`anthemic chorus\` pushed too far makes every take sound oversized.
 - Confidence: medium. Reddit / u/Budget_Coach9124 and related threads (late March 2026).
@@ -3727,7 +3757,7 @@ Style にも Lyrics にも分散配置する。
 
 #### E. シード戦略（最堅牢）
 
-**言語誘導より堅い**。Upload Audio で 5/4 や 7/8 のクリック/ドラムループを入れ、Extend で延長する。公式の Upload Audio は 6-60 秒（Pro/Premier は最大 120 秒）。
+**言語誘導より堅い**。Upload Audio で 5/4 や 7/8 のクリック/ドラムループを入れ、Extend で延長する。公式の一般 Upload Audio 上限は plan により異なる（Free は最大 8 分、Pro/Premier は最大 30 分）。変拍子シード素材としては、拍頭が明確な 6-60 秒程度のクリック/ドラムループが実用的。
 
 拍頭が分かるよう、各拍頭にクラッシュ/キック等を明確に入れるのがコツ（日本語コミュニティ検証記事より）。
 
@@ -3751,7 +3781,7 @@ Style にも Lyrics にも分散配置する。
 
 **Style:**
 \`\`\`
-progressive rock, tight drums, base 120 BPM, quintuplet-driven groove, accent 3+2, clear downbeats, no straight four-on-the-floor
+progressive rock, tight drums, base 120 BPM, quintuplet-driven groove, accent 3+2, clear downbeats, broken pulse
 \`\`\`
 
 **Lyrics (Intro):**
@@ -3781,7 +3811,7 @@ math rock, quintuple meter feel, accent 3+2, locked to uploaded click track, dry
 \`\`\`
 
 **運用:**
-1. 5/4 や 7/8 のクリック/ドラムループ（6-60秒）を Upload Audio
+1. 5/4 や 7/8 のクリック/ドラムループ（実用目安 6-60秒）を Upload Audio
 2. Extend で曲を構築
 3. Style に「locked to uploaded click track」を含める
 4. Audio Influence 60-75% でシード拍頭を維持
@@ -3866,14 +3896,739 @@ Critical for Japanese lyrics. Suno's voice synthesis requires hiragana.
 
 ## V5.5 Official Sources
 - https://suno.com/blog/v5-5
+- https://suno.com/release-notes/duration-slider-on-web
 - https://help.suno.com/en/articles/11362305
 - https://help.suno.com/en/articles/11362369 (Voices)
 - https://help.suno.com/en/articles/11362497 (Custom Models)
 - https://help.suno.com/en/articles/11362561 (My Taste)
 `,
+  "suno_v6_reference.md": `<!-- Source: sunomanual (MIT, Copyright 2025-2026 usedhonda) -->
+
+# Suno V6 Reference Guide
+
+V6 released **2026-09-09**. This file records what Suno itself states about V6, what it
+deliberately does **not** state, and the prompt patterns this kit recommends on top of the
+confirmed capabilities.
+
+Migration decisions for each V5.5 rule live in \`v55_to_v6_migration.md\`.
+V6 is the kit default. Suno retired every earlier model on 2026-09-09 — "All models prior
+to v6 have been retired, but your songs will still be in your library and remain
+unchanged" (v6 FAQ) — so V5.5 is no longer something to generate with. It stays
+documented in \`suno_v55_reference.md\` as a record of how the V5.5-era songs were made.
+
+---
+
+## Evidence status vocabulary
+
+Every claim in this file carries one of these. Do not invent new values.
+
+| Status | Meaning |
+|---|---|
+| \`confirmed_v6\` | Stated by Suno for V6 (blog / release notes / help center) |
+| \`observed_v6\` | Reproduced first-hand on V6, with the observation date recorded |
+| \`legacy_v55_candidate\` | Worked on V5.5, not yet re-tested on V6 — treat as a hypothesis |
+| \`community_experimental\` | Community-reported, unverified. A/B test one at a time |
+| \`deprecated\` | Known not to apply to V6 |
+
+An unlabeled claim is a bug in this file.
+
+---
+
+## Model family — \`confirmed_v6\`
+
+Three models, split by intent rather than by version number.
+
+| Model | Suno's stated purpose | Use it for | Access |
+|---|---|---|---|
+| \`v6\` | "reliable, precise and consistently delivers polished music across every genre and style" | Finishing, precision, the take you keep | Paid only |
+| \`v6-wild\` | "built for exploration"; "less predictable and more varied, producing unexpected, textured and ambitious results" | Finding an idea you would not have written | Paid only |
+| \`v6-mini\` | "faster, more efficient version"; "delivers better, faster results than any free model" | Fast drafts, iteration, free tier | Available to everyone |
+
+**Explore → converge.** Suno describes \`v6-wild\` output as ideas "to riff on, build from or bring
+back into v6 for further refinement". Treat model choice as a creative mode, not a version bump:
+explore wide on \`v6-wild\`, then rebuild the winning idea on \`v6\`.
+
+⚠️ \`v6\` and \`v6-wild\` are **paid-only**. Never assume a user can reach them. \`v6-mini\` is the only
+V6 model available on the free tier, so a free account must ask for \`v6-mini\` explicitly.
+The kit defaults to \`v6\`.
+
+---
+
+## Capabilities — \`confirmed_v6\`
+
+Each row is a capability Suno states for V6, with Suno's own example prompt.
+
+| Capability | What Suno states | Official example |
+|---|---|---|
+| Local edit | "Edit part of an existing song using plain language. Change one section while preserving everything else you already love." | *"Change the chorus so it's sung by a gospel choir"* |
+| Single-lyric edit | "Update a single lyric without rebuilding the entire song" | *"Change the lyric from 'love' to 'light.'"* |
+| Multi-source mashup | "Build a mashup from multiple sources in one request. Combine elements from your different songs and describe how they should work together." | *"Take the vocals from x, drums from y, and add new lyrics about losing control, make it 80s synthwave"* |
+| Sample / isolate | "Sample, isolate and build a new beat in a single workflow." | *"Sample the riff at 0:45, isolate the guitar, build a beat around it"* |
+| Multimodal input | "Create with text, audio, images and video." | *"Make a song based on this image, this audio, and my journal entry"* |
+| Vibe / reference | "Create from a vibe, genre or mix of inspirations. v6 can understand the feeling behind a reference and use it as the starting point for something original." | *"Make a song that feels like midnight on a rooftop"* |
+
+**The two structural changes** for prompt design:
+
+1. **Revision is no longer regeneration.** Before V6, fixing one section meant rolling the dice on
+   the whole song. Now the fix is a sentence. Reach for a local edit before regenerating.
+2. **References carry roles.** Suno's own mashup example assigns a job to each source
+   ("vocals from x, drums from y"). State what each source is *for*, not just that it exists.
+
+---
+
+## Generation controls — \`confirmed_v6\`
+
+Verified against the v6 FAQ on **2026-09-11** [see Sources]. These are not prompt syntax:
+they sit beside the prompt and change what Suno does with it.
+
+| Control | What Suno states |
+|---|---|
+| **Variety** | "The Variety slider is designed to introduce variety in your outputs by adjusting and updating your style prompts." To keep a hand-written Style exactly as written: "If you'd like to retain full control of your style tags, reduce the Variety slider to 0." |
+| **Max Mode** | "an option you can turn on for any generation when you want v6 to spend more on getting it right. It costs more credits and it's best for: songs longer than two minutes, covers where you want the result to stay close to the original, transferring the style of one song onto another, and keeping vocals and style consistent through the whole track." |
+| **Simple Mode** | "In Simple Mode, you don't need to know which tool to reach for (like Cover, Remix, Extend) when creating with v6. The model figures out the workflow if you want it to." |
+
+**Variety changes what reproducibility means.** Above zero, Suno may rewrite the style prompt
+it was given, so *saving the prompt text is no longer enough to reproduce a result*. Record the
+whole recipe — model, mode, every control value, the references used — or record nothing useful.
+
+When you want to judge the prompt itself (A/B tests, benchmarks, a style you engineered
+deliberately), set Variety to zero. Otherwise you cannot tell your change from Suno's.
+
+### Model lifecycle — \`confirmed_v6\`
+
+- **Every model before v6 is retired**: "All models prior to v6 have been retired, but your songs
+  will still be in your library and remain unchanged." They are not selectable for new work.
+- **Custom Models work on v6**: "Fine-tune v6 on your own tracks for a personalized sound."
+  Existing ones carry over — "Any custom models you've created will automatically get upgraded so
+  that v6 powers your model moving forward. Songs created with your old v5.5 custom model will
+  still be available, playable and unaffected by the v6 update."
+
+### Wire names for these controls — **third-party, not observed here**
+
+A third-party project reports that the web client sends Variety as
+\`metadata.control_sliders.aug_creativity\` on a 0..1 scale, alongside \`metadata.is_max_mode\`.
+
+⚠️ **This kit has not reproduced that first-hand**, so it is *not* \`observed_v6\` — unlike the model
+identifiers below, which were seen directly in a first-party session. \`suno-cli\` sends these names
+because the owner asked for the controls, and the code says plainly that the names are unverified.
+Re-verify against a live request before trusting them. This is the same standard that keeps
+\`v6-wild\` without an alias.
+
+---
+
+## Not stated by Suno — \`unspecified\`
+
+As of **2026-09-11**, none of the following appear in Suno's V6 blog post, release notes,
+Current Models page, or the v6 FAQ — all four were read directly, not summarised from a report.
+**Do not fill these in with guesses, and do not copy them from third-party API wrappers.**
+
+| Item | Status |
+|---|---|
+| Style field character / token limit | unspecified |
+| Lyrics field character / token limit | unspecified |
+| Internal model identifier (the \`mv\` value) | **partly observed** — see below. Still unspecified for \`v6-wild\` |
+| temperature / top_p / top_k / seed | unspecified — Suno exposes no such controls publicly |
+| Context window | unspecified |
+| System prompt | unspecified |
+| Embedding API | unspecified |
+| Duration Slider on V6 | unspecified — the slider shipped 2026-07-20 for **V5.5 / Web only** |
+| Maximum song length | unspecified |
+| Weirdness / Style Influence / Audio Influence semantics on V6 | unspecified — do not assume V5.5 behaviour carries over |
+| Voices / My Taste / Persona compatibility | unspecified for V6 specifically — **Custom Models are the exception and are confirmed**, see Generation controls above. Do not treat the four as one group |
+| Output codec / sample rate / bitrate | unspecified |
+| Image / video / audio input limits, formats, counts | unspecified |
+
+**Weirdness is a Suno creative control. It is not a documented sampling temperature.**
+Never present it as one.
+
+### Model identifiers — \`observed_v6\`
+
+Observed **2026-09-10** from a first-party logged-in session, two independent ways: the web app's
+own model-tier map, and a live library response whose clips carry \`major_model_version: "v6"\`
+next to \`model_name: "chirp-hawk"\`. The same map reproduces the already-known
+\`v5.5 -> chirp-fenix\`, which is what makes the new rows trustworthy.
+
+| UI name | Identifier sent as \`mv\` | Status |
+|---|---|---|
+| v5.5 | \`chirp-fenix\` | previously known, re-confirmed |
+| v6 | \`chirp-hawk\` | \`observed_v6\` (two independent paths) |
+| v6-mini | \`chirp-goose\` | \`observed_v6\` (app model-tier map) |
+| **v6-wild** | **none of its own** | see below — **do not add an alias** |
+
+### Why \`v6-wild\` has no identifier of its own
+
+Tested 2026-09-10 by generating **two** songs with \`v6-wild\` genuinely selected in the picker
+(the selector read \`v6-wild\` immediately before each create). Both resulting clips came back as:
+
+\`\`\`
+major_model_version: "v6"      model_name: "chirp-hawk"
+\`\`\`
+
+— identical to a plain \`v6\` clip. Supporting evidence pointing the same way: \`v6-wild\` is not a
+tier in the app's model map, which lists only \`... v5_5, v6_mini, v6\`.
+
+The one contrary signal is that the string \`chirp-hawk-wild\` does exist in the client state
+attached to the \`v6-wild\` row in the picker. So the most likely shape is that "wild" travels as a
+**separate flag or a server-side variant**, and the stored model is normalised back to
+\`chirp-hawk\` — not that \`chirp-hawk-wild\` is what a create request carries.
+
+**Consequence for \`suno-cli\`:** do **not** add a \`v6-wild\` alias. There is no observed wire value
+to map it to, and the observable outcome of picking wild is a \`chirp-hawk\` clip. Sending
+\`chirp-hawk-wild\` as \`mv\` would be a guess. Whatever selects wild is not \`mv\` alone, and that
+parameter has not been identified.
+
+These are observations of a closed, server-side product, not a published contract. Re-verify
+after any Suno update.
+
+---
+
+## Prompt patterns
+
+⚠️ **These are this kit's recommendations, not Suno syntax.** They are built on the confirmed
+capabilities above. There is no evidence that V6 parses \`Core identity:\` or any other literal
+label — the headings exist to keep *our* generation organised and to force the relationships to
+be stated. Do not claim Suno interprets them specially.
+
+The ordering principle: **identity first, constraints last.**
+
+\`\`\`
+identity + must-have  →  arrangement / vocal / structure / vibe  →  avoid + preserve
+\`\`\`
+
+### compact — fast iteration, benchmarks
+
+One sentence. Genre, groove, voice, vibe. Nothing else.
+
+\`\`\`text
+Bright modern J-pop around 124 BPM, restrained close vocal in the verse opening into a wide
+melodic chorus.
+\`\`\`
+
+### directed — the V6 default
+
+State the **relationships** between attributes, not just a list of attributes. Length is not the
+point; explicitness is.
+
+\`\`\`text
+Core identity:
+Modern melodic J-pop with a tight, forward-moving groove around 124 BPM.
+
+Vocal:
+Intimate close-mic female lead in the verses; clearer, stronger chest voice in the chorus.
+Natural diction, emotionally restrained rather than theatrical.
+
+Arrangement:
+Clean muted guitar and compact drums in the verse.
+Open the harmony and stereo width in the pre-chorus.
+Full bass, brighter guitars and layered backing vocals only in the chorus.
+
+Production:
+Polished studio sound, controlled high end, punchy but not over-compressed.
+
+Vibe:
+Like being alone on the last train home after deciding not to send a message.
+
+Avoid:
+crowd noise, arena chants, excessive vocal runs, overly bright cymbals
+\`\`\`
+
+### exploratory — for \`v6-wild\`
+
+This is a **meta-prompt for the LLM stage**, not text to paste into Suno. It produces several
+genuinely different briefs from one idea, so \`v6-wild\` explores instead of re-rolling the same
+arrangement.
+
+\`\`\`text
+Create five materially different Suno v6-wild briefs from the same core idea.
+
+Keep invariant:
+- Japanese female lead vocal
+- melancholic but danceable
+- 120-128 BPM
+- no crowd or live ambience
+
+Vary aggressively:
+- groove architecture
+- harmonic colour
+- instrumental palette
+- verse/chorus density contrast
+- production texture
+
+Do not name artists.
+For each variant, state one "novelty hypothesis" — what makes it distinct.
+Do not produce five synonym-level rewrites of the same arrangement.
+\`\`\`
+
+### local edit
+
+**State what to preserve, not only what to change.** The whole value of the feature is that
+everything unnamed stays put, so name the things that must survive.
+
+\`\`\`text
+Change only the second chorus.
+
+Replace the stacked synth lead with a small gospel choir and handclaps.
+Keep the lead-vocal melody, lyrics, tempo, key, bass line and all other sections unchanged.
+Do not alter the first chorus.
+\`\`\`
+
+### multi-source
+
+Give every source a job. Say explicitly what must **not** be carried over.
+
+\`\`\`text
+Source A: use only the vocal phrasing and melodic contour.
+Source B: use only the drum groove.
+Source C: use only the atmospheric texture.
+
+Do not copy lyrics from any source.
+
+Combine into: minimal dark synth-pop, restrained verses, larger final chorus.
+Preserve: A's vocal timing and B's rhythmic pocket.
+Transform: instrumentation, harmony colour and production into a new arrangement.
+\`\`\`
+
+### multimodal
+
+Name the role of each attachment. Without a role, a reference bleeds into everything.
+
+\`\`\`text
+Image: use only for atmosphere, colour and emotional temperature.
+Voice memo: use as the primary melodic reference.
+Journal entry: use as the lyrical theme and point of view.
+Video: use its sense of motion, but do not infer tempo from the edit cuts.
+
+Target: slow-burning alternative pop that grows from intimate to cinematic.
+\`\`\`
+
+**Rights preflight** — before attaching anything, confirm you hold the rights to it. This is not
+housekeeping: V6 was built with industry partners, and Suno says it "introduced safeguards to
+screen uploaded audio files and lyrics for unauthorized use", so an unclear source can stop the
+generation rather than quietly degrade it.
+
+The terms effective 2026-09-03 require the uploader to warrant they hold "all rights, licenses,
+consents, permissions, power and/or authority necessary to submit and use" what they upload. Voice
+references are stricter still: a user "can only create a Voice Model resembling your own voice" and
+agrees "not to create, or attempt to create, a Voice Model of another person". With multi-source
+and multimodal input this now has to be checked per attachment, not once per song.
+
+---
+
+## Carrying V5.5 technique into V6
+
+V6 was rebuilt, so a convention that V5.5 happened to honour may or may not survive. The ranking
+this kit uses:
+
+> **Semantic instruction is primary. Tags are an experimental secondary signal.**
+
+Do not delete the V5.5 tag vocabulary — section tags and annotation tags remain the natural way to
+carry section-local direction, and \`suno_v55_reference.md\` is still the reference for them. But
+every community-discovered inline trick (\`[Energy: High]\`, \`[modulate up a key]\`, inline chord
+brackets, the bracket-reliability hierarchy) drops to \`legacy_v55_candidate\` until re-tested on V6.
+
+Per-rule verdicts: see \`v55_to_v6_migration.md\`.
+
+---
+
+## Community findings
+
+Everything below is \`community_experimental\` until this kit reproduces it.
+
+**Provenance, stated once for the whole section.** These entries come from a research report dated
+2026-09-12 that summarised Reddit threads posted 2026-09-09..09-12. **The threads themselves were
+not retrieved** — Reddit blocks this kit's fetcher — so the attribution is to the report, not to a
+thread anyone here has read. Thread titles, dates and handles are kept so a human can find the
+originals and check them.
+
+Semantic instruction stays primary (see *Carrying V5.5 technique into V6*). Nothing here promotes
+tags back to a primary control: every tag entry is a recovery move to A/B, never a default.
+
+### V6-era corroboration of rules this kit already had
+
+Not new techniques. Testers working on V6 independently arrived at three rules this kit has
+documented since V5.5. That is not confirmation, but it is evidence the rules survived the
+rebuild — which is what \`legacy_v55_candidate\` was waiting for.
+
+| Rule this kit already had | Where it lives | What V6 testers reported |
+|---|---|---|
+| Negations belong in Exclude, never in Style | \`suno_v55_reference.md\` Exclude Best Practices — "Use the Exclude field, NOT \\"no X\\" in Style" | \`NO reverb, no echo\` written into Style reportedly left reverb in the output; positive wording (\`dry, close-mic'd, narrow stereo image\`) plus a separate Exclude worked better |
+| Commas mark breath, CAPS pushes delivery | \`lyric_craft.md\` punctuation table | Mid-line commas used as breath marks, selective CAPS for stronger delivery |
+| \`[Silence]\` controls timing | \`suno_v55_reference.md\` | Reported still effective on V6. The new detail is granularity — at the end of every lyric line, not only between sections |
+
+One entry in this kit runs against the first row: \`yaml_template.md\` documents \`no intro, no
+humming\` inside Style as a deliberate workaround with a reported ~50% success rate. It is flagged
+there now. A/B it rather than assuming either side is right.
+
+### Lyric markup — \`community_experimental\`
+
+- **Line-end \`[Silence]\` against rushed vocals.** Put \`[Silence]\` at the end of every lyric line in
+  the affected sections. Do not give the tag its own line, and do not stack punctuation in front of
+  it. Reported effect: more room between lines, less hurry, melody regains its length. Caveat: one
+  glam-metal power ballad, no controls, genre dependence likely.
+- **Parentheses as a vocal-role marker.** \`( ... )\` around backing lines with the lead singing only
+  the unparenthesised ones reportedly improved lead separation and call-and-response. Caveat:
+  observed on an a cappella quartet, untested on a band arrangement. This kit's existing duet
+  guidance in \`suno_v55_reference.md\` points the other way for *real* duets — split the parts
+  rather than making one generation sing both. The two are different requests; check before mixing.
+- **Stacking stop markers is not monotonic.** Extra terminal markers reportedly interfered rather
+  than reinforced. \`[2 Bar Rest]\` was reported ignored while \`[Silence]\` acted, suggesting unknown
+  tags are dropped rather than approximated.
+
+### Style patterns — \`community_experimental\`
+
+- **Instruments as actions, not nouns.** \`continuous foreground riffs, interlocking leads,
+  alternate picking\` instead of \`electric guitar\`; fills, double bass, ghost notes instead of
+  \`drums\`. Reported to stop instruments dropping out during verses. Caveat: rock-centric trials.
+- **A production-quality clause.** A short tail such as \`close-mic vocals, crisp transients, clear
+  instrument separation, open low-mids, stable tonal balance\`. The individual descriptors already
+  exist in \`style_catalog.md\`; what is new is using them as one deliberate block. Caveat: its
+  author calls it unofficial, and a long clause crowds out the musical direction.
+- **Style length is unresolved — do not pick a winner.** Three incompatible recommendations
+  circulated in the same week: fill the 1000-character UI limit with dense comma-separated tags;
+  keep to 8-14 words for older-model texture; or ignore length entirely and order the content by
+  musical hierarchy (genre, vocal, drums, guitars, bass, arrangement, production, ending). Treat
+  these as three profiles to benchmark, not as a rule.
+
+### Workflow — \`community_experimental\`
+
+- **Short sections as edit boundaries.** Size each \`[Verse]\` / \`[Pre-Chorus]\` / \`[Chorus]\` to the
+  unit you would want to re-roll, because on V6 the section is also the editing unit. A weak verse
+  can then be replaced while a good chorus is kept untouched. This is a consequence of local edit
+  (see *local edit*), not a prompt trick.
+- **Sibling mashup.** Mash together the two candidate takes returned by a single create request.
+  Reported gains in fidelity, cohesion and overall sound quality. For an older song: remaster it
+  twice on V6, then mash those two. This is the documented multi-source mashup fed an unusual
+  input — that feature is described as combining *different* songs.
+- **Variety has two regimes.** Use \`0\` for calibration and prompt A/B, because Variety rewrites the
+  style prompt itself (see *Generation controls*). But one report found \`Bold\` escaped a
+  rushed-vocal failure that \`0\` could not. Read it as a mutation operator for climbing out of a
+  failure basin, then return to \`0\` and try to reproduce the win under control.
+- **Late-song density is a diagnostic, not a fix.** On long songs, watch the back half for low-mid
+  buildup, vocal count creeping upward, and section resets getting weaker. One controlled test
+  found arrangement density partly stochastic — identical prompt and settings produced both sparse
+  and muddy takes — so judge a recipe by its success rate across takes, never by one good result.
+
+---
+
+## Known weak points
+
+\`community_experimental\` — independent first-day hands-on reporting, single reviewer, small sample.
+Recorded so we test rather than assume.
+
+- Deliberate imperfection is reportedly hard to obtain: \`off-key\`, \`out-of-tune\`, \`slightly
+  dissonant\`, \`monotone vocals\`, even \`no drums\` were reported as ignored in some attempts.
+- Some AI-artefact character was reported in V6 vocals in specific takes.
+- The audible gap between \`v6\` and \`v6-wild\` was reported as smaller than expected on some prompts.
+
+Treat all three as **things to A/B test**, not as established V6 properties.
+Observed 2026-09-09, single source, not reproduced by this kit.
+
+---
+
+## Independent benchmark
+
+The rows below are quoted from a named external document, not claims this kit makes about how V6
+behaves. WildSongBench (192 prompts, 94 Chinese / 98 English) as published on the YuE2-3B model
+card; every figure was checked against the source when read on 2026-09-12.
+
+| Metric | Suno v5 | Suno v5.5 | Suno v6 | Suno v6 Wild |
+|---|---:|---:|---:|---:|
+| Musicality (higher better) | 5.9918 | 5.8087 | 5.6558 | 5.5644 |
+| SongBench average (higher better) | 6.8721 | 6.7150 | 6.5562 | 6.4195 |
+| MuLan (higher better) | 0.5428 | 0.5089 | 0.4916 | 0.4999 |
+| AllMusicCaps (higher better) | 0.4353 | 0.3917 | 0.4305 | 0.4316 |
+| Q3O prompt adherence (higher better) | 4.5907 | 4.5914 | 4.6258 | 4.5898 |
+| Phoneme error rate (lower better) | 8.10% | 5.96% | 7.58% | 7.45% |
+
+**It is not a like-for-like comparison**, and the benchmark says so: "Open baselines, Suno v6, and
+Suno v6 Wild use two candidates and four ASR passes per candidate, followed by lower-PER selection;
+earlier proprietary systems retain their delivered-candidate protocols."
+
+What survives that caveat is narrow: **V6 does not lead V5.5 across the board here.** Q3O, the
+prompt-adherence measure, is slightly higher on v6, while Musicality, SongBench average and MuLan
+are lower and the phoneme error rate is worse. Do not stretch this into a claim about which model
+sounds better. It is one external benchmark, with an acknowledged protocol difference, and it is
+not Suno's. It is recorded because it is measured and retrievable, which the *Known weak points*
+above are not.
+
+---
+
+## Sources
+
+| Tier | Source | Date | Used for |
+|---|---|---|---|
+| Official | https://suno.com/blog/introducing-v6 | 2026-09-09 | Model family, capabilities, official example prompts |
+| Official | https://suno.com/release-notes | 2026-09-09 | Release date, paid-only access |
+| Official | https://suno.com/release-notes | 2026-07-20 | Duration Slider = V5.5 / Web only |
+| Official | https://help.suno.com/en/articles/13924481 (v6 FAQ) | read 2026-09-11 | Variety, Max Mode, Simple Mode, retirement of pre-v6 models, Custom Model upgrade |
+| Official | https://help.suno.com/en/articles/13924737 (Current Models) | read 2026-09-11 | Model family and access tiers |
+| Independent | The Verge, first-day hands-on | 2026-09-09 | Known weak points (unverified) |
+| Official | https://suno.com/blog/introducing-v6 | read 2026-09-12 | Industry partners, upload safeguards |
+| Official | https://suno.com/terms (effective 2026-09-03) | read 2026-09-12 | Upload rights warranty, Voice Model own-voice-only rule |
+| Official | https://help.suno.com/en/articles/3198209 (Does Suno moderate songs?) | read 2026-09-12 | A song may fail to generate if it contains well-known artist or people names, or copyrighted / trademarked terms |
+| Official | https://suno.com/blog/building-the-future-of-music-responsibly | read 2026-09-12 | Suno removes an artist name from a prompt and redirects toward descriptive musical characteristics |
+| Independent | https://huggingface.co/m-a-p/YuE2-3B (YuE2-3B model card) | read 2026-09-12 | WildSongBench figures and its candidate-selection caveat |
+| Community | Research report 2026-09-12, summarising Reddit threads 2026-09-09..09-12 | 2026-09-12 | Everything under *Community findings*. Threads not retrieved — Reddit blocks this kit's fetcher |
+
+Last verified against source: **2026-09-12**.
+Re-verify after any Suno model update — V6 is a closed, server-side model and may change silently.
+`,
+  "v55_to_v6_migration.md": `<!-- Source: sunomanual (MIT, Copyright 2025-2026 usedhonda) -->
+
+# V5.5 → V6 移行判断
+
+> V6 リリース: 2026-09-09 / 本判定の作成: 2026-09-10
+
+V5.5 の各ルールを **keep / modify / demote / retire** で判定した表です。
+V6 の確認済み事実は \`suno_v6_reference.md\`、V5.5 の詳細は \`suno_v55_reference.md\` が正本。
+
+**大原則**: V6 はモデルを作り直しているため、V5.5 で効いた慣習が同率で効く保証はない。
+一方で V5.5 の語彙を捨てる理由もない。順位を変えるだけにする。
+
+> **semantic な指示が第一。タグは実験的な補助信号。**
+
+| 判定 | 意味 |
+|---|---|
+| **keep** | そのまま使う。V6 でも前提が変わっていない |
+| **modify** | 考え方は活きるが、書き方を V6 向けに変える |
+| **demote** | 削除はしないが「未検証の候補」に格下げし、A/B 前提にする |
+| **retire** | V6 では使わない |
+
+---
+
+## 1. Style 欄の書き方 — **modify**
+
+| 項目 | V5.5 | V6 |
+|---|---|---|
+| 推奨形式 | 短いカンマ区切りの名詞句タグ | **属性同士の関係を述べた文**（タグ列も引き続き有効） |
+| descriptor 数 | 4-7 が最適 | 個数ではなく**関係が書けているか**で判断 |
+| 根拠 | V5.5 の実運用 | Suno 公式が「vocals, instrumentation, structure, mood, references, overall feel をより理解する」と明記 |
+
+### V5.5 の書き方（まだ動く）
+\`\`\`
+J-pop, 124 BPM, A major, uplifting, female vocal, clean guitar
+\`\`\`
+
+### V6 の推奨
+\`\`\`
+Bright modern J-pop around 124 BPM in a major-key feel. Restrained close vocal in the verse,
+then a wide melodic chorus with stronger drums, bass and layered harmonies.
+\`\`\`
+
+> **「長く書けば良い」ではない。** 公式が言っているのは「複雑な意図や詳細な指示をより理解する」であって、
+> 最適な文字数は**公式に一切示されていない**。長さではなく、verse と chorus の対比のような
+> **関係**が書けているかどうかが違いを生む。
+
+---
+
+## 2. モデル選択 — **modify**（V5.5 の「モデル分業」を置き換え）
+
+| 項目 | V5.5 | V6 |
+|---|---|---|
+| 考え方 | 伴奏は v5、ボーカルは v5.5 と**品質**で使い分け | \`v6\` / \`v6-wild\` / \`v6-mini\` を**創作モード**で使い分け |
+| 手順 | ステム書き出し + 外部結合が必要 | \`v6-wild\` で探索 → 良い案を \`v6\` で仕上げる |
+
+V5.5 のモデル分業（\`suno_v55_reference.md\` の Model Split Workflow）は V5/V4.5 の話なので、
+V6 を使うなら不要になる可能性が高い。ただし **V6 でのステム/Add Vocals の挙動は未検証**。
+
+⚠️ \`v6\` と \`v6-wild\` は**有料限定**。無料ユーザーが使える V6 は \`v6-mini\` だけ。
+本キットの既定モデルは **v6**（現行世代）。**v5.5 以前は 2026-09-09 に退役済み**で、新規生成の選択肢ではない
+（公式 v6 FAQ: "All models prior to v6 have been retired"）。CLI の alias は過去の記録を解決するために残してある。
+無料アカウントは \`v6-mini\` を明示すること。
+
+---
+
+## 3. 曲の修正方法 — **modify**（最も影響が大きい変更）
+
+| 項目 | V5.5 | V6 |
+|---|---|---|
+| サビだけ直したい | Cover / 全曲再生成。他のセクションも変わる | **局所編集**: 変えたい所だけ自然言語で指示 |
+| 歌詞1語だけ直したい | 全体を作り直す | **単語単位の差し替え**が可能 |
+
+### V5.5 の書き方
+Cover モードで全曲を作り直し、良いテイクが出るまで回す。
+
+### V6 の推奨
+\`\`\`
+Change only the second chorus.
+Replace the stacked synth lead with a small gospel choir and handclaps.
+Keep the lead-vocal melody, lyrics, tempo, key, bass line and all other sections unchanged.
+\`\`\`
+
+> **preserve 条件を必ず書く。** 機能の本質が「指定した所以外を保つ」ことなので、
+> 守ってほしいものを明示的に列挙するほど事故が減る（これは本キットの推奨であり、公式の要求仕様ではない）。
+
+**運用上の変更**: 「気に入らない → 作り直す」を既定にしない。まず局所編集を試す。
+
+---
+
+## 4. 複数ソースの扱い — **modify**
+
+| 項目 | V5.5 | V6 |
+|---|---|---|
+| 方法 | Cover / Persona / Audio conditioning を1つずつ、後工程で結合 | 1リクエストで複数ソースを **role 付き**で結合 |
+
+### V6 の推奨
+\`\`\`
+Use vocals from A, drums from B; rebuild the rest as sparse 80s synthwave.
+Do not copy lyrics from any source.
+\`\`\`
+
+ソースは「素材」ではなく「**役割**」で渡す。公式の例自体が
+"Take the vocals from x, drums from y" という分担指示になっている。
+
+---
+
+## 5. 入力の種類 — **modify**
+
+V5.5 は音声条件付けが中心。V6 は **text / audio / image / video** を公式に受け付ける。
+
+各 modality に必ず役割を書く（画像＝空気感、ボイスメモ＝メロディ、日記＝歌詞テーマ、等）。
+役割を書かないと参照が全体に滲む。
+
+⚠️ ファイルサイズ・形式・最大数・重み指定は**公式に未記載**。
+
+---
+
+## 6. Vibe / 情景プロンプト — **modify**（新しい第一級の書き方）
+
+| V5.5 | V6 |
+|---|---|
+| \`dreamy, nostalgic, warm synth\` のような形容詞列 | 情景そのものを起点にできる |
+
+### V6 の推奨
+\`\`\`
+Dreamy indie pop that feels like waiting alone on a nearly empty train platform at 2 a.m.;
+warm analog synths, soft close vocal, restrained drums, bittersweet rather than sad.
+\`\`\`
+
+公式が "Make a song that feels like midnight on a rooftop" を例示している。
+形容詞の羅列では届かない質感に届く可能性がある。
+
+---
+
+## 7. セクションタグ / アノテーションタグ — **keep**
+
+\`[Verse 1 - intimate, acoustic, close vocal]\` 形式は V6 でも引き続き使う。
+セクション単位の演出を運ぶ自然な手段であり、V6 で無効になったという情報はない。
+
+ただし **1セクションに詰め込む要素は重要な2-3個に絞る**。
+細かい形容詞を全部厳密に実行する保証はない（これは V5.5 から変わらない）。
+
+より強い制御が要る場合は、生成後に**局所編集**で直す方が確実（§3）。
+
+---
+
+## 8. コミュニティ発の inline タグ — **demote**
+
+\`[Energy: High]\` / \`[modulate up a key]\` / インラインコード表記 \`[Am7] [G] [Cmaj7]\` /
+ブラケット信頼度階層（\`[]\` > \`()\` > \`{}\`）。
+
+すべて **\`legacy_v55_candidate\` に格下げ**。削除はしない。
+
+| | V5.5 | V6 |
+|---|---|---|
+| 位置づけ | 未実証だが有望な community 技法 | **V6 未検証**。まず semantic 指示で書き、タグは A/B の対象 |
+
+### 書き換え例
+
+| V5.5 | V6 で最初に試す形 |
+|---|---|
+| 歌詞直前に \`[Energy: High]\` | \`[Chorus - full drums, wider harmony, stronger vocal, highest energy]\` |
+| \`[modulate up a key]\` | \`[Final Chorus - modulate upward by one whole step, preserve the melody shape]\` |
+| \`[Am7] [G] [Cmaj7]\` を別行に | \`Maintain an Am7-G-Cmaj7 harmonic loop through the verse.\` |
+
+いずれも**失敗したら局所編集で直す**のが V6 らしい復旧手段。
+タグ自体を捨てる必要はないので、A/B の片側として残す。
+
+**V6 期の追加観測（2026-09-12 / \`community_experimental\`）**: 未知のタグは近い意味に解釈されるのではなく
+**そのまま落とされる**らしい、という報告がある（\`[2 Bar Rest]\` は無視され、\`[Silence]\` は作用した）。
+もし本当なら「効かなかった」は「書き方が下手」ではなく「そのタグを知らない」を意味することになり、
+既知のタグだけで書き新語の発明は A/B に留める、という本節の方針をそのまま補強する。
+出典と限界は \`suno_v6_reference.md\` の Community findings を見ること。
+
+---
+
+## 9. 文字数上限 — **keep（V5.5 の数値のみ）**
+
+V6 の Style / Lyrics 上限は**公式に未記載**。
+
+したがって本キットが明示する数値は引き続き V5.5 のもの（コアタグ 120 / Style 全体 400 /
+YAML+歌詞 4500、Suno 上限 5000）。**V6 用の数値を推測で書かない。**
+
+実測で判明した場合に備え、削る順序だけ決めておく（下から削る）:
+
+\`\`\`
+must-have musical identity
+  → vocal + groove
+  → arrangement relationships
+  → section trajectory
+  → production / texture
+  → vibe / metaphor
+  → optional decorative adjectives
+\`\`\`
+
+---
+
+## 10. スライダー（Weirdness / Style Influence / Audio Influence） — **demote**
+
+V5.5 の推奨値（安全域 15-85、Cover は Audio 25% 起点、Sample 全曲は 0/100/100 等）は
+**V6 では未検証**。V6 におけるスライダーの意味そのものが公式に未記載。
+
+- V6 で使う場合は V5.5 の値を**出発点**として扱い、結果で調整する
+- **Weirdness を temperature と同一視しない。** Suno の creative control であって、
+  公開されたサンプリング温度ではない
+
+---
+
+## 11. Duration / Voices / Custom Models / My Taste / Persona — **keep（V5.5 限定として）**
+
+| 機能 | 状態 |
+|---|---|
+| Duration Slider | 2026-07-20 に **V5.5 / Web 限定**で提供。**V6 対応は未記載** |
+| Voices / Custom Models / My Taste / Persona | V5.5 の機能。**V6 との互換は公式に未記載** |
+
+**V5.5 の設定を V6 へ自動継承しない。** 尺の制御は引き続き構造（form / ending intent）で行うのが安全。
+
+---
+
+## 12. アーティスト名の指定 — **keep（禁止のまま）**
+
+既知アーティスト・既知楽曲そのものを求めるプロンプトは V6 でも引き続きブロックされる。
+
+公式の2ページがこれを裏づけている（いずれも 2026-09-12 に直接確認）。
+
+ヘルプの「Does Suno moderate songs?」は、著名アーティストや人物の名前、著作権・商標のある語を含む曲は
+**生成されないことがある**と述べている。
+
+さらに重要なのはブログ「Building the Future of Music Responsibly」の一文で、アーティスト名を含む
+プロンプトに対して**その名前を取り除き、音楽的特徴の記述へリクエストを向け直す**と明言している。
+つまり下の分解は禁止をかいくぐる回避策ではなく、**Suno 自身がやっている処理を先回りしているだけ**。
+自分で分解すれば、どの特徴を残すかを Suno に任せず自分で決められる。
+
+音響特徴へ分解する方針は変えない:
+
+\`\`\`
+✗ in the style of [artist name]
+✓ dry baritone vocal, angular clean guitar, minimal bass-led arrangement,
+  mechanical straight drums, cold nocturnal atmosphere, restrained melodic range
+\`\`\`
+
+---
+
+## 移行チェックリスト
+
+V6 で1曲作るときの最短手順:
+
+1. \`v6-wild\` で複数の異なる brief を試す（§2）
+2. 良い方向が見えたら \`v6\` で作り直す
+3. 気になる箇所は**局所編集**で直す（§3）— 全曲再生成に戻らない
+4. 参照素材があれば **role を明記**（§4, §5）
+5. コミュニティタグを使うなら A/B の片側としてのみ（§8）
+`,
   "yaml_template.md": `<!-- Source: sunomanual (MIT, Copyright 2025-2026 usedhonda) -->
 
-# Output Templates for Suno Style Analyzer V5.5
+# Output Templates for Suno Style Analyzer
 
 This file contains the exact output templates. The GPT must follow these structures precisely.
 
@@ -3890,7 +4645,7 @@ This file contains the exact output templates. The GPT must follow these structu
 
 \`\`\`yaml
 # META (hints; do not sing)
-version: v5.5
+version: v6   # 使用モデル。既定 v6。他に v6-wild / v6-mini。v5.5 以前は退役済み
 meta:
   tempo: <int>
   key: "<e.g., F# major>"
@@ -3924,6 +4679,29 @@ notes:
 
 **No per-section arrays.** The old \`sections\` array (vocals/cues/remix_hints per section) ate ~2000 chars. Annotation tags like \`[Verse 1 - description]\` already carry production hints in the lyrics. META stays global-only.
 
+### V6 用の任意フィールド
+
+**すべて任意** — 書かなくても既存のフローは何も変わらない。
+詳細は \`suno_v6_reference.md\`。
+
+| フィールド | 用途 | 例 |
+|---|---|---|
+| \`model_intent\` | precision / exploration / fast のどれを狙うか | \`exploration\` |
+| \`vibe_scene\` | 情景そのもの。形容詞では届かない質感に使う | \`"midnight on a rooftop"\` |
+| \`must_preserve\` | 局所編集で**変えてはいけない**もの | \`["lead vocal melody", "tempo", "key"]\` |
+| \`must_change\` | 局所編集で変える対象 | \`["second chorus instrumentation"]\` |
+| \`references\` | 参照素材と**その役割**（素材名だけでは足りない） | \`[{ source: "A", role: "vocal phrasing only" }]\` |
+
+\`\`\`yaml
+# 任意フィールドの記入例
+model_intent: exploration
+vibe_scene: "last train home after deciding not to send the message"
+must_preserve: ["lead vocal melody", "tempo", "key"]
+\`\`\`
+
+これらは**このキットの内部表現**であり、Suno がこのフィールド名を解釈するわけではない。
+最終的に Style / Lyrics / 局所編集の文へ展開して使う。
+
 ### Kanji → Hiragana Conversion Examples
 - 愛してる → あいしてる
 - 夜空 → よぞら
@@ -3937,7 +4715,11 @@ notes:
 - Keep English as-is: love → love
 
 ### Section Matching Rule
-The \`sections\` in YAML and the lyrics sections MUST exactly match the input lyrics:
+
+The lyrics section tags MUST exactly match the input lyrics.
+(There is no \`sections\` array in YAML — it was removed, see above. This rule applies to the
+section headers inside the \`=== LYRICS START/END ===\` block only.)
+
 - Same section names
 - Same order
 - No additions, deletions, or reordering
@@ -3954,8 +4736,11 @@ If YAML block exceeds 4500 characters, reduce META only (NEVER touch lyrics):
 
 ## Style Template
 
-**V5.5 準拠: タグ形式、4-7 descriptors、120文字以内。**
-**プローズ（散文）禁止。短いカンマ区切りの名詞句で書く。**
+**✅ V6 既定: 属性どうしの関係を述べる。** どの楽器が主役か、verse と chorus をどう対比させるか。
+**❓ 公式未記載: V6 の Style 文字数上限。** 以下の数値は**キットの目標値**であって Suno の公表値ではない。
+
+**🧪 V5.5 由来 / V6 未検証: タグ形式、4-7 descriptors、120文字以内。**
+**短いカンマ区切りの名詞句で書く形式も引き続き有効。**
 **100% English. Zero Japanese.**
 **Front-load: genre → BPM → key → mood → vocal → instruments → mix の順。**
 **Max genres: 2 genre pairs（3+ は不安定）。**
@@ -3973,7 +4758,8 @@ If YAML block exceeds 4500 characters, reduce META only (NEVER touch lyrics):
 
 ### Performance Direction（Style 内に追加、任意）
 
-V5.5 はセクション別の演出を Style 内のロールラベルで制御できる。
+🧪 V5.5 由来 / V6 未検証: セクション別の演出を Style 内のロールラベルで制御する書き方。
+V6 では「どのセクションで何がどう変わるか」を関係として述べる文に吸収できる。
 annotation tag への長文よりこちらが効果が高い。
 
 **Format**: Style タグの後に改行して \`<Section>: <2-3 descriptors>\` を追加
@@ -3989,8 +4775,15 @@ Bridge: piano ghost drums only
 \`\`\`
 
 **注意**:
-- Performance Direction を含めると Style が 120 文字を超える。合計上限は Suno UI の Style フィールド上限（1000文字）に従う
-- コアタグ（120文字以内）+ Performance Direction（必要分のみ）= 実用上 200-400 文字が目安
+- **Style の3つの数値を混同しない**（別々の層の話）:
+
+| 層 | 値 | 意味 |
+|---|---|---|
+| コアタグ | **120文字以内** | 本キットの必須ルール。1行目のタグ列のみ |
+| Style 欄 全体 | **400文字以内** | 本キットの目標値。コアタグ + Performance Direction |
+| Suno UI の上限 | 1000文字 | Suno 側のハード上限。キットは意図的にここまで使わない |
+
+- Performance Direction を含めるとコアタグの 120 文字は超えるが、Style 欄全体で 400 文字以内に収める
 - ジャンル・音色は正しいが演奏の態度/デリバリーが違う → Performance Direction を追加
 - 基本的な音作りが違う → Style タグ自体を変更
 
@@ -4032,7 +4825,8 @@ If core Style tags exceed 120 characters:
 1. **Remove secondary adjectives** (keep primary genre + mood)
 2. **Compress instruments** (keep 2-3 key instruments)
 3. **Move detail to Performance Direction block** (separate from core tags)
-If Performance Direction is needed, total Style field can go up to 400 characters.
+If Performance Direction is needed, the kit target for the whole Style field is 400 characters.
+(Suno's own UI cap is 1000 characters; the kit deliberately stays well under it.)
 
 ---
 
@@ -4057,7 +4851,12 @@ Trap, Dubstep, distorted guitars, EDM supersaws, female humming
 
 ---
 
-## Remix Hints Recommended Values
+## 🧪 V5.5 レガシー: Remix Hints Recommended Values（V6 未検証）
+
+> 以下は **V5.5 で有効だった数値**。V6 ではスライダーの意味そのものが公式に未記載で、本キットでも未再現。
+> 削除はしないが、V6 では**出発点**として使い、結果を見て調整する。A/B の片側としてのみ扱う。
+> Weirdness は Suno の creative control であって、公開されたサンプリング温度ではない。
+> 判定根拠: \`v55_to_v6_migration.md\` §10
 
 | Section | Weirdness | Style Influence | Audio Influence (Cover/Sample) |
 |---------|-----------|-----------------|-------------------------------|
@@ -4081,7 +4880,7 @@ Trap, Dubstep, distorted guitars, EDM supersaws, female humming
 | Verse 1 統合 | \`[Verse 1 - starts spoken then erupts]\` | イントロなしで即歌い出し |
 | イントロ省略 | \`[Verse 1]\` から開始 | 完全にイントロを排除 |
 | Hook 先頭 | \`[Short Instrumental Intro]\` の直後に \`[Hook]\` を置き、そこから歌い出す | 4-8 小節の短イントロを確保しつつ、最初の歌唱を強いフックで先出し |
-| 即歌唱 prose | Style 側に \`start immediately with guitar and vocal, no intro, no humming\` | stutter / 冒頭ハミングを減らす。成功率は 50% 程度との報告あり |
+| 即歌唱 prose | Style 側に \`start immediately with guitar and vocal, no intro, no humming\` | \`no X\` を Style に入れる例外ワークアラウンド。stutter / 冒頭ハミングを減らす報告あり（成功率は 50% 程度）。まず構造タグで試し、A/B 用に限定。**V6 では要再検証** — V6 期のコミュニティ報告は、Style 内の否定語がむしろ当の要素を呼び込む例を挙げている（\`suno_v6_reference.md\` の Community findings）。肯定形で書いて Exclude 側へ寄せた版と A/B すること |
 
 \`[Intro]\` を使う場合は長いインストが入ることを許容する前提で。
 推奨 descriptors: atmospheric, fade in, soft pads, ambient, building, sparse
