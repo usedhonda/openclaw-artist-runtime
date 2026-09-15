@@ -1,6 +1,6 @@
 # Handoff: Producer-musician creation loop
 
-## Active incident: thin Telegram song explanations (2026-09-16)
+## Resolved incident: thin Telegram song explanations (2026-09-16)
 
 The producer observed that completed-song explanations had become extremely terse
 and news sources disappeared. The song brief retained the selected source, but
@@ -16,9 +16,13 @@ along with typecheck, lint, and the runtime/UI build. The full 2,103-test gate
 has 2,100 passes and three failures: two formatter regressions were corrected
 and now pass; the remaining pre-existing tempo-distribution test still misses
 the `slow` band and is outside this incident scope. The live V6 trial
-`spawn_857237` has two accepted Suno URLs and remains at
-`suno_take_url_ready`; complete its audio import/selection and prove Telegram
-receipt after deploying this repair.
+`spawn_857237` reached `archived` with two accepted Suno URLs. Its frozen X
+source was restored to song state and a corrected `song_take_completed` message
+was delivered to Telegram with the explanation, quote, and source URL; the
+append-only delivery receipt confirms acceptance. A forced production observation
+refresh also replaced the three-day empty news cache with five current entries
+carrying publisher URLs, proving the repaired OpenAI runtime path can again perform
+news editorial selection.
 
 ## Resolved incident: Telegram error flood (2026-09-15)
 
