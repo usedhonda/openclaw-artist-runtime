@@ -1,5 +1,6 @@
 import type { Browser, BrowserContext, Locator, Page } from "playwright";
 import { sunoCdpEndpoint } from "./runtimeConfig.js";
+import { ensureSunoLyricsMode, ensureSunoStyleMode } from "./sunoCreateForm.js";
 import { sanitizeSunoDiagnosticText, sanitizeSunoDiagnosticUrl } from "./sunoDiagnosticSafety.js";
 
 export const SUNO_DOCTOR_DEFAULT_CDP_ENDPOINT = "http://127.0.0.1:9222";
@@ -26,10 +27,6 @@ export interface SunoDoctorResult {
 }
 
 const TITLE_SELECTOR = "input[placeholder=\"Song Title (Optional)\"]:visible";
-const LYRICS_SELECTOR = "textarea[data-testid=\"lyrics-textarea\"]";
-const LYRICS_TOGGLE_SELECTOR = "button[aria-label=\"Add your own lyrics\"]";
-const STYLE_SELECTOR =
-  "[data-testid=\"create-form-styles-wrapper\"] textarea, textarea[placeholder=\"Describe the sound you want\"], textarea[placeholder*=\"クラシック音楽\"], textarea[placeholder*=\"バイキングメタル\"], textarea[placeholder*=\"sound you want\"]";
 
 export async function runSunoDoctor(options: SunoDoctorOptions = {}): Promise<SunoDoctorResult> {
   const cdpEndpoint = normalizeEndpoint(options.cdpEndpoint);
@@ -73,11 +70,10 @@ export async function runSunoDoctor(options: SunoDoctorOptions = {}): Promise<Su
     const title = page.locator(TITLE_SELECTOR).first();
     checks.push(await checkWritableLocator("title_input", title, timeoutMs));
 
-    await ensureLyricsTextareaVisible(page, timeoutMs);
-    const lyrics = page.locator(LYRICS_SELECTOR).first();
-    checks.push(await checkWritableLocator("lyrics_textarea", lyrics, timeoutMs));
+    const lyrics = await ensureSunoLyricsMode(page, timeoutMs);
+    checks.push(await checkWritableLocator("lyrics_editor", lyrics, timeoutMs));
 
-    const style = page.locator(STYLE_SELECTOR).first();
+    const style = await ensureSunoStyleMode(page, timeoutMs);
     checks.push(await checkWritableLocator("style_textarea", style, timeoutMs));
   } catch (error) {
     checks.push({ name: "playwright_probe", status: "fail", detail: errorMessage(error) });
@@ -106,18 +102,6 @@ async function resolveSunoPage(context: BrowserContext): Promise<Page> {
     }
   });
   return sunoPage ?? context.pages()[0] ?? await context.newPage();
-}
-
-async function ensureLyricsTextareaVisible(page: Page, timeoutMs: number): Promise<void> {
-  const textarea = page.locator(LYRICS_SELECTOR).first();
-  if (await textarea.isVisible({ timeout: Math.min(timeoutMs, 5_000) }).catch(() => false)) {
-    return;
-  }
-
-  const toggle = page.locator(LYRICS_TOGGLE_SELECTOR).first();
-  if (await toggle.isVisible({ timeout: 1_000 }).catch(() => false)) {
-    await toggle.click();
-  }
 }
 
 async function checkWritableLocator(name: string, locator: Locator, timeoutMs: number): Promise<SunoDoctorCheck> {

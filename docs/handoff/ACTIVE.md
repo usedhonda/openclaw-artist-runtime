@@ -12,7 +12,7 @@ The orphan alone was terminated after confirming zero pending Suno take waits.
 The existing supervisor then acquired the gateway normally as child `1202709`.
 Verification showed `gateway_state=running`, Telegram polling ingress started,
 Suno connected, zero failed plugin notifications, and no crash-ledger growth after
-recovery. Do not start `/home/box/.openclaw-artist/start-artist-gateway.sh`
+recovery. Do not start the legacy host-local direct gateway launcher
 directly; use `scripts/openclaw-local-gateway` so the supervisor remains the sole
 owner.
 

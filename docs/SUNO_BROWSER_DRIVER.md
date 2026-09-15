@@ -311,6 +311,9 @@ the wrapper does not silently retry with Playwright's persistent-profile launche
 On Linux the wrapper also passes `--disable-dev-shm-usage` because containerized
 servers may expose a small `/dev/shm`, which can otherwise crash the Suno renderer;
 macOS arguments are unchanged.
+`scripts/suno-doctor.sh` resolves the same V6 lyrics rich editor and style controls
+as the live manual-submit driver. It does not require the retired
+`textarea[data-testid="lyrics-textarea"]` control and never presses Create.
 `<workspace>` is
 `OPENCLAW_LOCAL_WORKSPACE` when set, otherwise `.local/openclaw/workspace` in the
 repository.

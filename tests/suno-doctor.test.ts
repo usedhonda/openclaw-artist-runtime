@@ -36,6 +36,32 @@ function pageMock(events: string[]) {
   };
 }
 
+function v6PageMock(events: string[]) {
+  const visible = new Set([
+    'input[placeholder="Song Title (Optional)"]:visible',
+    'button:has-text("Write Lyrics")',
+    'div[role="textbox"][aria-label="Lyrics editor"]',
+    '[data-testid="create-form-styles-wrapper"] textarea'
+  ]);
+  return {
+    url: vi.fn(() => "https://suno.com/create"),
+    goto: vi.fn(async (url: string) => events.push(`goto:${url}`)),
+    waitForLoadState: vi.fn(async () => undefined),
+    locator: vi.fn((selector: string) => ({
+      first: () => ({
+        waitFor: vi.fn(async () => {
+          events.push(`wait:${selector}`);
+          if (!visible.has(selector)) throw new Error(`not visible: ${selector}`);
+        }),
+        isVisible: vi.fn(async () => visible.has(selector)),
+        isEditable: vi.fn(async () => visible.has(selector)),
+        getAttribute: vi.fn(async () => null),
+        click: vi.fn(async () => events.push(`click:${selector}`))
+      })
+    }))
+  };
+}
+
 describe("Suno doctor", () => {
   beforeEach(() => {
     connectOverCDPMock.mockReset();
@@ -76,5 +102,21 @@ describe("Suno doctor", () => {
     expect(result.checks[0]).toMatchObject({ name: "cdp_version", status: "fail" });
     expect(connectOverCDPMock).not.toHaveBeenCalled();
     expect(formatSunoDoctorResult(result)).toContain("Action: start Chrome");
+  });
+
+  it("accepts the Suno V6 rich lyrics editor when the legacy textarea is absent", async () => {
+    const events: string[] = [];
+    const page = v6PageMock(events);
+    connectOverCDPMock.mockResolvedValue({
+      contexts: vi.fn(() => [{ pages: vi.fn(() => [page]), newPage: vi.fn(async () => page) }]),
+      newContext: vi.fn(),
+      disconnect: vi.fn()
+    });
+
+    const result = await runSunoDoctor({ cdpEndpoint: "http://127.0.0.1:9555", timeoutMs: 100 });
+
+    expect(result.ok).toBe(true);
+    expect(result.checks).toContainEqual(expect.objectContaining({ name: "lyrics_editor", status: "ok" }));
+    expect(events.some((event) => event.includes('textarea[data-testid="lyrics-textarea"]'))).toBe(false);
   });
 });

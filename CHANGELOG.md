@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- fix: align the Suno CDP doctor with the shared V6 Create-form selectors. The
+  doctor now validates the rich lyrics editor used by the live manual-submit
+  driver instead of failing on the retired legacy lyrics textarea.
+
 - fix: lyrics drafting now uses the proven `high` reasoning level instead of the
   lyrics-only `xhigh` override, which repeatedly exhausted the bounded runtime
   call and parked autonomous songs before Suno generation.
