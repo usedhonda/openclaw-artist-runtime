@@ -18,7 +18,9 @@ function brief(songId = "commission_test"): CommissionBrief {
     styleNotes: "太い bass + jazz drum",
     duration: "4 分",
     sourceText: "producer commission",
-    createdAt: "2026-04-29T01:00:00.000Z"
+    createdAt: "2026-04-29T01:00:00.000Z",
+    artistObservation: "消えていく音を見過ごせなかった。",
+    sources: [{ kind: "news", url: "https://example.com/live-house", author: "City Desk", quote: "ライブハウスが閉館する" }]
   };
 }
 
@@ -31,7 +33,16 @@ describe("song state injector", () => {
     const autopilot = await readAutopilotRunState(root);
 
     expect(result).toMatchObject({ songId: "commission_test", stateBootstrapped: true });
-    expect(song).toMatchObject({ title: "境界の音", status: "brief" });
+    expect(song).toMatchObject({
+      title: "境界の音",
+      status: "brief",
+      observationSummary: {
+        author: "City Desk",
+        url: "https://example.com/live-house",
+        quote: "ライブハウスが閉館する",
+        motivation: "消えていく音を見過ごせなかった。"
+      }
+    });
     expect(autopilot).toMatchObject({ currentSongId: "commission_test", stage: "planning" });
     expect(readFileSync(join(root, "songs", "commission_test", "brief.md"), "utf8")).toContain("太い bass");
     expect(readFileSync(join(root, "songs", "commission_test", "lyrics", "lyrics.v1.md"), "utf8")).toContain("Lyrics seed");

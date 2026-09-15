@@ -121,7 +121,15 @@ export async function injectCommissionSong(
   await updateSongState(root, songId, {
     title: commissionBrief.title,
     status: "brief",
-    reason: `producer commission accepted: ${commissionBrief.brief.slice(0, 120)}`
+    reason: `producer commission accepted: ${commissionBrief.brief.slice(0, 120)}`,
+    observationSummary: commissionBrief.sources?.[0]
+      ? {
+          author: commissionBrief.sources[0].author,
+          url: commissionBrief.sources[0].url,
+          quote: commissionBrief.sources[0].quote,
+          motivation: commissionBrief.artistObservation ?? commissionBrief.brief
+        }
+      : undefined
   });
 
   const state = await readAutopilotRunState(root);

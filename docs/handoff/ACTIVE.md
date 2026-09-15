@@ -1,5 +1,25 @@
 # Handoff: Producer-musician creation loop
 
+## Active incident: thin Telegram song explanations (2026-09-16)
+
+The producer observed that completed-song explanations had become extremely terse
+and news sources disappeared. The song brief retained the selected source, but
+commission injection did not persist it to song state; completion events without an
+observation summary therefore discarded the explanation and source. Separately, a
+timed-out AI spawn pitch fell back to a card that omitted its source footer.
+
+The repair persists the first frozen source and artist motivation in song state,
+uses that immutable song-bound summary when completion events omit it, emits a
+grounded explanation plus source URL, and keeps the source footer on spawn-pitch
+timeouts. Focused regressions cover all three paths: 25 relevant tests pass,
+along with typecheck, lint, and the runtime/UI build. The full 2,103-test gate
+has 2,100 passes and three failures: two formatter regressions were corrected
+and now pass; the remaining pre-existing tempo-distribution test still misses
+the `slow` band and is outside this incident scope. The live V6 trial
+`spawn_857237` has two accepted Suno URLs and remains at
+`suno_take_url_ready`; complete its audio import/selection and prove Telegram
+receipt after deploying this repair.
+
 ## Resolved incident: Telegram error flood (2026-09-15)
 
 The live host had two gateway owners. A manually launched orphan gateway

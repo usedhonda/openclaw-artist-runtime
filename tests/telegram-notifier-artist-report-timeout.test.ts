@@ -58,4 +58,31 @@ describe("TelegramNotifier artistReport timeout", () => {
     // The selected take URL rides in the deterministic body even without the AI line.
     expect(sends[0].text).toContain("https://suno.com/song/abc");
   });
+
+  it("keeps the source URL on a spawn pitch when the AI voice call times out", async () => {
+    process.env.OPENCLAW_TELEGRAM_ARTIST_REPORT_TIMEOUT_MS = "20";
+    const root = mkdtempSync(join(tmpdir(), "notifier-spawn-timeout-"));
+    const sends: string[] = [];
+    const fetchImpl = vi.fn(async (url: string, init: RequestInit) => {
+      const body = JSON.parse(String(init.body));
+      if (url.includes("/sendMessage")) sends.push(String(body.text ?? ""));
+      return jsonResponse({ ok: true, result: { message_id: 1, chat: { id: 123 }, text: "ok" } });
+    });
+    const notifier = new TelegramNotifier({ token: "token", chatId: 123, workspaceRoot: root, fetchImpl, aiReviewProvider: "openai-codex" });
+
+    await notifier.notify({
+      type: "song_spawn_proposed",
+      candidateSongId: "spawn-news",
+      brief: {
+        songId: "spawn-news", title: "閉館後の残響", brief: "閉館のニュースから作る。", lyricsTheme: "消える音",
+        mood: "tense", tempo: "132 BPM", styleNotes: "sparse", duration: "3:00", sourceText: "news",
+        createdAt: "2026-09-16T00:00:00.000Z",
+        sources: [{ kind: "news", url: "https://example.com/live-house", author: "City Desk", quote: "今月閉館する" }]
+      },
+      reason: "消える前の空気を残す。",
+      timestamp: 1
+    });
+
+    expect(sends[0]).toContain("↗ 読んだ記事: https://example.com/live-house");
+  });
 });

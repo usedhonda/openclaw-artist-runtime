@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- fix: retain the selected news/X source in song state and recover it when a
+  completion event carries no observation summary. Telegram completion reports
+  now include a grounded artist explanation, quote, and source URL; spawn-pitch
+  timeout fallbacks also keep the audited source footer.
+
 - fix: align the Suno CDP doctor with the shared V6 Create-form selectors. The
   doctor now validates the rich lyrics editor used by the live manual-submit
   driver instead of failing on the retired legacy lyrics textarea.

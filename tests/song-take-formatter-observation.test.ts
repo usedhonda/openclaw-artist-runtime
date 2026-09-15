@@ -45,6 +45,32 @@ describe("song take formatter observation source", () => {
     expect(message).toContain("1. https://suno.com/song/a\n2. https://suno.com/song/b");
   });
 
+  it("recovers the song-bound source and explanation when the completion event omits it", async () => {
+    const root = mkdtempSync(join(tmpdir(), "artist-runtime-song-take-state-source-"));
+    await ensureArtistWorkspace(root);
+    await updateSongState(root, "song-news", {
+      title: "閉館後の残響",
+      status: "take_selected",
+      observationSummary: {
+        author: "City Desk",
+        url: "https://example.com/live-house",
+        quote: "老舗ライブハウスが今月閉館する",
+        motivation: "音が消える前の空気を、そのまま終わらせたくなかった。"
+      }
+    });
+
+    const message = await formatRuntimeEvent({
+      type: "song_take_completed",
+      songId: "song-news",
+      urls: ["https://suno.com/song/news"],
+      timestamp: 1
+    }, { workspaceRoot: root });
+
+    expect(message).toContain("「老舗ライブハウスが今月閉館する」を見て");
+    expect(message).toContain("そのまま終わらせたくなかった");
+    expect(message).toContain("https://example.com/live-house");
+  });
+
   it("does not attribute mutable latest brief observations to an unbound historical submission", async () => {
     const root = mkdtempSync(join(tmpdir(), "artist-runtime-song-take-brief-source-"));
     await ensureArtistWorkspace(root);

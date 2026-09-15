@@ -1080,12 +1080,13 @@ async function formatSongSpawnPitch(
   options: Pick<TelegramNotifierOptions, "workspaceRoot" | "aiReviewProvider" | "dashboardBaseUrl">
 ): Promise<string> {
   const fallback = formatSongSpawnCard(event);
+  const sourceFooter = formatSpawnSourceFooter(selectedSpawnSource(event));
+  const fallbackWithSource = [fallback, sourceFooter].filter(Boolean).join("\n\n");
   // Mock provider produces a generic, event-independent voice fallback (no title
   // reference); use the deterministic title-bearing card instead of sending a
   // spawn notification the producer cannot tell apart from any other proposal.
-  if ((options.aiReviewProvider ?? "mock") === "mock") return fallback;
-  if (!options.workspaceRoot) return fallback;
-  const sourceFooter = formatSpawnSourceFooter(selectedSpawnSource(event));
+  if ((options.aiReviewProvider ?? "mock") === "mock") return fallbackWithSource;
+  if (!options.workspaceRoot) return fallbackWithSource;
   const work = (async () => {
     const context = await readArtistVoiceContext(options.workspaceRoot!, {
       topic: "song_spawn_proposal",
@@ -1096,7 +1097,7 @@ async function formatSongSpawnPitch(
       aiReviewProvider: options.aiReviewProvider
     });
     const prose = response.text.trim();
-    return prose ? [prose, sourceFooter].filter(Boolean).join("\n\n") : fallback;
+    return prose ? [prose, sourceFooter].filter(Boolean).join("\n\n") : fallbackWithSource;
   })();
   const deadline = new Promise<typeof ARTIST_REPORT_TIMEOUT_SENTINEL>((resolve) => {
     setTimeout(() => resolve(ARTIST_REPORT_TIMEOUT_SENTINEL), artistReportTimeoutMs());
@@ -1104,7 +1105,7 @@ async function formatSongSpawnPitch(
   const result = await Promise.race([work, deadline]);
   if (result === ARTIST_REPORT_TIMEOUT_SENTINEL) {
     console.error(`[telegram-notify] song spawn pitch timed out after ${artistReportTimeoutMs()}ms; using deterministic fallback`);
-    return fallback;
+    return fallbackWithSource;
   }
   return result;
 }
@@ -1225,6 +1226,11 @@ async function formatSongSubmission(
   event: SongTakeCompletedEvent,
   options: Pick<TelegramNotifierOptions, "workspaceRoot">
 ): Promise<string> {
+  const songState = options.workspaceRoot
+    ? await readSongState(options.workspaceRoot, event.songId).catch(() => undefined)
+    : undefined;
+  const observation = event.observationSummary ?? songState?.observationSummary;
+  const observationIsSongBound = !event.observationSummary && Boolean(songState?.observationSummary);
   const resolved = await resolveSongSubmissionBinding(event, options.workspaceRoot);
   const binding = resolved?.binding;
   const revision = resolved?.revision;
@@ -1236,7 +1242,9 @@ async function formatSongSubmission(
   const request = binding?.instruction ?? revision?.producerInstruction;
   const intended = revision
     ? request?.trim() === revision.producerInstruction.trim() ? undefined : [revision.producerInstruction]
-    : event.observationSummary?.motivation ? [safeMotivation(event.observationSummary.motivation)] : undefined;
+    : observation ? [
+        `「${capQuote(observation.quote ?? "") || "この観察"}」を見て、${safeMotivation(observation.motivation)}`
+      ] : undefined;
   const changed = revision
     ? [
       base?.title && revision.effective.title !== base.title ? `タイトルを「${revision.effective.title}」にした` : undefined,
@@ -1252,7 +1260,7 @@ async function formatSongSubmission(
   const previousUrl = binding?.baselineTake?.url;
   const report = formatSongSubmissionReport({
     kind: "submission",
-    title: revision?.effective.title ?? base?.title ?? "今回の曲",
+    title: revision?.effective.title ?? base?.title ?? (songState?.title !== event.songId ? songState?.title : undefined) ?? "今回の曲",
     requestOrVersion: request,
     binding: binding ? {
       runId: binding.runId,
@@ -1276,11 +1284,16 @@ async function formatSongSubmission(
       !lyricsUnchanged && revisionLyrics !== undefined && base?.lyrics !== undefined ? "変えた言葉が、旋律に無理なく乗っているか。" : undefined
     ].filter((line): line is string => Boolean(line)) : undefined
   });
-  if (!event.observationSummary) return report;
-  const observation = event.observationSummary;
+  if (!observation) return report;
+  const sourceUrl = observation.url
+    && (observationIsSongBound || isAllowedObservationUrl(observation.url))
+    && /^https:\/\//.test(observation.url)
+    && !isGoogleNewsIntermediateUrl(observation.url)
+    ? ` (${observation.url})`
+    : "";
   return [
     report,
-    `🌐 観察元: ${formatObservationAuthorPrefix(observation.author) || "@unknown"}`,
+    `🌐 観察元: ${(formatObservationAuthorPrefix(observation.author) || "@unknown").replace(/:\s*$/, "")}${sourceUrl}`,
     `💬 抜粋: 「${capQuote(observation.quote ?? "") || "(抜粋なし)"}」`,
     `🎯 動機: ${safeMotivation(observation.motivation)}`
   ].join("\n");

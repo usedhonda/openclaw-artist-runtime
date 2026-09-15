@@ -591,7 +591,10 @@ otherwise.
 Default production flow: Telegram is a post-generation review surface. Song proposals
 are written as a free-form song-birth story grounded in the selected observation:
 the artist explains the personal reaction, lyric world, and musical movement that
-the source gave birth to. The source URL is retained as a footer for producer audit. Autopilot
+the source gave birth to. The source URL is retained as a footer for producer audit,
+including the deterministic timeout fallback. The selected source is also fixed in
+song state, so a later completion event can recover the artist's explanation, quote,
+and news/X URL even when the event itself omits the observation summary. Autopilot
 does not stop at `spawn_proposal_ready`, `planning_skeleton_pending`, or
 `prompt_pack_ready` unless `OPENCLAW_PRE_GENERATION_APPROVAL=on` is set. With
 the default, X/news observations can flow straight into song creation; the
