@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- fix: completed-song Telegram reports now explain the bound song itself: its
+  observation background, opening scene, hook, section movement, turning point,
+  and production design come from the exact lyrics/style pack. Persona-file
+  references and the former generic `ARTIST.md`-shaped fallback are excluded.
+
 - fix: retain the selected news/X source in song state and recover it when a
   completion event carries no observation summary. Telegram completion reports
   now include a grounded artist explanation, quote, and source URL; spawn-pitch

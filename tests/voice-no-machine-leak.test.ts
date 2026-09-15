@@ -180,7 +180,7 @@ describe("voice no-machine-leak contract (v10.16)", () => {
     expect(reasonLine).toContain("自分の癖が出る場所だと思う。");
   });
 
-  it("song_take_completed motivation replaces file-name rationale with artist first-person handoff", async () => {
+  it("song_take_completed replaces file-name rationale with its song-bound observation", async () => {
     const text = await formatRuntimeEvent({
       type: "song_take_completed",
       songId: "song-voice",
@@ -196,8 +196,9 @@ describe("voice no-machine-leak contract (v10.16)", () => {
     });
 
     expectNoMachineMarkers(text);
-    expect(text).toContain("自分の都市観察と、いまの静かな違和感を、ここに繋いだ");
-    expect(text).toContain("聴いてみて、どうだろう。");
+    expect(text).toContain("背景: 「old live houses disappear under identical signs」を出発点にした");
+    expect(text).toContain("この観察を曲の起点として残した");
+    expect(text).not.toContain("自分の都市観察");
     expect(text).toContain("old live houses disappear under identical signs");
   });
 });

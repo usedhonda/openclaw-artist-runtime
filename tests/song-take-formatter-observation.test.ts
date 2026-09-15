@@ -1,4 +1,5 @@
 import { mkdtempSync } from "node:fs";
+import { createHash } from "node:crypto";
 import { mkdir, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -37,12 +38,86 @@ describe("song take formatter observation source", () => {
       timestamp: 1
     }, { workspaceRoot: root });
 
-    expect(message).toContain("自分の都市観察と、いまの静かな違和感を、ここに繋いだ");
+    expect(message).toContain("この観察を曲の起点として残した");
     expect(message).not.toContain("ARTIST.md");
     expect(message).not.toContain("SOUL.md");
     expect(message).not.toContain("selected:");
     expect(message).not.toContain("Xで拾った反応:");
     expect(message).toContain("1. https://suno.com/song/a\n2. https://suno.com/song/b");
+  });
+
+  it("explains the completed song from its bound lyrics and production pack instead of persona files", async () => {
+    const root = mkdtempSync(join(tmpdir(), "artist-runtime-song-take-explanation-"));
+    await ensureArtistWorkspace(root);
+    const packDir = join(root, "songs", "song-explained", "prompts", "prompt-pack-v001");
+    const sunoDir = join(root, "songs", "song-explained", "suno");
+    await mkdir(packDir, { recursive: true });
+    await mkdir(sunoDir, { recursive: true });
+    const payload = { songName: "終電のショーケース" };
+    const payloadHash = createHash("sha256").update(JSON.stringify(payload)).digest("hex");
+    await writeFile(join(packDir, "suno-payload.json"), JSON.stringify(payload), "utf8");
+    await writeFile(join(packDir, "metadata.json"), JSON.stringify({ payloadHash }), "utf8");
+    await writeFile(join(packDir, "style.md"), "94 BPM, dry jazz-rap, dusty Rhodes, upright bass, clipped drums, a cappella final bar", "utf8");
+    await writeFile(join(packDir, "exclude.md"), "festival EDM, glossy pop", "utf8");
+    await writeFile(join(packDir, "lyrics.md"), [
+      "[Intro - station ambience]",
+      "終電のガラスに 値札だけ光る",
+      "[Verse 1 - close dry rap]",
+      "閉店のテープが 昨日の入口を塞ぐ",
+      "名前の消えた箱で 拍手だけが残る",
+      "[Pre-Hook - bass drops out]",
+      "便利の四文字で 記憶まで畳むな",
+      "[Hook - restrained double]",
+      "消える前に名前を呼べ",
+      "同じ看板に塗るな",
+      "[Verse 2 - Rhodes returns]",
+      "再開発の模型に 夜は住めない",
+      "[Bridge - near spoken]",
+      "残響は立退き通知を読まない",
+      "[Final Hook - full band then cut]",
+      "消える前に名前を呼べ",
+      "同じ看板に塗るな",
+      "[Outro - a cappella]",
+      "シャッターの向こうで まだ一拍"
+    ].join("\n"), "utf8");
+    await writeFile(join(sunoDir, "runs.jsonl"), `${JSON.stringify({
+      runId: "run-explained",
+      songId: "song-explained",
+      createdAt: "2026-09-16T00:00:00.000Z",
+      status: "accepted",
+      payloadHash,
+      urls: ["https://suno.com/song/explained"],
+      dryRun: false
+    })}\n`, "utf8");
+    await updateSongState(root, "song-explained", {
+      title: "終電のショーケース",
+      status: "take_selected",
+      selectedTakeId: "take-explained",
+      observationSummary: {
+        author: "City Desk",
+        url: "https://example.com/venue-closure",
+        quote: "再開発で老舗ライブハウスが閉館する",
+        motivation: "ARTIST.md の都市観察と SOUL.md の静かな違和感に接続"
+      }
+    });
+
+    const message = await formatRuntimeEvent({
+      type: "song_take_completed",
+      songId: "song-explained",
+      selectedTakeId: "take-explained",
+      urls: ["https://suno.com/song/explained"],
+      timestamp: 1
+    }, { workspaceRoot: root });
+
+    expect(message).toContain("背景: 「再開発で老舗ライブハウスが閉館する」を出発点にした");
+    expect(message).toContain("冒頭の場面: 「終電のガラスに 値札だけ光る」");
+    expect(message).toContain("フックの核: 「消える前に名前を呼べ / 同じ看板に塗るな」");
+    expect(message).toContain("展開: Intro → Verse 1 → Pre-Hook → Hook → Verse 2 → Bridge → Final Hook → Outro");
+    expect(message).toContain("転換点は「残響は立退き通知を読まない」");
+    expect(message).toContain("音の設計: 94 BPM, dry jazz-rap, dusty Rhodes, upright bass, clipped drums, a cappella final bar");
+    expect(message).not.toContain("ARTIST.md");
+    expect(message).not.toContain("SOUL.md");
+    expect(message).not.toContain("自分の都市観察");
   });
 
   it("recovers the song-bound source and explanation when the completion event omits it", async () => {
@@ -66,7 +141,7 @@ describe("song take formatter observation source", () => {
       timestamp: 1
     }, { workspaceRoot: root });
 
-    expect(message).toContain("「老舗ライブハウスが今月閉館する」を見て");
+    expect(message).toContain("背景: 「老舗ライブハウスが今月閉館する」を出発点に");
     expect(message).toContain("そのまま終わらせたくなかった");
     expect(message).toContain("https://example.com/live-house");
   });

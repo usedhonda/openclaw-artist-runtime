@@ -23,6 +23,7 @@ import { readLatestPromptPackMetadata } from "./sunoPromptPackFiles.js";
 import { composeDraftBoxNextAction, formatDraftBoxNextActionSection } from "./draftBoxNextAction.js";
 import { emitDraftBoxProactiveNoticeIfNeeded } from "./draftBoxProactiveNotice.js";
 import { formatSongSubmissionReport } from "./songSubmissionReport.js";
+import { parseLyricsSections } from "./lyricsValidator.js";
 import { readProductionRunBinding, type ProductionRunBinding } from "./productionConversation.js";
 import { readAllSunoRuns } from "./sunoRuns.js";
 import { readSongProductionRevision } from "./songProductionRevisions.js";
@@ -870,7 +871,7 @@ function capQuote(value: string, max = 140): string {
 function safeMotivation(value?: string): string {
   const clean = stripHandles(value ?? "").replace(/\s+/g, " ").trim();
   if (!clean || secretLikePattern.test(clean) || isMachineVoiceArtifact(clean)) {
-    return "自分の都市観察と、いまの静かな違和感を、ここに繋いだ。聴いてみて、どうだろう。";
+    return "この観察を曲の起点として残した。";
   }
   return Array.from(clean).slice(0, 160).join("");
 }
@@ -1180,6 +1181,65 @@ interface BoundPackDetails {
   lyrics?: string;
 }
 
+function safeSongDetail(value: string | undefined, max: number): string {
+  const clean = stripHandles(value ?? "").replace(/\s+/g, " ").trim();
+  if (!clean || secretLikePattern.test(clean) || isMachineVoiceArtifact(clean)) return "";
+  const chars = Array.from(clean);
+  return chars.length > max ? `${chars.slice(0, max - 1).join("").trim()}…` : clean;
+}
+
+function displayLyricsSection(tag: string): string {
+  return safeSongDetail(tag.split(/\s+[-—]\s+/)[0], 28);
+}
+
+function buildSongSpecificExplanation(input: {
+  lyrics?: string;
+  style?: string;
+  observation?: ObservationSummary;
+}): string[] {
+  const sections = input.lyrics ? parseLyricsSections(input.lyrics) : [];
+  const openingSection = sections.find((section) => section.kind === "intro" && section.lines.length > 0)
+    ?? sections.find((section) => section.kind === "verse" && section.lines.length > 0)
+    ?? sections.find((section) => section.lines.length > 0);
+  const hookSection = sections.find((section) =>
+    section.kind === "hook"
+      && section.lines.length > 0
+      && !/\bpre[- ]?hook\b/i.test(section.tag)
+  );
+  const bridgeSection = sections.find((section) => section.kind === "bridge" && section.lines.length > 0);
+  const verses = sections.filter((section) => section.kind === "verse" && section.lines.length > 0);
+  const turnSection = bridgeSection ?? (verses.length > 1 ? verses.at(-1) : undefined);
+  const opening = safeSongDetail(openingSection?.lines[0], 120);
+  const hook = hookSection?.lines.slice(0, 2).map((line) => safeSongDetail(line, 80)).filter(Boolean).join(" / ") ?? "";
+  const turn = safeSongDetail(turnSection?.lines[0], 120);
+  const structure = sections.map((section) => displayLyricsSection(section.tag)).filter(Boolean).join(" → ");
+  const cappedQuote = capQuote(input.observation?.quote ?? "", 120);
+  const quote = cappedQuote === "[非表示]" ? "" : cappedQuote;
+  const motivation = safeSongDetail(input.observation?.motivation, 180);
+  const background = quote
+    ? motivation
+      ? `背景: 「${quote}」を出発点に、${motivation}`
+      : `背景: 「${quote}」を出発点にした。`
+    : motivation
+      ? `背景: ${motivation}`
+      : opening
+        ? `背景: 歌詞は「${opening}」を最初の情景に置いた。`
+        : undefined;
+  const development = structure
+    ? `展開: ${structure}${turn ? `。転換点は「${turn}」` : ""}`
+    : turn
+      ? `展開の転換点: 「${turn}」`
+      : undefined;
+  const style = safeSongDetail(input.style, 240);
+  return [
+    background,
+    opening ? `冒頭の場面: 「${opening}」` : undefined,
+    hook ? `フックの核: 「${hook}」` : undefined,
+    development,
+    style ? `音の設計: ${style}` : undefined
+  ].filter((line): line is string => Boolean(line));
+}
+
 async function readBoundPackDetails(workspaceRoot: string, songId: string, packVersion: number | undefined): Promise<BoundPackDetails | undefined> {
   if (packVersion === undefined) return undefined;
   const dir = join(workspaceRoot, "songs", songId, "prompts", `prompt-pack-v${String(packVersion).padStart(3, "0")}`);
@@ -1240,11 +1300,19 @@ async function formatSongSubmission(
   const revisionLyrics = revision?.promptPack?.pack?.lyricsBundle?.originalLyricsText?.trimEnd();
   const lyricsUnchanged = base?.lyrics !== undefined && revisionLyrics !== undefined && base.lyrics === revisionLyrics;
   const request = binding?.instruction ?? revision?.producerInstruction;
-  const intended = revision
-    ? request?.trim() === revision.producerInstruction.trim() ? undefined : [revision.producerInstruction]
-    : observation ? [
-        `「${capQuote(observation.quote ?? "") || "この観察"}」を見て、${safeMotivation(observation.motivation)}`
-      ] : undefined;
+  const explanation = buildSongSpecificExplanation({
+    lyrics: revisionLyrics ?? base?.lyrics,
+    style: revision
+      ? [revision.effective.bpm ? `${revision.effective.bpm} BPM` : undefined, revision.effective.direction, base?.style]
+        .filter(Boolean).join(", ")
+      : base?.style,
+    observation
+  });
+  const intended = explanation.length > 0
+    ? explanation
+    : revision && request?.trim() !== revision.producerInstruction.trim()
+      ? [revision.producerInstruction]
+      : undefined;
   const changed = revision
     ? [
       base?.title && revision.effective.title !== base.title ? `タイトルを「${revision.effective.title}」にした` : undefined,

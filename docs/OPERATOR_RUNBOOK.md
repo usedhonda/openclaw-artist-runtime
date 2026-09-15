@@ -474,6 +474,11 @@ artist pushes a message with `[✓ 反映する] [⏸ 後で]`.
 When the artist reports a completed take, the message includes
 `[📝 SONGBOOK 反映] [⏸ 後で]`.
 
+- The report explains the bound song from its actual prompt pack: observation
+  background, opening lyric scene, hook, section progression, turning point,
+  BPM, and arrangement vocabulary. It does not derive this explanation by
+  paraphrasing `ARTIST.md` or `SOUL.md`, and it does not claim the audio was
+  auditioned unless audio verification was recorded separately.
 - SONGBOOK 反映 marks the local song state as `published`, updates
   `artist/SONGBOOK.md`, and takes backups for `songs/<id>/song.md` and
   `artist/SONGBOOK.md`.

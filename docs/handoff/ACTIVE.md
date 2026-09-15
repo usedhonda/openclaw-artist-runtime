@@ -1,5 +1,17 @@
 # Handoff: Producer-musician creation loop
 
+## Checkpoint: song-specific Telegram explanations (2026-09-16)
+
+The completion formatter now uses the run-bound immutable lyrics and style pack
+to report the song's observation background, opening scene, actual hook, section
+progression, turning point, BPM, and arrangement language. It rejects persona-file
+and machine-artifact prose instead of falling back to an `ARTIST.md`-shaped stock
+line. Typecheck, zero-warning lint, runtime/UI build, the 27-test formatter gate,
+and the 17-test voice/privacy follow-up pass. The full suite passes 2,103 of 2,104
+tests; only the pre-existing tempo-distribution test still misses the `slow` band.
+Commit, Linux reflection, restart, and Telegram receipt remain to be recorded below
+before this checkpoint is complete.
+
 ## Resolved incident: thin Telegram song explanations (2026-09-16)
 
 The producer observed that completed-song explanations had become extremely terse
