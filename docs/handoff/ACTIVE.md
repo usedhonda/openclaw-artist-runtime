@@ -1,5 +1,21 @@
 # Handoff: Producer-musician creation loop
 
+## Resolved incident: Telegram error flood (2026-09-15)
+
+The live host had two gateway owners. A manually launched orphan gateway
+(`4134014`) retained the state directory and loopback port while the canonical
+tracked supervisor retried every 60 seconds. Its children exited at startup with
+`Another gateway ... already owns this state directory`; the crash counter reached
+3,649 and the append-only crash ledger grew to 346,536,700 bytes.
+
+The orphan alone was terminated after confirming zero pending Suno take waits.
+The existing supervisor then acquired the gateway normally as child `1202709`.
+Verification showed `gateway_state=running`, Telegram polling ingress started,
+Suno connected, zero failed plugin notifications, and no crash-ledger growth after
+recovery. Do not start `/home/box/.openclaw-artist/start-artist-gateway.sh`
+directly; use `scripts/openclaw-local-gateway` so the supervisor remains the sole
+owner.
+
 ## Active incident: autonomous song timeout and Suno V6 migration (2026-09-12)
 
 Live status showed three consecutive songs parked before Suno with
@@ -16,10 +32,10 @@ Current acceptance target: full local gate, commit, Linux reflection, then one
 operator-requested song through lyrics, V6 prompt pack, prepared Suno form, and
 Telegram receipt. No public publish, CAPTCHA handling, login action, or Max Mode.
 
-Checkpoint: commit `fb35d38` is pushed to `origin/main`; the local gate is green
-(2100 tests). Linux reflection is waiting only for the operator to complete the
-Tailscale SSH additional-auth page already opened in Chrome. The live gateway is
-still on the prior build; do not launch the trial song until reflection completes.
+Checkpoint: commits `fb35d38` and `7f8c8c6` are deployed on Linux. The local gate
+was green (2100 tests). The operator-requested trial became `Mute the Magic`
+(`spawn_ca32b7`) and reached `take_selected` with two imported Suno URLs. The
+gateway ownership incident above did not roll back the V6 runtime.
 
 ## Active goal: producer-musician creation loop (2026-09-09)
 
