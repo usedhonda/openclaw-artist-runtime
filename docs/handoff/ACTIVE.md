@@ -9,8 +9,12 @@ and machine-artifact prose instead of falling back to an `ARTIST.md`-shaped stoc
 line. Typecheck, zero-warning lint, runtime/UI build, the 27-test formatter gate,
 and the 17-test voice/privacy follow-up pass. The full suite passes 2,103 of 2,104
 tests; only the pre-existing tempo-distribution test still misses the `slow` band.
-Commit, Linux reflection, restart, and Telegram receipt remain to be recorded below
-before this checkpoint is complete.
+Commit `5a2ee15` is deployed on Linux, where the runtime/UI build passed and the
+gateway restarted after a zero-active-work preflight. The gateway returned ready,
+Telegram polling ingress restarted, and a live completion for `spawn_857237` was
+delivered as Telegram message `1927`. Before sending, the live formatter output was
+checked for all five explanation sections, the X source, and absence of persona-file
+or old stock prose; the append-only delivery ledger records the receipt.
 
 ## Resolved incident: thin Telegram song explanations (2026-09-16)
 
