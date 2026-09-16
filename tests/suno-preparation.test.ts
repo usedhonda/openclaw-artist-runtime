@@ -149,11 +149,22 @@ describe("readSunoControls DOM contract", () => {
       await page.setContent(`
         <section id="duration"><label>Duration</label><button class="hxc-btn-variant-tertiary-legacy">Custom</button><button class="hxc-btn-variant-standard-legacy">Auto</button></section>
         <section id="max"><label>Max Mode</label><button class="hxc-btn-variant-standard-legacy">Off</button><button class="hxc-btn-variant-tertiary-legacy">On</button></section>
-        <section id="personalize"><div><span>Personalize</span><button class="hxc-btn-variant-tertiary-legacy">My Taste</button></div><button class="hxc-btn-variant-standard-legacy">Off</button><button class="hxc-btn-variant-tertiary-legacy">On</button></section>
-        <section id="variety"><label>Variety</label><div role="slider" aria-label="Variety" aria-valuenow="4" aria-valuemin="0" aria-valuemax="4" style="width:100px;height:10px" tabindex="0"></div></section>
+        <div id="panel" style="position:relative">
+          <div id="more" role="button" aria-expanded="false" tabindex="0" style="position:absolute;inset:0;z-index:1;background:#fff;opacity:0.5">More Options</div>
+          <section id="personalize"><div><span>Personalize</span><button class="hxc-btn-variant-tertiary-legacy">My Taste</button></div><button class="hxc-btn-variant-standard-legacy">Off</button><button class="hxc-btn-variant-tertiary-legacy">On</button></section>
+          <section id="variety"><label>Variety</label><div role="slider" aria-label="Variety" aria-valuenow="4" aria-valuemin="0" aria-valuemax="4" style="width:100px;height:10px" tabindex="0"></div></section>
+        </div>
         <button id="create">Create</button>
       `);
+      page.setDefaultTimeout(2000);
       await page.evaluate(() => {
+        // Live Suno collapses these controls under a "More Options" header that
+        // intercepts clicks until it is expanded.
+        const more = document.getElementById("more")!;
+        more.addEventListener("click", () => {
+          more.setAttribute("aria-expanded", "true");
+          more.style.display = "none";
+        });
         // Live Suno sliders ignore Home/End; only arrow keys move them.
         const variety = document.querySelector('#variety [role="slider"]')!;
         variety.addEventListener("keydown", (event) => {

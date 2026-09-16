@@ -233,6 +233,21 @@ async function setSlider(page: Page, labels: readonly string[], value: number, n
   await stepSliderTo(locator, value, name);
 }
 
+// Live Suno keeps Variety, Max Mode and Personalize inside a collapsible
+// "More Options" panel. While it is collapsed the controls stay in the DOM and
+// accept keys, but the panel header intercepts every click.
+async function expandMoreOptions(page: Page): Promise<void> {
+  const header = page.locator('xpath=(//*[(@role="button" or self::button) and @aria-expanded][contains(normalize-space(.), "More Options")])[1]').first();
+  if (!await visible(header)) return;
+  if ((await header.getAttribute("aria-expanded").catch(() => null)) !== "false") return;
+  await header.click();
+  for (let attempt = 0; attempt < 20; attempt += 1) {
+    if ((await header.getAttribute("aria-expanded").catch(() => null)) === "true") return;
+    await new Promise((resolve) => setTimeout(resolve, 100));
+  }
+  throw new Error("suno_prepare_control_unwritable: more options");
+}
+
 async function readSliderValue(locator: Locator): Promise<number> {
   return Number(await locator.getAttribute("aria-valuenow").catch(() => null) ?? await locator.inputValue().catch(() => ""));
 }
@@ -372,6 +387,7 @@ export async function prepareSunoForm(page: Page, payload: SunoCreatePayload, ti
   }
 
   const explicit = (key: string) => controlValue(payload, key);
+  if (requestedControlKeys.some((key) => key !== "model" && explicit(key) !== undefined)) await expandMoreOptions(page);
   const numeric = [["weirdness", LABELS.weirdness, 0, 100], ["styleInfluence", LABELS.styleInfluence, 0, 100], ["audioInfluence", LABELS.audioInfluence, 0, 100]] as const;
   for (const [key, labels, min, max] of numeric) {
     const value = explicit(key);

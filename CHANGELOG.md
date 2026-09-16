@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- fix: expand the Suno "More Options" panel before setting Variety, Max Mode,
+  Personalize, or the sliders. While it is collapsed the controls accept keys
+  but the panel header intercepts clicks, so Personalize On timed out.
+
 - fix: locate Suno boolean rows (Personalize, Max Mode) by their On/Off toggle
   instead of any button. Live Suno nests the Personalize label beside a
   "My Taste" button, which made preparation fail with
