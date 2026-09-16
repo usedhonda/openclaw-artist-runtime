@@ -91,10 +91,14 @@ export function normalizeAsciiNumbersToHiragana(lyrics: string): string {
     .split(/\r?\n/)
     .map((line) => {
       if (/^\s*\[[^\]]+\]\s*$/.test(line)) return line;
+      const properNameNumbersExpanded = line.replace(
+        /((?:しぶや|シブヤ|渋谷|shibuya)\s*)109(?!\d)/gi,
+        "$1いちまるきゅう"
+      );
       // Keep a number that opens an English phrase inside that language's
       // pronunciation domain: `72 hours` becomes `seventy-two hours`, never
       // the mixed reading `ななじゅうに hours`.
-      const englishNumbersExpanded = line.replace(/\b(\d+)\b(?=\s+[A-Za-z])/g, (token) =>
+      const englishNumbersExpanded = properNameNumbersExpanded.replace(/\b(\d+)\b(?=\s+[A-Za-z])/g, (token) =>
         asciiNumberToEnglish(Number.parseInt(token, 10))
       );
       return englishNumbersExpanded.replace(/\d+/g, (token) => {

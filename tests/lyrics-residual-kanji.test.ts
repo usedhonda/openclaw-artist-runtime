@@ -43,6 +43,12 @@ describe("residual kanji lyrics lint", () => {
     expect(normalizeAsciiNumbersToHiragana("12と 300")).toBe("じゅうにと さんびゃく");
   });
 
+  it("uses the proper-name reading for Shibuya 109 without changing an arbitrary 109", () => {
+    expect(normalizeAsciiNumbersToHiragana("しぶや 109 のまえ / 109えん")).toBe(
+      "しぶや いちまるきゅう のまえ / ひゃくきゅうえん"
+    );
+  });
+
   it("reads positional numbers deterministically across the boundaries (99/100/145/1000/9999) with digit fallback above", () => {
     expect(asciiNumberToHiragana(99)).toBe("きゅうじゅうきゅう");
     expect(asciiNumberToHiragana(100)).toBe("ひゃく");
