@@ -1,8 +1,8 @@
 <!-- Source: sunomanual (MIT, Copyright 2025-2026 usedhonda) -->
 
-## V6 relationship-first writing (`confirmed_v6` + local guidance)
+## V6 relationship-first writing (`community_experimental` + local recommendation)
 
-V6 responds best when the primary genre is unmistakable and any secondary genre has a job.
+This kit recommends making the primary genre unmistakable and giving every secondary genre a job.
 Use secondary genres as a rhythmic bed, harmonic color, vocal attitude, or production texture;
 do not stack labels without explaining their relationship. Name playing behavior (who leads,
 how parts interlock, articulation, pocket, and density), vocal behavior (register, diction,
