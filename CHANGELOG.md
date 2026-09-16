@@ -2,10 +2,15 @@
 
 ## Unreleased
 
+- feat: make normal Suno V6 prompt packs carry the producer defaults before
+  preparation: Max Mode Off, Custom Duration 3:30, Variety High (2),
+  Personalize On, and Style Influence 100. The hashed payload, manual UI
+  preparation, and CLI Style Influence now agree.
+
 - feat: integrate suno-kit `a3ae7cd` V6 guidance and Variety's integer 0–4
-  contract, retaining the local feed/download/login protections. Add grounded
-  song-specific exploration recommendations without enabling Personalize or Max
-  Mode automatically.
+  contract, retaining the local feed/download/login protections. Legacy payloads
+  still receive grounded song-specific exploration recommendations; new normal
+  payloads carry the producer's explicit controls.
 - fix: verify manual Suno preparation fields and explicit controls before
   declaring readiness. Keep producer edits untouched after preparation, record
   allowlisted run-bound actual submission evidence separately from recommendations,
@@ -56,8 +61,8 @@
 
 - feat: update the vendored `suno-cli` to 0.4.0 and make V6 explicit in generated
   payloads and CLI creates. Bundle the V6 reference and V5.5 migration guidance;
-  Variety remains opt-in because its wire field is not yet first-party verified,
-  and Max Mode remains off because it spends additional credits.
+  normal generation now records Variety High (2) explicitly, while Max Mode
+  remains off because it spends additional credits.
 
 - fix: tempo revisions now synchronize non-sung YAML notes/cues, duration tempo,
   and rendered section instructions across all submitted lyrics/YAML fields.

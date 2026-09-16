@@ -17,7 +17,11 @@ exact title, plain lyrics, Style, and Exclude after filling and after explicit
 control changes. Missing required fields, including a nonempty Exclude, or
 readback mismatches fail preparation instead of reporting a ready form. The
 runtime never refills or navigates the prepared form while waiting for Create.
-Unspecified controls retain their current UI values. Explicit controls are
+New normal V6 prompt packs explicitly set the producer defaults: Max Mode Off,
+Custom Duration 3:30, Variety High (2), Personalize On, and Style Influence 100.
+These values are stored in the hashed prompt payload before preparation; the CLI
+receives the same Style Influence value through its slider payload. Unspecified
+controls retain their current UI values. Explicit controls are
 applied only when their UI value can be verified; unknown controls fail closed.
 Current unannotated `Off` / `On` segmented buttons are verified through Suno's
 selected/unselected button variants. Explicit `Duration: m:ss` selects Custom,
@@ -31,10 +35,10 @@ Variety is an integer **0–4**, not a percentage. Other CLI sliders retain thei
 0–100 UI to 0–1 wire conversion. The runtime gives song-specific exploration
 advice: 0 for prompt fidelity, 1–2 for limited exploration, 3–4 for stronger
 exploration. These are operating choices, not measured quality guarantees.
-The pre-Create notice recommends values without applying them. Personalize and
-Max Mode are never enabled from a recommendation; the producer chooses them.
-Personalize depends on evolving account taste, and Max Mode is not a quality
-guarantee. V6 remains the default; no automatic model/route comparison is run.
+For legacy payloads without explicit controls, the pre-Create notice remains a
+recommendation and does not mutate the UI. New normal payloads report the applied
+defaults instead. Max Mode remains Off; Personalize is On. V6 remains the default;
+no automatic model/route comparison is run.
 
 Separate immutable JSON artifacts live in
 `songs/<songId>/suno-evidence/<runId>/`:

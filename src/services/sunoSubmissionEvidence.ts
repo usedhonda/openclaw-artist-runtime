@@ -86,19 +86,32 @@ export function buildSunoV6Recommendation(payload: SunoCreatePayload) {
   const style = typeof payload.styleAndFeel === "string" ? payload.styleAndFeel : "";
   const exploratory = /\b(?:experimental|collage|unpredictable|polyrhyth|odd[- ]meter|genre[- ]bending)/i.test(style);
   const precise = /\b(?:spoken|sparse|minimal|a cappella|dry close|tight rap)/i.test(style);
-  const variety = exploratory ? 3 : precise ? 1 : 2;
+  const requestedVariety = typeof payload.variety === "number" && Number.isInteger(payload.variety)
+    && payload.variety >= 0 && payload.variety <= 4 ? payload.variety : undefined;
+  const variety = requestedVariety ?? (exploratory ? 3 : precise ? 1 : 2);
+  const defaultsApplied = requestedVariety === 2
+    && payload.maxMode === false
+    && payload.personalize === true
+    && payload.duration === "3:30"
+    && payload.styleInfluence === 100;
   return {
     model: "v6", variety,
-    rationale: exploratory
+    rationale: defaultsApplied
+      ? "通常生成の既定値としてVariety High（2）を画面へ適用。"
+      : exploratory
       ? "曲の変則的な展開を広げる試聴用にVariety 3。意図が薄れたら0へ戻して比較する。"
       : precise
         ? "言葉の輪郭と余白を守りつつ、小さな変化を試すVariety 1。忠実さを優先するなら0。"
         : "主ジャンルを保ちながら編成の別案を試すVariety 2。狙いが決まったら0と比較する。",
-    personalize: false,
-    personalizeReason: "今回は曲の指示を比較しやすくするためOffを提案。My Tasteを使う場合は画面で選ぶ。",
+    personalize: defaultsApplied ? true : false,
+    personalizeReason: defaultsApplied
+      ? "通常生成の既定値としてPersonalize Onを画面へ適用。"
+      : "今回は曲の指示を比較しやすくするためOffを提案。My Tasteを使う場合は画面で選ぶ。",
     maxMode: false,
-    maxModeReason: "まず通常モードで構成を確認する提案。Max Modeの効果は保証せず、使うかは画面で決める。",
-    policy: "recommendation_only_not_applied"
+    maxModeReason: defaultsApplied
+      ? "通常生成の既定値としてMax Mode Off、Duration 3:30、Style Influence 100を画面へ適用。"
+      : "まず通常モードで構成を確認する提案。Max Modeの効果は保証せず、使うかは画面で決める。",
+    policy: defaultsApplied ? "payload_defaults_applied" : "recommendation_only_not_applied"
   };
 }
 

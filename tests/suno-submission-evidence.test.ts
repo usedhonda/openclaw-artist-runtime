@@ -74,6 +74,10 @@ describe("run-bound manual Suno submission evidence", () => {
     expect(buildSunoV6Recommendation({ styleAndFeel: "dry close spoken verse" }).variety).toBe(1);
     expect(buildSunoV6Recommendation({ styleAndFeel: "experimental collage" }).variety).toBe(3);
     expect(buildSunoV6Recommendation({ styleAndFeel: "pop" }).policy).toBe("recommendation_only_not_applied");
+    expect(buildSunoV6Recommendation({ styleAndFeel: "pop", variety: 2, maxMode: false, personalize: true,
+      duration: "3:30", styleInfluence: 100 })).toMatchObject({
+      variety: 2, personalize: true, maxMode: false, policy: "payload_defaults_applied"
+    });
     await expect(writeSunoPreparationEvidence({ workspaceRoot: ".", songId: "../bad", runId: "run" }, {}, { controls: {} })).rejects.toThrow("invalid_binding");
   });
 });

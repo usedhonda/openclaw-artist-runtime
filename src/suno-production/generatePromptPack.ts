@@ -27,6 +27,14 @@ function hashText(value: string): string {
   return createHash("sha256").update(value).digest("hex");
 }
 
+const NORMAL_SUNO_CONTROLS = {
+  variety: 2,
+  maxMode: false,
+  personalize: true,
+  duration: "3:30",
+  styleInfluence: 100
+} as const;
+
 function buildPayload(input: CreateSunoPromptPackInput, style: string, exclude: string, yamlLyrics: string, sliders: SunoSliders, lyricsBoxLimit: number): Record<string, unknown> {
   const lyricsBody = extractLyricsBody(yamlLyrics);
   const languageWarnings = [
@@ -44,6 +52,7 @@ function buildPayload(input: CreateSunoPromptPackInput, style: string, exclude: 
     lyricsText: lyricsBody,
     payloadYaml: yamlLyrics,
     lyricsYaml: yamlLyrics,
+    ...NORMAL_SUNO_CONTROLS,
     sliders,
     promptCharCounts: promptCharCounts(input.songTitle, style, lyricsBody, yamlLyrics, lyricsBoxLimit),
     languageWarnings
@@ -188,7 +197,10 @@ export function createSunoPromptPack(input: CreateSunoPromptPackInput): SunoProm
     lyricsBoxLimit,
     durationPlan
   });
-  const sliders = buildSlidersV55({ genre, moodHint: input.moodHint, weirdnessOverride: input.weirdnessOverride });
+  const sliders = {
+    ...buildSlidersV55({ genre, moodHint: input.moodHint, weirdnessOverride: input.weirdnessOverride }),
+    styleInfluence: NORMAL_SUNO_CONTROLS.styleInfluence
+  };
   const payload = buildPayload({ ...input, lyricsText, bpm, vocalGender }, style, exclude, yamlLyrics, sliders, lyricsBoxLimit);
   const payloadHash = hashText(JSON.stringify(payload));
   const promptHash = hashText(`${style}\n${exclude}\n${yamlLyrics}`);
@@ -278,6 +290,7 @@ export function createProductionRevisionPromptPack(
     const previousCounts = (base.payload.promptCharCounts ?? {}) as Record<string, unknown>;
     const payload = {
       ...base.payload,
+      ...NORMAL_SUNO_CONTROLS,
       songName: title,
       styleAndFeel: style,
       excludeStyles: exclude,
@@ -285,6 +298,10 @@ export function createProductionRevisionPromptPack(
       lyricsYaml: yamlLyrics,
       lyrics: lyricsText,
       lyricsText,
+      sliders: {
+        ...base.sliders,
+        styleInfluence: NORMAL_SUNO_CONTROLS.styleInfluence
+      },
       promptCharCounts: {
         ...previousCounts,
         style: style.length,
@@ -300,6 +317,10 @@ export function createProductionRevisionPromptPack(
       exclude,
       yamlLyrics,
       lyricsBundle: { ...base.lyricsBundle, lyricsText, yamlLyrics },
+      sliders: {
+        ...base.sliders,
+        styleInfluence: NORMAL_SUNO_CONTROLS.styleInfluence
+      },
       payload,
       promptHash: hashText(`${style}\n${exclude}\n${yamlLyrics}`),
       payloadHash: hashText(JSON.stringify(payload))
@@ -415,7 +436,10 @@ export async function createSunoPromptPackWithAi(
     lyricsBoxLimit,
     durationPlan
   });
-  const sliders = buildSlidersV55({ genre, moodHint: input.moodHint, weirdnessOverride: input.weirdnessOverride });
+  const sliders = {
+    ...buildSlidersV55({ genre, moodHint: input.moodHint, weirdnessOverride: input.weirdnessOverride }),
+    styleInfluence: NORMAL_SUNO_CONTROLS.styleInfluence
+  };
   const style = sanitizeAcousticBassStyle(enforceStyleCoreContract(styleResult.total), acousticBassAvoidance);
   const exclude = sanitizeAcousticBassExclude(excludeResult.text, acousticBassAvoidance);
   const payload = buildPayload({ ...input, lyricsText, bpm, vocalGender }, style, exclude, yamlLyrics, sliders, lyricsBoxLimit);

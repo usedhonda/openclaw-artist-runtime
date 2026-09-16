@@ -1,5 +1,20 @@
 # Handoff: Producer-musician creation loop
 
+## Applied: normal Suno V6 control defaults (2026-09-16)
+
+The producer set the standing normal-generation defaults to Max Mode Off,
+Custom Duration 3:30, Variety High (2), Personalize On, and Style Influence 100.
+New prompt packs now store these controls in the hashed `suno-payload.json`;
+the nested CLI slider payload also carries Style Influence 100. Production
+revisions inherit the same defaults, including revisions based on older packs.
+Legacy unchanged packs remain immutable.
+
+The already prepared `Fifteen Second Expert` form was updated in place through
+its exact CDP page. Readback was Duration 210 seconds, Max Mode false,
+Personalize true, Variety 2, Weirdness 50, and Style Influence 100. The title
+remained exact, the Create button remained visible, and no Create click occurred.
+The browser and gateway were not restarted.
+
 ## Prepared, awaiting manual Create: V6 controls (2026-09-16)
 
 Approved scope: integrate suno-kit `a3ae7cd`, improve relationship-based prompts,

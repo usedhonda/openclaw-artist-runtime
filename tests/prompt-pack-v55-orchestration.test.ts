@@ -47,6 +47,15 @@ describe("Suno V6 prompt pack orchestration", () => {
     expect(String(pack.payload.lyrics).length).toBeLessThan(1500);
     expect(pack.payload.payloadYaml).toBe(pack.yamlLyrics);
     expect(pack.payload.model).toBe("v6");
+    expect(pack.payload).toMatchObject({
+      maxMode: false,
+      duration: "3:30",
+      variety: 2,
+      personalize: true,
+      styleInfluence: 100
+    });
+    expect(pack.sliders.styleInfluence).toBe(100);
+    expect(pack.payload.sliders).toMatchObject({ styleInfluence: 100 });
     expect(pack.sliders.weirdness).toBeGreaterThanOrEqual(15);
     expect(pack.sliders.weirdness).toBeLessThanOrEqual(85);
     expect(pack.validation.valid).toBe(true);
