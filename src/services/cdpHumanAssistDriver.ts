@@ -179,6 +179,7 @@ export async function hydrateSunoBrowserSession(
 export class CdpHumanAssistDriver implements HumanAssistBrowserDriver {
   private page: Page | undefined;
   private ownsPage = false;
+  private preservePageOnClose = false;
   private baselineSongUrls = new Set<string>();
   // Feed clip ids present before submit, so only genuinely new clips count as this
   // create's takes during network-primary reconciliation.
@@ -373,29 +374,22 @@ export class CdpHumanAssistDriver implements HumanAssistBrowserDriver {
   }
 
   async retireCreateSurface(): Promise<void> {
-    // Success-only cosmetic step. An owned page is closed outright by close(); a
-    // reused attach-mode tab is externally owned, so instead of leaving the filled
-    // Create form on screen we return it to the Suno home surface. Best-effort: any
-    // navigation failure is ignored because the create was already accepted.
-    const page = this.page;
-    if (!page || this.ownsPage) {
-      return;
-    }
-    await page
-      .goto("https://suno.com/", { waitUntil: "domcontentloaded", timeout: FORM_READY_TIMEOUT_MS })
-      .catch(() => undefined);
+    // Success means the generated takes are the operator's result surface. Keep that
+    // exact tab visible instead of closing it or navigating a reused tab back home.
+    this.preservePageOnClose = true;
+    await this.page?.bringToFront?.().catch(() => undefined);
   }
 
   async close(): Promise<void> {
-    // Drop our page reference and release the SunoBrowserService hold. The service
-    // idle-closes the plugin-launched browser once the last holder releases (a legacy
-    // CDP attach is left running); a later attempt re-acquires cleanly.
+    // Drop our page reference and release the SunoBrowserService hold. Successful
+    // result tabs stay visible; unsuccessful plugin-created input tabs are cleaned up.
     const page = this.page;
     this.page = undefined;
-    if (this.ownsPage) {
+    if (this.ownsPage && !this.preservePageOnClose) {
       await page?.close().catch(() => undefined);
     }
     this.ownsPage = false;
+    this.preservePageOnClose = false;
     await this.service.release();
   }
 

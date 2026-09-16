@@ -244,14 +244,13 @@ browser lifecycle and runs in one of two ownership modes, selected by whether
   the CDP endpoint section above for why the port must be fixed and non-zero).
   On Linux the launch also appends `--disable-dev-shm-usage`, so a container's
   small `/dev/shm` does not crash the renderer; Darwin launch arguments are
-  unchanged. Because the plugin owns this browser, releasing the last holder
-  closes the whole window — after a manual Create completes, the browser
-  window disappearing is expected behavior, not a crash.
+  unchanged. Releasing the last holder leaves this persistent browser running,
+  and an accepted manual Create leaves its result tab visible. A later create
+  reuses the same browser instead of making the completed window disappear.
 - **Attach.** With a configured `cdpEndpoint` (or the legacy env override), the
   plugin attaches to an externally started Chrome instead of launching one, and
-  never closes it. On an accepted submit, a reused tab is returned to the Suno
-  home surface (`suno.com/`) rather than being left showing the filled Create
-  form; a failed submit still keeps the filled form as evidence for
+  never closes it. On an accepted submit, the generated result tab remains
+  visible; a failed submit still keeps the filled form as evidence for
   diagnostics. This is the mode in effect whenever the operator starts Chrome
   externally for the human-assist fallback.
 

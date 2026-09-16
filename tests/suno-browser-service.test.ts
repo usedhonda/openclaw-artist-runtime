@@ -129,7 +129,7 @@ describe("SunoBrowserService", () => {
     expect(launchPersistentContextMock).toHaveBeenCalledTimes(1);
   });
 
-  it("closes the browser only after the last holder releases (ref-counted idle-close)", async () => {
+  it("keeps the persistent browser running after the last holder releases", async () => {
     const profile = await profileWithPort("40001");
     process.env.OPENCLAW_SUNO_CHROME_PROFILE_DEST = profile;
     const context = makeContext();
@@ -141,7 +141,7 @@ describe("SunoBrowserService", () => {
     await service.release();
     expect(context.close).not.toHaveBeenCalled();
     await service.release();
-    expect(context.close).toHaveBeenCalledTimes(1);
+    expect(context.close).not.toHaveBeenCalled();
   });
 
   it("exposes the running endpoint to getCdpEndpoint without a separate launch", async () => {
@@ -155,7 +155,7 @@ describe("SunoBrowserService", () => {
     const handle = await service.ensureRunning();
     expect(service.getCdpEndpoint()).toBe(handle.cdpEndpoint);
     await service.release();
-    expect(service.getCdpEndpoint()).toBeUndefined();
+    expect(service.getCdpEndpoint()).toBe(handle.cdpEndpoint);
     expect(launchPersistentContextMock).toHaveBeenCalledTimes(1);
   });
 
@@ -175,7 +175,7 @@ describe("SunoBrowserService", () => {
     expect(context.close).toHaveBeenCalledTimes(1);
   });
 
-  it("holds one operator session idempotently and closes it once (no ref leak)", async () => {
+  it("holds one operator session idempotently and releases it without closing Chrome", async () => {
     const profile = await profileWithPort("40020");
     process.env.OPENCLAW_SUNO_CHROME_PROFILE_DEST = profile;
     const context = makeContext();
@@ -188,10 +188,10 @@ describe("SunoBrowserService", () => {
     expect(context.close).not.toHaveBeenCalled();
 
     await service.closeOperatorSession();
-    expect(context.close).toHaveBeenCalledTimes(1);
+    expect(context.close).not.toHaveBeenCalled();
     // A second close is a no-op (already released).
     await service.closeOperatorSession();
-    expect(context.close).toHaveBeenCalledTimes(1);
+    expect(context.close).not.toHaveBeenCalled();
   });
 
   it("attaches over CDP when config sets music.suno.browser.cdpEndpoint (no legacy env)", async () => {

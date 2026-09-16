@@ -64,9 +64,10 @@ function reserveFreePort(): Promise<number> {
  * Playwright driver (via `context`) and the suno-cli captcha mint (via `cdpEndpoint`),
  * with no manual start-chrome-cdp.sh and no second profile.
  *
- * Reference-counted: every ensureRunning() holder must call release() exactly once; the
- * browser closes once the last holder releases (idle-close). A single in-flight launch
- * promise prevents a double launch under concurrent holders. If the loopback CDP endpoint
+ * Reference-counted: every ensureRunning() holder must call release() exactly once. The
+ * persistent operator browser remains running after the last holder releases so a completed
+ * generation stays visible; a single in-flight launch promise prevents a double launch.
+ * If the loopback CDP endpoint
  * never becomes reachable, the launch fails closed with a clear reason rather than silently succeeding.
  *
  * A legacy env override (OPENCLAW_SUNO_USE_CDP + OPENCLAW_SUNO_CDP_ENDPOINT) attaches to
@@ -137,16 +138,6 @@ export class SunoBrowserService {
     if (this.refCount > 0) {
       this.refCount -= 1;
     }
-    if (this.refCount > 0 || !this.running) {
-      return;
-    }
-    const running = this.running;
-    this.running = undefined;
-    if (running.attached) {
-      // Legacy attach: leave the externally-owned Chrome running.
-      return;
-    }
-    await running.context.close().catch(() => undefined);
   }
 
   private async launch(config: SunoBrowserConfigView | undefined, env: NodeJS.ProcessEnv): Promise<RunningBrowser> {

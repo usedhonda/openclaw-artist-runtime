@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- fix: keep the persistent Suno browser and accepted generation tab visible
+  after a human-assist run releases its runtime hold. Completed songs no longer
+  make the GrokBot browser window disappear.
+
 - fix: completed-song Telegram reports now explain the bound song itself: its
   observation background, opening scene, hook, section movement, turning point,
   and production design come from the exact lyrics/style pack. Persona-file

@@ -1,5 +1,17 @@
 # Handoff: Producer-musician creation loop
 
+## Resolved incident: Suno browser disappeared after generation (2026-09-16)
+
+The producer observed the GrokBot Suno window disappear after the accepted
+`Vacant Seat Warranty` generation. The accepted human-assist path released its
+last `SunoBrowserService` holder, which closed the plugin-launched persistent
+Chrome; its driver also closed an owned page or navigated a reused page home.
+The persistent browser now remains alive after holder release, and an accepted
+generation preserves and foregrounds its exact result tab. Failed plugin-created
+input tabs retain their existing cleanup behavior. Focused tests, typecheck, lint,
+and build pass. The full suite remains at 2,103/2,104 because the pre-existing
+tempo-distribution test still misses the `slow` band.
+
 ## Live checkpoint: cadence diagnosis and new song delivery (2026-09-16)
 
 The producer changed `autopilot.songsPerWeek` to 50 and the song-spawn interval
