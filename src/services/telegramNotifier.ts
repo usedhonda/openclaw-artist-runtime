@@ -1700,6 +1700,28 @@ export async function formatRuntimeEvent(
   return enrichWithResources(event, options, withNextAction);
 }
 
+// The manual-Create card is the producer's last look at a song before it is
+// generated, so it has to say what the song is, not only which button to press.
+// Sources are the current prompt pack's own files, never a re-derivation.
+async function describeSongForManualCreate(workspaceRoot: string | undefined, songId: string): Promise<string[]> {
+  if (!workspaceRoot) return [];
+  const dir = join(workspaceRoot, "songs", songId, "suno");
+  const [rawNote, style, lyrics] = await Promise.all([
+    readFile(join(dir, "creative-note.json"), "utf8").then((text) => JSON.parse(text) as unknown).catch(() => null),
+    readFile(join(dir, "style.md"), "utf8").catch(() => ""),
+    readFile(join(dir, "lyrics-suno.md"), "utf8").catch(() => "")
+  ]);
+  const note = parseSongCreationNote(rawNote, lyrics);
+  const styleLine = style.split("\n").map((line) => line.trim()).find(Boolean);
+  const lines = [
+    note?.source.summary ? `見たもの: ${truncatePlain(note.source.summary, 180)}` : undefined,
+    note?.artistReaction ? `斬り口: ${truncatePlain(note.artistReaction, 180)}` : undefined,
+    note?.lyricHighlights[0]?.quote ? `フック: ${truncatePlain(note.lyricHighlights[0].quote, 140)}` : undefined,
+    styleLine ? `音: ${truncatePlain(styleLine, 140)}` : undefined
+  ].filter((line): line is string => Boolean(line));
+  return lines.length > 0 ? [TELEGRAM_SECTION_DIVIDER, ...lines, TELEGRAM_SECTION_DIVIDER] : [];
+}
+
 async function formatRuntimeEventRaw(
   event: RuntimeEvent,
   options: Pick<TelegramNotifierOptions, "workspaceRoot" | "aiReviewProvider"> = {}
@@ -1834,6 +1856,7 @@ async function formatRuntimeEventRaw(
         return [
           "【制作状況通知】",
           `「${event.title}」の入力は済ませた。残りを調整して「Create」を押して。`,
+          ...await describeSongForManualCreate(options.workspaceRoot, event.songId),
           noTimeLimit
             ? "時間制限なし、押されるまで待つ。押した後は取込と選曲まで自動で続ける。"
             : `最大 ${event.timeoutMinutes} 分待つ。押した後は取込と選曲まで自動で続ける。`,

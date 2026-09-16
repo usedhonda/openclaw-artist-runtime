@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- feat: the manual-Create Telegram card now describes the song before the
+  producer presses Create: the observation it came from, the artist's angle,
+  the hook line, and the style/BPM line, read from the current prompt pack.
+
 - fix: expand the Suno "More Options" panel before setting Variety, Max Mode,
   Personalize, or the sliders. While it is collapsed the controls accept keys
   but the panel header intercepts clicks, so Personalize On timed out.

@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { mkdtempSync } from "node:fs";
+import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
 import { readFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -113,6 +113,36 @@ describe("TelegramNotifier", () => {
     expect(text).toContain("【制作状況通知】");
     expect(text).toContain("「Background Take」");
     expect(text).not.toContain("バックグラウンドで進めていた");
+  });
+
+  it("describes the song on the manual-Create card", async () => {
+    const root = mkdtempSync(join(tmpdir(), "manual-create-card-"));
+    const dir = join(root, "songs", "song-desc", "suno");
+    mkdirSync(dir, { recursive: true });
+    writeFileSync(join(dir, "lyrics-suno.md"), "[Hook]\nYour stopwatch isn't a witness.\n");
+    writeFileSync(join(dir, "style.md"), "High-velocity progressive rap, 96 BPM\nlonger detail line\n");
+    writeFileSync(join(dir, "creative-note.json"), JSON.stringify({
+      version: 1,
+      source: { author: "news.example", summary: "落札価格は約26万円だった。" },
+      artistReaction: "金額だけで出来を分かった気になる目利き面が信用できない。",
+      lyricConcept: "concept",
+      lyricHighlights: [{ quote: "Your stopwatch isn't a witness.", explanation: "hook" }],
+      listenFor: []
+    }));
+
+    const text = await formatRuntimeEvent({
+      type: "suno_human_assist_requested",
+      songId: "song-desc",
+      title: "Rubber Stamp Ears",
+      timeoutMinutes: 0,
+      mode: "manual_submit",
+      timestamp: 1
+    }, { workspaceRoot: root });
+
+    expect(text).toContain("見たもの: 落札価格は約26万円だった。");
+    expect(text).toContain("斬り口: 金額だけで出来を分かった気になる目利き面が信用できない。");
+    expect(text).toContain("フック: Your stopwatch isn't a witness.");
+    expect(text).toContain("音: High-velocity progressive rap, 96 BPM");
   });
 
   it("explains manual Suno parameter editing without claiming captcha", async () => {
