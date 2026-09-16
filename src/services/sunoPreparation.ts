@@ -288,7 +288,7 @@ export async function prepareSunoForm(page: Page, payload: SunoCreatePayload, ti
     const advanced = await resolveFirstVisibleLocator(page, ADVANCED_OPTIONS, timeoutMs, "Advanced Options").catch(() => undefined);
     if (advanced && (await advanced.getAttribute("aria-expanded").catch(() => null)) === "false") await advanced.click();
   }
-  const lyrics = suppliedText(payload, "lyrics", "lyricsText", "payloadYaml");
+  const lyrics = payload.instrumental ? undefined : suppliedText(payload, "lyrics", "lyricsText", "payloadYaml");
   const style = suppliedText(payload, "styleAndFeel");
   const title = suppliedText(payload, "songName");
   const hasExclude = hasString(payload, "excludeStyles");

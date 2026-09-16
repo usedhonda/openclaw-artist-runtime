@@ -107,8 +107,9 @@ describe("readSunoControls DOM contract", () => {
     let browser;
     try {
       browser = await chromium.launch({ headless: true });
-    } catch {
-      return;
+    } catch (error) {
+      // A missing installed browser is an environment limitation, not a green test.
+      throw new Error(`Suno DOM fixture browser unavailable: ${error instanceof Error ? error.message : "launch failed"}`);
     }
     try {
       const page = await browser.newPage();

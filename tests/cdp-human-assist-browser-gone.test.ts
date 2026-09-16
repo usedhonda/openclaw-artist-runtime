@@ -21,6 +21,19 @@ describe("assertBrowserAlive", () => {
 });
 
 describe("CdpHumanAssistDriver.waitForHumanSubmit", () => {
+  it("accepts response-bound producer edits without refilling or clicking the page", async () => {
+    const driver = new CdpHumanAssistDriver({ payload: { songName: "Prepared title" } });
+    const urls = ["https://suno.com/song/aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa"];
+    Object.assign(driver, {
+      page: { isClosed: () => false },
+      submitAtMs: Date.now(),
+      submissionObserver: { assertSaved: () => undefined, accepted: () => ({ fields: { title: "Edited title" }, urls }) }
+    });
+    // The page deliberately has no locator/click/fill/goto methods. Waiting must
+    // rely on the exact observed response, not touch the producer's changed form.
+    await expect(driver.waitForHumanSubmit(100)).resolves.toEqual({ kind: "accepted", urls });
+  });
+
   it("keeps waiting after an unavailable feed and accepts a later matched reconciliation", async () => {
     vi.useFakeTimers();
     try {

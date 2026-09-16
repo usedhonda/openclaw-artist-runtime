@@ -19,6 +19,9 @@ readback mismatches fail preparation instead of reporting a ready form. The
 runtime never refills or navigates the prepared form while waiting for Create.
 Unspecified controls retain their current UI values. Explicit controls are
 applied only when their UI value can be verified; unknown controls fail closed.
+For this manual lane, explicit overrides are top-level payload fields. The
+archived `sliders` genre presets are not instructions to overwrite the producer's
+current manual settings (the CLI lane continues to use those existing presets).
 
 Variety is an integer **0–4**, not a percentage. Other CLI sliders retain their
 0–100 UI to 0–1 wire conversion. The runtime gives song-specific exploration
