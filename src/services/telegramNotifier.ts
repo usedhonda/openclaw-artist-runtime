@@ -32,6 +32,7 @@ import {
 import { readProductionRunBinding, type ProductionRunBinding } from "./productionConversation.js";
 import { readAllSunoRuns } from "./sunoRuns.js";
 import { readSongProductionRevision } from "./songProductionRevisions.js";
+import { hasSunoPreparationEvidence, readObservedSunoSubmission, type SunoSubmissionFields } from "./sunoSubmissionEvidence.js";
 import {
   TELEGRAM_SECTION_DIVIDER,
   appendTelegramSection,
@@ -1202,6 +1203,16 @@ interface BoundPackDetails {
   creationNote?: SongCreationNote;
 }
 
+interface ResolvedSongSubmission {
+  runId: string;
+  binding?: ProductionRunBinding;
+  revision?: Awaited<ReturnType<typeof readSongProductionRevision>>;
+  base?: BoundPackDetails;
+  submitted?: BoundPackDetails;
+  observed?: SunoSubmissionFields;
+  preparationEvidence: boolean;
+}
+
 async function readBoundPackDetails(workspaceRoot: string, songId: string, packVersion: number | undefined): Promise<BoundPackDetails | undefined> {
   if (packVersion === undefined) return undefined;
   const dir = join(workspaceRoot, "songs", songId, "prompts", `prompt-pack-v${String(packVersion).padStart(3, "0")}`);
@@ -1224,10 +1235,14 @@ async function readBoundPackDetails(workspaceRoot: string, songId: string, packV
 async function resolveSongSubmissionBinding(
   event: SongTakeCompletedEvent,
   workspaceRoot?: string
-): Promise<{ binding?: ProductionRunBinding; revision?: Awaited<ReturnType<typeof readSongProductionRevision>>; base?: BoundPackDetails; submitted?: BoundPackDetails } | undefined> {
+): Promise<ResolvedSongSubmission | undefined> {
   if (!workspaceRoot) return undefined;
   const runId = await resolveRunIdForUrls(workspaceRoot, event.songId, event.urls);
   if (!runId) return undefined;
+  const [observed, preparationEvidence] = await Promise.all([
+    readObservedSunoSubmission(workspaceRoot, event.songId, runId, event.urls).catch(() => undefined),
+    hasSunoPreparationEvidence(workspaceRoot, event.songId, runId).catch(() => false)
+  ]);
   const direct = await readProductionRunBinding(workspaceRoot, event.songId, runId).catch(() => undefined);
   let binding = direct;
   if (!binding) {
@@ -1239,7 +1254,7 @@ async function resolveSongSubmissionBinding(
       binding = await findPromptPackBindingByPayloadHash(workspaceRoot, event.songId, runId, accepted.payloadHash);
     }
   }
-  if (!binding) return undefined;
+  if (!binding) return { runId, observed, preparationEvidence };
   const revision = binding.revisionId
     ? await readSongProductionRevision(workspaceRoot, event.songId, binding.revisionId).catch(() => undefined)
     : undefined;
@@ -1247,7 +1262,7 @@ async function resolveSongSubmissionBinding(
   const submitted = revision
     ? await readBoundPackDetails(workspaceRoot, event.songId, revision.packVersion)
     : base;
-  return { binding, revision, base, submitted };
+  return { runId, binding, revision, base, submitted, observed, preparationEvidence };
 }
 
 async function formatSongSubmission(
@@ -1264,12 +1279,23 @@ async function formatSongSubmission(
   const revision = resolved?.revision;
   const base = resolved?.base;
   const submitted = resolved?.submitted;
+  const observed = resolved?.observed;
+  const preparationEvidence = resolved?.preparationEvidence ?? false;
   const bpmChanged = Boolean(revision && base?.bpm !== undefined && revision.effective.bpm !== undefined && revision.effective.bpm !== base.bpm);
   const directionChanged = Boolean(revision?.effective.direction && base && !base.style.includes(revision.effective.direction));
   const revisionLyrics = revision?.promptPack?.pack?.lyricsBundle?.originalLyricsText?.trimEnd();
   const lyricsUnchanged = base?.lyrics !== undefined && revisionLyrics !== undefined && base.lyrics === revisionLyrics;
-  const lyrics = revisionLyrics ?? submitted?.lyrics ?? base?.lyrics ?? "";
-  const style = revision?.promptPack?.pack?.style ?? submitted?.style ?? base?.style ?? "";
+  const preparedLyrics = revisionLyrics ?? submitted?.lyrics ?? base?.lyrics ?? "";
+  const preparedStyle = revision?.promptPack?.pack?.style ?? submitted?.style ?? base?.style ?? "";
+  const observedLyrics = observed?.lyrics?.trimEnd();
+  const observedStyle = observed?.style?.trim();
+  const observedDiffersFromPrepared = Boolean(observed && (
+    (observedLyrics !== undefined && observedLyrics !== preparedLyrics)
+    || (observedStyle !== undefined && observedStyle !== preparedStyle)
+    || (observed.excludeStyles !== undefined && observed.excludeStyles.trim() !== (submitted?.excludeStyles ?? base?.excludeStyles ?? []).join(", "))
+  ));
+  const lyrics = observedLyrics ?? preparedLyrics;
+  const style = observedStyle ?? preparedStyle;
   const safeObservationUrl = observation?.url
     && (observationIsSongBound || isAllowedObservationUrl(observation.url))
     && /^https:\/\//.test(observation.url)
@@ -1284,8 +1310,13 @@ async function formatSongSubmission(
   } : undefined;
   const fallbackNote = buildSongCreationNote({ lyrics, style, observation: safeObservation });
   const persistedNote = submitted?.creationNote;
+  const observedNote = observedDiffersFromPrepared ? buildSongCreationNote({ lyrics, style }) : undefined;
+  const preCreateUnknown = preparationEvidence && !observed;
   const note: SongCreationNote = {
-    ...(persistedNote ?? fallbackNote),
+    ...(observedNote ?? persistedNote ?? fallbackNote),
+    artistReaction: observedDiffersFromPrepared
+      ? (persistedNote?.artistReaction ?? fallbackNote.artistReaction)
+      : (observedNote ?? persistedNote ?? fallbackNote).artistReaction,
     source: {
       ...(persistedNote?.source ?? fallbackNote.source),
       author: observation?.author
@@ -1298,8 +1329,12 @@ async function formatSongSubmission(
         ? safeObservation.quote
         : persistedNote?.source.summary ?? fallbackNote.source.summary
     },
+    musicIntent: preCreateUnknown
+      ? [persistedNote?.musicIntent ?? fallbackNote.musicIntent, "これはCreate前の設計。実際に提出された内容の変更は未確認。"].filter(Boolean).join(" ")
+      : (observedNote ?? persistedNote ?? fallbackNote).musicIntent,
     listenFor: [
       ...(persistedNote?.listenFor ?? fallbackNote.listenFor),
+      preCreateUnknown ? "Create前の設計と実際の提出内容が変わっていないかは未確認。" : undefined,
       bpmChanged ? (revision!.effective.bpm! > base!.bpm!
         ? "前の音源より速くしても、言葉が潰れず抜けるところ。"
         : "前の音源より間を広げ、声の置き方が変わるところ。") : undefined,
@@ -1309,7 +1344,7 @@ async function formatSongSubmission(
   };
   const previousUrl = binding?.baselineTake?.url;
   return formatSongCreationMessage({
-    title: revision?.effective.title ?? base?.title ?? (songState?.title !== event.songId ? songState?.title : undefined) ?? "今回の曲",
+    title: observed?.title?.trim() || (revision?.effective.title ?? base?.title ?? (songState?.title !== event.songId ? songState?.title : undefined) ?? "今回の曲"),
     note,
     audioUrls: event.urls,
     previousAudioUrls: previousUrl ? [previousUrl] : undefined
