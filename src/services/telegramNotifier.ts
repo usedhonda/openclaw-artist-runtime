@@ -1200,6 +1200,7 @@ interface BoundPackDetails {
   excludeStyles: string[];
   style: string;
   lyrics?: string;
+  originalLyrics?: string;
   creationNote?: SongCreationNote;
 }
 
@@ -1221,6 +1222,7 @@ async function readBoundPackDetails(workspaceRoot: string, songId: string, packV
   };
   const style = await readFile(join(dir, "style.md"), "utf8").catch(() => "");
   const exclude = await readFile(join(dir, "exclude.md"), "utf8").catch(() => "");
+  const originalLyrics = await readFile(join(dir, "lyrics.md"), "utf8").then((text) => text.trimEnd()).catch(() => undefined);
   const lyrics = typeof payload.lyrics === "string"
     ? payload.lyrics.trimEnd()
     : typeof payload.lyricsText === "string" ? payload.lyricsText.trimEnd() : undefined;
@@ -1234,7 +1236,8 @@ async function readBoundPackDetails(workspaceRoot: string, songId: string, packV
     excludeStyles: preparedExclude.split(",").map((item) => item.trim()).filter(Boolean),
     style: preparedStyle,
     lyrics,
-    creationNote: lyrics ? parseSongCreationNote(creationNoteRaw, lyrics) : undefined
+    originalLyrics,
+    creationNote: parseSongCreationNote(creationNoteRaw, originalLyrics ?? lyrics ?? "")
   };
 }
 
@@ -1298,7 +1301,10 @@ async function formatSongSubmission(
     || observedLyrics !== preparedLyrics
     || observedStyle !== preparedStyle
     || (observed.excludeStyles !== undefined && observed.excludeStyles.trim() !== (submitted?.excludeStyles ?? base?.excludeStyles ?? []).join(", "))));
-  const lyrics = observed ? (observedLyrics ?? "") : preparedLyrics;
+  const legacyLyrics = !observed && !preparationEvidence;
+  const lyrics = observed ? (observedLyrics ?? "") : legacyLyrics
+    ? (submitted?.originalLyrics ?? base?.originalLyrics ?? preparedLyrics)
+    : preparedLyrics;
   const style = observed ? (observedStyle ?? "") : preparedStyle;
   const safeObservationUrl = observation?.url
     && (observationIsSongBound || isAllowedObservationUrl(observation.url))
@@ -1315,12 +1321,13 @@ async function formatSongSubmission(
   const fallbackNote = buildSongCreationNote({ lyrics, style, observation: safeObservation });
   const persistedNote = submitted?.creationNote;
   const observedNote = observedDiffersFromPrepared ? buildSongCreationNote({ lyrics, style }) : undefined;
+  const chosenNote = observedNote ?? persistedNote ?? fallbackNote;
   const preCreateUnknown = preparationEvidence && !observed;
   const note: SongCreationNote = {
-    ...(observedNote ?? persistedNote ?? fallbackNote),
+    ...chosenNote,
     artistReaction: observedDiffersFromPrepared
       ? (persistedNote?.artistReaction ?? fallbackNote.artistReaction)
-      : (observedNote ?? persistedNote ?? fallbackNote).artistReaction,
+      : chosenNote.artistReaction,
     source: {
       ...(persistedNote?.source ?? fallbackNote.source),
       author: observation?.author
@@ -1335,17 +1342,17 @@ async function formatSongSubmission(
     },
     musicIntent: preCreateUnknown
       ? [persistedNote?.musicIntent ?? fallbackNote.musicIntent, "これはCreate前の設計。実際にSunoへ送った内容との差分は未確認。"].filter(Boolean).join(" ")
-      : (observedNote ?? persistedNote ?? fallbackNote).musicIntent,
+      : chosenNote.musicIntent,
     listenFor: [
-      ...(persistedNote?.listenFor ?? fallbackNote.listenFor),
+      ...chosenNote.listenFor,
       preCreateUnknown ? "Create前の設計と実際にSunoへ送った内容との差分は未確認。" : undefined,
       observedIsPartial && observedLyrics === undefined ? "Sunoへ送った歌詞は未観測。" : undefined,
       observedIsPartial && observedStyle === undefined ? "Sunoへ送ったスタイルは未観測。" : undefined,
-      bpmChanged ? (revision!.effective.bpm! > base!.bpm!
+      !observedDiffersFromPrepared && bpmChanged ? (revision!.effective.bpm! > base!.bpm!
         ? "前の音源より速くしても、言葉が潰れず抜けるところ。"
         : "前の音源より間を広げ、声の置き方が変わるところ。") : undefined,
-      directionChanged ? "前の音源からアレンジの重心が変わったところ。" : undefined,
-      observedDiffersFromPrepared && observedLyrics !== undefined && preparedLyrics !== "" ? "変えた言葉が旋律へどう乗るか。" : undefined
+      !observedDiffersFromPrepared && directionChanged ? "前の音源からアレンジの重心が変わったところ。" : undefined,
+      !observedDiffersFromPrepared && observedLyrics !== undefined && preparedLyrics !== "" ? "変えた言葉が旋律へどう乗るか。" : undefined
     ].filter((line): line is string => Boolean(line))
   };
   const previousUrl = binding?.baselineTake?.url;
