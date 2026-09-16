@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- fix: step Suno sliders (Variety, Style Influence, Weirdness, custom Duration)
+  from their current value with arrow keys. The live Suno sliders ignore Home
+  and End, so the previous Home-then-ArrowRight fill landed Variety on 4 and
+  failed preparation with `suno_prepare_readback_mismatch: variety`.
+
 - fix: strengthen Japanese rap drafting with explicit 2-4 mora vowel-chain,
   compound-rhyme, internal-rhyme, cadence, and wordplay requirements. City and
   advertising diss now starts from varied indirect imagery instead of repeated

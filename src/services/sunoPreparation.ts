@@ -228,10 +228,28 @@ async function setSlider(page: Page, labels: readonly string[], value: number, n
   if (![min, max, step].every(Number.isFinite) || step <= 0 || value < min || value > max || !Number.isInteger((value - min) / step)) {
     throw new Error(`suno_prepare_invalid_control: ${name}`);
   }
-  await locator.press("Home");
-  for (let index = 0; index < (value - min) / step; index += 1) await locator.press("ArrowRight");
-  const actual = Number(await locator.getAttribute("aria-valuenow").catch(() => null) ?? await locator.inputValue().catch(() => ""));
-  if (actual !== value) throw new Error(`suno_prepare_readback_mismatch: ${name}`);
+  await stepSliderTo(locator, value, name);
+}
+
+async function readSliderValue(locator: Locator): Promise<number> {
+  return Number(await locator.getAttribute("aria-valuenow").catch(() => null) ?? await locator.inputValue().catch(() => ""));
+}
+
+// Suno sliders ignore Home/End, so walk from the current value with arrow keys and
+// require every press to move toward the target without overshooting it.
+async function stepSliderTo(locator: Locator, target: number, name: string): Promise<void> {
+  let current = await readSliderValue(locator);
+  if (!Number.isFinite(current)) throw new Error(`suno_prepare_readback_unknown: ${name}`);
+  for (let presses = 0; current !== target; presses += 1) {
+    if (presses >= 1000) throw new Error(`suno_prepare_readback_mismatch: ${name}`);
+    const forward = current < target;
+    await locator.press(forward ? "ArrowRight" : "ArrowLeft");
+    const next = await readSliderValue(locator);
+    const moved = forward ? next > current : next < current;
+    const overshot = forward ? next > target : next < target;
+    if (!Number.isFinite(next) || !moved || overshot) throw new Error(`suno_prepare_readback_mismatch: ${name}`);
+    current = next;
+  }
 }
 
 async function setBoolean(page: Page, labels: readonly string[], value: boolean, name: string): Promise<void> {
@@ -290,17 +308,7 @@ async function setDuration(page: Page, value: string): Promise<void> {
   const min = Number(await slider.getAttribute("aria-valuemin").catch(() => null));
   const max = Number(await slider.getAttribute("aria-valuemax").catch(() => null));
   if (!Number.isFinite(min) || !Number.isFinite(max) || target < min || target > max) throw new Error("suno_prepare_invalid_control: duration");
-  await slider.press("Home");
-  let current = Number(await slider.getAttribute("aria-valuenow").catch(() => null));
-  if (current !== target) {
-    await slider.press("ArrowRight");
-    const next = Number(await slider.getAttribute("aria-valuenow").catch(() => null));
-    const step = next - current;
-    if (!Number.isFinite(step) || step <= 0 || (target - current) % step !== 0) throw new Error("suno_prepare_invalid_control: duration");
-    for (let index = 1; index < (target - current) / step; index += 1) await slider.press("ArrowRight");
-  }
-  current = Number(await slider.getAttribute("aria-valuenow").catch(() => null));
-  if (current !== target) throw new Error("suno_prepare_readback_mismatch: duration");
+  await stepSliderTo(slider, target, "duration");
 }
 
 async function readControls(page: Page): Promise<SunoPreparedControls> {

@@ -32,8 +32,9 @@ function fixture() {
       textContent: async () => state.value ?? "",
       fill: async (value: string) => { state.value = value; },
       press: async (key: string) => {
-        if (key === "Home") state.value = "0";
+        // Live Suno sliders ignore Home/End and only move with arrow keys.
         if (key === "ArrowRight") state.value = String(Number(state.value ?? "0") + 1);
+        if (key === "ArrowLeft") state.value = String(Number(state.value ?? "0") - 1);
       },
       click: async () => {
         clicks.push(selector);
@@ -149,9 +150,19 @@ describe("readSunoControls DOM contract", () => {
         <section id="duration"><label>Duration</label><button class="hxc-btn-variant-tertiary-legacy">Custom</button><button class="hxc-btn-variant-standard-legacy">Auto</button></section>
         <section id="max"><label>Max Mode</label><button class="hxc-btn-variant-standard-legacy">Off</button><button class="hxc-btn-variant-tertiary-legacy">On</button></section>
         <section id="personalize"><label>Personalize</label><button>My Taste</button><button class="hxc-btn-variant-standard-legacy">Off</button><button class="hxc-btn-variant-tertiary-legacy">On</button></section>
+        <section id="variety"><label>Variety</label><div role="slider" aria-label="Variety" aria-valuenow="4" aria-valuemin="0" aria-valuemax="4" style="width:100px;height:10px" tabindex="0"></div></section>
         <button id="create">Create</button>
       `);
       await page.evaluate(() => {
+        // Live Suno sliders ignore Home/End; only arrow keys move them.
+        const variety = document.querySelector('#variety [role="slider"]')!;
+        variety.addEventListener("keydown", (event) => {
+          const keyboard = event as KeyboardEvent;
+          let value = Number(variety.getAttribute("aria-valuenow"));
+          if (keyboard.key === "ArrowRight") value = Math.min(4, value + 1);
+          if (keyboard.key === "ArrowLeft") value = Math.max(0, value - 1);
+          variety.setAttribute("aria-valuenow", String(value));
+        });
         const select = (row: Element, selected: Element) => row.querySelectorAll("button").forEach((button) => {
           button.className = button === selected ? "hxc-btn-variant-standard-legacy" : "hxc-btn-variant-tertiary-legacy";
         });
@@ -161,23 +172,24 @@ describe("readSunoControls DOM contract", () => {
         }
         const duration = document.getElementById("duration")!;
         duration.querySelector("button")!.addEventListener("click", () => {
-          duration.innerHTML = '<label>Duration</label><div role="slider" aria-label="Duration" aria-valuenow="180" aria-valuemin="10" aria-valuemax="360" style="width:100px;height:10px" tabindex="0"></div><input type="text" aria-label="Duration" value="3:00">';
+          duration.innerHTML = '<label>Duration</label><div role="slider" aria-label="Duration" aria-valuenow="210" aria-valuemin="10" aria-valuemax="360" style="width:100px;height:10px" tabindex="0"></div><input type="text" aria-label="Duration" value="3:30">';
           const slider = duration.querySelector('[role="slider"]')!;
           const input = duration.querySelector("input")!;
           slider.addEventListener("keydown", (event) => {
             const keyboard = event as KeyboardEvent;
             let value = Number(slider.getAttribute("aria-valuenow"));
-            if (keyboard.key === "Home") value = 10;
             if (keyboard.key === "ArrowRight") value += 5;
+            if (keyboard.key === "ArrowLeft") value -= 5;
             slider.setAttribute("aria-valuenow", String(value));
             input.value = `${Math.floor(value / 60)}:${String(value % 60).padStart(2, "0")}`;
           });
         });
         document.getElementById("create")!.addEventListener("click", () => document.body.dataset.createClicked = "true");
       });
-      const prepared = await prepareSunoForm(page, { duration: "3:15", maxMode: true, personalize: true }, 20);
-      expect(prepared.controls).toMatchObject({ duration: "3:15", maxMode: true, personalize: true });
+      const prepared = await prepareSunoForm(page, { duration: "3:15", maxMode: true, personalize: true, variety: 2 }, 20);
+      expect(prepared.controls).toMatchObject({ duration: "3:15", maxMode: true, personalize: true, variety: 2 });
       expect(await page.locator('[role="slider"][aria-label="Duration"]').getAttribute("aria-valuenow")).toBe("195");
+      expect(await page.locator('[role="slider"][aria-label="Variety"]').getAttribute("aria-valuenow")).toBe("2");
       expect(await page.locator("body").getAttribute("data-create-clicked")).toBeNull();
     } finally {
       await browser.close();
