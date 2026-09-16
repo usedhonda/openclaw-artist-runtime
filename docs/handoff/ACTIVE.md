@@ -1,6 +1,6 @@
 # Handoff: Producer-musician creation loop
 
-## In progress: V6 controls and verified manual preparation (2026-09-16)
+## Prepared, awaiting manual Create: V6 controls (2026-09-16)
 
 Approved scope: integrate suno-kit `a3ae7cd`, improve relationship-based prompts,
 preserve manual Create, verify preparation, and distinguish recommendation / UI
@@ -10,9 +10,23 @@ automatically applied. Existing ledger formats and public config shape are uncha
 Independent slices are committed: vendor/prompt guidance, pre-Create UI helper,
 and Telegram observed-material grounding. The integration adds a passive exact-page
 generate observer with strict musical-field allowlisting and response clip-ID
-binding. Credentials and raw network bodies are not retained. Remaining acceptance:
-final integrated gates, fresh gateway-child reflection with no pending human wait,
-and one preparation-only live check. Do not click Create during verification.
+binding. Credentials and raw network bodies are not retained. Runtime commit
+`3147c9c` is deployed through a Git bundle; no upstream push was performed.
+Typecheck, lint, and build pass. Full tests: 2,127 pass, one pre-existing
+tempo-distribution failure (missing slow sample). Focused preparation and passive
+wait tests pass, including a real Chromium fixture.
+
+Live preparation reached `Fifteen Second Expert`, song `spawn_dc796c`, run
+`suno_mu3wbo2j`. Readback matched lyrics (2,599 characters), Style (995), Exclude
+(80), and title. Observed controls: V6, Weirdness 50, Style Influence 50, Variety 2.
+Personalize, Max Mode, and Duration were not machine-readable on the live form;
+they remain unknown, not inferred or automatically changed. Preparation guidance
+was delivered as Telegram message `1940`. Native screenshot confirmed the filled
+form and unpressed Create button. Proposal and preparation evidence exist; actual
+submission capture and completed-song Telegram delivery remain unverified.
+
+An active manual-assist wait owns this prepared page. Do not restart the gateway,
+navigate, refill fields, change controls, or click Create during verification.
 
 ## Resolved: artist-authored Telegram new-song message (2026-09-16)
 
