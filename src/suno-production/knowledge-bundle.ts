@@ -2674,7 +2674,18 @@ Verse 1 → Chorus → Verse 2 → Chorus → Bridge → Chorus
 `,
   "style_catalog.md": `<!-- Source: sunomanual (MIT, Copyright 2025-2026 usedhonda) -->
 
-# Suno V5.5 Style Catalog
+## V6 relationship-first writing (\`confirmed_v6\` + local guidance)
+
+V6 responds best when the primary genre is unmistakable and any secondary genre has a job.
+Use secondary genres as a rhythmic bed, harmonic color, vocal attitude, or production texture;
+do not stack labels without explaining their relationship. Name playing behavior (who leads,
+how parts interlock, articulation, pocket, and density), vocal behavior (register, diction,
+attack, breath, and section dynamics), and a distinct BPM when known. State section contrast
+and mix hierarchy so the foreground, support, and held-back elements are explicit. These are
+prompt-writing recommendations, not undocumented Suno syntax; omit decorative filler and stop
+when the musical relationships are clear.
+
+# Suno Style Catalog
 
 ## Genre Templates (Style Block Examples)
 
@@ -4005,16 +4016,29 @@ deliberately), set Variety to zero. Otherwise you cannot tell your change from S
   that v6 powers your model moving forward. Songs created with your old v5.5 custom model will
   still be available, playable and unaffected by the v6 update."
 
-### Wire names for these controls — **third-party, not observed here**
+### Wire names for these controls — \`observed_v6\`
 
-A third-party project reports that the web client sends Variety as
-\`metadata.control_sliders.aug_creativity\` on a 0..1 scale, alongside \`metadata.is_max_mode\`.
+Captured first-hand on **2026-09-16** from a logged-in session. The web client's create request
+was intercepted before it left the browser, so no song was submitted and no credits were spent.
+The request carried:
 
-⚠️ **This kit has not reproduced that first-hand**, so it is *not* \`observed_v6\` — unlike the model
-identifiers below, which were seen directly in a first-party session. \`suno-cli\` sends these names
-because the owner asked for the controls, and the code says plainly that the names are unverified.
-Re-verify against a live request before trusting them. This is the same standard that keeps
-\`v6-wild\` without an alias.
+\`\`\`json
+"control_sliders": {
+  "weirdness_constraint": 0.51,
+  "style_weight": 0.51,
+  "aug_creativity": 3
+}
+\`\`\`
+
+The three controls do not share one scale: Weirdness and Style Influence are fractions derived
+from their 0-100 UI values, while Variety is an integer level with UI range 0-4. Variety levels
+are 0=off, 1=normal, 2=high, 3=extra, 4=max. The local \`suno-cli\` must preserve this mixed
+scale; do not divide Variety by 100.
+
+The same capture showed optional controls are omitted when untouched. Duration and Personalize
+were enabled in the V6 UI, but their request-field names and wire mapping were not observed;
+do not invent \`duration\` or \`use_personalization\` fields. \`max_mode\` was observed as
+\`metadata.is_max_mode\`, and \`v6-wild\` still has no observed \`mv\` mapping.
 
 ---
 
@@ -4033,10 +4057,11 @@ Current Models page, or the v6 FAQ — all four were read directly, not summaris
 | Context window | unspecified |
 | System prompt | unspecified |
 | Embedding API | unspecified |
-| Duration Slider on V6 | unspecified — the slider shipped 2026-07-20 for **V5.5 / Web only** |
+| Duration Slider on V6 | UI control observed, but request field and effect are unspecified |
 | Maximum song length | unspecified |
 | Weirdness / Style Influence / Audio Influence semantics on V6 | unspecified — do not assume V5.5 behaviour carries over |
-| Voices / My Taste / Persona compatibility | unspecified for V6 specifically — **Custom Models are the exception and are confirmed**, see Generation controls above. Do not treat the four as one group |
+| Voices / Persona compatibility | unspecified for V6 specifically — **Custom Models are the exception and are confirmed**, see Generation controls above |
+| Personalize / My Taste wire mapping | UI control observed on V6; request field and effect unspecified |
 | Output codec / sample rate / bitrate | unspecified |
 | Image / video / audio input limits, formats, counts | unspecified |
 
@@ -4587,10 +4612,12 @@ V5.5 の推奨値（安全域 15-85、Cover は Audio 25% 起点、Sample 全曲
 
 | 機能 | 状態 |
 |---|---|
-| Duration Slider | 2026-07-20 に **V5.5 / Web 限定**で提供。**V6 対応は未記載** |
-| Voices / Custom Models / My Taste / Persona | V5.5 の機能。**V6 との互換は公式に未記載** |
+| Duration Slider | V6 UI で有効化できることは観測したが、request field / wire mapping / 効果は未確定 |
+| Voices / Persona | V5.5 の機能。**V6 との互換は公式に未記載** |
+| Custom Models | V6 で公式確認済み。投入曲の権利保有が必要で、作成には少なくとも6曲が必要 |
+| My Taste / Personalize | V6 Advanced UI でトグルを観測。wire mapping / 効果は未確定なので payload 名を推測しない |
 
-**V5.5 の設定を V6 へ自動継承しない。** 尺の制御は引き続き構造（form / ending intent）で行うのが安全。
+**V5.5 の設定を V6 へ自動継承しない。** 尺の制御は構造（form / ending intent）を正本にし、未確定の Duration / Personalize wire は送らない。
 
 ---
 

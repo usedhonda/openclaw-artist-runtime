@@ -1,6 +1,17 @@
 <!-- Source: sunomanual (MIT, Copyright 2025-2026 usedhonda) -->
 
-# Suno V5.5 Style Catalog
+## V6 relationship-first writing (`confirmed_v6` + local guidance)
+
+V6 responds best when the primary genre is unmistakable and any secondary genre has a job.
+Use secondary genres as a rhythmic bed, harmonic color, vocal attitude, or production texture;
+do not stack labels without explaining their relationship. Name playing behavior (who leads,
+how parts interlock, articulation, pocket, and density), vocal behavior (register, diction,
+attack, breath, and section dynamics), and a distinct BPM when known. State section contrast
+and mix hierarchy so the foreground, support, and held-back elements are explicit. These are
+prompt-writing recommendations, not undocumented Suno syntax; omit decorative filler and stop
+when the musical relationships are clear.
+
+# Suno Style Catalog
 
 ## Genre Templates (Style Block Examples)
 

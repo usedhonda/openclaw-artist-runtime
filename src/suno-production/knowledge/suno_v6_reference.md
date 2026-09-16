@@ -99,16 +99,29 @@ deliberately), set Variety to zero. Otherwise you cannot tell your change from S
   that v6 powers your model moving forward. Songs created with your old v5.5 custom model will
   still be available, playable and unaffected by the v6 update."
 
-### Wire names for these controls — **third-party, not observed here**
+### Wire names for these controls — `observed_v6`
 
-A third-party project reports that the web client sends Variety as
-`metadata.control_sliders.aug_creativity` on a 0..1 scale, alongside `metadata.is_max_mode`.
+Captured first-hand on **2026-09-16** from a logged-in session. The web client's create request
+was intercepted before it left the browser, so no song was submitted and no credits were spent.
+The request carried:
 
-⚠️ **This kit has not reproduced that first-hand**, so it is *not* `observed_v6` — unlike the model
-identifiers below, which were seen directly in a first-party session. `suno-cli` sends these names
-because the owner asked for the controls, and the code says plainly that the names are unverified.
-Re-verify against a live request before trusting them. This is the same standard that keeps
-`v6-wild` without an alias.
+```json
+"control_sliders": {
+  "weirdness_constraint": 0.51,
+  "style_weight": 0.51,
+  "aug_creativity": 3
+}
+```
+
+The three controls do not share one scale: Weirdness and Style Influence are fractions derived
+from their 0-100 UI values, while Variety is an integer level with UI range 0-4. Variety levels
+are 0=off, 1=normal, 2=high, 3=extra, 4=max. The local `suno-cli` must preserve this mixed
+scale; do not divide Variety by 100.
+
+The same capture showed optional controls are omitted when untouched. Duration and Personalize
+were enabled in the V6 UI, but their request-field names and wire mapping were not observed;
+do not invent `duration` or `use_personalization` fields. `max_mode` was observed as
+`metadata.is_max_mode`, and `v6-wild` still has no observed `mv` mapping.
 
 ---
 
@@ -127,10 +140,11 @@ Current Models page, or the v6 FAQ — all four were read directly, not summaris
 | Context window | unspecified |
 | System prompt | unspecified |
 | Embedding API | unspecified |
-| Duration Slider on V6 | unspecified — the slider shipped 2026-07-20 for **V5.5 / Web only** |
+| Duration Slider on V6 | UI control observed, but request field and effect are unspecified |
 | Maximum song length | unspecified |
 | Weirdness / Style Influence / Audio Influence semantics on V6 | unspecified — do not assume V5.5 behaviour carries over |
-| Voices / My Taste / Persona compatibility | unspecified for V6 specifically — **Custom Models are the exception and are confirmed**, see Generation controls above. Do not treat the four as one group |
+| Voices / Persona compatibility | unspecified for V6 specifically — **Custom Models are the exception and are confirmed**, see Generation controls above |
+| Personalize / My Taste wire mapping | UI control observed on V6; request field and effect unspecified |
 | Output codec / sample rate / bitrate | unspecified |
 | Image / video / audio input limits, formats, counts | unspecified |
 

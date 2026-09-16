@@ -26,10 +26,16 @@ describe("style synthesis prompt", () => {
     expect(STYLE_SYNTHESIS_KNOWLEDGE_REFERENCES).toContain("master_reference.md");
     expect(STYLE_SYNTHESIS_KNOWLEDGE_REFERENCES).toContain("suno_v6_reference.md");
     expect(prompt.system).toContain("Suno V6 Style synthesizer");
+    expect(prompt.system).toContain("secondary genres with explicit jobs");
+    expect(prompt.system).toContain("playing behavior");
+    expect(prompt.system).toContain("mix hierarchy");
     expect(prompt.system).not.toContain("Suno Style Analyzer V5.5");
     expect(prompt.user).toContain("Rhodes, sax, upright bass");
     expect(prompt.user).toContain("Do not pad toward a character target");
     expect(prompt.user).toContain("Suno V6 publishes no Style minimum or limit");
+    expect(prompt.user).toContain("assign each one a musical job");
+    expect(prompt.user).toContain("vocal behavior");
+    expect(prompt.user).toContain("distinct BPM");
     expect(prompt.user).not.toContain("total target <=400 characters");
   });
 

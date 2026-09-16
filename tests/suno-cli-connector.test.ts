@@ -115,6 +115,29 @@ describe("CliSunoConnector.create", () => {
     );
   });
 
+  it("passes V6 Variety as an integer level and Max Mode while retaining fractional sliders", async () => {
+    const runner = vi.fn(async () => ({
+      stdout: JSON.stringify({ clips: [{ clipId: "x", songUrl: "https://suno.com/song/x" }] }),
+      stderr: "",
+      exitCode: 0
+    }));
+    const connector = new CliSunoConnector(".", { env: baseEnv(), runner });
+
+    await connector.create(request({
+      payload: {
+        ...request().payload,
+        sliders: { weirdness: 0.4, styleInfluence: 0.75, audioInfluence: 0.25, variety: 4 },
+        maxMode: true
+      }
+    }));
+
+    const [, args] = runner.mock.calls[0];
+    expect(args).toEqual(expect.arrayContaining([
+      "--weirdness", "0.4", "--style-influence", "0.75", "--audio-influence", "0.25",
+      "--variety", "4", "--max-mode"
+    ]));
+  });
+
   it("passes --instrumental instead of --lyrics when payload is instrumental", async () => {
     const runner = vi.fn(async () => ({
       stdout: JSON.stringify({ clips: [{ clipId: "x", songUrl: "https://suno.com/song/x" }] }),

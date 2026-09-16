@@ -40,8 +40,9 @@ export function buildCreateBody(input) {
         controlSliders.style_weight = input.styleInfluence;
     if (input.audioInfluence !== undefined)
         controlSliders.audio_weight = input.audioInfluence;
+    // Variety is an integer level (0..4), unlike the percentage sliders above.
     if (input.variety !== undefined)
-        controlSliders.aug_creativity = input.variety / 100;
+        controlSliders.aug_creativity = input.variety;
     if (Object.keys(controlSliders).length > 0)
         metadata.control_sliders = controlSliders;
     const body = {

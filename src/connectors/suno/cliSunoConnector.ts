@@ -119,6 +119,10 @@ function readSlider(value: unknown): number | undefined {
   return typeof value === "number" && Number.isFinite(value) ? value : undefined;
 }
 
+function readVariety(value: unknown): number | undefined {
+  return typeof value === "number" && Number.isInteger(value) && value >= 0 && value <= 4 ? value : undefined;
+}
+
 // Clip identity for run reconciliation. A Suno take URL and its downloaded audio
 // file share the same clip UUID: `https://suno.com/song/<uuid>` <-> `<uuid>.mp3`.
 function sunoUrlSlug(url: string): string | undefined {
@@ -573,6 +577,14 @@ export class CliSunoConnector implements SunoConnector {
       if (audioInfluence !== undefined) {
         args.push("--audio-influence", String(audioInfluence));
       }
+      const variety = readVariety(record.variety);
+      if (variety !== undefined) {
+        args.push("--variety", String(variety));
+      }
+    }
+
+    if (payload.maxMode === true) {
+      args.push("--max-mode");
     }
 
     const personaId = readText(payload.personaId);

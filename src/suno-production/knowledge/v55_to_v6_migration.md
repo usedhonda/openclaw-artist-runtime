@@ -210,10 +210,12 @@ V5.5 の推奨値（安全域 15-85、Cover は Audio 25% 起点、Sample 全曲
 
 | 機能 | 状態 |
 |---|---|
-| Duration Slider | 2026-07-20 に **V5.5 / Web 限定**で提供。**V6 対応は未記載** |
-| Voices / Custom Models / My Taste / Persona | V5.5 の機能。**V6 との互換は公式に未記載** |
+| Duration Slider | V6 UI で有効化できることは観測したが、request field / wire mapping / 効果は未確定 |
+| Voices / Persona | V5.5 の機能。**V6 との互換は公式に未記載** |
+| Custom Models | V6 で公式確認済み。投入曲の権利保有が必要で、作成には少なくとも6曲が必要 |
+| My Taste / Personalize | V6 Advanced UI でトグルを観測。wire mapping / 効果は未確定なので payload 名を推測しない |
 
-**V5.5 の設定を V6 へ自動継承しない。** 尺の制御は引き続き構造（form / ending intent）で行うのが安全。
+**V5.5 の設定を V6 へ自動継承しない。** 尺の制御は構造（form / ending intent）を正本にし、未確定の Duration / Personalize wire は送らない。
 
 ---
 
