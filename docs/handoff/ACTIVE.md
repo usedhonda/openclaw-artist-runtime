@@ -1,5 +1,25 @@
 # Handoff: Producer-musician creation loop
 
+## Resolved: artist-authored Telegram new-song message (2026-09-16)
+
+Successful song delivery is now one artist-authored message instead of a
+completion/status report. It presents the bound news link and factual summary,
+the artist's reaction, how that reaction became lyrics, selected technical lyric
+details, the musical transition, and listening points. The formatter uses the
+immutable submitted Prompt Pack, persists a `creative-note.json` beside each new
+pack, and reconstructs the same format for legacy packs without inventing an
+audition. Progress-only Suno URL notices are silent; errors and stalls remain
+system notices.
+
+Commits `7ffeec5`, `6868121`, and `b2b66c8` are deployed on GrokBot. A true
+gateway-child replacement was required because the ordinary in-process restart
+kept the old loaded plugin module. The live V6 trial `Permission Not Possession`
+(`spawn_ec22a4`, run `suno_mu3mxh1d`) generated two accepted Suno URLs and
+delivered exactly one completion text as Telegram message `1939`. Native Telegram
+inspection confirmed the new ordered sections and no visible `提出する` report.
+The selected take links are present; the current import attempt recorded no local
+audio path, so the message correctly stayed link-only.
+
 ## Resolved: bilingual pronunciation, V6 prompt guidance, and Telegram proof (2026-09-16)
 
 English spans in Japanese-led lyrics now remain in an English pronunciation
