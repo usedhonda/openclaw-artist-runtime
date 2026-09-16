@@ -53,7 +53,8 @@ templates are reserved for mock or otherwise invalid field output.
 | Intro | `intro` | artist-authored opening contract for lyrics AND style | `{ archetype, modifier, lyricInstruction, styleMove }`; the writer chooses the opening from the song rather than rotating stock forms; empty/filler vocal openings are prohibited, while deliberate scat remains available when it serves the song |
 | Hook shape | `hookShape` | rotation, exclude previous | question / number / list / call_response / reversal / one_line |
 | Shibuya tag | `shibuyaTag` | rotation, exclude previous | technique id from the canon |
-| Place naming | lyric prompt rule | observation + persona material | render the city through concrete traces first; literal `渋谷` / `Shibuya` is never a recurring hook and is limited to one necessary lyric-body use |
+| Place naming | lyric prompt rule | observation + persona material | render the city through a fresh metaphor family and concrete traces first; literal `渋谷` / `Shibuya` is never a recurring hook and is limited to one reveal or turn in the lyric body; Suno-facing `渋谷109` is normalized to `しぶや いちまるきゅう` |
+| Japanese rhyme | lyric prompt rule | genre + meaning | rap verses preselect one or two 2-4 mora vowel chains, then place compound rhyme, internal echoes, carried line endings, cadence changes, and wordplay in four-bar units without distorting natural Japanese |
 | Signature | `signature` | 1 of 5, exclude previous | the artist's recurring "癖" |
 | Observation | `observation` | from the collector | `{ url, author, motifScore }` or null |
 | Degraded inputs | `degradedInputs` | recorded, never hidden | e.g. `observation_null`, `material_banks_empty` |
@@ -132,6 +133,12 @@ decision chose: the chosen lens's material, the chosen tag-technique bullet, the
 signature, the hook shape, the attack stance, and the aggression directives. The
 full persona is still appended as ground, but the *directives* point at one lens.
 Legacy songs with no plan keep the previous critique-lens prose.
+
+For city and advertising critique, the writer must expose the target through its
+effects before naming it: transformed geography, speaking walls, repeated faces,
+stolen attention, altered routes, or growing rent. Example metaphors are invention
+patterns rather than a reusable phrase bank. The lyric must not explain the image
+after it lands or substitute repeated target labels for scenes.
 
 ## style / pack alignment
 

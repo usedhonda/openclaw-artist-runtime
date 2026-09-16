@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- fix: strengthen Japanese rap drafting with explicit 2-4 mora vowel-chain,
+  compound-rhyme, internal-rhyme, cadence, and wordplay requirements. City and
+  advertising diss now starts from varied indirect imagery instead of repeated
+  target labels, and Suno-facing `渋谷109` is rendered as `しぶや いちまるきゅう`.
+
 - feat: make normal Suno V6 prompt packs carry the producer defaults before
   preparation: Max Mode Off, Custom Duration 3:30, Variety High (2),
   Personalize On, and Style Influence 100. The hashed payload, manual UI

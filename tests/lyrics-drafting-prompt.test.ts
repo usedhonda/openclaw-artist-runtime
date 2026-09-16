@@ -85,9 +85,16 @@ describe("lyrics drafting prompt", () => {
     expect(prompt).toContain("72 hours -> seventy-two hours");
     expect(prompt).toContain("ななじゅうに hours");
     expect(prompt).toContain("Place-name rule");
-    expect(prompt).toContain("いちまるきゅー (never numeric 109 in lyric text)");
+    expect(prompt).toContain("いちまるきゅう (never numeric 109 in lyric text)");
     expect(prompt).toContain("Do not use 渋谷 / Shibuya as a recurring hook, refrain, or default label");
     expect(prompt).toContain("at most once in the lyric body");
+    expect(prompt).toContain("Indirect-diss rule");
+    expect(prompt).toContain("腐った谷");
+    expect(prompt).toContain("do not repeatedly say 広告");
+    expect(prompt).toContain("Japanese rhyme blueprint");
+    expect(prompt).toContain("2-4 mora vowel-chain anchors");
+    expect(prompt).toContain("at least two internal-rhyme echoes");
+    expect(prompt).toContain("Meaning first");
     expect(LYRICS_KNOWLEDGE_DIGEST_FILES).toContain("master_reference.md");
     expect(LYRICS_KNOWLEDGE_DIGEST_FILES).toContain("suno_v6_reference.md");
 

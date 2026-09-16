@@ -1,5 +1,22 @@
 # Handoff: Producer-musician creation loop
 
+## Applied: indirect Japanese diss and audible rhyme contract (2026-09-16)
+
+The used::honda lyric path now treats `渋谷109` as a proper name and renders it
+for Suno as `しぶや いちまるきゅう`; unrelated numeric uses such as `109えん`
+retain their ordinary number reading. Japanese rap drafting now specifies one or
+two 2-4 mora vowel-chain anchors per verse, compound and internal rhyme inside
+each four-bar unit, carried line endings, cadence changes, and wordplay, while
+keeping meaning and natural Japanese ahead of forced rhyme.
+
+City and advertising critique now starts from a fresh transformed image and its
+physical effects before using a target label. The live private used::honda profile
+rotates indirect attack stances such as decaying terrain, bright empty boxes,
+speaking walls, shadowed white coats, and construction-noise prosody; examples are
+invention patterns rather than reusable catchphrases. The profile was updated on
+GrokBot without restarting the gateway or touching the active manual Create page.
+Focused drafting/pronunciation tests pass (30/30).
+
 ## Applied: normal Suno V6 control defaults (2026-09-16)
 
 The producer set the standing normal-generation defaults to Max Mode Off,
