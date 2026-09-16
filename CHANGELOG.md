@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- fix: locate Suno boolean rows (Personalize, Max Mode) by their On/Off toggle
+  instead of any button. Live Suno nests the Personalize label beside a
+  "My Taste" button, which made preparation fail with
+  `suno_prepare_control_missing: personalize`.
+
 - fix: step Suno sliders (Variety, Style Influence, Weirdness, custom Duration)
   from their current value with arrow keys. The live Suno sliders ignore Home
   and End, so the previous Home-then-ArrowRight fill landed Variety on 4 and

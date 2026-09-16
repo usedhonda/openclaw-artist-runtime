@@ -149,7 +149,7 @@ describe("readSunoControls DOM contract", () => {
       await page.setContent(`
         <section id="duration"><label>Duration</label><button class="hxc-btn-variant-tertiary-legacy">Custom</button><button class="hxc-btn-variant-standard-legacy">Auto</button></section>
         <section id="max"><label>Max Mode</label><button class="hxc-btn-variant-standard-legacy">Off</button><button class="hxc-btn-variant-tertiary-legacy">On</button></section>
-        <section id="personalize"><label>Personalize</label><button>My Taste</button><button class="hxc-btn-variant-standard-legacy">Off</button><button class="hxc-btn-variant-tertiary-legacy">On</button></section>
+        <section id="personalize"><div><span>Personalize</span><button class="hxc-btn-variant-tertiary-legacy">My Taste</button></div><button class="hxc-btn-variant-standard-legacy">Off</button><button class="hxc-btn-variant-tertiary-legacy">On</button></section>
         <section id="variety"><label>Variety</label><div role="slider" aria-label="Variety" aria-valuenow="4" aria-valuemin="0" aria-valuemax="4" style="width:100px;height:10px" tabindex="0"></div></section>
         <button id="create">Create</button>
       `);

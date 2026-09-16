@@ -64,7 +64,9 @@ function rowLocator(page: Page, labels: readonly string[], kind: ControlKind): L
   const target = kind === "slider"
     ? './/*[@role="slider" or self::input[@type="range"]]'
     : kind === "boolean"
-      ? './/*[self::button or @role="switch" or @role="radio" or @aria-pressed or @aria-checked or @data-state or self::input[@type="checkbox"]]'
+      // A boolean row must hold an actual toggle. Live Suno nests the Personalize
+      // label next to a "My Taste" button, so any button is not enough.
+      ? './/*[@role="switch" or @role="radio" or @aria-pressed or @aria-checked or @data-state or self::input[@type="checkbox"] or (self::button and (normalize-space(.)="On" or normalize-space(.)="Off" or normalize-space(.)="Enabled" or normalize-space(.)="Disabled" or normalize-space(.)="Yes" or normalize-space(.)="No"))]'
       : './/input or .//select or .//button';
   return page.locator(
     `xpath=(//*[self::label or self::span or self::div][${label}]/ancestor::*[${target}${other}][1])`
