@@ -132,6 +132,24 @@ async function fillAndVerify(locator: Locator, value: string, name: string): Pro
   if (actual !== value) throw new Error(`suno_prepare_readback_mismatch: ${name}`);
 }
 
+async function chooseTextControl(page: Page, locator: Locator, value: string, name: string): Promise<void> {
+  if ((await readLocator(locator)) === value) return;
+  const tagName = await locator.evaluate((element) => element.tagName.toLowerCase()).catch(() => "");
+  if (tagName !== "button") {
+    await fillAndVerify(locator, value, name);
+    return;
+  }
+  await locator.click();
+  const getByRole = (page as Page & { getByRole?: Page["getByRole"] }).getByRole;
+  if (typeof getByRole !== "function") throw new Error(`suno_prepare_control_unwritable: ${name}`);
+  const option = getByRole.call(page, "option", { name: value, exact: true }).first();
+  const menuItem = getByRole.call(page, "menuitem", { name: value, exact: true }).first();
+  const candidate = (await visible(option)) ? option : (await visible(menuItem) ? menuItem : undefined);
+  if (!candidate) throw new Error(`suno_prepare_control_unknown_option: ${name}`);
+  await candidate.click();
+  if ((await readLocator(locator)) !== value) throw new Error(`suno_prepare_readback_mismatch: ${name}`);
+}
+
 async function setSlider(page: Page, labels: readonly string[], value: number, name: string): Promise<void> {
   const locator = await firstControl(page, labels, "slider");
   if (!locator) throw new Error(`suno_prepare_control_missing: ${name}`);
@@ -238,7 +256,7 @@ export async function prepareSunoForm(page: Page, payload: SunoCreatePayload, ti
     if (typeof value !== "string" || !value.trim()) throw new Error(`suno_prepare_invalid_control: ${key}`);
     const locator = await textControl(page, key);
     if (!locator) throw new Error(`suno_prepare_control_missing: ${key}`);
-    await fillAndVerify(locator, value, key);
+    await chooseTextControl(page, locator, value, key);
   }
   // Re-read all supplied fields after controls: Suno can remount the composer when
   // model/advanced settings change and silently reset an earlier field.
