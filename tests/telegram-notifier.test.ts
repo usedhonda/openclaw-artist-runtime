@@ -134,6 +134,20 @@ describe("TelegramNotifier", () => {
     expect(text).not.toContain("song:");
   });
 
+  it("renders a manual-submit recommendation as unapplied guidance", async () => {
+    const text = await formatRuntimeEvent({
+      type: "suno_human_assist_requested",
+      songId: "song-recommendation",
+      title: "Suggested Take",
+      timeoutMinutes: 10,
+      mode: "manual_submit",
+      recommendation: "V6 / Variety 2 / Max Mode Off",
+      timestamp: 1
+    });
+    expect(text).toContain("推奨設定（適用済みではない）: V6 / Variety 2 / Max Mode Off");
+    expect(text).toContain("こちらから Create は押さない");
+  });
+
   it("formats observation collection diagnostics without making rejected tweets visible", async () => {
     const text = await formatRuntimeEvent({
       type: "observation_collected",

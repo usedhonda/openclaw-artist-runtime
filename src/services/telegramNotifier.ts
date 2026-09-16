@@ -1216,17 +1216,23 @@ interface ResolvedSongSubmission {
 async function readBoundPackDetails(workspaceRoot: string, songId: string, packVersion: number | undefined): Promise<BoundPackDetails | undefined> {
   if (packVersion === undefined) return undefined;
   const dir = join(workspaceRoot, "songs", songId, "prompts", `prompt-pack-v${String(packVersion).padStart(3, "0")}`);
-  const payload = JSON.parse(await readFile(join(dir, "suno-payload.json"), "utf8").catch(() => "{}")) as { songName?: unknown };
+  const payload = JSON.parse(await readFile(join(dir, "suno-payload.json"), "utf8").catch(() => "{}")) as {
+    songName?: unknown; lyrics?: unknown; lyricsText?: unknown; styleAndFeel?: unknown; excludeStyles?: unknown;
+  };
   const style = await readFile(join(dir, "style.md"), "utf8").catch(() => "");
   const exclude = await readFile(join(dir, "exclude.md"), "utf8").catch(() => "");
-  const lyrics = await readFile(join(dir, "lyrics.md"), "utf8").then((text) => text.trimEnd()).catch(() => undefined);
+  const lyrics = typeof payload.lyrics === "string"
+    ? payload.lyrics.trimEnd()
+    : typeof payload.lyricsText === "string" ? payload.lyricsText.trimEnd() : undefined;
+  const preparedStyle = typeof payload.styleAndFeel === "string" ? payload.styleAndFeel : style;
+  const preparedExclude = typeof payload.excludeStyles === "string" ? payload.excludeStyles : exclude;
   const creationNoteRaw = JSON.parse(await readFile(join(dir, "creative-note.json"), "utf8").catch(() => "null")) as unknown;
   const bpm = style.match(/\b(\d{2,3})\s*BPM\b/i)?.[1];
   return {
     title: typeof payload.songName === "string" ? payload.songName : undefined,
     bpm: bpm ? Number(bpm) : undefined,
-    excludeStyles: exclude.split(",").map((item) => item.trim()).filter(Boolean),
-    style,
+    excludeStyles: preparedExclude.split(",").map((item) => item.trim()).filter(Boolean),
+    style: preparedStyle,
     lyrics,
     creationNote: lyrics ? parseSongCreationNote(creationNoteRaw, lyrics) : undefined
   };
@@ -1283,19 +1289,17 @@ async function formatSongSubmission(
   const preparationEvidence = resolved?.preparationEvidence ?? false;
   const bpmChanged = Boolean(revision && base?.bpm !== undefined && revision.effective.bpm !== undefined && revision.effective.bpm !== base.bpm);
   const directionChanged = Boolean(revision?.effective.direction && base && !base.style.includes(revision.effective.direction));
-  const revisionLyrics = revision?.promptPack?.pack?.lyricsBundle?.originalLyricsText?.trimEnd();
-  const lyricsUnchanged = base?.lyrics !== undefined && revisionLyrics !== undefined && base.lyrics === revisionLyrics;
-  const preparedLyrics = revisionLyrics ?? submitted?.lyrics ?? base?.lyrics ?? "";
-  const preparedStyle = revision?.promptPack?.pack?.style ?? submitted?.style ?? base?.style ?? "";
+  const preparedLyrics = submitted?.lyrics ?? base?.lyrics ?? "";
+  const preparedStyle = submitted?.style ?? base?.style ?? "";
   const observedLyrics = observed?.lyrics?.trimEnd();
   const observedStyle = observed?.style?.trim();
-  const observedDiffersFromPrepared = Boolean(observed && (
-    (observedLyrics !== undefined && observedLyrics !== preparedLyrics)
-    || (observedStyle !== undefined && observedStyle !== preparedStyle)
-    || (observed.excludeStyles !== undefined && observed.excludeStyles.trim() !== (submitted?.excludeStyles ?? base?.excludeStyles ?? []).join(", "))
-  ));
-  const lyrics = observedLyrics ?? preparedLyrics;
-  const style = observedStyle ?? preparedStyle;
+  const observedIsPartial = Boolean(observed && (observedLyrics === undefined || observedStyle === undefined));
+  const observedDiffersFromPrepared = Boolean(observed && (observedIsPartial
+    || observedLyrics !== preparedLyrics
+    || observedStyle !== preparedStyle
+    || (observed.excludeStyles !== undefined && observed.excludeStyles.trim() !== (submitted?.excludeStyles ?? base?.excludeStyles ?? []).join(", "))));
+  const lyrics = observed ? (observedLyrics ?? "") : preparedLyrics;
+  const style = observed ? (observedStyle ?? "") : preparedStyle;
   const safeObservationUrl = observation?.url
     && (observationIsSongBound || isAllowedObservationUrl(observation.url))
     && /^https:\/\//.test(observation.url)
@@ -1330,16 +1334,18 @@ async function formatSongSubmission(
         : persistedNote?.source.summary ?? fallbackNote.source.summary
     },
     musicIntent: preCreateUnknown
-      ? [persistedNote?.musicIntent ?? fallbackNote.musicIntent, "これはCreate前の設計。実際に提出された内容の変更は未確認。"].filter(Boolean).join(" ")
+      ? [persistedNote?.musicIntent ?? fallbackNote.musicIntent, "これはCreate前の設計。実際にSunoへ送った内容との差分は未確認。"].filter(Boolean).join(" ")
       : (observedNote ?? persistedNote ?? fallbackNote).musicIntent,
     listenFor: [
       ...(persistedNote?.listenFor ?? fallbackNote.listenFor),
-      preCreateUnknown ? "Create前の設計と実際の提出内容が変わっていないかは未確認。" : undefined,
+      preCreateUnknown ? "Create前の設計と実際にSunoへ送った内容との差分は未確認。" : undefined,
+      observedIsPartial && observedLyrics === undefined ? "Sunoへ送った歌詞は未観測。" : undefined,
+      observedIsPartial && observedStyle === undefined ? "Sunoへ送ったスタイルは未観測。" : undefined,
       bpmChanged ? (revision!.effective.bpm! > base!.bpm!
         ? "前の音源より速くしても、言葉が潰れず抜けるところ。"
         : "前の音源より間を広げ、声の置き方が変わるところ。") : undefined,
       directionChanged ? "前の音源からアレンジの重心が変わったところ。" : undefined,
-      !lyricsUnchanged && revisionLyrics !== undefined && base?.lyrics !== undefined ? "変えた言葉が旋律へどう乗るか。" : undefined
+      observedDiffersFromPrepared && observedLyrics !== undefined && preparedLyrics !== "" ? "変えた言葉が旋律へどう乗るか。" : undefined
     ].filter((line): line is string => Boolean(line))
   };
   const previousUrl = binding?.baselineTake?.url;
@@ -1824,6 +1830,7 @@ async function formatRuntimeEventRaw(
           noTimeLimit
             ? "時間制限なし、押されるまで待つ。押した後は取込と選曲まで自動で続ける。"
             : `最大 ${event.timeoutMinutes} 分待つ。押した後は取込と選曲まで自動で続ける。`,
+          event.recommendation?.trim() ? `推奨設定（適用済みではない）: ${event.recommendation.trim()}` : undefined,
           "このモードでは、こちらから Create は押さない。"
         ].join("\n");
       }

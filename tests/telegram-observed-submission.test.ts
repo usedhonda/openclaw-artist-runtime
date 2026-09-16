@@ -43,6 +43,18 @@ describe("Telegram observed Suno submission grounding", () => {
     }));
     const text = await formatRuntimeEvent({ type: "song_take_completed", songId, urls, timestamp: 1 }, { workspaceRoot: root });
     expect(text).toContain("Create前の設計");
-    expect(text).toContain("実際に提出された内容の変更は未確認");
+    expect(text).toContain("実際にSunoへ送った内容との差分は未確認");
+  });
+
+  it("does not present an unobserved style as the submitted style", async () => {
+    const { root, songId, runId, urls } = await fixture();
+    await writeFile(join(root, "songs", songId, "suno-evidence", runId, "submission-deadbeef.json"), JSON.stringify({
+      version: 1, songId, runId, source: "observed_generate_response", urls,
+      fields: { lyrics: "[Verse]\\nmanual lyrics only" }
+    }));
+    const text = await formatRuntimeEvent({ type: "song_take_completed", songId, urls, timestamp: 1 }, { workspaceRoot: root });
+    expect(text).toContain("manual lyrics only");
+    expect(text).not.toContain("92 BPMで");
+    expect(text).toContain("Sunoへ送ったスタイルは未観測");
   });
 });
