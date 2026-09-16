@@ -1,5 +1,36 @@
 # Handoff: Producer-musician creation loop
 
+## Prepared, awaiting manual Create: Rubber Stamp Ears (2026-09-17 JST)
+
+The producer asked for the `Fifteen Second Expert` lyrics (`spawn_dc796c`) to be
+rewritten in full under the new lyric contract and for the song to stop right
+before Create. Done, with three live Suno preparation fixes found on the way.
+
+- The gateway was restarted with `stop --force` so the new lyric module loaded;
+  the song was reset to `brief` with lane `prompt_pack` and retry 0, then one
+  cycle drafted lyrics v2 (xhigh, about 3 minutes) and pack `prompt-pack-v002`.
+  Drafting renamed the song to `Rubber Stamp Ears`.
+- The new pack carries the new-contract markers: `いちまるきゅうまえ` for 109,
+  `しぶや` used once, vowel-chain and internal-rhyme lines, no repeated target
+  label as a hook. The creative monotony monitor warned that the attack stance
+  「速度への挑発」 repeated for two songs in a row (Telegram message 1944).
+- Three preparation failures were fixed and deployed (`97552e1`, `2b2ee7e`,
+  `0cc9841`): live Suno sliders ignore Home/End so sliders are now stepped from
+  their read-back value; boolean rows are located by an On/Off toggle because
+  the Personalize label sits beside a "My Taste" button; and the collapsed
+  "More Options" panel is expanded before any control is set because its header
+  intercepts clicks. Each fix has a real-Chromium regression that failed before
+  the change.
+- Active manual-assist wait: run `suno_mu48uoq6`, gateway pid `1752669`, Telegram
+  card 1947. `suno-evidence/suno_mu48uoq6/prepared.json` (verified UI readback)
+  shows the full lyrics, title, style, exclude, model v6, Weirdness 50, Style
+  Influence 100, Variety 2, Max Mode Off, Personalize On; the screenshot shows
+  Duration 3:30 and an unpressed Create. Create is pressed only on explicit
+  producer direction.
+- Known cosmetic gap: the readback record stores `duration: "Off"` although the
+  slider reads 3:30 on screen (text-control readback picks the wrong segment).
+  Not fixed; noted for a later change.
+
 ## Active handoff: CC Solo takes the working side (2026-09-16)
 
 The producer explicitly transferred this project from Cdx Solo to CC Solo. CC is
