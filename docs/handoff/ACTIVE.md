@@ -13,14 +13,18 @@ The already prepared `Fifteen Second Expert` form was updated in place through
 its exact CDP page. Readback was Duration 210 seconds, Max Mode false,
 Personalize true, Variety 2, Weirdness 50, and Style Influence 100. The title
 remained exact, the Create button remained visible, and no Create click occurred.
-The browser and gateway were not restarted.
+Commit `5bfaeb6` is deployed and built on GrokBot. The browser and gateway were
+not restarted because the manual Create wait is active; the new source default
+loads on the next safe canonical gateway restart after that wait clears.
 
 ## Prepared, awaiting manual Create: V6 controls (2026-09-16)
 
 Approved scope: integrate suno-kit `a3ae7cd`, improve relationship-based prompts,
 preserve manual Create, verify preparation, and distinguish recommendation / UI
-readback / observed submitted material. Personalize and Max Mode advice is never
-automatically applied. Existing ledger formats and public config shape are unchanged.
+readback / observed submitted material. At this earlier checkpoint, Personalize
+and Max Mode advice was not automatically applied; the standing defaults above
+supersede that preparation policy. Existing ledger formats and public config shape
+are unchanged.
 
 Independent slices are committed: vendor/prompt guidance, pre-Create UI helper,
 and Telegram observed-material grounding. The integration adds a passive exact-page
