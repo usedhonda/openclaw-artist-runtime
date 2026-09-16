@@ -891,7 +891,10 @@ function formatObservationAuthorPrefix(value?: string): string {
   if (clean.includes(".")) {
     return `${truncatePlain(clean, 48)}: `;
   }
-  return `@${safeAuthor(clean)}: `;
+  if (/^@?[A-Za-z0-9_]{1,20}$/.test(clean)) {
+    return `@${safeAuthor(clean)}: `;
+  }
+  return `${truncatePlain(clean, 48)}: `;
 }
 
 function _formatObservationSource(summary?: ObservationSummary): string[] {
@@ -1226,17 +1229,17 @@ function buildSongSpecificExplanation(input: {
         ? `背景: 歌詞は「${opening}」を最初の情景に置いた。`
         : undefined;
   const development = structure
-    ? `展開: ${structure}${turn ? `。転換点は「${turn}」` : ""}`
+    ? `曲は ${structure} と進む${turn ? `。転換点の「${turn}」で、それまでの見方をひっくり返す` : ""}。`
     : turn
-      ? `展開の転換点: 「${turn}」`
+      ? `「${turn}」を展開の転換点にした。`
       : undefined;
   const style = safeSongDetail(input.style, 240);
   return [
-    background,
-    opening ? `冒頭の場面: 「${opening}」` : undefined,
-    hook ? `フックの核: 「${hook}」` : undefined,
+    background ? background.replace(/^背景:/, "着想:") : undefined,
+    opening ? `歌詞は「${opening}」から始めた。` : undefined,
+    hook ? `フックでは「${hook}」を繰り返し、曲の言い分をそこに集めた。` : undefined,
     development,
-    style ? `音の設計: ${style}` : undefined
+    style ? `音は ${style} を軸に、歌詞の皮肉が埋もれない設計にした。` : undefined
   ].filter((line): line is string => Boolean(line));
 }
 

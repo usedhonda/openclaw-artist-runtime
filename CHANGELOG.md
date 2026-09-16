@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- fix: make completed-song Telegram reports read like a grounded artist note
+  instead of a raw prompt dump. Publisher names such as Japanese news outlets
+  remain intact, while lyric scenes, hooks, turns, and sound design are joined
+  into natural explanatory sentences.
+
 - fix: preserve English pronunciation domains in bilingual lyrics. Numeric
   English phrases are rendered as English words (`72 hours` becomes
   `seventy-two hours`) instead of mixing Japanese number readings with English
