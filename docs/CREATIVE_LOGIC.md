@@ -113,6 +113,18 @@ selected until the producer explicitly adopts its exact run/take. Reports state
 the musical intent, delta, retained material, actual audio or URLs, prior-run
 comparison, and listening focus without inventing an audition.
 
+### Telegram completion message contract
+
+When music production succeeds, Telegram emits one new-song message written in
+the artist's voice. It is not a completion/status card or a prompt dump. The
+message follows this order: source link; factual source summary; the artist's
+reaction; the lyric transformation; technical lyric highlights; and the
+musical intent/listening points. The technical and musical details must come
+from the bound lyrics/style material, and listening points describe what to
+listen for rather than claiming that the audio was auditioned. Production
+errors and stalls remain operational notices with the actionable state and
+reason; they do not masquerade as a successful artist message.
+
 The lyric prompt no longer dumps every bank and asks the model to rotate. When a
 decision is present, `buildLyricsDraftingPrompt` injects a bounded directive block
 (`SELECTIVE_BLOCK_START` … `SELECTIVE_BLOCK_END`) carrying **only** what the

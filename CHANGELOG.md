@@ -2,6 +2,13 @@
 
 ## Unreleased
 
+- fix: successful music production now emits one artist-authored Telegram
+  new-song message instead of a completion/status card. The message runs from
+  source link and factual summary through artist reaction, lyric transformation,
+  technical lyric highlights, and musical intent/listening points; errors and
+  stalls remain operational notices, and listening points never claim an
+  audition that was not recorded.
+
 - fix: make completed-song Telegram reports read like a grounded artist note
   instead of a raw prompt dump. Publisher names such as Japanese news outlets
   remain intact, while lyric scenes, hooks, turns, and sound design are joined

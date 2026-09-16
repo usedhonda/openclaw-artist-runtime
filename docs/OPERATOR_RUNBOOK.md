@@ -606,6 +606,15 @@ the default, X/news observations can flow straight into song creation; the
 producer decides after a take is ready whether to keep it, discard it, or ask for
 another pass.
 
+On successful music production, the artist sends exactly one new-song message,
+not a completion/status card. Read it in this order: source link, factual
+summary, artist reaction, lyric transformation, technical lyric highlights,
+then musical intent and listening points. The final section is a guide to what
+to notice in the planned or produced material; it is not evidence that the
+audio was auditioned. Errors and stalls use operational notices instead, with
+the current state, reason, and any recovery action, and never present a partial
+run as a successful new-song message.
+
 1. Start with `autopilot.enabled=false` and `telegram.enabled=true`, then send
    `/status`. This proves the bot worker and owner allowlist without running a
    cycle.
