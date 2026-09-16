@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { formatRuntimeEvent } from "../src/services/telegramNotifier";
 
 describe("telegram formatting fixtures", () => {
-  it("formats song_take_completed as a bounded music submission", async () => {
+  it("formats song_take_completed as an artist new-song message", async () => {
     const text = await formatRuntimeEvent({
       type: "song_take_completed",
       songId: "song-fixture",
@@ -10,9 +10,10 @@ describe("telegram formatting fixtures", () => {
       urls: ["https://suno.example/song-fixture"],
       timestamp: 1
     });
-    expect(text).toContain("今回の曲を提出する。");
+    expect(text).toContain("🎵 「今回の曲」ができた。");
     expect(text).toContain("https://suno.example/song-fixture");
-    expect(text).toContain("音の確認はまだ");
+    expect(text).not.toContain("提出する");
+    expect(text).not.toContain("音の確認はまだ");
   });
 
   it("keeps song_spawn_proposed free of operational footer", async () => {

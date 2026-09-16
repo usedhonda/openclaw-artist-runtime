@@ -23,7 +23,12 @@ import { readLatestPromptPackMetadata } from "./sunoPromptPackFiles.js";
 import { composeDraftBoxNextAction, formatDraftBoxNextActionSection } from "./draftBoxNextAction.js";
 import { emitDraftBoxProactiveNoticeIfNeeded } from "./draftBoxProactiveNotice.js";
 import { formatSongSubmissionReport } from "./songSubmissionReport.js";
-import { parseLyricsSections } from "./lyricsValidator.js";
+import {
+  buildSongCreationNote,
+  formatSongCreationMessage,
+  parseSongCreationNote,
+  type SongCreationNote
+} from "./songCreationNote.js";
 import { readProductionRunBinding, type ProductionRunBinding } from "./productionConversation.js";
 import { readAllSunoRuns } from "./sunoRuns.js";
 import { readSongProductionRevision } from "./songProductionRevisions.js";
@@ -66,8 +71,6 @@ const TELEGRAM_SIGNAL_EVENT_TYPES: ReadonlySet<RuntimeEvent["type"]> = new Set([
   "song_spawn_proposed",
   "prompt_pack_ready",
   "song_take_completed",
-  "suno_take_url_ready",
-  "suno_adoption_download_imported",
   "suno_adoption_download_failed",
   "lyrics_generation_degraded",
   "planning_skeleton_incomplete",
@@ -140,6 +143,7 @@ function isTelegramCommandFailure(event: RuntimeEvent): event is Extract<Runtime
 }
 
 export function isTelegramSignalEvent(event: RuntimeEvent): boolean {
+  if (event.type === "song_take_completed" && event.urls.length === 0) return false;
   return TELEGRAM_SIGNAL_EVENT_TYPES.has(event.type) || isActionableSunoHardStop(event) || isTelegramCommandFailure(event);
 }
 
@@ -1182,65 +1186,7 @@ interface BoundPackDetails {
   excludeStyles: string[];
   style: string;
   lyrics?: string;
-}
-
-function safeSongDetail(value: string | undefined, max: number): string {
-  const clean = stripHandles(value ?? "").replace(/\s+/g, " ").trim();
-  if (!clean || secretLikePattern.test(clean) || isMachineVoiceArtifact(clean)) return "";
-  const chars = Array.from(clean);
-  return chars.length > max ? `${chars.slice(0, max - 1).join("").trim()}…` : clean;
-}
-
-function displayLyricsSection(tag: string): string {
-  return safeSongDetail(tag.split(/\s+[-—]\s+/)[0], 28);
-}
-
-function buildSongSpecificExplanation(input: {
-  lyrics?: string;
-  style?: string;
-  observation?: ObservationSummary;
-}): string[] {
-  const sections = input.lyrics ? parseLyricsSections(input.lyrics) : [];
-  const openingSection = sections.find((section) => section.kind === "intro" && section.lines.length > 0)
-    ?? sections.find((section) => section.kind === "verse" && section.lines.length > 0)
-    ?? sections.find((section) => section.lines.length > 0);
-  const hookSection = sections.find((section) =>
-    section.kind === "hook"
-      && section.lines.length > 0
-      && !/\bpre[- ]?hook\b/i.test(section.tag)
-  );
-  const bridgeSection = sections.find((section) => section.kind === "bridge" && section.lines.length > 0);
-  const verses = sections.filter((section) => section.kind === "verse" && section.lines.length > 0);
-  const turnSection = bridgeSection ?? (verses.length > 1 ? verses.at(-1) : undefined);
-  const opening = safeSongDetail(openingSection?.lines[0], 120);
-  const hook = hookSection?.lines.slice(0, 2).map((line) => safeSongDetail(line, 80)).filter(Boolean).join(" / ") ?? "";
-  const turn = safeSongDetail(turnSection?.lines[0], 120);
-  const structure = sections.map((section) => displayLyricsSection(section.tag)).filter(Boolean).join(" → ");
-  const cappedQuote = capQuote(input.observation?.quote ?? "", 120);
-  const quote = cappedQuote === "[非表示]" ? "" : cappedQuote;
-  const motivation = safeSongDetail(input.observation?.motivation, 180);
-  const background = quote
-    ? motivation
-      ? `背景: 「${quote}」を出発点に、${motivation}`
-      : `背景: 「${quote}」を出発点にした。`
-    : motivation
-      ? `背景: ${motivation}`
-      : opening
-        ? `背景: 歌詞は「${opening}」を最初の情景に置いた。`
-        : undefined;
-  const development = structure
-    ? `曲は ${structure} と進む${turn ? `。転換点の「${turn}」で、それまでの見方をひっくり返す` : ""}。`
-    : turn
-      ? `「${turn}」を展開の転換点にした。`
-      : undefined;
-  const style = safeSongDetail(input.style, 240);
-  return [
-    background ? background.replace(/^背景:/, "着想:") : undefined,
-    opening ? `歌詞は「${opening}」から始めた。` : undefined,
-    hook ? `フックでは「${hook}」を繰り返し、曲の言い分をそこに集めた。` : undefined,
-    development,
-    style ? `音は ${style} を軸に、歌詞の皮肉が埋もれない設計にした。` : undefined
-  ].filter((line): line is string => Boolean(line));
+  creationNote?: SongCreationNote;
 }
 
 async function readBoundPackDetails(workspaceRoot: string, songId: string, packVersion: number | undefined): Promise<BoundPackDetails | undefined> {
@@ -1250,19 +1196,22 @@ async function readBoundPackDetails(workspaceRoot: string, songId: string, packV
   const style = await readFile(join(dir, "style.md"), "utf8").catch(() => "");
   const exclude = await readFile(join(dir, "exclude.md"), "utf8").catch(() => "");
   const lyrics = await readFile(join(dir, "lyrics.md"), "utf8").then((text) => text.trimEnd()).catch(() => undefined);
+  const creationNoteRaw = JSON.parse(await readFile(join(dir, "creative-note.json"), "utf8").catch(() => "null")) as unknown;
   const bpm = style.match(/\b(\d{2,3})\s*BPM\b/i)?.[1];
   return {
     title: typeof payload.songName === "string" ? payload.songName : undefined,
     bpm: bpm ? Number(bpm) : undefined,
     excludeStyles: exclude.split(",").map((item) => item.trim()).filter(Boolean),
-    style, lyrics
+    style,
+    lyrics,
+    creationNote: lyrics ? parseSongCreationNote(creationNoteRaw, lyrics) : undefined
   };
 }
 
 async function resolveSongSubmissionBinding(
   event: SongTakeCompletedEvent,
   workspaceRoot?: string
-): Promise<{ binding?: ProductionRunBinding; revision?: Awaited<ReturnType<typeof readSongProductionRevision>>; base?: BoundPackDetails } | undefined> {
+): Promise<{ binding?: ProductionRunBinding; revision?: Awaited<ReturnType<typeof readSongProductionRevision>>; base?: BoundPackDetails; submitted?: BoundPackDetails } | undefined> {
   if (!workspaceRoot) return undefined;
   const runId = await resolveRunIdForUrls(workspaceRoot, event.songId, event.urls);
   if (!runId) return undefined;
@@ -1282,7 +1231,10 @@ async function resolveSongSubmissionBinding(
     ? await readSongProductionRevision(workspaceRoot, event.songId, binding.revisionId).catch(() => undefined)
     : undefined;
   const base = await readBoundPackDetails(workspaceRoot, event.songId, revision?.basePackVersion ?? binding.packVersion);
-  return { binding, revision, base };
+  const submitted = revision
+    ? await readBoundPackDetails(workspaceRoot, event.songId, revision.packVersion)
+    : base;
+  return { binding, revision, base, submitted };
 }
 
 async function formatSongSubmission(
@@ -1298,76 +1250,57 @@ async function formatSongSubmission(
   const binding = resolved?.binding;
   const revision = resolved?.revision;
   const base = resolved?.base;
+  const submitted = resolved?.submitted;
   const bpmChanged = Boolean(revision && base?.bpm !== undefined && revision.effective.bpm !== undefined && revision.effective.bpm !== base.bpm);
   const directionChanged = Boolean(revision?.effective.direction && base && !base.style.includes(revision.effective.direction));
   const revisionLyrics = revision?.promptPack?.pack?.lyricsBundle?.originalLyricsText?.trimEnd();
   const lyricsUnchanged = base?.lyrics !== undefined && revisionLyrics !== undefined && base.lyrics === revisionLyrics;
-  const request = binding?.instruction ?? revision?.producerInstruction;
-  const explanation = buildSongSpecificExplanation({
-    lyrics: revisionLyrics ?? base?.lyrics,
-    style: revision
-      ? [revision.effective.bpm ? `${revision.effective.bpm} BPM` : undefined, revision.effective.direction, base?.style]
-        .filter(Boolean).join(", ")
-      : base?.style,
-    observation
-  });
-  const intended = explanation.length > 0
-    ? explanation
-    : revision && request?.trim() !== revision.producerInstruction.trim()
-      ? [revision.producerInstruction]
-      : undefined;
-  const changed = revision
-    ? [
-      base?.title && revision.effective.title !== base.title ? `タイトルを「${revision.effective.title}」にした` : undefined,
-      base?.bpm !== undefined && revision.effective.bpm !== undefined && revision.effective.bpm !== base.bpm
-        ? `${revision.effective.bpm} BPMを狙って組み直した`
-        : undefined,
-      directionChanged ? `アレンジの狙い: ${revision.effective.direction}` : undefined,
-      base && revision.effective.excludeStyles.join("\u0000") !== base.excludeStyles.join("\u0000")
-        ? "避ける音像を組み替えた"
-        : undefined
-    ].filter((line): line is string => Boolean(line))
-    : undefined;
-  const previousUrl = binding?.baselineTake?.url;
-  const report = formatSongSubmissionReport({
-    kind: "submission",
-    title: revision?.effective.title ?? base?.title ?? (songState?.title !== event.songId ? songState?.title : undefined) ?? "今回の曲",
-    requestOrVersion: request,
-    binding: binding ? {
-      runId: binding.runId,
-      packVersion: binding.packVersion,
-      payloadHash: binding.payloadHash,
-      revisionId: binding.revisionId,
-      baselineTake: binding.baselineTake,
-      instruction: binding.instruction,
-      contextKey: binding.contextKey
-    } : undefined,
-    intended,
-    changed,
-    kept: lyricsUnchanged ? ["歌詞はそのまま"] : undefined,
-    audioUrls: event.urls,
-    previous: previousUrl ? { audioUrls: [previousUrl] } : undefined,
-    listenFor: revision ? [
-      bpmChanged ? (revision.effective.bpm! > base!.bpm!
-        ? "前の音源と比べて、言葉の抜けと疾走感が両立しているか。"
-        : "前の音源と比べて、間と声の置き方が狙いに合うか。") : undefined,
-      directionChanged ? `${revision.effective.direction} の狙いが、音として伝わるか。` : undefined,
-      !lyricsUnchanged && revisionLyrics !== undefined && base?.lyrics !== undefined ? "変えた言葉が、旋律に無理なく乗っているか。" : undefined
-    ].filter((line): line is string => Boolean(line)) : undefined
-  });
-  if (!observation) return report;
-  const sourceUrl = observation.url
+  const lyrics = revisionLyrics ?? submitted?.lyrics ?? base?.lyrics ?? "";
+  const style = revision?.promptPack?.pack?.style ?? submitted?.style ?? base?.style ?? "";
+  const safeObservationUrl = observation?.url
     && (observationIsSongBound || isAllowedObservationUrl(observation.url))
     && /^https:\/\//.test(observation.url)
     && !isGoogleNewsIntermediateUrl(observation.url)
-    ? ` (${observation.url})`
-    : "";
-  return [
-    report,
-    `🌐 観察元: ${(formatObservationAuthorPrefix(observation.author) || "@unknown").replace(/:\s*$/, "")}${sourceUrl}`,
-    `💬 抜粋: 「${capQuote(observation.quote ?? "") || "(抜粋なし)"}」`,
-    `🎯 動機: ${safeMotivation(observation.motivation)}`
-  ].join("\n");
+    ? observation.url
+    : undefined;
+  const safeObservation = observation ? {
+    ...observation,
+    url: safeObservationUrl,
+    quote: capQuote(observation.quote ?? ""),
+    motivation: safeMotivation(observation.motivation)
+  } : undefined;
+  const fallbackNote = buildSongCreationNote({ lyrics, style, observation: safeObservation });
+  const persistedNote = submitted?.creationNote;
+  const note: SongCreationNote = {
+    ...(persistedNote ?? fallbackNote),
+    source: {
+      ...(persistedNote?.source ?? fallbackNote.source),
+      author: observation?.author
+        ? (formatObservationAuthorPrefix(observation.author) || observation.author).replace(/:\s*$/, "")
+        : persistedNote?.source.author,
+      url: safeObservationUrl ?? (persistedNote?.source.url && /^https:\/\//.test(persistedNote.source.url) && !isGoogleNewsIntermediateUrl(persistedNote.source.url)
+        ? persistedNote.source.url
+        : undefined),
+      summary: safeObservation?.quote
+        ? safeObservation.quote
+        : persistedNote?.source.summary ?? fallbackNote.source.summary
+    },
+    listenFor: [
+      ...(persistedNote?.listenFor ?? fallbackNote.listenFor),
+      bpmChanged ? (revision!.effective.bpm! > base!.bpm!
+        ? "前の音源より速くしても、言葉が潰れず抜けるところ。"
+        : "前の音源より間を広げ、声の置き方が変わるところ。") : undefined,
+      directionChanged ? "前の音源からアレンジの重心が変わったところ。" : undefined,
+      !lyricsUnchanged && revisionLyrics !== undefined && base?.lyrics !== undefined ? "変えた言葉が旋律へどう乗るか。" : undefined
+    ].filter((line): line is string => Boolean(line))
+  };
+  const previousUrl = binding?.baselineTake?.url;
+  return formatSongCreationMessage({
+    title: revision?.effective.title ?? base?.title ?? (songState?.title !== event.songId ? songState?.title : undefined) ?? "今回の曲",
+    note,
+    audioUrls: event.urls,
+    previousAudioUrls: previousUrl ? [previousUrl] : undefined
+  });
 }
 
 const TELEGRAM_AUDIO_MAX_BYTES = 50 * 1024 * 1024;

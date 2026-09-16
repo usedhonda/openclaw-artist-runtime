@@ -87,6 +87,10 @@ describe("prompt pack", () => {
     expect(readFileSync(result.artifactPaths.styleLatest, "utf8")).toContain("BPM");
     expect(readFileSync(result.artifactPaths.lyricsVersioned, "utf8")).toContain("3つのひかりだけが");
     expect(readFileSync(result.artifactPaths.lyricsSunoLatest, "utf8")).toContain("さんつのひかりだけが");
+    const creationNote = JSON.parse(readFileSync(result.artifactPaths.creationNoteLatest, "utf8")) as { version: number; musicIntent?: string };
+    expect(creationNote.version).toBe(1);
+    expect(creationNote.musicIntent).toContain("BPM");
+    expect(readFileSync(join(result.artifactPaths.snapshotDir, "creative-note.json"), "utf8")).toContain('"version": 1');
     expect(readFileSync(result.artifactPaths.promptLedger, "utf8")).toContain("\"stage\":\"suno_payload_build\"");
   });
 

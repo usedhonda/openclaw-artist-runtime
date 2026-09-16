@@ -9,6 +9,7 @@ import { createProductionRevisionPromptPack, createSunoPromptPack, createSunoPro
 import { resolveTempoBandFromBrief } from "../suno-production/durationPlan.js";
 import { extractObservationSummary } from "./songIdeation.js";
 import { emitRuntimeEvent } from "./runtimeEventBus.js";
+import { buildSongCreationNote } from "./songCreationNote.js";
 
 async function nextPromptPackVersion(promptsDir: string, lyricsDir?: string, preserveExistingLyricsVersions = false): Promise<number> {
   try {
@@ -247,7 +248,21 @@ export async function createAndPersistSunoPromptPack(input: PersistSunoPromptPac
   const slidersLatest = join(sunoDir, "sliders.json");
   const payloadLatest = join(sunoDir, "suno-payload.json");
   const validationLatest = join(sunoDir, "validation.json");
+  const creationNoteLatest = join(sunoDir, "creative-note.json");
   const ledgerPath = getSongPromptLedgerPath(input.workspaceRoot, input.songId);
+  const currentObservationSummary = (await readSongState(input.workspaceRoot, input.songId).catch(() => undefined))?.observationSummary;
+  const observationSummary = input.observationSummary ?? currentObservationSummary ?? (
+    input.observationPath
+      ? extractObservationSummary(await readFile(input.observationPath, "utf8").catch(() => ""), input.artistReason)
+      : undefined
+  );
+  const creationNote = buildSongCreationNote({
+    lyrics: originalLyricsText,
+    style: pack.style,
+    briefText,
+    artistReason: input.artistReason,
+    observation: observationSummary
+  });
 
   await Promise.all([
     writeText(lyricsVersioned, `${originalLyricsText}\n`),
@@ -258,6 +273,7 @@ export async function createAndPersistSunoPromptPack(input: PersistSunoPromptPac
     writeJson(slidersLatest, pack.sliders),
     writeJson(payloadLatest, pack.payload),
     writeJson(validationLatest, pack.validation),
+    writeJson(creationNoteLatest, creationNote),
     writeText(join(snapshotDir, "lyrics.md"), `${originalLyricsText}\n`),
     writeText(join(snapshotDir, "lyrics-suno.md"), `${lyricsText}\n`),
     writeText(join(snapshotDir, "yaml-suno.md"), `${pack.yamlLyrics}\n`),
@@ -266,6 +282,7 @@ export async function createAndPersistSunoPromptPack(input: PersistSunoPromptPac
     writeJson(join(snapshotDir, "sliders.json"), pack.sliders),
     writeJson(join(snapshotDir, "suno-payload.json"), pack.payload),
     writeJson(join(snapshotDir, "validation.json"), pack.validation),
+    writeJson(join(snapshotDir, "creative-note.json"), creationNote),
     writeJson(join(snapshotDir, "metadata.json"), {
       songId: input.songId,
       version,
@@ -285,15 +302,10 @@ export async function createAndPersistSunoPromptPack(input: PersistSunoPromptPac
     join(snapshotDir, "style.md"),
     join(snapshotDir, "exclude.md"),
     join(snapshotDir, "suno-payload.json"),
+    join(snapshotDir, "creative-note.json"),
     ...observationRefs(input.workspaceRoot, input.observationPath)
   ];
   const sourceRefs = observationRefs(input.workspaceRoot, input.observationPath);
-  const currentObservationSummary = (await readSongState(input.workspaceRoot, input.songId).catch(() => undefined))?.observationSummary;
-  const observationSummary = input.observationSummary ?? currentObservationSummary ?? (
-    input.observationPath
-      ? extractObservationSummary(await readFile(input.observationPath, "utf8").catch(() => ""), input.artistReason)
-      : undefined
-  );
 
   const ledgerEntryIds = await appendEntries(ledgerPath, [
     createPromptLedgerEntry({
@@ -367,7 +379,7 @@ export async function createAndPersistSunoPromptPack(input: PersistSunoPromptPac
       actor: "system",
       artistReason: input.artistReason,
       inputRefs: commonRefs,
-      outputRefs: [slidersLatest, payloadLatest, validationLatest, join(snapshotDir, "metadata.json")],
+      outputRefs: [slidersLatest, payloadLatest, validationLatest, creationNoteLatest, join(snapshotDir, "creative-note.json"), join(snapshotDir, "metadata.json")],
       promptHash: pack.promptHash,
       outputHash: pack.payloadHash,
       payloadHash: pack.payloadHash,
@@ -403,6 +415,7 @@ export async function createAndPersistSunoPromptPack(input: PersistSunoPromptPac
       slidersLatest,
       payloadLatest,
       validationLatest,
+      creationNoteLatest,
       snapshotDir,
       promptLedger: ledgerPath
     },

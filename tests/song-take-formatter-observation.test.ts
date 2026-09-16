@@ -38,7 +38,10 @@ describe("song take formatter observation source", () => {
       timestamp: 1
     }, { workspaceRoot: root });
 
-    expect(message).toContain("この観察を曲の起点として残した");
+    expect(message).toContain("🎵 「Civic Static」ができた。");
+    expect(message).toContain("きっかけになったニュース");
+    expect(message).toContain("ニュースの概要\nold live houses disappear under identical signs");
+    expect(message).toContain("俺が思ったこと\nこの観察を曲の起点として残した。");
     expect(message).not.toContain("ARTIST.md");
     expect(message).not.toContain("SOUL.md");
     expect(message).not.toContain("selected:");
@@ -109,13 +112,18 @@ describe("song take formatter observation source", () => {
       timestamp: 1
     }, { workspaceRoot: root });
 
-    expect(message).toContain("着想: 「再開発で老舗ライブハウスが閉館する」を出発点にした");
-    expect(message).toContain("歌詞は「終電のガラスに 値札だけ光る」から始めた");
-    expect(message).toContain("フックでは「消える前に名前を呼べ / 同じ看板に塗るな」を繰り返し");
-    expect(message).toContain("曲は Intro → Verse 1 → Pre-Hook → Hook → Verse 2 → Bridge → Final Hook → Outro と進む");
-    expect(message).toContain("転換点の「残響は立退き通知を読まない」で、それまでの見方をひっくり返す");
-    expect(message).toContain("音は 94 BPM, dry jazz-rap, dusty Rhodes, upright bass, clipped drums, a cappella final bar を軸に");
-    expect(message).toContain("🌐 観察元: City Desk (https://example.com/venue-closure)");
+    expect(message).toContain("きっかけになったニュース\nCity Desk\nhttps://example.com/venue-closure");
+    expect(message).toContain("ニュースの概要\n再開発で老舗ライブハウスが閉館する");
+    expect(message).toContain("歌詞にどう入れたか");
+    expect(message).toContain("「消える前に名前を呼べ」と「同じ看板に塗るな」へ変えて");
+    expect(message).toContain("歌詞のテクニカルな要所");
+    expect(message).toContain("・「終電のガラスに 値札だけ光る」");
+    expect(message).toContain("・「残響は立退き通知を読まない」");
+    expect(message).toContain("そして、曲へ\n94 BPM、乾いた質感、短く切ったドラム、少しくすんだローズピアノ、ウッドベース");
+    expect(message).toContain("聴いてほしいところ");
+    expect(message).not.toContain("dry jazz-rap");
+    expect(message).not.toContain("Intro → Verse");
+    expect(message).not.toContain("提出する");
     expect(message).not.toContain("ARTIST.md");
     expect(message).not.toContain("SOUL.md");
     expect(message).not.toContain("自分の都市観察");
@@ -142,7 +150,8 @@ describe("song take formatter observation source", () => {
       timestamp: 1
     }, { workspaceRoot: root });
 
-    expect(message).toContain("着想: 「老舗ライブハウスが今月閉館する」を出発点に");
+    expect(message).toContain("ニュースの概要\n老舗ライブハウスが今月閉館する");
+    expect(message).toContain("俺が思ったこと");
     expect(message).toContain("そのまま終わらせたくなかった");
     expect(message).toContain("https://example.com/live-house");
   });

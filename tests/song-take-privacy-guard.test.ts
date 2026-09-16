@@ -16,7 +16,7 @@ describe("song take observation privacy guard", () => {
       timestamp: 1
     });
 
-    expect(message).toContain("🌐 観察元: @source");
+    expect(message).toContain("きっかけになったニュース\n@source");
     expect(message).not.toContain("example.com");
   });
 
@@ -35,8 +35,10 @@ describe("song take observation privacy guard", () => {
       timestamp: 1
     });
 
-    const quoteLine = message.split("\n").find((line) => line.startsWith("💬 抜粋:")) ?? "";
-    expect(message).toContain("🌐 観察元: @main_author");
+    const lines = message.split("\n");
+    const summaryIndex = lines.indexOf("ニュースの概要");
+    const quoteLine = summaryIndex >= 0 ? lines[summaryIndex + 1] ?? "" : "";
+    expect(message).toContain("きっかけになったニュース\n@main_author");
     expect(quoteLine).toContain("[handle]");
     expect(quoteLine).toContain("…");
     expect(Array.from(quoteLine).length).toBeLessThanOrEqual(150);
@@ -57,8 +59,8 @@ describe("song take observation privacy guard", () => {
       timestamp: 1
     });
 
-    expect(message).toContain("💬 抜粋: 「[非表示]」");
-    expect(message).toContain("🎯 動機: この観察を曲の起点として残した。");
+    expect(message).toContain("ニュースの概要\n[非表示]");
+    expect(message).toContain("俺が思ったこと\nこの観察を曲の起点として残した。");
     expect(message).not.toContain("API_KEY");
     expect(message).not.toContain("PASSWORD");
   });

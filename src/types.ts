@@ -1164,6 +1164,7 @@ export interface PersistedPromptPackResult {
     slidersLatest: string;
     payloadLatest: string;
     validationLatest: string;
+    creationNoteLatest: string;
     snapshotDir: string;
     promptLedger: string;
   };

@@ -11,8 +11,9 @@ describe("telegram take completed push", () => {
       timestamp: 1
     });
 
-    expect(message).toContain("提出する。");
-    expect(message).toContain("今回の音源:");
+    expect(message).toContain("🎵 「今回の曲」ができた。");
+    expect(message).toContain("🎧 聴く");
+    expect(message).not.toContain("提出する");
     expect(message).not.toContain("記録なし");
     expect(message).not.toContain("song-001");
     expect(message).not.toContain("selected:");
