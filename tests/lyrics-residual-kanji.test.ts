@@ -30,6 +30,12 @@ describe("residual kanji lyrics lint", () => {
     expect(normalizeAsciiNumbersToHiragana("3つの信号と 42 の窓")).toBe("さんつの信号と よんじゅうに の窓");
   });
 
+  it("spells numbers as English words when they belong to an English phrase", () => {
+    expect(normalizeAsciiNumbersToHiragana("72 hours のこる")).toBe("seventy-two hours のこる");
+    expect(normalizeAsciiNumbersToHiragana("あと 24 nights, 3つの信号")).toBe("あと twenty-four nights, さんつの信号");
+    expect(normalizeSunoRegistrationJapanese("72 hours のこる")).toBe("seventy-two hours のこる");
+  });
+
   it("normalizes 3-4 digit numbers with positional readings (live spawn_cc1049 ascii_number:145 stall)", () => {
     expect(normalizeAsciiNumbersToHiragana("145だんめのかいだん")).toBe("ひゃくよんじゅうごだんめのかいだん");
     expect(normalizeAsciiNumbersToHiragana("2026ねんのまち")).toBe("にせんにじゅうろくねんのまち");

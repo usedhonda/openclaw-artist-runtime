@@ -60,12 +60,44 @@ function digitsToHiragana(token: string): string {
     .join("");
 }
 
+const ENGLISH_ONES = [
+  "zero", "one", "two", "three", "four", "five", "six", "seven", "eight", "nine",
+  "ten", "eleven", "twelve", "thirteen", "fourteen", "fifteen", "sixteen", "seventeen", "eighteen", "nineteen"
+] as const;
+const ENGLISH_TENS = ["", "", "twenty", "thirty", "forty", "fifty", "sixty", "seventy", "eighty", "ninety"] as const;
+
+function asciiNumberToEnglish(value: number): string {
+  if (value < 20) return ENGLISH_ONES[value] ?? String(value);
+  if (value < 100) {
+    const tens = ENGLISH_TENS[Math.floor(value / 10)] ?? "";
+    const ones = value % 10;
+    return ones === 0 ? tens : `${tens}-${ENGLISH_ONES[ones]}`;
+  }
+  if (value < 1000) {
+    const hundreds = `${ENGLISH_ONES[Math.floor(value / 100)]} hundred`;
+    const remainder = value % 100;
+    return remainder === 0 ? hundreds : `${hundreds} ${asciiNumberToEnglish(remainder)}`;
+  }
+  if (value <= 9999) {
+    const thousands = `${ENGLISH_ONES[Math.floor(value / 1000)]} thousand`;
+    const remainder = value % 1000;
+    return remainder === 0 ? thousands : `${thousands} ${asciiNumberToEnglish(remainder)}`;
+  }
+  return value.toString().split("").map((digit) => ENGLISH_ONES[Number.parseInt(digit, 10)]).join(" ");
+}
+
 export function normalizeAsciiNumbersToHiragana(lyrics: string): string {
   return lyrics
     .split(/\r?\n/)
     .map((line) => {
       if (/^\s*\[[^\]]+\]\s*$/.test(line)) return line;
-      return line.replace(/\d+/g, (token) => {
+      // Keep a number that opens an English phrase inside that language's
+      // pronunciation domain: `72 hours` becomes `seventy-two hours`, never
+      // the mixed reading `ななじゅうに hours`.
+      const englishNumbersExpanded = line.replace(/\b(\d+)\b(?=\s+[A-Za-z])/g, (token) =>
+        asciiNumberToEnglish(Number.parseInt(token, 10))
+      );
+      return englishNumbersExpanded.replace(/\d+/g, (token) => {
         const value = Number.parseInt(token, 10);
         return value <= 9999 ? asciiNumberToHiragana(value) : digitsToHiragana(token);
       });

@@ -18,17 +18,18 @@ describe("style synthesis prompt", () => {
     expect(STYLE_ANALYZER_SYSTEM_PROMPT).toContain("Performance direction");
     expect(STYLE_ANALYZER_SYSTEM_PROMPT).toContain("style_catalog.md");
     expect(STYLE_ANALYZER_SYSTEM_PROMPT).toContain("MIT");
-    expect(prompt.system).toContain("Target: 760-900 characters");
-    expect(prompt.system).toContain("hard <=1000 chars");
+    expect(prompt.system).toContain("no V6-documented minimum");
+    expect(prompt.system).toContain("hard <=1000 chars is only this runtime's local safety cap");
     expect(prompt.system).not.toContain("total <=400 characters");
-    expect(prompt.system).not.toContain("Do not pad");
+    expect(prompt.system).not.toContain("Target: 760-900 characters");
     expect(STYLE_SYNTHESIS_KNOWLEDGE_REFERENCES).toContain("style_catalog.md");
     expect(STYLE_SYNTHESIS_KNOWLEDGE_REFERENCES).toContain("master_reference.md");
     expect(STYLE_SYNTHESIS_KNOWLEDGE_REFERENCES).toContain("suno_v6_reference.md");
     expect(prompt.system).toContain("Suno V6 Style synthesizer");
     expect(prompt.system).not.toContain("Suno Style Analyzer V5.5");
     expect(prompt.user).toContain("Rhodes, sax, upright bass");
-    expect(prompt.user).toContain("Target 760-900 characters");
+    expect(prompt.user).toContain("Do not pad toward a character target");
+    expect(prompt.user).toContain("Suno V6 publishes no Style minimum or limit");
     expect(prompt.user).not.toContain("total target <=400 characters");
   });
 

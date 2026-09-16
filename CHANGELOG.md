@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+- fix: preserve English pronunciation domains in bilingual lyrics. Numeric
+  English phrases are rendered as English words (`72 hours` becomes
+  `seventy-two hours`) instead of mixing Japanese number readings with English
+  nouns. V6 Style synthesis now prioritizes explicit attribute relationships
+  without padding toward an undocumented character target.
+
 - fix: keep the persistent Suno browser and accepted generation tab visible
   after a human-assist run releases its runtime hold. Completed songs no longer
   make the GrokBot browser window disappear.

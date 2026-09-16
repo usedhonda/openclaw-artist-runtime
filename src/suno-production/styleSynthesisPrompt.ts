@@ -49,9 +49,10 @@ export const STYLE_SYNTHESIS_SYSTEM_PROMPT = [
   "Order identity first, then vocal, groove, arrangement, production, vibe, and constraints.",
   "Use concrete production vocabulary from style_catalog.md and the supplied knowledge digest.",
   "Performance direction must be section-specific and must not contradict BPM, form, or the song brief.",
+  "For bilingual lyrics, keep language switches clean and direct native English pronunciation for complete English spans; never attach a Japanese number reading to an English noun.",
   "Keep meta.vibe concrete and consistent with the brief; meta.vibe appears verbatim at the start and end when that anchor form is used.",
   "V5.5 tags and slider guidance are legacy candidates on V6; semantic instruction is primary.",
-  "Target: 760-900 characters; hard <=1000 chars."
+  "Length is not a quality target: use only the detail needed to make attribute relationships explicit. There is no V6-documented minimum; hard <=1000 chars is only this runtime's local safety cap."
 ].join("\n");
 
 export const STYLE_SYNTHESIS_KNOWLEDGE_REFERENCES = [
@@ -76,7 +77,7 @@ export async function buildStyleSynthesisPrompt(input: BuildStyleInput): Promise
     "Create a Suno V6 Style field for this original artist work.",
     "Return only the Style text, no markdown fence.",
     "Do not browse; use only the supplied artist brief, runtime snapshots, and the knowledge digest below.",
-    "Length budget: front-load the strongest descriptors, then keep adding concrete detail. Target 760-900 characters (absolute ceiling 1000). USE the space — Style is the primary quality signal, so be specific and rich, never thin or generic.",
+    "Length budget: front-load the strongest descriptors and stop when the relationships are explicit. Do not pad toward a character target; Suno V6 publishes no Style minimum or limit. This runtime applies a local absolute ceiling of 1000 characters.",
     "Ban thin filler adjectives (pop, catchy, energetic, beautiful, amazing, vibey). Every descriptor must be concrete and specific: named instruments, playing techniques, mix/space qualities, era/production markers, reference-grade textures.",
     "Do not select or imitate a stock arrangement template. Compose the opening, section movement, and production gesture from this song's observation, lyric world, emotional mode, and style notes; the same artist identity must not force the same intro or arc on a different song.",
     "Quote concrete production vocabulary from the knowledge digest (instrument descriptors, mix terms, era markers, and V6 semantic relationships) instead of paraphrasing it away.",

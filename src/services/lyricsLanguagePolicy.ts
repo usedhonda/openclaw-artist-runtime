@@ -38,7 +38,7 @@ export function parseLyricsLanguagePolicy(source: string): LyricsLanguagePolicy 
       ? `Japanese ${japanesePercent}% / English ${englishPercent}%`
       : "Japanese";
   const instruction = mode === "bilingual"
-    ? `Language ratio is a hard constraint: about ${japanesePercent}% Japanese and ${englishPercent}% English. Keep Japanese as hiragana where required; place English in hooks, short refrains, or section-boundary code switches rather than random filler.`
+    ? `Language ratio is a hard constraint: about ${japanesePercent}% Japanese and ${englishPercent}% English. Keep Japanese as hiragana where required; place English in hooks, short refrains, or section-boundary code switches rather than random filler. Keep each English span in natural English pronunciation; spell numbers in English words (72 hours -> seventy-two hours), never as a Japanese number reading joined to an English noun.`
     : mode === "en"
       ? "Language mode is English: write the lyric body in English only, with natural stress-based prosody."
       : "Language mode is Japanese: write the lyric body primarily in Japanese hiragana, with no casual English filler.";

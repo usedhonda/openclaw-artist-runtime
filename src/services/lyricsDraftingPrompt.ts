@@ -261,6 +261,7 @@ export function buildLyricsDraftingPrompt(input: BuildLyricsPromptInput): string
     emotionalMode ? `Emotional mode for this song: ${emotionalMode}` : "",
     input.recentHookTexts?.length ? `Avoid these recent hook phrases; invent a clearly distinct hook shape: ${input.recentHookTexts.slice(0, 8).join(" | ")}` : "",
     languagePolicy ? `Language policy: ${languagePolicy.instruction}` : "",
+    "Bilingual pronunciation rule: keep each English span in natural English orthography and pronunciation. Spell numbers that belong to an English phrase as English words (72 hours -> seventy-two hours), never as Japanese number phonetics joined to an English noun (ななじゅうに hours). Prefer whole English lines or section-boundary switches; do not attach English phrases directly to Japanese particles.",
     "Return strict JSON only: {\"title\":\"2-4 words\",\"form\":\"duration_plan_v1 form\",\"sections\":[{\"tag\":\"Verse 1 - 16 bars, dense rap phrasing, internal rhymes, no double-time\",\"lines\":[\"line\"]}],\"bilingual_hint\":\"short note\",\"moodHint\":\"2-4 word sonic mood\"}.",
     "Use the DurationPlan section plan below as the only form source. Do not invent a shorter 7-section form.",
     "Physically repeat the Hook text in Hook 2 and Final Hook; do not write only \"repeat hook\" as an instruction.",

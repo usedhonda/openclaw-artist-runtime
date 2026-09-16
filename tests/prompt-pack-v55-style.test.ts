@@ -99,8 +99,8 @@ describe("Suno V5.5 style builder", () => {
     expect(STYLE_SYNTHESIS_SYSTEM_PROMPT).toContain("style_catalog.md");
     expect(STYLE_SYNTHESIS_KNOWLEDGE_REFERENCES).toContain("style_catalog.md");
     expect(prompt.user).toContain("Rhodes and sax");
-    expect(prompt.user).toContain("Target 760-900 characters");
-    expect(prompt.system).toContain("hard <=1000 chars");
+    expect(prompt.user).toContain("Do not pad toward a character target");
+    expect(prompt.system).toContain("no V6-documented minimum");
     expect(prompt.system).not.toContain("total <=400 characters");
     expect(prompt.user).not.toContain("total target <=400 characters");
   });
