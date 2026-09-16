@@ -1,5 +1,28 @@
 # Handoff: Producer-musician creation loop
 
+## Active handoff: CC Solo takes the working side (2026-09-16)
+
+The producer explicitly transferred this project from Cdx Solo to CC Solo. CC is
+the next working side and should continue from the state below without redoing the
+completed lyric work.
+
+- Commits `64039b4` and `fd99364` are on `origin/main`, deployed to GrokBot at
+  `fd993649e6d381cf5123976d0aef0ad561d2bec0`, and built there.
+- The private used::honda profile on GrokBot has SHA-256
+  `d049bcc579dba60a0c255a496247496fd1c05b4e723172847ba4b929f4c17374`.
+- Focused lyric/pronunciation tests pass 30/30; typecheck, lint, and runtime build
+  pass. Full suite is 2,130/2,131 with only the pre-existing randomized
+  tempo-band test missing `slow`.
+- The active human-assist wait is still `spawn_dc796c` for `Fifteen Second
+  Expert`. Do not restart the gateway, navigate or close its browser, refill the
+  form, or click Create unless the producer explicitly directs it.
+- Because the gateway was intentionally not restarted, the new tracked lyric
+  module loads on the next safe canonical restart after that manual wait clears.
+  The private artist profile itself is already updated.
+- New lyric contract: `渋谷109` becomes `しぶや いちまるきゅう`; Japanese rap
+  uses explicit 2-4 mora vowel chains, compound/internal rhyme and cadence turns;
+  city/ad critique starts from varied indirect imagery rather than repeated names.
+
 ## Applied: indirect Japanese diss and audible rhyme contract (2026-09-16)
 
 The used::honda lyric path now treats `渋谷109` as a proper name and renders it
