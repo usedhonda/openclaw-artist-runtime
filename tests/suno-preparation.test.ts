@@ -14,8 +14,8 @@ function fixture() {
   };
   const controls: Record<string, State> = {
     Model: { value: "V6", visible: true }, Duration: { value: "Auto", visible: true },
-    Weirdness: { value: "50", visible: true }, "Style Influence": { value: "100", visible: true },
-    "Audio Influence": { value: "44", visible: true }, Variety: { value: "2", visible: true },
+    Weirdness: { value: "50", visible: true, attrs: { "aria-valuemin": "0", "aria-valuemax": "100" } }, "Style Influence": { value: "100", visible: true, attrs: { "aria-valuemin": "0", "aria-valuemax": "100" } },
+    "Audio Influence": { value: "44", visible: true, attrs: { "aria-valuemin": "0", "aria-valuemax": "100" } }, Variety: { value: "2", visible: true, attrs: { "aria-valuemin": "0", "aria-valuemax": "4" } },
     "Max Mode": { value: "false", visible: true, attrs: { "aria-checked": "false" } },
     Personalize: { value: "false", visible: true, attrs: { "aria-checked": "false" } }
   };
@@ -43,7 +43,9 @@ function fixture() {
         if (!row) return makeLocator(`${selector} ${kind}`, state);
         const label = Object.keys(controls).find((name) => selector.includes(JSON.stringify(name))) ?? "";
         return makeLocator(`${selector} ${kind}`, controls[label] ?? { visible: false });
-      }
+      },
+      count: async () => 0,
+      nth: (_index: number) => makeLocator(`${selector}:nth`, { visible: false })
     };
     return locator;
   };
