@@ -27,6 +27,11 @@ before Create. Done, with three live Suno preparation fixes found on the way.
   Influence 100, Variety 2, Max Mode Off, Personalize On; the screenshot shows
   Duration 3:30 and an unpressed Create. Create is pressed only on explicit
   producer direction.
+- The producer judged the manual-Create Telegram card useless as a song
+  description, so `c1d95d3` adds the observation summary, the artist's angle,
+  the hook quote, and the style line to that card. The running gateway still
+  holds the old composer; the rebuilt card was sent once for this song as
+  Telegram message 1948, and the new code takes effect at the next restart.
 - Known cosmetic gap: the readback record stores `duration: "Off"` although the
   slider reads 3:30 on screen (text-control readback picks the wrong segment).
   Not fixed; noted for a later change.
