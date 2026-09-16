@@ -126,7 +126,8 @@ describe("CliSunoConnector.create", () => {
     await connector.create(request({
       payload: {
         ...request().payload,
-        sliders: { weirdness: 0.4, styleInfluence: 0.75, audioInfluence: 0.25, variety: 4 },
+        variety: 4,
+        sliders: { weirdness: 0.4, styleInfluence: 0.75, audioInfluence: 0.25 },
         maxMode: true
       }
     }));

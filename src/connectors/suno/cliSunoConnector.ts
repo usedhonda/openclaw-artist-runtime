@@ -593,10 +593,11 @@ export class CliSunoConnector implements SunoConnector {
       if (audioInfluence !== undefined) {
         args.push("--audio-influence", String(audioInfluence));
       }
-      const variety = readVariety(record.variety);
-      if (variety !== undefined) {
-        args.push("--variety", String(variety));
-      }
+    }
+
+    const variety = readVariety(payload.variety);
+    if (variety !== undefined) {
+      args.push("--variety", String(variety));
     }
 
     if (payload.maxMode === true) {
