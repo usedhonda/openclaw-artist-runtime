@@ -130,7 +130,7 @@ describe("telegram song completion SONGBOOK callbacks", () => {
     await notifier.notify({
       type: "song_take_completed",
       songId: "where-it-played",
-      urls: [],
+      urls: ["https://suno.example/take-1"],
       timestamp: Date.parse("2026-04-29T00:00:00.000Z")
     });
     const skip = (await readCallbackActionEntries(root)).find((entry) => entry.action === "song_skip");

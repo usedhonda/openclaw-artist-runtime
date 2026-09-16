@@ -63,7 +63,7 @@ describe("cascade trace section", () => {
     expect(text).not.toContain("行程 trace:");
     expect(text).not.toContain("artist voice:");
     expect(text).not.toContain("song-cascade");
-    expect(text).toContain("今回の音源:");
+    expect(text).toContain("🎧 聴く");
     expect(text).toContain("https://suno.com/song/take-1");
   });
 });

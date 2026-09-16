@@ -196,7 +196,7 @@ describe("voice no-machine-leak contract (v10.16)", () => {
     });
 
     expectNoMachineMarkers(text);
-    expect(text).toContain("着想: 「old live houses disappear under identical signs」を出発点にした");
+    expect(text).toContain("ニュースの概要\nold live houses disappear under identical signs");
     expect(text).toContain("この観察を曲の起点として残した");
     expect(text).not.toContain("自分の都市観察");
     expect(text).toContain("old live houses disappear under identical signs");

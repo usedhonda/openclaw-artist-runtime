@@ -309,7 +309,7 @@ describe("Suno take URL ready flow", () => {
     expect((urlReady as Extract<RuntimeEvent, { type: "suno_take_url_ready" }>).reason).toBeUndefined();
   });
 
-  it("sends URL-ready text without adoption buttons to Telegram", async () => {
+  it("keeps URL-ready progress silent until the completed-song message", async () => {
     const root = workspace();
     await ensureArtistWorkspace(root);
     await bindProductionTrial(root);
@@ -334,11 +334,7 @@ describe("Suno take URL ready flow", () => {
       timestamp: 1
     });
 
-    expect(fetchImpl).toHaveBeenCalledTimes(1);
-    expect(fetchImpl).toHaveBeenCalledWith(expect.stringContaining("/sendMessage"), expect.objectContaining({
-      body: expect.stringContaining("https://suno.com/song/take-ready-a")
-    }));
-    expect(fetchImpl.mock.calls[0]?.[0]).not.toContain("/editMessageReplyMarkup");
+    expect(fetchImpl).not.toHaveBeenCalled();
   });
 
   it("queues one adoption download job and sends URL-valid notice when the delayed import fails", async () => {
@@ -640,7 +636,7 @@ describe("Suno take URL ready flow", () => {
     expect((await readCallbackActionEntries(root)).find((entry) => entry.callbackId === expired.callbackId && entry.status === "updated")).toBeTruthy();
   });
 
-  it("keeps URL-ready and completed-take notifications button-free", async () => {
+  it("sends only the completed-song message and keeps it button-free", async () => {
     const root = workspace();
     await ensureArtistWorkspace(root);
     await bindProductionTrial(root);
@@ -665,7 +661,7 @@ describe("Suno take URL ready flow", () => {
       timestamp: 2
     });
 
-    expect(fetchImpl).toHaveBeenCalledTimes(2);
+    expect(fetchImpl).toHaveBeenCalledTimes(1);
     expect(fetchImpl.mock.calls.every(([url]) => url.includes("/sendMessage"))).toBe(true);
     expect((await readCallbackActionEntries(root)).filter((entry) => entry.messageId === 77 || entry.messageId === 78)).toEqual([]);
   });
@@ -842,7 +838,7 @@ describe("Suno take URL ready flow", () => {
     });
   });
 
-  it("sends successful adoption download imports to Telegram", async () => {
+  it("does not add a second text notification for an unverified adoption path", async () => {
     await expect(formatRuntimeEvent({
       type: "suno_adoption_download_imported",
       songId: "song-url",
@@ -865,9 +861,7 @@ describe("Suno take URL ready flow", () => {
       timestamp: 1
     });
 
-    expect(fetchImpl).toHaveBeenCalledWith(expect.stringContaining("/sendMessage"), expect.objectContaining({
-      body: expect.stringContaining("音源を受け取った")
-    }));
+    expect(fetchImpl).not.toHaveBeenCalled();
   });
 
   it("formats failed adoption downloads for replayable Telegram notifications", async () => {

@@ -102,7 +102,7 @@ describe("song submission report", () => {
     });
     const receipts = (await readFile(join(root, "runtime", "telegram-deliveries.jsonl"), "utf8"))
       .trim().split("\n").map((line) => JSON.parse(line) as { messageId: number });
-    expect(receipts.map((receipt) => receipt.messageId)).toEqual([10, 11]);
+    expect(receipts.map((receipt) => receipt.messageId)).toEqual([10]);
   });
 
   it("falls back to the URL when an audio path is outside the workspace", async () => {
@@ -121,7 +121,7 @@ describe("song submission report", () => {
       paths: ["/etc/passwd"],
       timestamp: 1
     });
-    expect(calls).toBe(1);
+    expect(calls).toBe(0);
   });
 
   it("attaches the trial audio from the exact run results for song_take_completed", async () => {

@@ -71,6 +71,7 @@ const TELEGRAM_SIGNAL_EVENT_TYPES: ReadonlySet<RuntimeEvent["type"]> = new Set([
   "song_spawn_proposed",
   "prompt_pack_ready",
   "song_take_completed",
+  "suno_adoption_download_imported",
   "suno_adoption_download_failed",
   "lyrics_generation_degraded",
   "planning_skeleton_incomplete",
@@ -298,6 +299,20 @@ export class TelegramNotifier {
       await this.enqueueSongSpawnNotification(event);
       return "delivered";
     }
+    if (event.type === "suno_adoption_download_imported") {
+      const audioPaths = await verifiedAudioPaths(this.options.workspaceRoot, event.runId, event.paths);
+      if (audioPaths.length === 0) return "skipped";
+      for (const audioPath of audioPaths) {
+        const data = await readFile(audioPath);
+        const mimeType = audioPath.toLowerCase().endsWith(".mp3") ? "audio/mpeg" : "audio/mp4";
+        const audio = await this.client.sendAudio(this.options.chatId, data, {
+          filename: basename(audioPath),
+          mimeType
+        });
+        await this.recordDelivery(event, audio.message_id);
+      }
+      return "delivered";
+    }
     const text = await formatRuntimeEvent(event, {
       workspaceRoot: this.options.workspaceRoot,
       aiReviewProvider: this.options.aiReviewProvider,
@@ -305,10 +320,8 @@ export class TelegramNotifier {
     });
     const sent = await this.client.sendMessage(this.options.chatId, text);
     await this.recordDelivery(event, sent.message_id);
-    if (event.type === "suno_adoption_download_imported" || event.type === "song_take_completed") {
-      const audioPaths = event.type === "suno_adoption_download_imported"
-        ? await verifiedAudioPaths(this.options.workspaceRoot, event.runId, event.paths)
-        : await trialAudioPathsForEvent(this.options.workspaceRoot, event);
+    if (event.type === "song_take_completed") {
+      const audioPaths = await trialAudioPathsForEvent(this.options.workspaceRoot, event);
       for (const audioPath of audioPaths) {
         try {
           const data = await readFile(audioPath);
