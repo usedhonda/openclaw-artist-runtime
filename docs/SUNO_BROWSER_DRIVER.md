@@ -55,8 +55,10 @@ the original source and reaction separate from the edited material. Unobserved
 new manual submissions are labelled as pre-Create design, not verified submitted
 content. Existing Prompt Ledger and run ledger formats are unchanged.
 
-The vendored suno-kit baseline is `a3ae7cd`, with this runtime's exact-target feed,
-media fallback, and CDP-login patches retained. V6 prompt guidance describes a
+The CLI retains its `afb421d` vendor baseline plus the reviewed Variety delta
+from suno-kit `a3ae7cd`; it is not a wholesale vendor replacement. The current V6
+knowledge files are synchronized separately. This runtime's exact-target feed,
+media fallback, and CDP-login patches remain intact. V6 prompt guidance describes a
 primary genre, secondary genres' roles, playing/vocal behavior, groove distinct
 from BPM, section contrast, and mix hierarchy. Community ideas remain hypotheses;
 neither a tag syntax nor arbitrary character-count padding is a V6 guarantee.
