@@ -2,6 +2,15 @@
 
 ## Unreleased
 
+- feat: integrate suno-kit `a3ae7cd` V6 guidance and Variety's integer 0–4
+  contract, retaining the local feed/download/login protections. Add grounded
+  song-specific exploration recommendations without enabling Personalize or Max
+  Mode automatically.
+- fix: verify manual Suno preparation fields and explicit controls before
+  declaring readiness. Keep producer edits untouched after preparation, record
+  allowlisted run-bound actual submission evidence separately from recommendations,
+  and ground Telegram explanations in observed edited material where available.
+
 - fix: successful music production now emits one artist-authored Telegram
   new-song message instead of a completion/status card. The message runs from
   source link and factual summary through artist reaction, lyric transformation,

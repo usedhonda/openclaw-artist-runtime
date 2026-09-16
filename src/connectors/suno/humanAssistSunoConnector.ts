@@ -16,6 +16,7 @@ import {
 import { emitRuntimeEvent } from "../../services/runtimeEventBus.js";
 import { removeHumanAssistPending, writeHumanAssistPending } from "../../services/humanAssistPending.js";
 import { CdpHumanAssistDriver } from "../../services/cdpHumanAssistDriver.js";
+import { buildSunoV6Recommendation } from "../../services/sunoSubmissionEvidence.js";
 import { findTakeAttributionCollisions } from "../../services/takeAttributionGuard.js";
 import type { SunoBrowserConfigView } from "../../services/runtimeConfig.js";
 import type { SunoConnector } from "./SunoConnector.js";
@@ -32,6 +33,7 @@ export interface HumanAssistDriverInput {
   payload: SunoCreatePayload;
   songId: string;
   title: string;
+  runId: string;
 }
 
 export interface HumanAssistConnectorDeps {
@@ -102,7 +104,7 @@ export class HumanAssistSunoConnector implements SunoConnector {
     const payload = input.payload ?? ({} as SunoCreatePayload);
     const songId = input.songId ?? result.runId;
     const title = readText(payload.songName) ?? songId;
-    const driver = this.deps.driverFactory({ payload, songId, title });
+    const driver = this.deps.driverFactory({ payload, songId, title, runId: result.runId });
     const workspaceRoot = this.deps.workspaceRoot;
     if (workspaceRoot) {
       await writeHumanAssistPending(workspaceRoot, {
@@ -114,9 +116,15 @@ export class HumanAssistSunoConnector implements SunoConnector {
     }
     let outcome;
     try {
+      const recommendation = buildSunoV6Recommendation(payload);
       outcome = await runHumanAssistCreate({
         driver,
-        notifier: this.deps.notifier,
+        notifier: {
+          awaitingHumanCreate: (info) => this.deps.notifier.awaitingHumanCreate({
+            ...info,
+            recommendation: [recommendation.rationale, recommendation.personalizeReason, recommendation.maxModeReason].join("\n")
+          })
+        },
         songId,
         title,
         timeoutMs: this.deps.timeoutMs,
@@ -190,13 +198,14 @@ export function createHumanAssistNotifier(
   mode: "captcha_fallback" | "manual_submit" = "captcha_fallback"
 ): HumanAssistNotifier {
   return {
-    awaitingHumanCreate: ({ songId, title }) => {
+    awaitingHumanCreate: ({ songId, title, recommendation }) => {
       emitRuntimeEvent({
         type: "suno_human_assist_requested",
         songId,
         title,
         timeoutMinutes,
         mode,
+        ...(recommendation ? { recommendation } : {}),
         timestamp: Date.now()
       });
     }
@@ -253,7 +262,7 @@ export function createHumanAssistSunoConnector(
     timeoutMs: timeoutMinutes === 0 ? Infinity : timeoutMinutes * 60_000,
     submitMode: config?.music?.suno?.submitMode,
     workspaceRoot,
-    driverFactory: ({ payload }) => new CdpHumanAssistDriver({ payload, config: browserConfig, sessionFile, workspaceRoot }),
+    driverFactory: ({ payload, songId, runId }) => new CdpHumanAssistDriver({ payload, songId, runId, config: browserConfig, sessionFile, workspaceRoot }),
     notifier: createHumanAssistNotifier(
       timeoutMinutes,
       config?.music?.suno?.submitMode === "manual" ? "manual_submit" : "captcha_fallback"

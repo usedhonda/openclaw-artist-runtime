@@ -1,5 +1,19 @@
 # Handoff: Producer-musician creation loop
 
+## In progress: V6 controls and verified manual preparation (2026-09-16)
+
+Approved scope: integrate suno-kit `a3ae7cd`, improve relationship-based prompts,
+preserve manual Create, verify preparation, and distinguish recommendation / UI
+readback / observed submitted material. Personalize and Max Mode advice is never
+automatically applied. Existing ledger formats and public config shape are unchanged.
+
+Independent slices are committed: vendor/prompt guidance, pre-Create UI helper,
+and Telegram observed-material grounding. The integration adds a passive exact-page
+generate observer with strict musical-field allowlisting and response clip-ID
+binding. Credentials and raw network bodies are not retained. Remaining acceptance:
+final integrated gates, fresh gateway-child reflection with no pending human wait,
+and one preparation-only live check. Do not click Create during verification.
+
 ## Resolved: artist-authored Telegram new-song message (2026-09-16)
 
 Successful song delivery is now one artist-authored message instead of a

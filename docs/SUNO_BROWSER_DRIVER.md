@@ -10,6 +10,54 @@ See also: [OPERATOR_QUICKSTART.md](OPERATOR_QUICKSTART.md),
 
 ## Status
 
+### V6 preparation and manual submission evidence
+
+Manual mode still leaves **Create to the producer**. Preparation verifies the
+exact title, plain lyrics, Style, and Exclude after filling and after explicit
+control changes. Missing required fields, including a nonempty Exclude, or
+readback mismatches fail preparation instead of reporting a ready form. The
+runtime never refills or navigates the prepared form while waiting for Create.
+Unspecified controls retain their current UI values. Explicit controls are
+applied only when their UI value can be verified; unknown controls fail closed.
+
+Variety is an integer **0–4**, not a percentage. Other CLI sliders retain their
+0–100 UI to 0–1 wire conversion. The runtime gives song-specific exploration
+advice: 0 for prompt fidelity, 1–2 for limited exploration, 3–4 for stronger
+exploration. These are operating choices, not measured quality guarantees.
+The pre-Create notice recommends values without applying them. Personalize and
+Max Mode are never enabled from a recommendation; the producer chooses them.
+Personalize depends on evolving account taste, and Max Mode is not a quality
+guarantee. V6 remains the default; no automatic model/route comparison is run.
+
+Separate immutable JSON artifacts live in
+`songs/<songId>/suno-evidence/<runId>/`:
+
+- `proposal.json`: recommendations, explicitly not applied settings.
+- `prepared.json`: verified UI text and readable control values.
+- `submission-<id>.json`: allowlisted musical fields from the exact page's
+  generate request, bound to the clip IDs in its successful response.
+
+The observer is passive. It never routes or modifies requests, captures headers,
+or persists raw bodies, cookies, tokens, account IDs, or personalization UUIDs.
+Only title/lyrics/style/exclude/model and confirmed slider/Max Mode fields are
+retained. Missing values stay unknown. Duration and Personalize enabled wire
+fields are not guessed: a best-effort UI sample is separately labelled
+`ui_after_request_not_wire`, not treated as an exact submit snapshot.
+An observed successful response can identify takes even if the producer changed
+the title. Existing feed/DOM reconciliation remains the fallback when the request
+was not observed; a prepared value is never promoted to an observed submission.
+
+Telegram explanations use the actual observed lyrics/style when changed, keeping
+the original source and reaction separate from the edited material. Unobserved
+new manual submissions are labelled as pre-Create design, not verified submitted
+content. Existing Prompt Ledger and run ledger formats are unchanged.
+
+The vendored suno-kit baseline is `a3ae7cd`, with this runtime's exact-target feed,
+media fallback, and CDP-login patches retained. V6 prompt guidance describes a
+primary genre, secondary genres' roles, playing/vocal behavior, groove distinct
+from BPM, section contrast, and mix hierarchy. Community ideas remain hypotheses;
+neither a tag syntax nor arbitrary character-count padding is a V6 guarantee.
+
 Producer BPM revisions recognize both `BPM 94` and `94 BPM` in an inherited
 production style. Before preparation, an explicit tempo change updates recognized
 style annotations, non-sung YAML production notes/cues, `tempo`, `bpm_target`, and

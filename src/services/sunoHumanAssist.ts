@@ -65,7 +65,7 @@ export interface HumanAssistBrowserDriver {
 
 export interface HumanAssistNotifier {
   /** Alert the producer that a manual Create click is required. Called at most once per run. */
-  awaitingHumanCreate(info: { songId: string; title: string }): void | Promise<void>;
+  awaitingHumanCreate(info: { songId: string; title: string; recommendation?: string }): void | Promise<void>;
 }
 
 export interface RunHumanAssistCreateInput {

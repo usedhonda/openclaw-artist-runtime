@@ -961,14 +961,18 @@ export interface SunoWorkerStatus {
 }
 
 export interface SunoCreatePayload {
+  /** Optional explicit preparation controls; omitted controls retain the producer's UI values. */
+  variety?: number;
+  maxMode?: boolean;
+  personalize?: boolean;
+  duration?: string;
   /**
-   * Plain lyrics body retained for display, linting, and compatibility. When
-   * payloadYaml is present, the Suno driver submits the full double-entry YAML.
+   * Plain lyrics body. The manual preparation lane prefers this exact text.
    */
   lyrics?: string;
   /**
-   * Full Suno double-entry payload YAML submitted to the lyrics textarea when
-   * present. It includes META hints plus the mirrored lyrics body.
+   * Full double-entry archive. Manual preparation uses it only when both plain
+   * lyrics fields are absent, avoiding sung registration metadata.
    */
   payloadYaml?: string;
   /**

@@ -7,8 +7,6 @@ import { SUNO_CREATE_URL } from "./sunoPlaywrightDriver.js";
 import {
   SUNO_CREATE_FALLBACKS,
   SUNO_EXPECTED_TAKE_COUNT,
-  ensureSunoLyricsMode,
-  ensureSunoStyleMode,
   filterFreshTakeUrls,
   readSunoCreateCardSongUrls,
   resolveFirstVisibleLocator,
@@ -17,6 +15,8 @@ import {
 import { fetchSunoFeedClips, reconcileFeedTakes, type FeedReconcileResult } from "./sunoFeedHarvest.js";
 import { checkSunoCliSessionStatus } from "./sunoCliSessionStatus.js";
 import { emitRuntimeEvent } from "./runtimeEventBus.js";
+import { prepareSunoForm, readSunoControls } from "./sunoPreparation.js";
+import { observeSunoSubmission, writeSunoPreparationEvidence, type SunoEvidenceBinding } from "./sunoSubmissionEvidence.js";
 import type {
   HumanAssistBrowserDriver,
   HumanAssistSubmitOutcome,
@@ -75,13 +75,6 @@ function readText(value: unknown): string | undefined {
   return typeof value === "string" && value.trim() ? value : undefined;
 }
 
-function extractLyrics(payload: SunoCreatePayload): string | undefined {
-  // `payloadYaml` includes non-lyric registration metadata and can exceed a text
-  // field's practical limit. The explicit lyrics body is the only value for Suno's
-  // Lyrics editor; retain the YAML only as a legacy fallback.
-  return readText(payload.lyrics) ?? readText(payload.lyricsText) ?? readText(payload.payloadYaml);
-}
-
 /**
  * Close a non-transactional Suno notice or upsell through its explicit Close
  * control. Dialogs with form/challenge controls or sensitive login, payment,
@@ -106,6 +99,8 @@ export async function dismissSafeSunoBlockingDialog(page: Page): Promise<boolean
 
 export interface CdpHumanAssistDriverInput {
   payload: SunoCreatePayload;
+  songId?: string;
+  runId?: string;
   service?: SunoBrowserService;
   config?: SunoBrowserConfigView;
   // Path to the suno-cli session.json used to mint the Clerk JWT for the network-primary
@@ -186,6 +181,7 @@ export class CdpHumanAssistDriver implements HumanAssistBrowserDriver {
   private baselineFeedIds = new Set<string>();
   private submitAtMs = 0;
   private readonly service: SunoBrowserService;
+  private submissionObserver: ReturnType<typeof observeSunoSubmission> | undefined;
 
   constructor(private readonly input: CdpHumanAssistDriverInput) {
     this.service = input.service ?? sunoBrowserService;
@@ -225,51 +221,14 @@ export class CdpHumanAssistDriver implements HumanAssistBrowserDriver {
     // the network-primary reconciliation never adopts a pre-existing clip as this take.
     this.baselineFeedIds = await this.readFeedClipIds();
 
-    const payload = this.input.payload;
-    const lyrics = extractLyrics(payload);
-    if (lyrics && !payload.instrumental) {
-      // The create page opens in "Simple" mode with no lyrics textarea. Switch to
-      // custom mode first, otherwise the fill waits forever on an unmounted element.
-      const lyricsField = await ensureSunoLyricsMode(page, FORM_READY_TIMEOUT_MS);
-      await lyricsField.fill(lyrics, { timeout: FORM_READY_TIMEOUT_MS });
-    }
-    const style = readText(payload.styleAndFeel);
-    if (style) {
-      const styleField = await ensureSunoStyleMode(page, FORM_READY_TIMEOUT_MS);
-      await styleField.fill(style, { timeout: FORM_READY_TIMEOUT_MS });
-    }
-    const title = readText(payload.songName);
-    if (title) {
-      // The current homepage composer does not expose a title field. Song title is
-      // optional metadata, so its absence must not prevent the producer from seeing
-      // the fully prepared lyrics and style form before the manual Create boundary.
-      const titleField = await resolveFirstVisibleLocator(
-        page,
-        SUNO_CREATE_FALLBACKS.titleInput,
-        FORM_READY_TIMEOUT_MS,
-        "title"
-      ).catch(() => undefined);
-      if (titleField) {
-        await titleField.fill(title, { timeout: FORM_READY_TIMEOUT_MS });
-      }
-    }
-    const exclude = readText(payload.excludeStyles);
-    if (exclude) {
-      // Exclude styles is optional and absent from the current homepage composer.
-      // Keep the producer's prepared form usable when Suno omits this legacy field.
-      const excludeField = await resolveFirstVisibleLocator(
-        page,
-        SUNO_CREATE_FALLBACKS.excludeInput,
-        FORM_READY_TIMEOUT_MS,
-        "exclude styles"
-      ).catch(() => undefined);
-      if (excludeField) {
-        await excludeField.fill(exclude, { timeout: FORM_READY_TIMEOUT_MS });
-      }
-    }
     // Leave the producer a usable form in manual-submit mode. Only safe
     // informational/upsell overlays are closed; sensitive surfaces stay visible.
     await dismissSafeSunoBlockingDialog(page);
+    const prepared = await prepareSunoForm(page, this.input.payload, FORM_READY_TIMEOUT_MS);
+    const binding: SunoEvidenceBinding | undefined = this.input.workspaceRoot && this.input.songId && this.input.runId
+      ? { workspaceRoot: this.input.workspaceRoot, songId: this.input.songId, runId: this.input.runId } : undefined;
+    if (binding) await writeSunoPreparationEvidence(binding, this.input.payload, prepared);
+    this.submissionObserver = observeSunoSubmission(page, binding, () => readSunoControls(page));
     // Manual submit has no click callback. Use the end of preparation as the
     // non-zero freshness floor; feed-created timestamps and baseline ids must
     // still prove that a take appeared after this form was handed to the producer.
@@ -327,6 +286,7 @@ export class CdpHumanAssistDriver implements HumanAssistBrowserDriver {
     if (reconciled.status === "unavailable") {
       return { kind: "feed_unavailable" };
     }
+    await this.submissionObserver?.flush();
     return { kind: "accepted", urls: reconciled.urls };
   }
 
@@ -353,6 +313,13 @@ export class CdpHumanAssistDriver implements HumanAssistBrowserDriver {
       // block every future attempt. Rejecting lets the flow's finally clear the marker
       // and the autopilot start a fresh attempt.
       assertBrowserAlive(this.page);
+      this.submissionObserver?.assertSaved();
+      const observed = this.submissionObserver?.accepted();
+      if (observed) {
+        // The response belongs to this page's exact generate request. This also
+        // handles a producer-edited title without borrowing neighbouring cards.
+        return { kind: "accepted", urls: observed.urls };
+      }
       // Only a NEW title-scoped take (the producer's manual Create actually starting a
       // generation) counts as success. Workspace bleed / over-count is rejected inside
       // freshTakeUrls, so this never accepts unrelated existing songs.
@@ -365,6 +332,7 @@ export class CdpHumanAssistDriver implements HumanAssistBrowserDriver {
         // only immediate failure is assertBrowserAlive above, when the target
         // page is genuinely gone.
         if (reconciled.status !== "unavailable" && reconciled.urls.length > 0) {
+          await this.submissionObserver?.flush();
           return { kind: "accepted", urls: reconciled.urls };
         }
       }
@@ -385,12 +353,16 @@ export class CdpHumanAssistDriver implements HumanAssistBrowserDriver {
     // result tabs stay visible; unsuccessful plugin-created input tabs are cleaned up.
     const page = this.page;
     this.page = undefined;
-    if (this.ownsPage && !this.preservePageOnClose) {
-      await page?.close().catch(() => undefined);
+    try {
+      await this.submissionObserver?.close();
+    } finally {
+      if (this.ownsPage && !this.preservePageOnClose) {
+        await page?.close().catch(() => undefined);
+      }
+      this.ownsPage = false;
+      this.preservePageOnClose = false;
+      await this.service.release();
     }
-    this.ownsPage = false;
-    this.preservePageOnClose = false;
-    await this.service.release();
   }
 
   private requirePage(): Page {
