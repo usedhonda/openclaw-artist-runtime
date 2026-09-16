@@ -1,5 +1,20 @@
 # Handoff: Producer-musician creation loop
 
+## Live checkpoint: cadence diagnosis and new song delivery (2026-09-16)
+
+The producer changed `autopilot.songsPerWeek` to 50 and the song-spawn interval
+to 13 hours, but no immediate song appeared. Live evidence showed that
+`songsPerWeek` is a weekly cap, while `songSpawn.minIntervalHours` independently
+blocked another automatic proposal until `2026-09-16T04:59:41.896Z`; status hid
+that distinction behind `song_spawn_waiting_for_proposal`. An operator-requested
+cycle safely bypassed only this one cooldown, refreshed observations, and created
+`spawn_93fc42` (`Vacant Seat Warranty`). The Suno form was filled correctly; the
+configured manual submit mode stopped on the visible Create button, which was
+clicked through the GrokBot screen. Suno accepted run `suno_mu3gi92k` with two
+take URLs, the runtime selected take `25f16aec-aa72-4a73-94b6-ff2915e2e8ff`, and
+Telegram delivered the detailed completion as message `1931`. Failed notification
+count remained zero. No persistent config or source code was changed.
+
 ## Checkpoint: song-specific Telegram explanations (2026-09-16)
 
 The completion formatter now uses the run-bound immutable lyrics and style pack
