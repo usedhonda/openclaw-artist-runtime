@@ -64,7 +64,7 @@ function rowLocator(page: Page, labels: readonly string[], kind: ControlKind): L
   const target = kind === "slider"
     ? './/*[@role="slider" or self::input[@type="range"]]'
     : kind === "boolean"
-      ? './/*[@role="switch" or @role="radio" or @aria-pressed or @aria-checked or @data-state or self::input[@type="checkbox"]]'
+      ? './/*[self::button or @role="switch" or @role="radio" or @aria-pressed or @aria-checked or @data-state or self::input[@type="checkbox"]]'
       : './/input or .//select or .//button';
   return page.locator(
     `xpath=(//*[self::label or self::span or self::div][${label}]/ancestor::*[${target}${other}][1])`
@@ -80,7 +80,7 @@ async function firstControl(page: Page, labels: readonly string[], kind: Control
   const selectors = kind === "slider"
     ? ['[role="slider"]', 'input[type="range"]']
     : kind === "boolean"
-      ? ['[role="switch"]', '[role="radio"]', 'input[type="checkbox"]', 'button[aria-pressed]', '[data-state]']
+      ? ['[role="switch"]', '[role="radio"]', 'input[type="checkbox"]', 'button[aria-pressed]', '[data-state]', 'button']
       : ['input', 'select', 'button'];
   const candidates = selectors.map((selector) => row.locator(selector).first());
   for (const candidate of candidates) if (await visible(candidate)) return candidate;
@@ -100,6 +100,14 @@ async function readBoolean(locator: Locator): Promise<boolean | undefined> {
   const role = await locator.getAttribute("role").catch(() => null);
   const pressed = await locator.getAttribute("aria-pressed").catch(() => null);
   const dataState = await locator.getAttribute("data-state").catch(() => null);
+  const className = await locator.getAttribute("class").catch(() => null);
+  const selectedByClass = className?.includes("hxc-btn-variant-standard-legacy")
+    ? true
+    : className?.includes("hxc-btn-variant-tertiary-legacy")
+      ? false
+      : undefined;
+  if (/^off$|^disabled$|^no$|^false$/.test(text) && selectedByClass !== undefined) return selectedByClass ? false : undefined;
+  if (/^on$|^enabled$|^yes$|^true$/.test(text) && selectedByClass !== undefined) return selectedByClass ? true : undefined;
   if (role === "radio") {
     const selected = await locator.getAttribute("aria-checked").catch(() => null)
       ?? await locator.getAttribute("aria-pressed").catch(() => null)
@@ -133,10 +141,13 @@ async function textControl(page: Page, key: "model" | "duration"): Promise<Locat
   const byLabel = await firstControl(page, LABELS[key], "text");
   if (byLabel && key === "model") return byLabel;
   if (byLabel && key === "duration") {
+    const inputType = await byLabel.getAttribute("type").catch(() => null);
+    if (inputType && inputType !== "button") return byLabel;
     const state = await byLabel.getAttribute("aria-pressed").catch(() => null)
       ?? await byLabel.getAttribute("aria-checked").catch(() => null)
       ?? await byLabel.getAttribute("data-state").catch(() => null);
-    if (["true", "checked", "selected", "on"].includes(state ?? "")) return byLabel;
+    const className = await byLabel.getAttribute("class").catch(() => null);
+    if (["true", "checked", "selected", "on"].includes(state ?? "") || className?.includes("hxc-btn-variant-standard-legacy")) return byLabel;
     const row = rowLocator(page, LABELS.duration, "text");
     const buttons = row.locator("button");
     const count = await buttons.count().catch(() => 0);
@@ -145,7 +156,8 @@ async function textControl(page: Page, key: "model" | "duration"): Promise<Locat
       const selected = await candidate.getAttribute("aria-pressed").catch(() => null)
         ?? await candidate.getAttribute("aria-checked").catch(() => null)
         ?? await candidate.getAttribute("data-state").catch(() => null);
-      if (["true", "checked", "selected", "on"].includes(selected ?? "") && await visible(candidate)) return candidate;
+      const candidateClass = await candidate.getAttribute("class").catch(() => null);
+      if ((["true", "checked", "selected", "on"].includes(selected ?? "") || candidateClass?.includes("hxc-btn-variant-standard-legacy")) && await visible(candidate)) return candidate;
     }
   }
   if (key === "duration") return undefined;
@@ -163,7 +175,7 @@ async function textControl(page: Page, key: "model" | "duration"): Promise<Locat
 
 async function booleanControlValue(page: Page, labels: readonly string[]): Promise<boolean | undefined> {
   const row = rowLocator(page, labels, "boolean");
-  const radios = row.locator('[role="radio"], button[aria-pressed], button[aria-checked], button[data-state]');
+  const radios = row.locator('[role="radio"], button[aria-pressed], button[aria-checked], button[data-state], button');
   const count = await radios.count().catch(() => 0);
   for (let index = 0; index < count; index += 1) {
     const value = await readBoolean(radios.nth(index));
@@ -224,7 +236,7 @@ async function setSlider(page: Page, labels: readonly string[], value: number, n
 
 async function setBoolean(page: Page, labels: readonly string[], value: boolean, name: string): Promise<void> {
   const row = rowLocator(page, labels, "boolean");
-  const radios = row.locator('[role="radio"], button[aria-pressed], button[aria-checked], button[data-state]');
+  const radios = row.locator('[role="radio"], button[aria-pressed], button[aria-checked], button[data-state], button');
   const radioCount = await radios.count().catch(() => 0);
   let locator: Locator | undefined;
   if (radioCount > 0) {
@@ -245,6 +257,50 @@ async function setBoolean(page: Page, labels: readonly string[], value: boolean,
   if (current !== value) await locator.click();
   const actual = await readBoolean(locator);
   if (actual !== value) throw new Error(`suno_prepare_readback_mismatch: ${name}`);
+}
+
+function parseDurationSeconds(value: string): number | undefined {
+  const match = /^(\d+):([0-5]\d)$/.exec(value.trim());
+  if (!match) return undefined;
+  const seconds = Number(match[1]) * 60 + Number(match[2]);
+  return Number.isSafeInteger(seconds) ? seconds : undefined;
+}
+
+async function chooseSegment(row: Locator, label: string, name: string): Promise<void> {
+  const button = row.getByRole("button", { name: label, exact: true }).first();
+  if (!await visible(button)) throw new Error(`suno_prepare_control_missing: ${name}`);
+  const className = await button.getAttribute("class").catch(() => null);
+  const state = await button.getAttribute("aria-pressed").catch(() => null)
+    ?? await button.getAttribute("aria-checked").catch(() => null)
+    ?? await button.getAttribute("data-state").catch(() => null);
+  if (!["true", "checked", "selected", "on"].includes(state ?? "") && !className?.includes("hxc-btn-variant-standard-legacy")) await button.click();
+}
+
+async function setDuration(page: Page, value: string): Promise<void> {
+  const row = rowLocator(page, LABELS.duration, "text");
+  if (/^auto$/i.test(value.trim())) {
+    await chooseSegment(row, "Auto", "duration");
+    return;
+  }
+  const target = parseDurationSeconds(value);
+  if (target === undefined) throw new Error("suno_prepare_invalid_control: duration");
+  await chooseSegment(row, "Custom", "duration");
+  const slider = await firstControl(page, LABELS.duration, "slider");
+  if (!slider) throw new Error("suno_prepare_control_missing: duration");
+  const min = Number(await slider.getAttribute("aria-valuemin").catch(() => null));
+  const max = Number(await slider.getAttribute("aria-valuemax").catch(() => null));
+  if (!Number.isFinite(min) || !Number.isFinite(max) || target < min || target > max) throw new Error("suno_prepare_invalid_control: duration");
+  await slider.press("Home");
+  let current = Number(await slider.getAttribute("aria-valuenow").catch(() => null));
+  if (current !== target) {
+    await slider.press("ArrowRight");
+    const next = Number(await slider.getAttribute("aria-valuenow").catch(() => null));
+    const step = next - current;
+    if (!Number.isFinite(step) || step <= 0 || (target - current) % step !== 0) throw new Error("suno_prepare_invalid_control: duration");
+    for (let index = 1; index < (target - current) / step; index += 1) await slider.press("ArrowRight");
+  }
+  current = Number(await slider.getAttribute("aria-valuenow").catch(() => null));
+  if (current !== target) throw new Error("suno_prepare_readback_mismatch: duration");
 }
 
 async function readControls(page: Page): Promise<SunoPreparedControls> {
@@ -329,9 +385,12 @@ export async function prepareSunoForm(page: Page, payload: SunoCreatePayload, ti
     const value = explicit(key);
     if (value === undefined) continue;
     if (typeof value !== "string" || !value.trim()) throw new Error(`suno_prepare_invalid_control: ${key}`);
-    const locator = await textControl(page, key);
-    if (!locator) throw new Error(`suno_prepare_control_missing: ${key}`);
-    await chooseTextControl(page, locator, value, key);
+    if (key === "duration") await setDuration(page, value);
+    else {
+      const locator = await textControl(page, key);
+      if (!locator) throw new Error(`suno_prepare_control_missing: ${key}`);
+      await chooseTextControl(page, locator, value, key);
+    }
   }
   // Re-read all supplied fields after controls: Suno can remount the composer when
   // model/advanced settings change and silently reset an earlier field.

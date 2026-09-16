@@ -19,6 +19,10 @@ readback mismatches fail preparation instead of reporting a ready form. The
 runtime never refills or navigates the prepared form while waiting for Create.
 Unspecified controls retain their current UI values. Explicit controls are
 applied only when their UI value can be verified; unknown controls fail closed.
+Current unannotated `Off` / `On` segmented buttons are verified through Suno's
+selected/unselected button variants. Explicit `Duration: m:ss` selects Custom,
+sets the 10–360 second slider in its observed five-second increments, and reads
+the displayed time back. `Auto` selects the automatic-duration segment.
 For this manual lane, explicit overrides are top-level payload fields. The
 archived `sliders` genre presets are not instructions to overwrite the producer's
 current manual settings (the CLI lane continues to use those existing presets).

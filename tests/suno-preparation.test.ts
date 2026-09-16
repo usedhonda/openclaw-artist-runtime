@@ -125,4 +125,62 @@ describe("readSunoControls DOM contract", () => {
       await browser.close();
     }
   });
+
+  it("recognizes the current unannotated Suno segmented controls and custom duration", async () => {
+    const browser = await chromium.launch({ headless: true });
+    try {
+      const page = await browser.newPage();
+      await page.setContent(`
+        <section><label>Duration</label><div role="slider" aria-label="Duration" aria-valuenow="195" aria-valuemin="10" aria-valuemax="360"></div><input type="text" aria-label="Duration" value="3:15"></section>
+        <section><label>Max Mode</label><button class="hxc-btn-variant-tertiary-legacy">Off</button><button class="hxc-btn-variant-standard-legacy">On</button></section>
+        <section><label>Personalize</label><button>My Taste</button><button class="hxc-btn-variant-tertiary-legacy">Off</button><button class="hxc-btn-variant-standard-legacy">On</button></section>
+      `);
+      await expect(readSunoControls(page)).resolves.toMatchObject({ duration: "3:15", maxMode: true, personalize: true });
+    } finally {
+      await browser.close();
+    }
+  });
+
+  it("sets current segmented controls and a custom duration without clicking Create", async () => {
+    const browser = await chromium.launch({ headless: true });
+    try {
+      const page = await browser.newPage();
+      await page.setContent(`
+        <section id="duration"><label>Duration</label><button class="hxc-btn-variant-tertiary-legacy">Custom</button><button class="hxc-btn-variant-standard-legacy">Auto</button></section>
+        <section id="max"><label>Max Mode</label><button class="hxc-btn-variant-standard-legacy">Off</button><button class="hxc-btn-variant-tertiary-legacy">On</button></section>
+        <section id="personalize"><label>Personalize</label><button>My Taste</button><button class="hxc-btn-variant-standard-legacy">Off</button><button class="hxc-btn-variant-tertiary-legacy">On</button></section>
+        <button id="create">Create</button>
+      `);
+      await page.evaluate(() => {
+        const select = (row: Element, selected: Element) => row.querySelectorAll("button").forEach((button) => {
+          button.className = button === selected ? "hxc-btn-variant-standard-legacy" : "hxc-btn-variant-tertiary-legacy";
+        });
+        for (const id of ["max", "personalize"]) {
+          const row = document.getElementById(id)!;
+          row.querySelectorAll("button").forEach((button) => button.addEventListener("click", () => select(row, button)));
+        }
+        const duration = document.getElementById("duration")!;
+        duration.querySelector("button")!.addEventListener("click", () => {
+          duration.innerHTML = '<label>Duration</label><div role="slider" aria-label="Duration" aria-valuenow="180" aria-valuemin="10" aria-valuemax="360" style="width:100px;height:10px" tabindex="0"></div><input type="text" aria-label="Duration" value="3:00">';
+          const slider = duration.querySelector('[role="slider"]')!;
+          const input = duration.querySelector("input")!;
+          slider.addEventListener("keydown", (event) => {
+            const keyboard = event as KeyboardEvent;
+            let value = Number(slider.getAttribute("aria-valuenow"));
+            if (keyboard.key === "Home") value = 10;
+            if (keyboard.key === "ArrowRight") value += 5;
+            slider.setAttribute("aria-valuenow", String(value));
+            input.value = `${Math.floor(value / 60)}:${String(value % 60).padStart(2, "0")}`;
+          });
+        });
+        document.getElementById("create")!.addEventListener("click", () => document.body.dataset.createClicked = "true");
+      });
+      const prepared = await prepareSunoForm(page, { duration: "3:15", maxMode: true, personalize: true }, 20);
+      expect(prepared.controls).toMatchObject({ duration: "3:15", maxMode: true, personalize: true });
+      expect(await page.locator('[role="slider"][aria-label="Duration"]').getAttribute("aria-valuenow")).toBe("195");
+      expect(await page.locator("body").getAttribute("data-create-clicked")).toBeNull();
+    } finally {
+      await browser.close();
+    }
+  });
 });

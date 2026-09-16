@@ -19,14 +19,17 @@ wait tests pass, including a real Chromium fixture.
 Live preparation reached `Fifteen Second Expert`, song `spawn_dc796c`, run
 `suno_mu3wbo2j`. Readback matched lyrics (2,599 characters), Style (995), Exclude
 (80), and title. Observed controls: V6, Weirdness 50, Style Influence 50, Variety 2.
-Personalize, Max Mode, and Duration were not machine-readable on the live form;
-they remain unknown, not inferred or automatically changed. Preparation guidance
-was delivered as Telegram message `1940`. Native screenshot confirmed the filled
-form and unpressed Create button. Proposal and preparation evidence exist; actual
-submission capture and completed-song Telegram delivery remain unverified.
+At the producer's request, the live form was then changed before Create to Max
+Mode On, Personalize On, and Custom Duration 3:15 (195 seconds), matching the
+song's duration plan; all values were read back and Variety remained 2. The My
+Taste profile editor was inspected but its saved profile text was not changed.
+Preparation guidance was delivered as Telegram message `1940`. Screenshot and
+DOM readback confirmed the filled form and unpressed Create boundary. Proposal
+and original preparation evidence exist; actual submission capture and
+completed-song Telegram delivery remain unverified.
 
 An active manual-assist wait owns this prepared page. Do not restart the gateway,
-navigate, refill fields, change controls, or click Create during verification.
+navigate, refill fields, or click Create during verification.
 
 ## Resolved: artist-authored Telegram new-song message (2026-09-16)
 

@@ -10,6 +10,9 @@
   declaring readiness. Keep producer edits untouched after preparation, record
   allowlisted run-bound actual submission evidence separately from recommendations,
   and ground Telegram explanations in observed edited material where available.
+- fix: recognize Suno's current unannotated segmented controls for Max Mode and
+  Personalize, and set/read back explicit Custom Duration values in `m:ss`
+  without crossing the producer-only Create boundary.
 
 - fix: successful music production now emits one artist-authored Telegram
   new-song message instead of a completion/status card. The message runs from
