@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { Page } from "playwright";
+import { chromium } from "playwright";
 import { prepareSunoForm, readSunoControls } from "../src/services/sunoPreparation";
 import { SUNO_CREATE_SELECTORS } from "../src/services/sunoCreateForm";
 
@@ -27,6 +28,7 @@ function fixture() {
       waitFor: async () => { if (!(state.visible ?? false)) throw new Error("hidden"); },
       getAttribute: async (name: string) => state.attrs?.[name] ?? null,
       inputValue: async () => state.value ?? "",
+      innerText: async () => state.value ?? "",
       textContent: async () => state.value ?? "",
       fill: async (value: string) => { state.value = value; },
       press: async (key: string) => {
@@ -41,7 +43,7 @@ function fixture() {
       },
       locator: (kind: string) => {
         if (!row) return makeLocator(`${selector} ${kind}`, state);
-        const label = Object.keys(controls).find((name) => selector.includes(JSON.stringify(name))) ?? "";
+        const label = selector.match(/normalize-space\(\.\)="([^"]+)"/)?.[1] ?? "";
         return makeLocator(`${selector} ${kind}`, controls[label] ?? { visible: false });
       },
       count: async () => 0,
@@ -97,5 +99,29 @@ describe("readSunoControls", () => {
     delete controls.Personalize;
     await expect(readSunoControls(page)).resolves.toMatchObject({ model: "V6", variety: 2, maxMode: false });
     await expect(readSunoControls(page)).resolves.not.toHaveProperty("personalize");
+  });
+});
+
+describe("readSunoControls DOM contract", () => {
+  it("does not borrow a neighbouring slider and maps selected segmented values", async () => {
+    let browser;
+    try {
+      browser = await chromium.launch({ headless: true });
+    } catch {
+      return;
+    }
+    try {
+      const page = await browser.newPage();
+      await page.setContent(`
+      <section data-row="weirdness"><label>Weirdness</label><div role="slider" style="width:100px;height:10px" aria-valuenow="50" aria-valuemin="0" aria-valuemax="100"></div></section>
+      <section data-row="variety"><label>Variety</label><p>No control mounted</p></section>
+      <section data-row="max"><label>Max Mode</label><button aria-pressed="true">Off</button><button aria-pressed="false">On</button></section>
+      <section data-row="duration"><label>Duration</label><button aria-pressed="false">Custom</button><button aria-pressed="true">Auto</button></section>
+    `);
+      await expect(readSunoControls(page)).resolves.toMatchObject({ weirdness: 50, maxMode: false, duration: "Auto" });
+      await expect(readSunoControls(page)).resolves.not.toHaveProperty("variety");
+    } finally {
+      await browser.close();
+    }
   });
 });

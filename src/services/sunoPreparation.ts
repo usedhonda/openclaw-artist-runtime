@@ -57,13 +57,17 @@ type ControlKind = "text" | "slider" | "boolean";
 
 function rowLocator(page: Page, labels: readonly string[], kind: ControlKind): Locator {
   const label = labels.map((value) => `normalize-space(.)=${JSON.stringify(value)}`).join(" or ");
+  const otherLabels = Object.values(LABELS).flat().filter((value) => !labels.includes(value));
+  const other = otherLabels.length > 0
+    ? ` and not(.//*[self::label or self::span or self::div][${otherLabels.map((value) => `normalize-space(.)=${JSON.stringify(value)}`).join(" or ")}])`
+    : "";
   const target = kind === "slider"
     ? './/*[@role="slider" or self::input[@type="range"]]'
     : kind === "boolean"
       ? './/*[@role="switch" or @role="radio" or @aria-pressed or @aria-checked or @data-state or self::input[@type="checkbox"]]'
       : './/input or .//select or .//button';
   return page.locator(
-    `xpath=(//*[self::label or self::span or self::div][${label}]/ancestor::*[${target}][1])`
+    `xpath=(//*[self::label or self::span or self::div][${label}]/ancestor::*[${target}${other}][1])`
   ).first();
 }
 
@@ -92,27 +96,28 @@ async function readLocator(locator: Locator): Promise<string> {
 }
 
 async function readBoolean(locator: Locator): Promise<boolean | undefined> {
+  const text = ((await locator.innerText().catch(() => "")) ?? "").trim().toLowerCase();
   const role = await locator.getAttribute("role").catch(() => null);
+  const pressed = await locator.getAttribute("aria-pressed").catch(() => null);
+  const dataState = await locator.getAttribute("data-state").catch(() => null);
   if (role === "radio") {
     const selected = await locator.getAttribute("aria-checked").catch(() => null)
       ?? await locator.getAttribute("aria-pressed").catch(() => null)
       ?? await locator.getAttribute("data-state").catch(() => null);
     if (!(["true", "checked", "selected", "on"].includes(selected ?? ""))) return undefined;
-    const text = ((await locator.innerText().catch(() => "")) ?? "").trim().toLowerCase();
     if (/^off$|^disabled$|^no$|^false$/.test(text)) return false;
     if (/^on$|^enabled$|^yes$|^true$/.test(text)) return true;
     return undefined;
   }
+  const selected = pressed ?? await locator.getAttribute("aria-checked").catch(() => null) ?? dataState;
+  if (role !== "radio" && pressed === null && dataState === null) {
+    if (selected === "true" || selected === "false") return selected === "true";
+  }
+  if (/^off$|^disabled$|^no$|^false$/.test(text)) return selected === "true" || selected === "checked" || selected === "selected" || selected === "on" ? false : undefined;
+  if (/^on$|^enabled$|^yes$|^true$/.test(text)) return selected === "true" || selected === "checked" || selected === "selected" || selected === "on" ? true : undefined;
   const isChecked = (locator as Locator & { isChecked?: () => Promise<boolean> }).isChecked;
   const checked = typeof isChecked === "function" ? await isChecked.call(locator).catch(() => undefined) : undefined;
   if (checked !== undefined) return checked;
-  const ariaChecked = await locator.getAttribute("aria-checked").catch(() => null);
-  if (ariaChecked === "true" || ariaChecked === "false") return ariaChecked === "true";
-  const pressed = await locator.getAttribute("aria-pressed").catch(() => null);
-  if (pressed === "true" || pressed === "false") return pressed === "true";
-  const dataState = await locator.getAttribute("data-state").catch(() => null);
-  if (dataState === "on" || dataState === "true" || dataState === "checked" || dataState === "selected") return true;
-  if (dataState === "off" || dataState === "false" || dataState === "unchecked" || dataState === "unselected") return false;
   return undefined;
 }
 
@@ -132,7 +137,18 @@ async function textControl(page: Page, key: "model" | "duration"): Promise<Locat
       ?? await byLabel.getAttribute("aria-checked").catch(() => null)
       ?? await byLabel.getAttribute("data-state").catch(() => null);
     if (["true", "checked", "selected", "on"].includes(state ?? "")) return byLabel;
+    const row = rowLocator(page, LABELS.duration, "text");
+    const buttons = row.locator("button");
+    const count = await buttons.count().catch(() => 0);
+    for (let index = 0; index < count; index += 1) {
+      const candidate = buttons.nth(index);
+      const selected = await candidate.getAttribute("aria-pressed").catch(() => null)
+        ?? await candidate.getAttribute("aria-checked").catch(() => null)
+        ?? await candidate.getAttribute("data-state").catch(() => null);
+      if (["true", "checked", "selected", "on"].includes(selected ?? "") && await visible(candidate)) return candidate;
+    }
   }
+  if (key === "duration") return undefined;
   const getByRole = (page as Page & { getByRole?: Page["getByRole"] }).getByRole;
   if (typeof getByRole !== "function") return undefined;
   const pattern = key === "model" ? /^v[0-9]+(?:\.[0-9]+)?$/i : /^(?:Auto|Custom)$/i;
@@ -140,10 +156,6 @@ async function textControl(page: Page, key: "model" | "duration"): Promise<Locat
   const count = await candidates.count().catch(() => 0);
   for (let index = 0; index < count; index += 1) {
     const candidate = candidates.nth(index);
-    const state = await candidate.getAttribute("aria-pressed").catch(() => null)
-      ?? await candidate.getAttribute("aria-checked").catch(() => null)
-      ?? await candidate.getAttribute("data-state").catch(() => null);
-    if (key === "duration" && !["true", "checked", "selected", "on"].includes(state ?? "")) continue;
     if (await visible(candidate)) return candidate;
   }
   return undefined;
@@ -151,7 +163,7 @@ async function textControl(page: Page, key: "model" | "duration"): Promise<Locat
 
 async function booleanControlValue(page: Page, labels: readonly string[]): Promise<boolean | undefined> {
   const row = rowLocator(page, labels, "boolean");
-  const radios = row.locator('[role="radio"]');
+  const radios = row.locator('[role="radio"], button[aria-pressed], button[aria-checked], button[data-state]');
   const count = await radios.count().catch(() => 0);
   for (let index = 0; index < count; index += 1) {
     const value = await readBoolean(radios.nth(index));
@@ -212,7 +224,7 @@ async function setSlider(page: Page, labels: readonly string[], value: number, n
 
 async function setBoolean(page: Page, labels: readonly string[], value: boolean, name: string): Promise<void> {
   const row = rowLocator(page, labels, "boolean");
-  const radios = row.locator('[role="radio"]');
+  const radios = row.locator('[role="radio"], button[aria-pressed], button[aria-checked], button[data-state]');
   const radioCount = await radios.count().catch(() => 0);
   let locator: Locator | undefined;
   if (radioCount > 0) {
@@ -270,7 +282,9 @@ export async function readSunoControls(page: Page): Promise<SunoPreparedControls
 
 export async function prepareSunoForm(page: Page, payload: SunoCreatePayload, timeoutMs: number): Promise<SunoPreparedForm> {
   const visibleControls = await readControls(page);
-  if (Object.keys(visibleControls).length === 0) {
+  const requestedControlKeys = ["model", "duration", "weirdness", "styleInfluence", "audioInfluence", "variety", "maxMode", "personalize"];
+  const needsAdvanced = requestedControlKeys.some((key) => payload[key] !== undefined && visibleControls[key as keyof SunoPreparedControls] === undefined);
+  if (needsAdvanced) {
     const advanced = await resolveFirstVisibleLocator(page, ADVANCED_OPTIONS, timeoutMs, "Advanced Options").catch(() => undefined);
     if (advanced && (await advanced.getAttribute("aria-expanded").catch(() => null)) === "false") await advanced.click();
   }
