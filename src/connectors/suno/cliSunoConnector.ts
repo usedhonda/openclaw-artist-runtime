@@ -123,6 +123,16 @@ function readVariety(value: unknown): number | undefined {
   return typeof value === "number" && Number.isInteger(value) && value >= 0 && value <= 4 ? value : undefined;
 }
 
+function hasOwn(value: object, key: string): boolean {
+  return Object.prototype.hasOwnProperty.call(value, key);
+}
+
+function validV6Controls(payload: SunoCreatePayload): boolean {
+  if (hasOwn(payload, "variety") && readVariety(payload.variety) === undefined) return false;
+  if (hasOwn(payload, "maxMode") && typeof payload.maxMode !== "boolean") return false;
+  return true;
+}
+
 // Clip identity for run reconciliation. A Suno take URL and its downloaded audio
 // file share the same clip UUID: `https://suno.com/song/<uuid>` <-> `<uuid>.mp3`.
 function sunoUrlSlug(url: string): string | undefined {
@@ -276,6 +286,12 @@ export class CliSunoConnector implements SunoConnector {
     const entry = this.entryPath();
     if (!entry) {
       return { accepted: false, runId, reason: "suno_cli_not_configured", urls: [], dryRun: false };
+    }
+
+    // Reject malformed explicit controls before the child process can observe them.
+    // Omitted controls remain optional and continue to use the CLI defaults.
+    if (!validV6Controls(input.payload)) {
+      return { accepted: false, runId, reason: "suno_cli_usage", urls: [], dryRun: false };
     }
 
     // Captcha is now an optional escape-hatch: on a trusted session suno-cli

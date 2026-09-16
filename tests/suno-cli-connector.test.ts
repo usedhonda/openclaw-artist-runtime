@@ -138,6 +138,20 @@ describe("CliSunoConnector.create", () => {
     ]));
   });
 
+  it.each([
+    [{ variety: 5 }, "invalid Variety"],
+    [{ variety: 1.5 }, "fractional Variety"],
+    [{ maxMode: "true" }, "non-boolean Max Mode"]
+  ])("rejects %s before invoking the CLI", async (controls) => {
+    const runner = vi.fn(async () => ({ stdout: "", stderr: "", exitCode: 0 }));
+    const connector = new CliSunoConnector(".", { env: baseEnv(), runner });
+
+    const result = await connector.create(request({ payload: { ...request().payload, ...controls } }));
+
+    expect(result).toMatchObject({ accepted: false, reason: "suno_cli_usage", urls: [] });
+    expect(runner).not.toHaveBeenCalled();
+  });
+
   it("passes --instrumental instead of --lyrics when payload is instrumental", async () => {
     const runner = vi.fn(async () => ({
       stdout: JSON.stringify({ clips: [{ clipId: "x", songUrl: "https://suno.com/song/x" }] }),
