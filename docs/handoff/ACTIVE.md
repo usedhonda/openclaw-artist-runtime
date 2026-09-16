@@ -1,5 +1,28 @@
 # Handoff: Producer-musician creation loop
 
+## Resolved: bilingual pronunciation, V6 prompt guidance, and Telegram proof (2026-09-16)
+
+English spans in Japanese-led lyrics now remain in an English pronunciation
+domain: numeric English phrases are written as English words (`72 hours` becomes
+`seventy-two hours`), and drafting guidance keeps language switches at clean
+phrase or section boundaries. The vendored suno-kit is already at upstream main
+`afb421d569bf08e28c6c0a4d2030f093d1ef9fab` (0.4.0); no vendor replacement was
+needed. V6 Style guidance now prioritizes explicit attribute relationships and
+removes the undocumented 760-900 character padding target.
+
+The live V6 song `Small Bite Alibi` (`spawn_0ebe69`) completed with two imported
+Suno URLs and selected take `1bdefc68-ff68-43a7-981e-f27edc266e65`. Its bound
+source is a Yomiuri report about the Fukuoka assembly Paris dinner. Telegram
+completion message `1935` exposed a remaining formatter defect: the Japanese
+publisher became `@unknown` and raw prompt language dominated the explanation.
+Commit `7df53d5` preserves publisher names and turns the bound background, opening,
+hook, section movement, turning point, and sound design into explanatory prose.
+It is deployed; the gateway restarted cleanly with no human-assist wait. The
+corrected completion was re-sent as Telegram message `1936` and visually checked
+in the native Telegram client: `読売新聞`, its article URL, detailed song background,
+actual hook, full section movement, turning point, and production design are all
+present, with no ARTIST.md/SOUL.md boilerplate.
+
 ## Resolved incident: Suno browser disappeared after generation (2026-09-16)
 
 The producer observed the GrokBot Suno window disappear after the accepted
