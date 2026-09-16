@@ -29,6 +29,10 @@ function fixture() {
       inputValue: async () => state.value ?? "",
       textContent: async () => state.value ?? "",
       fill: async (value: string) => { state.value = value; },
+      press: async (key: string) => {
+        if (key === "Home") state.value = "0";
+        if (key === "ArrowRight") state.value = String(Number(state.value ?? "0") + 1);
+      },
       click: async () => {
         clicks.push(selector);
         state.clicks = (state.clicks ?? 0) + 1;
@@ -76,6 +80,12 @@ describe("prepareSunoForm", () => {
     const broken = fixture();
     delete broken.states['input[placeholder="Exclude styles"]'];
     await expect(prepareSunoForm(broken.page, { excludeStyles: "avoid" }, 20)).rejects.toThrow("suno_create_dom_missing");
+  });
+
+  it("does not infer boolean Off from an unselected button's text", async () => {
+    const unknown = fixture();
+    delete unknown.controls["Max Mode"].attrs;
+    await expect(prepareSunoForm(unknown.page, { maxMode: false }, 20)).rejects.toThrow("suno_prepare_readback_unknown: maxMode");
   });
 });
 

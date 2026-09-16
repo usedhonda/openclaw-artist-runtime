@@ -23,8 +23,7 @@ export interface SunoPreparedForm {
 
 const ADVANCED_OPTIONS = [
   'button:has-text("Advanced Options")',
-  'button[aria-label*="Advanced Options" i]',
-  'button:has-text("Advanced")'
+  'button[aria-label*="Advanced Options" i]'
 ] as const;
 
 const LABELS = {
@@ -54,12 +53,17 @@ function controlValue(payload: SunoCreatePayload, key: string): unknown {
   return payload[key];
 }
 
-function rowLocator(page: Page, labels: readonly string[]): Locator {
+type ControlKind = "text" | "slider" | "boolean";
+
+function rowLocator(page: Page, labels: readonly string[], kind: ControlKind): Locator {
   const label = labels.map((value) => `normalize-space(.)=${JSON.stringify(value)}`).join(" or ");
-  // The nearest ancestor containing an actual form control prevents a similarly named
-  // recommendation/card elsewhere on the page from becoming the target.
+  const target = kind === "slider"
+    ? './/*[@role="slider" or self::input[@type="range"]]'
+    : kind === "boolean"
+      ? './/*[@role="switch" or @role="radio" or @aria-pressed or @aria-checked or @data-state or self::input[@type="checkbox"]]'
+      : './/input or .//select or .//button';
   return page.locator(
-    `xpath=(//*[self::label or self::span or self::div][${label}]/ancestor::*[.//input or .//select or .//button][1])`
+    `xpath=(//*[self::label or self::span or self::div][${label}]/ancestor::*[${target}][1])`
   ).first();
 }
 
@@ -67,9 +71,14 @@ async function visible(locator: Locator): Promise<boolean> {
   return locator.isVisible().catch(() => false);
 }
 
-async function firstControl(page: Page, labels: readonly string[], kind: "input" | "button" | "select"): Promise<Locator | undefined> {
-  const row = rowLocator(page, labels);
-  const candidates = [row.locator(kind).first(), row.locator(`[role="${kind === "input" ? "textbox" : kind}"]`).first()];
+async function firstControl(page: Page, labels: readonly string[], kind: ControlKind): Promise<Locator | undefined> {
+  const row = rowLocator(page, labels, kind);
+  const selectors = kind === "slider"
+    ? ['[role="slider"]', 'input[type="range"]']
+    : kind === "boolean"
+      ? ['[role="switch"]', '[role="radio"]', 'input[type="checkbox"]', 'button[aria-pressed]', '[data-state]']
+      : ['input', 'select', 'button'];
+  const candidates = selectors.map((selector) => row.locator(selector).first());
   for (const candidate of candidates) if (await visible(candidate)) return candidate;
   return undefined;
 }
@@ -77,7 +86,9 @@ async function firstControl(page: Page, labels: readonly string[], kind: "input"
 async function readLocator(locator: Locator): Promise<string> {
   const value = await locator.inputValue().catch(() => undefined);
   if (typeof value === "string") return value;
-  return (await locator.textContent().catch(() => ""))?.trim() ?? "";
+  const innerText = await locator.innerText().catch(() => undefined);
+  if (typeof innerText === "string") return innerText;
+  return (await locator.textContent().catch(() => "")) ?? "";
 }
 
 async function readBoolean(locator: Locator): Promise<boolean | undefined> {
@@ -88,11 +99,9 @@ async function readBoolean(locator: Locator): Promise<boolean | undefined> {
   if (ariaChecked === "true" || ariaChecked === "false") return ariaChecked === "true";
   const pressed = await locator.getAttribute("aria-pressed").catch(() => null);
   if (pressed === "true" || pressed === "false") return pressed === "true";
-  const value = await locator.getAttribute("value").catch(() => null);
-  if (value === "true" || value === "false") return value === "true";
-  const text = ((await locator.textContent().catch(() => "")) ?? "").trim().toLowerCase();
-  if (/^(on|enabled|yes|true)$/.test(text)) return true;
-  if (/^(off|disabled|no|false)$/.test(text)) return false;
+  const dataState = await locator.getAttribute("data-state").catch(() => null);
+  if (dataState === "on" || dataState === "true" || dataState === "checked" || dataState === "selected") return true;
+  if (dataState === "off" || dataState === "false" || dataState === "unchecked" || dataState === "unselected") return false;
   return undefined;
 }
 
@@ -101,10 +110,14 @@ async function readNumber(locator: Locator): Promise<number | undefined> {
   return Number.isFinite(value) ? value : undefined;
 }
 
-async function requiredControl(page: Page, labels: readonly string[], name: string): Promise<Locator> {
-  const locator = await firstControl(page, labels, "input") ?? await firstControl(page, labels, "select") ?? await firstControl(page, labels, "button");
-  if (!locator) throw new Error(`suno_prepare_control_missing: ${name}`);
-  return locator;
+async function textControl(page: Page, key: "model" | "duration"): Promise<Locator | undefined> {
+  const byLabel = await firstControl(page, LABELS[key], "text");
+  if (byLabel) return byLabel;
+  const getByRole = (page as Page & { getByRole?: Page["getByRole"] }).getByRole;
+  if (typeof getByRole !== "function") return undefined;
+  const pattern = key === "model" ? /^v[0-9]+(?:\.[0-9]+)?$/i : /^(?:Auto|Custom)$/i;
+  const candidate = getByRole.call(page, "button", { name: pattern }).first();
+  return (await visible(candidate)) ? candidate : undefined;
 }
 
 async function fillAndVerify(locator: Locator, value: string, name: string): Promise<void> {
@@ -120,12 +133,23 @@ async function fillAndVerify(locator: Locator, value: string, name: string): Pro
 }
 
 async function setSlider(page: Page, labels: readonly string[], value: number, name: string): Promise<void> {
-  const locator = await requiredControl(page, labels, name);
-  await fillAndVerify(locator, String(value), name);
+  const locator = await firstControl(page, labels, "slider");
+  if (!locator) throw new Error(`suno_prepare_control_missing: ${name}`);
+  const min = Number((await locator.getAttribute("min").catch(() => null)) ?? "0");
+  const max = Number((await locator.getAttribute("max").catch(() => null)) ?? (name === "variety" ? "4" : "100"));
+  const step = Number((await locator.getAttribute("step").catch(() => null)) ?? "1");
+  if (![min, max, step].every(Number.isFinite) || step <= 0 || value < min || value > max || !Number.isInteger((value - min) / step)) {
+    throw new Error(`suno_prepare_invalid_control: ${name}`);
+  }
+  await locator.press("Home");
+  for (let index = 0; index < (value - min) / step; index += 1) await locator.press("ArrowRight");
+  const actual = Number(await locator.getAttribute("aria-valuenow").catch(() => null) ?? await locator.inputValue().catch(() => ""));
+  if (actual !== value) throw new Error(`suno_prepare_readback_mismatch: ${name}`);
 }
 
 async function setBoolean(page: Page, labels: readonly string[], value: boolean, name: string): Promise<void> {
-  const locator = await requiredControl(page, labels, name);
+  const locator = await firstControl(page, labels, "boolean");
+  if (!locator) throw new Error(`suno_prepare_control_missing: ${name}`);
   const current = await readBoolean(locator);
   if (current === undefined) throw new Error(`suno_prepare_readback_unknown: ${name}`);
   if (current !== value) await locator.click();
@@ -137,19 +161,21 @@ async function readControls(page: Page): Promise<SunoPreparedControls> {
   const controls: SunoPreparedControls = {};
   const fields = [
     ["model", LABELS.model, "text"], ["duration", LABELS.duration, "text"],
-    ["weirdness", LABELS.weirdness, "number"], ["styleInfluence", LABELS.styleInfluence, "number"],
-    ["audioInfluence", LABELS.audioInfluence, "number"], ["variety", LABELS.variety, "number"],
+    ["weirdness", LABELS.weirdness, "slider"], ["styleInfluence", LABELS.styleInfluence, "slider"],
+    ["audioInfluence", LABELS.audioInfluence, "slider"], ["variety", LABELS.variety, "slider"],
     ["maxMode", LABELS.maxMode, "boolean"], ["personalize", LABELS.personalize, "boolean"]
   ] as const;
   for (const [key, labels, type] of fields) {
-    const locator = await firstControl(page, labels, type === "boolean" ? "button" : "input")
-      ?? (type === "boolean" ? await firstControl(page, labels, "input") : undefined)
-      ?? await firstControl(page, labels, "select");
+    const locator = type === "boolean"
+      ? await firstControl(page, labels, "boolean")
+      : type === "slider"
+        ? await firstControl(page, labels, "slider")
+        : await textControl(page, key as "model" | "duration");
     if (!locator) continue;
     if (type === "boolean") {
       const value = await readBoolean(locator);
       if (value !== undefined) controls[key] = value;
-    } else if (type === "number") {
+    } else if (type === "slider") {
       const value = await readNumber(locator);
       if (value !== undefined) controls[key] = value;
     } else {
@@ -210,8 +236,20 @@ export async function prepareSunoForm(page: Page, payload: SunoCreatePayload, ti
     const value = explicit(key);
     if (value === undefined) continue;
     if (typeof value !== "string" || !value.trim()) throw new Error(`suno_prepare_invalid_control: ${key}`);
-    await fillAndVerify(await requiredControl(page, LABELS[key], key), value, key);
+    const locator = await textControl(page, key);
+    if (!locator) throw new Error(`suno_prepare_control_missing: ${key}`);
+    await fillAndVerify(locator, value, key);
   }
+  // Re-read all supplied fields after controls: Suno can remount the composer when
+  // model/advanced settings change and silently reset an earlier field.
+  const finalLyrics = lyrics === undefined ? undefined : await readLocator(await ensureSunoLyricsMode(page, timeoutMs));
+  const finalStyle = style === undefined ? undefined : await readLocator(await ensureSunoStyleMode(page, timeoutMs));
+  const finalTitle = title === undefined ? undefined : await readLocator(await resolveFirstVisibleLocator(page, ['input[placeholder="Song Title (Optional)"]:visible', 'input[placeholder*="Song Title"]:visible'], timeoutMs, "title"));
+  const finalExclude = !hasExclude ? undefined : await readLocator(await resolveFirstVisibleLocator(page, ['input[placeholder="Exclude styles"]', 'input[placeholder*="Exclude"]', 'textarea[placeholder*="Exclude" i]'], timeoutMs, "exclude styles"));
+  if (lyrics !== undefined && finalLyrics !== lyrics) throw new Error("suno_prepare_readback_mismatch: lyrics");
+  if (style !== undefined && finalStyle !== style) throw new Error("suno_prepare_readback_mismatch: style");
+  if (title !== undefined && finalTitle !== title) throw new Error("suno_prepare_readback_mismatch: title");
+  if (hasExclude && finalExclude !== excludeStyles) throw new Error("suno_prepare_readback_mismatch: exclude styles");
   const after = await readControls(page);
-  return { title, lyrics, style, excludeStyles, controls: after };
+  return { title: finalTitle, lyrics: finalLyrics, style: finalStyle, excludeStyles: finalExclude, controls: after };
 }
