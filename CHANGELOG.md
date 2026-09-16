@@ -3,8 +3,10 @@
 ## Unreleased
 
 - feat: the manual-Create Telegram card now describes the song before the
-  producer presses Create: the observation it came from, the artist's angle,
-  the hook line, and the style/BPM line, read from the current prompt pack.
+  producer presses Create: the observed news quote with its author and source
+  URL, the artist's angle, the lyric concept, the hook line with why it was
+  chosen, the listen-for points, and the musical intent. Sources are the song's
+  own observation summary and the current prompt pack's creation note.
 
 - fix: expand the Suno "More Options" panel before setting Variety, Max Mode,
   Personalize, or the sliders. While it is collapsed the controls accept keys

@@ -125,10 +125,28 @@ describe("TelegramNotifier", () => {
       version: 1,
       source: { author: "news.example", summary: "落札価格は約26万円だった。" },
       artistReaction: "金額だけで出来を分かった気になる目利き面が信用できない。",
-      lyricConcept: "concept",
-      lyricHighlights: [{ quote: "Your stopwatch isn't a witness.", explanation: "hook" }],
-      listenFor: []
+      lyricConcept: "「感」と「根拠」を一行ずつぶつけた。",
+      lyricHighlights: [{ quote: "Your stopwatch isn't a witness.", explanation: "主張を一度で残すフックにした。" }],
+      musicIntent: "96 BPM、乾いた質感で言葉を前に出した。",
+      listenFor: ["フックがどう残るか。"]
     }));
+    const observation = {
+      author: "news.example",
+      url: "https://news.example/articles/1",
+      quote: "落札価格は約26万円だった。",
+      motivation: "金額だけで出来を分かった気になる目利き面が信用できない。"
+    };
+    writeFileSync(join(root, "songs", "song-desc", "song.md"), [
+      "# Rubber Stamp Ears",
+      "",
+      "<!-- artist-runtime:song-state:start -->",
+      "- Song ID: song-desc",
+      "- Status: suno_prompt_pack",
+      "- Lyrics Version: 2",
+      `- Observation Summary: ${JSON.stringify(observation)}`,
+      "<!-- artist-runtime:song-state:end -->",
+      ""
+    ].join("\n"));
 
     const text = await formatRuntimeEvent({
       type: "suno_human_assist_requested",
@@ -139,10 +157,15 @@ describe("TelegramNotifier", () => {
       timestamp: 1
     }, { workspaceRoot: root });
 
-    expect(text).toContain("見たもの: 落札価格は約26万円だった。");
+    expect(text).toContain("見たもの: 落札価格は約26万円だった。（news.example）");
+    expect(text).toContain("🔗 https://news.example/articles/1");
     expect(text).toContain("斬り口: 金額だけで出来を分かった気になる目利き面が信用できない。");
+    expect(text).toContain("狙い: 「感」と「根拠」を一行ずつぶつけた。");
     expect(text).toContain("フック: Your stopwatch isn't a witness.");
-    expect(text).toContain("音: High-velocity progressive rap, 96 BPM");
+    expect(text).toContain("主張を一度で残すフックにした。");
+    expect(text).toContain("聴いてほしい点:");
+    expect(text).toContain("・フックがどう残るか。");
+    expect(text).toContain("音: 96 BPM、乾いた質感で言葉を前に出した。");
   });
 
   it("explains manual Suno parameter editing without claiming captcha", async () => {

@@ -1712,12 +1712,22 @@ async function describeSongForManualCreate(workspaceRoot: string | undefined, so
     readFile(join(dir, "lyrics-suno.md"), "utf8").catch(() => "")
   ]);
   const note = parseSongCreationNote(rawNote, lyrics);
+  const observation = (await readSongState(workspaceRoot, songId).catch(() => undefined))?.observationSummary;
   const styleLine = style.split("\n").map((line) => line.trim()).find(Boolean);
+  const highlight = note?.lyricHighlights[0];
+  const sourceText = observation?.quote ?? note?.source.summary;
+  const author = observation?.author ?? note?.source.author;
+  const url = observation?.url ?? note?.source.url;
+  const listenFor = (note?.listenFor ?? []).slice(0, 2).map((item) => `・${truncatePlain(item, 160)}`);
   const lines = [
-    note?.source.summary ? `見たもの: ${truncatePlain(note.source.summary, 180)}` : undefined,
-    note?.artistReaction ? `斬り口: ${truncatePlain(note.artistReaction, 180)}` : undefined,
-    note?.lyricHighlights[0]?.quote ? `フック: ${truncatePlain(note.lyricHighlights[0].quote, 140)}` : undefined,
-    styleLine ? `音: ${truncatePlain(styleLine, 140)}` : undefined
+    sourceText ? `見たもの: ${truncatePlain(sourceText, 200)}${author ? `（${author}）` : ""}` : undefined,
+    url && !secretLikePattern.test(url) ? `🔗 ${url}` : undefined,
+    observation?.motivation ?? note?.artistReaction ? `斬り口: ${truncatePlain(observation?.motivation ?? note?.artistReaction ?? "", 220)}` : undefined,
+    note?.lyricConcept ? `狙い: ${truncatePlain(note.lyricConcept, 220)}` : undefined,
+    highlight ? `フック: ${truncatePlain(highlight.quote, 160)}` : undefined,
+    highlight?.explanation ? `  ${truncatePlain(highlight.explanation, 160)}` : undefined,
+    listenFor.length > 0 ? `聴いてほしい点:\n${listenFor.join("\n")}` : undefined,
+    note?.musicIntent ? `音: ${truncatePlain(note.musicIntent, 200)}` : styleLine ? `音: ${truncatePlain(styleLine, 200)}` : undefined
   ].filter((line): line is string => Boolean(line));
   return lines.length > 0 ? [TELEGRAM_SECTION_DIVIDER, ...lines, TELEGRAM_SECTION_DIVIDER] : [];
 }
