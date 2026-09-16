@@ -10,7 +10,10 @@ The persistent browser now remains alive after holder release, and an accepted
 generation preserves and foregrounds its exact result tab. Failed plugin-created
 input tabs retain their existing cleanup behavior. Focused tests, typecheck, lint,
 and build pass. The full suite remains at 2,103/2,104 because the pre-existing
-tempo-distribution test still misses the `slow` band.
+tempo-distribution test still misses the `slow` band. Commit `9bc57d3` is deployed
+on GrokBot. After a fresh gateway child loaded it, `/api/suno/connect` opened and
+then released the final browser hold; six seconds later the Chrome process and
+visible authenticated Suno Create/results window were both still present.
 
 ## Live checkpoint: cadence diagnosis and new song delivery (2026-09-16)
 
