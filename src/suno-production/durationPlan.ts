@@ -25,7 +25,9 @@ export const FAST_TEMPO_BANDS: readonly TempoBand[] = ["up", "dopagaki", "super"
 // high-velocity identity on the fast bands; the slow half keeps that restraint.
 export function performanceDirectionForBand(band: TempoBand): string {
   return FAST_TEMPO_BANDS.includes(band)
-    ? "Drive the pocket: articulate fast rap, displaced accents, double-time only in 2-4 bar bursts."
+    // Speed reads as cool through dry attack and tight spacing, not through playing
+    // ability: a bass that sings or a drummer that shows off turns this into fusion.
+    ? "Drive the pocket: dry attack, percussive bass under the rap, no instrumental display."
     : "Keep performance restrained, intelligible, and image-led; no double-time vocal.";
 }
 

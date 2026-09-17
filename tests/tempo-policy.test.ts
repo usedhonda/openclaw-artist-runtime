@@ -59,7 +59,7 @@ describe("fast-band arrangement policy", () => {
     const { performanceDirectionForBand } = await import("../src/suno-production/durationPlan");
 
     expect(performanceDirectionForBand("up")).toContain("Drive the pocket");
-    expect(performanceDirectionForBand("dopagaki")).toContain("2-4 bar bursts");
+    expect(performanceDirectionForBand("dopagaki")).toContain("no instrumental display");
     expect(performanceDirectionForBand("mid")).toContain("restrained");
     expect(performanceDirectionForBand("slow")).toContain("no double-time vocal");
   });
@@ -76,12 +76,16 @@ describe("fast-band arrangement policy", () => {
     const { buildExclude } = await import("../src/suno-production/buildExclude");
 
     const fast = buildExclude({ genre: "progressive rap", fastTempo: true }).items;
-    expect(fast).toContain("brass section");
-    expect(fast).toContain("horn stabs");
-    expect(fast).toContain("soft ballad");
+    // Horn punctuation is kept; the lead/pad use and the fusion drift are excluded.
+    expect(fast).toContain("solo sax lead");
+    expect(fast).toContain("horn section pad");
+    expect(fast).not.toContain("horn stabs");
+    expect(fast).toContain("slap bass");
+    expect(fast).toContain("smooth jazz fusion");
 
     const slow = buildExclude({ genre: "progressive rap", fastTempo: false }).items;
-    expect(slow).toContain("brass section");
-    expect(slow).not.toContain("soft ballad");
+    expect(slow).toContain("solo sax lead");
+    expect(slow).not.toContain("slap bass");
+    expect(slow).not.toContain("smooth jazz fusion");
   });
 });

@@ -2,6 +2,14 @@
 
 ## Unreleased
 
+- feat: steer the fast arrangement by what the producer actually kept. Across 123
+  judged songs, slap bass appears in 21% of rejected songs and 3.5% of kept ones,
+  together with sustained electric piano and a polished "punchy/warm" mix, while
+  kept songs read raw with vinyl/tape texture. Fast songs now exclude slap bass,
+  smooth jazz fusion and a glossy sheen, and keep the bass percussive. Horn
+  punctuation at section turns is kept, since it travels with the kept fast songs;
+  only the horn pad and the solo sax lead are excluded.
+
 - fix: render the lyric section budget from the song's own duration plan. The
   prompt carried a fixed mid-band table, so a fast song was told to write 16-bar
   verses while the same prompt's plan section asked for 22. An operator-supplied

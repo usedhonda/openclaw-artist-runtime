@@ -14,8 +14,22 @@ export interface BuildExcludeInput {
 // Producer ruling 2026-09-17: brass had crept into the arrangement, and the slow
 // descriptors below are the ones the style catalog names as the reason a fast
 // recipe comes back mellow. These lead the list so the 8-item cap keeps them.
-const HORN_REDUCTION_EXCLUDES = ["brass section", "horn stabs"] as const;
-const FAST_TEMPO_EXCLUDES = ["soft ballad", "slow fade", "loose timing"] as const;
+// Measured over 123 judged songs: clipped horn stabs at section turns travel with
+// the songs the producer kept (94.7% of fast kept songs mention horns), while a
+// sustained horn pad or a solo sax lead is what makes the arrangement feel bloated.
+// Exclude the lead/pad use, not the punctuation.
+const HORN_REDUCTION_EXCLUDES = ["solo sax lead", "horn section pad"] as const;
+// Producer ruling 2026-09-17: a fast song drifted into jazz-fusion once the bass
+// stepped forward. The genre line is display: a singing bass, a virtuoso fill and a
+// polished mix read as fusion even when every other tag is hip-hop.
+// Slap bass appears in 21% of rejected songs and 3.5% of kept ones, paired with
+// sustained electric piano and a "punchy/warm" polish: that is the fusion drift.
+const FAST_TEMPO_EXCLUDES = [
+  "slap bass",
+  "smooth jazz fusion",
+  "glossy pop sheen",
+  "soft ballad"
+] as const;
 
 export interface BuildExcludeResult {
   items: string[];

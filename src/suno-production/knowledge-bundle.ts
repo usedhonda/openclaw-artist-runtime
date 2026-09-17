@@ -2858,16 +2858,16 @@ Piano solo, [BPM] BPM, [Key], contemplative, grand piano, concert hall reverb, d
 
 ## 高速多展開プログレッシブ・ラップ Recipe
 
-**high-velocity progressive rap** is a durable artist identity: fast technical flow rides live breakbeat jazz drums, thick electric bass with slap accents, Rhodes, muted electric guitar, and a dry intelligible mid-range male vocal. Horns are an occasional accent for one turn, never the default texture. The progressive motion is structural, not a novelty genre: sections turn quickly, rhythmic cells switch at boundaries, metric displacement creates pressure, motifs recur, and the final hook returns with changed meaning. Keep the nu-jazz / 2000s NY underground / contemporary Brooklyn body and the Shibuya civic-satire lens intact.
+**high-velocity progressive rap** is a durable artist identity: fast technical flow rides dry breakbeat drums, a thick electric bass held forward as the low-end spine, Rhodes stabs, muted electric guitar, and a dry intelligible mid-range male vocal. The bass is percussive and never a lead: no slap part, no solo. Horns stay as clipped stabs at section turns; a sustained horn pad or a solo sax lead is what makes the arrangement sag. Keep the room raw with vinyl/tape texture and refuse a glossy sheen. This is hip-hop with a jazz body, not jazz-fusion: virtuoso display, smooth polish and a singing bass belong to a different genre. The progressive motion is structural, not a novelty genre: sections turn quickly, rhythmic cells switch at boundaries, metric displacement creates pressure, motifs recur, and the final hook returns with changed meaning. Keep the nu-jazz / 2000s NY underground / contemporary Brooklyn body and the Shibuya civic-satire lens intact.
 
 **設計原則（最重要）**: 密度は Style タグ詰めでなく、セクション設計と演奏の譜割りで出す。高速ラップは軸だが、全曲をダブルタイムにはしない。通常モードでも rapid section development、metric displacement、rhythmic switch-ups、motif callbacks を保ち、overt mode だけ 2-4 bar の double-density burst を許可する。
 
 ### Style core（≤120字・どちらか）
 \`\`\`text
-high-velocity progressive rap, 148 BPM, F minor, dry male rap, live jazz breakbeats, slap electric bass, Rhodes, muted guitar
+high-velocity progressive rap, 148 BPM, F minor, dry male rap, dry breakbeats, thick electric bass, Rhodes stabs, clipped horn punches at turns
 \`\`\`
 \`\`\`text
-nu-jazz progressive rap, 142 BPM, D minor, technical fast flow, live drums, fast-attack electric bass, Rhodes, guitar comping, dry mid-range vocal
+nu-jazz progressive rap, 142 BPM, D minor, technical fast flow, tight live drums, thick electric bass, Rhodes stabs, muted guitar, dry mid-range vocal
 \`\`\`
 - BPM: 138-158。曲尺は DurationPlan を正本にし、テンポだけで構造を決めない。
 - Key: minor を基本にし、ベースの立ち上がりと Rhodes / ギターの陰影で夜間の都市圧を作る。転調は物語の視点が変わる境界だけに置く。管は必要な一箇所だけ。
@@ -2892,8 +2892,9 @@ At musical section boundaries, move headline -> street detail -> business/system
 
 ### Exclude（2-5項目）
 \`\`\`text
-generic digital gloss, random edit effects, bombastic rock virtuosity, festival-drop dynamics, full-song double-time
+slap bass, smooth jazz fusion, solo sax lead, glossy pop sheen, festival-drop dynamics
 \`\`\`
+採用実績(判定済み123曲)からの実測: slap bass は不採用曲の 21%、採用曲の 3.5%。electric piano の持続和音と "punchy / warm" の磨いたミックス語も不採用側に偏る。逆に採用曲は raw と vinyl/tape が多く、ホーンは「section turn の刺し」として現れる。フュージョン化の兆候はベースが歌い出すこと、Rhodes が和音を伸ばして漂うこと、ミックスが艶を持つこと。速さの格好良さは音符の多さではなく、乾いた粒・詰めた間・短い残響で出す。
 
 ### 歌詞・フックの作り
 - フック: Chorus 冒頭 3-6語で命題を置き、Verse のモチーフを Final Hook で意味変換する → lyric_craft §3

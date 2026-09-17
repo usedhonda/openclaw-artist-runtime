@@ -21,8 +21,8 @@ describe("Suno V5.5 exclude builder", () => {
     // Producer ruling 2026-09-17: brass-reduction excludes ("brass section",
     // "horn stabs") always lead the list now, which pushes "autotune" past the
     // 8-item cap in this fixture. Assert the always-on items instead.
-    expect(result.text).toContain("brass section");
-    expect(result.text).toContain("horn stabs");
+    expect(result.text).toContain("solo sax lead");
+    expect(result.text).toContain("horn section pad");
   });
 
   it("removes copyright source names from exclude text", () => {
