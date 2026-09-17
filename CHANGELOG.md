@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- fix: give the Suno create workspace 60 seconds to hydrate instead of 25. A
+  freshly launched browser was still showing the skeleton page when the old
+  deadline expired, which failed the run and burned a retry.
+
 - fix: the local launcher hardcoded `OPENCLAW_SONG_SPAWN_ENABLED=on`, so an
   operator overlay could not turn the song-idea proposer off and the autopilot
   kept waiting for a proposal instead of starting the song itself. The launcher

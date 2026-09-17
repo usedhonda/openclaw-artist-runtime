@@ -56,7 +56,10 @@ export function assertBrowserAlive(page: Pick<Page, "isClosed"> | undefined): vo
 
 const CAPTCHA_MARKERS = 'iframe[src*="hcaptcha"], iframe[title*="hCaptcha"], iframe[src*="turnstile"], [id*="hcaptcha"]';
 
-const FORM_READY_TIMEOUT_MS = 25_000;
+// A freshly launched browser has to finish the Clerk handshake and hydrate the
+// create workspace before any field exists. 25s was short enough that a cold
+// launch failed on a skeleton page and burned a retry.
+const FORM_READY_TIMEOUT_MS = 60_000;
 const CLICK_TIMEOUT_MS = 25_000;
 const POST_CLICK_SETTLE_MS = 6_000;
 const POLL_INTERVAL_MS = 3_000;
