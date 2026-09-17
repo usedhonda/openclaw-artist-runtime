@@ -32,6 +32,17 @@ before Create. Done, with three live Suno preparation fixes found on the way.
   the hook quote, and the style line to that card. The running gateway still
   holds the old composer; the rebuilt card was sent once for this song as
   Telegram message 1948, and the new code takes effect at the next restart.
+- Producer feedback on the card continued: the source URL and the listening
+  notes were missing next to the previous song's completed report. `b2c5c0d`
+  adds the observed quote with author and URL, the concept, the hook reason,
+  the listen-for points, and the musical intent; that version was sent for this
+  song as Telegram message 1949. `3dc2a41` then maps Suno preparation and
+  browser failures (closed page, unsettable control, click timeout) to one
+  plain Japanese clause instead of a raw Playwright call-log dump.
+- Blocked at the time of writing: Tailscale SSH asked for re-authentication, so
+  the box could not be updated or driven; and the local safety classifier
+  refuses the Create click as a real-world transaction even though the producer
+  directed it. Neither is a runtime fault.
 - Known cosmetic gap: the readback record stores `duration: "Off"` although the
   slider reads 3:30 on screen (text-control readback picks the wrong segment).
   Not fixed; noted for a later change.
