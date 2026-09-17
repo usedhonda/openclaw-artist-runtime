@@ -184,19 +184,19 @@ Piano solo, [BPM] BPM, [Key], contemplative, grand piano, concert hall reverb, d
 
 ## 高速多展開プログレッシブ・ラップ Recipe
 
-**high-velocity progressive rap** is a durable artist identity: fast technical flow rides live breakbeat jazz drums, thick electric bass, Rhodes, tense horn punctuation, and a dry intelligible mid-range male vocal. The progressive motion is structural, not a novelty genre: sections turn quickly, rhythmic cells switch at boundaries, metric displacement creates pressure, motifs recur, and the final hook returns with changed meaning. Keep the nu-jazz / 2000s NY underground / contemporary Brooklyn body and the Shibuya civic-satire lens intact.
+**high-velocity progressive rap** is a durable artist identity: fast technical flow rides live breakbeat jazz drums, thick electric bass with slap accents, Rhodes, muted electric guitar, and a dry intelligible mid-range male vocal. Horns are an occasional accent for one turn, never the default texture. The progressive motion is structural, not a novelty genre: sections turn quickly, rhythmic cells switch at boundaries, metric displacement creates pressure, motifs recur, and the final hook returns with changed meaning. Keep the nu-jazz / 2000s NY underground / contemporary Brooklyn body and the Shibuya civic-satire lens intact.
 
 **設計原則（最重要）**: 密度は Style タグ詰めでなく、セクション設計と演奏の譜割りで出す。高速ラップは軸だが、全曲をダブルタイムにはしない。通常モードでも rapid section development、metric displacement、rhythmic switch-ups、motif callbacks を保ち、overt mode だけ 2-4 bar の double-density burst を許可する。
 
 ### Style core（≤120字・どちらか）
 ```text
-high-velocity progressive rap, 148 BPM, F minor, dry male rap, live jazz breakbeats, thick electric bass, Rhodes, tense horns
+high-velocity progressive rap, 148 BPM, F minor, dry male rap, live jazz breakbeats, slap electric bass, Rhodes, muted guitar
 ```
 ```text
-nu-jazz progressive rap, 142 BPM, D minor, technical fast flow, live drums, electric bass, Rhodes, dry mid-range vocal
+nu-jazz progressive rap, 142 BPM, D minor, technical fast flow, live drums, fast-attack electric bass, Rhodes, guitar comping, dry mid-range vocal
 ```
 - BPM: 138-158。曲尺は DurationPlan を正本にし、テンポだけで構造を決めない。
-- Key: minor を基本にし、ホーンの緊張と Rhodes の陰影で夜間の都市圧を作る。転調は物語の視点が変わる境界だけに置く。
+- Key: minor を基本にし、ベースの立ち上がりと Rhodes / ギターの陰影で夜間の都市圧を作る。転調は物語の視点が変わる境界だけに置く。管は必要な一箇所だけ。
 
 ### Rapid-section structure template
 ```text
@@ -205,7 +205,7 @@ nu-jazz progressive rap, 142 BPM, D minor, technical fast flow, live drums, elec
 [Pre-Hook - 2-4 bars, metric displacement, business/system language enters]
 [Hook - 4-8 bars, concise core claim, motif anchor, intelligible dry vocal]
 [Verse 2 - 12-16 bars, rhythmic cell switch, consequences and pressure]
-[Bridge - 4-8 bars, perspective turn, Rhodes/horn punctuation, density reset]
+[Bridge - 4-8 bars, perspective turn, Rhodes/guitar punctuation, density reset]
 [Final Hook - 4-8 bars, earlier motif returns with changed meaning, Shibuya punchline]
 ```
 At musical section boundaries, move headline -> street detail -> business/system language -> Shibuya punchline. Do not use unmotivated edit effects: every turn must be motivated by the lyric argument, the groove, or a returning motif.
@@ -225,7 +225,7 @@ generic digital gloss, random edit effects, bombastic rock virtuosity, festival-
 - フック: Chorus 冒頭 3-6語で命題を置き、Verse のモチーフを Final Hook で意味変換する → lyric_craft §3
 - Flow: Verse は内部韻と多音節韻、セクション境界では譜割りを変える。高速さは語の明瞭さを壊さない範囲で使う → rap_and_flow §
 - 伏線: headline の具体物を Verse 1 に置き、street detail と system language を経由し、Final Hook の Shibuya punchline で回収する → lyric_craft §1
-- 構成の変化: 変拍子、metric displacement、ブレイク、Rhodes / horn の punctuation は理由のある境界に配置する。無作為な編集や festival-drop dynamics を構成の代わりに使わない。
+- 構成の変化: 変拍子、metric displacement、ブレイク、Rhodes / ギター / ベースの punctuation は理由のある境界に配置する。無作為な編集や festival-drop dynamics を構成の代わりに使わない。odd meter とポリリズムは高速帯でこそ濃くする。
 - 声: dry mid-range male vocal を前面に置き、bilingual phrasing は意味とリズムが改善する場合だけ使う。
 
 ---

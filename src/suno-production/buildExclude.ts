@@ -7,7 +7,15 @@ export interface BuildExcludeInput {
   genre?: string;
   voices?: string[];
   copyrightSourceNameDenylist?: string[];
+  /** Fast bands carry the tempo-preserving exclusions from the style catalog. */
+  fastTempo?: boolean;
 }
+
+// Producer ruling 2026-09-17: brass had crept into the arrangement, and the slow
+// descriptors below are the ones the style catalog names as the reason a fast
+// recipe comes back mellow. These lead the list so the 8-item cap keeps them.
+const HORN_REDUCTION_EXCLUDES = ["brass section", "horn stabs"] as const;
+const FAST_TEMPO_EXCLUDES = ["soft ballad", "slow fade", "loose timing"] as const;
 
 export interface BuildExcludeResult {
   items: string[];
@@ -58,6 +66,8 @@ export function buildExclude(input: BuildExcludeInput = {}): BuildExcludeResult 
   const genre = (input.genre ?? "").toLowerCase();
   const base = [
     ...(input.artistAvoid ?? []),
+    ...HORN_REDUCTION_EXCLUDES,
+    ...(input.fastTempo ? FAST_TEMPO_EXCLUDES : []),
     ...genreClashFor(genre),
     (input.voices ?? []).length > 0 ? "celebrity voice imitation" : "source-name imitation",
     "muddy master",

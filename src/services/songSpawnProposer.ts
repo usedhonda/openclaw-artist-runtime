@@ -1,4 +1,5 @@
 import { createHash } from "node:crypto";
+import { getDurationPlan, type TempoBand } from "../suno-production/durationPlan.js";
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 import type { AiReviewProvider, ArtistIdentity, CascadeTraceSource, CommissionBrief, CommissionBriefSource, ObservationSummary, SongSpawnProposal, SongState } from "../types.js";
@@ -750,6 +751,18 @@ function parseDirective(raw: string, key: string): string | undefined {
   return line?.slice(line.indexOf(":") + 1).trim();
 }
 
+// The planned band owns the tempo. An AI-authored brief may restate the planned
+// number or say "artist decides"; any other value (including a plausible-looking
+// BPM) is replaced by the plan's own tempo rather than silently accepted.
+export function tempoWithinPlan(aiTempo: string, planTempo: string, band: TempoBand | undefined): string {
+  const text = (aiTempo ?? "").trim();
+  if (!text || /^artist decides$/i.test(text)) return planTempo;
+  const bpm = Number(text.match(/\b(\d{2,3})\b/)?.[1]);
+  if (!Number.isFinite(bpm)) return planTempo;
+  const range = getDurationPlan(band ?? "up").bpm;
+  return bpm >= range.min && bpm <= range.max ? text : planTempo;
+}
+
 function briefFromAi(raw: string, fallback: CommissionBrief, now: Date, context: PitchDensityContext): { brief: CommissionBrief; reason: string; spawn: boolean } {
   const spawnValue = parseDirective(raw, "spawn")?.toLowerCase();
   const spawn = !spawnValue || /^(yes|true|1|go|進める|作る)/i.test(spawnValue);
@@ -1025,9 +1038,10 @@ export async function proposeSpawn(root: string, options: ProposeSpawnOptions = 
   // Mood rotation is code-owned repetition control. The AI may color the scene, but
   // it does not override the selected emotional mode with a habitual default.
   parsed.brief.mood = fallback.mood;
-  if (/^artist decides$/i.test(parsed.brief.tempo.trim())) {
-    parsed.brief.tempo = fallback.tempo;
-  }
+  // Tempo is code-owned too. The model may not move the song off its planned band:
+  // an invented "94 BPM" used to travel verbatim into the pack and overrode the
+  // plan. Anything outside the planned band's range falls back to the plan.
+  parsed.brief.tempo = tempoWithinPlan(parsed.brief.tempo, fallback.tempo, fallback.creativeDecision?.tempo.band);
   if (isSimilarTheme(parsed.brief, [...recentThemes, ...queueContextAsRecentThemes(options.activeQueueContext)])) {
     return null;
   }

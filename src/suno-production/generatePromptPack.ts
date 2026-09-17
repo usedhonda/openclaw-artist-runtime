@@ -18,6 +18,8 @@ import {
 import { synthesizeStyle } from "./buildStyle.js";
 import { buildYaml as buildYamlV55 } from "./buildYaml.js";
 import {
+  FAST_TEMPO_BANDS,
+  performanceDirectionForBand,
   durationPlanCues,
   durationPlanProductionNotes,
   getDurationPlan
@@ -151,12 +153,14 @@ export function createSunoPromptPack(input: CreateSunoPromptPackInput): SunoProm
     // sites pass it as styleVariationSeed), so the variation profile is plan-seeded.
     emotionalModeSpec: input.creativeDecision?.emotionalMode.spec,
     styleNotes: input.styleNotes,
+    performanceDirection: performanceDirectionForBand(durationPlan.tempoBand),
     introStyleMove: input.creativeDecision?.intro.styleMove
   });
   const style = sanitizeAcousticBassStyle(enforceStyleCoreContract(styleResult.total), acousticBassAvoidance);
   const exclude = buildExcludeV55({
     genre,
     artistAvoid: [...acousticBassAvoidance, "generic EDM drop", "fake crowd noise"],
+    fastTempo: FAST_TEMPO_BANDS.includes(durationPlan.tempoBand),
     copyrightSourceNameDenylist: [input.songTitle]
   }).text;
   const yamlLyrics = buildYamlV55({
@@ -391,11 +395,13 @@ export async function createSunoPromptPackWithAi(
     // sites pass it as styleVariationSeed), so the variation profile is plan-seeded.
     emotionalModeSpec: input.creativeDecision?.emotionalMode.spec,
     styleNotes: input.styleNotes,
+    performanceDirection: performanceDirectionForBand(durationPlan.tempoBand),
     introStyleMove: input.creativeDecision?.intro.styleMove
   }, { provider: input.aiReviewProvider });
   const excludeResult = await synthesizeExclude({
     genre,
     artistAvoid: [...acousticBassAvoidance, "generic EDM drop", "fake crowd noise"],
+    fastTempo: FAST_TEMPO_BANDS.includes(durationPlan.tempoBand),
     copyrightSourceNameDenylist: [input.songTitle]
   }, { provider: input.aiReviewProvider });
   const yamlLyrics = buildYamlV55({

@@ -1,4 +1,5 @@
 import { createHash } from "node:crypto";
+import { getDurationPlan } from "../suno-production/durationPlan.js";
 import {
   CRITIQUE_LENS_HEADING,
   EMOTIONAL_MODES_HEADING,
@@ -83,13 +84,18 @@ export function pickEmotionalMode(
   return available[index];
 }
 
+// Producer ruling 2026-09-17: the everyday song sits on `up`; the slow half of the
+// range is a deliberate change-up worth about one song in ten. Weights only — the
+// BPM for a band comes from durationPlan, which is the single source of truth.
 const TEMPO_BANDS = [
-  { band: "slow", bpm: 88, weight: 1 },
-  { band: "mid", bpm: 108, weight: 2 },
-  { band: "up", bpm: 122, weight: 4 },
-  { band: "dopagaki", bpm: 138, weight: 3 },
-  { band: "super", bpm: 148, weight: 2 }
+  { band: "slow", weight: 1 },
+  { band: "mid", weight: 1 },
+  { band: "up", weight: 10 },
+  { band: "dopagaki", weight: 6 },
+  { band: "super", weight: 2 }
 ] as const;
+
+export const SLOW_TEMPO_BANDS: readonly RotatingTempoBand[] = ["slow", "mid"];
 
 export type RotatingTempoBand = (typeof TEMPO_BANDS)[number]["band"];
 
@@ -104,14 +110,23 @@ export function pickTempoBand(seed: string): RotatingTempoBand {
 }
 
 export function pickTempoBpm(seed: string): number {
-  const band = pickTempoBand(seed);
-  return TEMPO_BANDS.find((entry) => entry.band === band)!.bpm;
+  return bpmForTempoBand(pickTempoBand(seed));
 }
 
-// Canonical BPM for a named tempo band. Used when an explicit band override
-// (operator/API) must be reflected in the creative decision's tempo.
+// Canonical BPM for a named tempo band, read from the duration plan so a band
+// never carries two different target tempi.
 export function bpmForTempoBand(band: RotatingTempoBand): number {
-  return TEMPO_BANDS.find((entry) => entry.band === band)?.bpm ?? TEMPO_BANDS[1].bpm;
+  return getDurationPlan(band).bpm.target;
+}
+
+// Re-pick when the drawn band would repeat the slow half of the range twice in a
+// row. Every other creative axis already avoids immediate repeats; tempo did not,
+// so a run of mellow songs could happen by chance.
+export function pickTempoBandAvoidingSlowRepeat(seed: string, previousBand: string | undefined): RotatingTempoBand {
+  const band = pickTempoBand(seed);
+  if (!SLOW_TEMPO_BANDS.includes(band as RotatingTempoBand)) return band;
+  if (!previousBand || !SLOW_TEMPO_BANDS.includes(previousBand as RotatingTempoBand)) return band;
+  return "up";
 }
 
 function clampRate(value: number): number {

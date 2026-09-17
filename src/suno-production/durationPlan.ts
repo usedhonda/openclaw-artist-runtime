@@ -16,6 +16,18 @@ export interface DurationPlanSection {
 export type TempoBand = "slow" | "mid" | "up" | "dopagaki" | "super";
 
 export const TEMPO_BANDS: readonly TempoBand[] = ["slow", "mid", "up", "dopagaki", "super"];
+// The fast half of the range: these carry the driving performance direction and
+// the tempo-preserving exclusions.
+export const FAST_TEMPO_BANDS: readonly TempoBand[] = ["up", "dopagaki", "super"];
+
+// The performance direction that matches a band. The old single default told every
+// song to stay restrained with no double-time vocal, which fought the artist's own
+// high-velocity identity on the fast bands; the slow half keeps that restraint.
+export function performanceDirectionForBand(band: TempoBand): string {
+  return FAST_TEMPO_BANDS.includes(band)
+    ? "Drive the pocket: articulate fast rap, displaced accents, double-time only in 2-4 bar bursts."
+    : "Keep performance restrained, intelligible, and image-led; no double-time vocal.";
+}
 
 export interface DurationPlan {
   version: "duration_plan_v1";
@@ -378,8 +390,10 @@ function buildStructureVariant(structure: StructureVariant, sections: DurationPl
 // section is swapped and all other sections left untouched; the shared constant
 // is never mutated. totalPlannedBars is intentionally left as-is on the opts path
 // (the bar-sum invariant is only asserted on the no-opts default plans).
-export function getDurationPlan(band: TempoBand = "mid", opts?: GetDurationPlanOptions): DurationPlan {
-  const base = PLANS_BY_BAND[band] ?? MID_PLAN;
+// The artist identity is high-velocity progressive rap, so an unresolved band
+// must land on the fast centre (up), never on the neutral mid template.
+export function getDurationPlan(band: TempoBand = "up", opts?: GetDurationPlanOptions): DurationPlan {
+  const base = PLANS_BY_BAND[band] ?? UP_PLAN;
   const structure = opts?.structure ?? "standard";
   // Fast path: no intro override and the default structure return the shared band
   // constant by reference (callers and tests rely on reference identity).
@@ -396,7 +410,7 @@ export function getDurationPlan(band: TempoBand = "mid", opts?: GetDurationPlanO
 }
 
 export function getDurationPlanByTemplateId(templateId: string | undefined, opts?: GetDurationPlanOptions): DurationPlan {
-  if (!templateId) return getDurationPlan("mid", opts);
+  if (!templateId) return getDurationPlan("up", opts);
   const band = TEMPO_BANDS.find((candidate) => PLANS_BY_BAND[candidate].templateId === templateId);
   return getDurationPlan(band ?? "mid", opts);
 }
@@ -416,7 +430,7 @@ export function resolveTempoBand(source: string | undefined): TempoBand | undefi
 // instead of silently defaulting to the mid (108) plan.
 export function bandForBpm(bpm: number | undefined): TempoBand | undefined {
   if (bpm === undefined || !Number.isFinite(bpm)) return undefined;
-  let best: TempoBand = "mid";
+  let best: TempoBand = "up";
   let bestDistance = Infinity;
   for (const band of TEMPO_BANDS) {
     const distance = Math.abs(getDurationPlan(band).bpm.target - bpm);
@@ -491,9 +505,16 @@ export function durationPlanProductionNotes(plan: DurationPlan = getDurationPlan
   const pacingNote = plan.bpm.noDoubleTimeVocal
     ? `keep vocal pacing dense but controlled at ${plan.bpm.target} BPM and avoid double-time delivery`
     : `keep vocal pacing fast and dense at ${plan.bpm.target} BPM; allow controlled double-time bursts on the densest bars`;
+  // The identity is progressive, not merely fast: on the fast bands the density has
+  // to come from displaced accents and switching cells, never from a flat four-on-
+  // the-floor read of "make it quick".
+  const progressiveNote = FAST_TEMPO_BANDS.includes(plan.tempoBand)
+    ? "carry the progressive grammar: displaced accents, a rhythmic cell switch at section boundaries, and one odd-meter or polyrhythmic turn"
+    : undefined;
   return [
     `target ${plan.targetSeconds}s with ${plan.totalPlannedBars} planned bars; preserve the full section map`,
     pacingNote,
+    ...(progressiveNote ? [progressiveNote] : []),
     "let pre-hooks lift into full hooks, then drop energy in the bridge before the final hook",
     "repeat the hook text physically in Hook 2 and Final Hook so Suno hears the form"
   ];

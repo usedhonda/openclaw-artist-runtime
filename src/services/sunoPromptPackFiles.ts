@@ -165,17 +165,17 @@ export async function createAndPersistSunoPromptPack(input: PersistSunoPromptPac
 
   const { artistSnapshot, currentStateSnapshot } = await readArtistSnapshots(input.workspaceRoot);
   const briefText = await readFile(join(input.workspaceRoot, "songs", input.songId, "brief.md"), "utf8").catch(() => "");
-  // BPM/band resolution, kept as a coherent pair. The brief "- Tempo:" line is an
-  // explicit AI/brief override and wins; only when it is absent does the plan's
-  // tempo fill in — and then the band must also come from the plan so form/floors
-  // stay consistent with the bpm (otherwise "artist decides" -> "up" band could
-  // disagree with a plan bpm). Legacy songs (no creativeDecision) keep today's
-  // brief-only path byte-for-byte.
+  // BPM/band resolution, kept as a coherent pair, with the song plan as the source
+  // of truth. The brief's "- Tempo:" line is written by a model on the self-spawn
+  // path, and letting it win silently overrode the planned band: plans asking for
+  // up/dopagaki/super were delivered at 82-98 BPM for weeks. Precedence is now the
+  // operator's explicit bpm, then the plan, then the brief (legacy songs have no
+  // plan, so their brief-only path is unchanged).
   const briefBpm = parseBpmFromBriefTempo(readBriefTempo(briefText));
-  const usePlanTempo = input.bpm === undefined && briefBpm === undefined && input.creativeDecision !== undefined;
+  const usePlanTempo = input.bpm === undefined && input.creativeDecision !== undefined;
   const promptPackInput = {
     ...input,
-    bpm: input.bpm ?? briefBpm ?? input.creativeDecision?.tempo.bpm,
+    bpm: input.bpm ?? input.creativeDecision?.tempo.bpm ?? briefBpm,
     tempoBand: input.tempoBand ?? (usePlanTempo ? input.creativeDecision!.tempo.band : resolveTempoBandFromBrief(briefText)),
     // Only thread the brief's Style notes when the song has a plan; the legacy
     // path must reach buildStyle with styleNotes undefined (byte-identity).

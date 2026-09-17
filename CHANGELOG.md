@@ -2,6 +2,22 @@
 
 ## Unreleased
 
+- fix: the song plan now owns a song's tempo. A model-authored brief could put any
+  BPM in the `- Tempo:` line and it silently overrode the planned band, so plans
+  asking for 122-148 BPM were delivered at 82-98 for weeks. Precedence is now the
+  operator's explicit BPM, then the plan, then the brief, and a brief tempo outside
+  the planned band's range is replaced by the plan's own tempo.
+- feat: centre the tempo pool on the `up` band (about 126 BPM) and keep the slow
+  half to roughly one song in ten, with no two mellow songs in a row. A band's BPM
+  is now read from the duration plan, so the same band cannot carry two different
+  target tempi, and an unresolved band falls back to the fast centre instead of the
+  neutral mid template.
+- feat: match the arrangement to the artist's high-velocity identity. Fast bands get
+  a driving performance direction with double-time confined to 2-4 bar bursts, plus
+  an explicit ask for displaced accents and one odd-meter or polyrhythmic turn. The
+  fast-rap recipe leads with slap electric bass, Rhodes and muted guitar instead of
+  horns, and brass, along with slow descriptors on fast songs, is excluded.
+
 - fix: give the Suno create workspace 60 seconds to hydrate instead of 25. A
   freshly launched browser was still showing the skeleton page when the old
   deadline expired, which failed the run and burned a retry.

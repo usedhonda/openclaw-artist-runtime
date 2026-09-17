@@ -1,6 +1,7 @@
 import type { AiReviewProvider } from "../types.js";
 import { callAiProvider, isAiProviderMockFallbackResponse } from "../services/aiProviderClient.js";
 import { buildStyleSynthesisPrompt } from "./styleSynthesisPrompt.js";
+import { getDurationPlan } from "./durationPlan.js";
 
 export const CANONICAL_STYLE_CORE_MAX_CHARS = 120;
 export const CANONICAL_STYLE_TARGET_MIN_CHARS = 760;
@@ -170,7 +171,10 @@ function resolveIntroMove(value: string | undefined): string | undefined {
 export function buildStyle(input: BuildStyleInput): BuildStyleResult {
   const vibe = fitPhrase(englishStylePhrase(input.vibe, inferMood(input)), 40);
   const genre = inferGenre(input);
-  const bpm = Math.round(input.bpm ?? 124);
+  // The pipeline always computes bpm from the song's duration plan before calling
+  // in; this guard only exists for a direct caller, and it points at the fast centre
+  // rather than a stray literal that disagrees with every band target.
+  const bpm = Math.round(input.bpm ?? getDurationPlan("up").bpm.target);
   const instruments = input.instruments ?? inferInstruments(input);
   const gender = input.vocalGender ?? "male";
   const vocalDescriptor = input.vocalDescriptor ?? (gender === "female" ? "close dry female vocal" : gender === "neutral" ? "close dry neutral lead vocal" : "mid-range male rap vocal");

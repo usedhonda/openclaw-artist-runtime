@@ -184,13 +184,13 @@ function renderYaml(input: BuildYamlInput, level: YamlBudgetLevel): string {
     "# META (hints; do not sing)",
     `title: ${cleanLine(input.title, "untitled")}`,
     `form: ${cleanLine(input.meta.form, durationPlan.form)}`,
-    `tempo: ${cleanLine(input.meta.tempo, "124")}`,
+    `tempo: ${cleanLine(input.meta.tempo, String(getDurationPlan("up").bpm.target))}`,
     `language: ${cleanLine(input.meta.language, "ja")}`
   ] : [
     "# META (hints; do not sing)",
     "version: v6",
     `title: ${cleanLine(input.title, "untitled")}`,
-    `tempo: ${cleanLine(input.meta.tempo, "124")}`,
+    `tempo: ${cleanLine(input.meta.tempo, String(getDurationPlan("up").bpm.target))}`,
     `key: ${cleanLine(input.meta.key, "minor")}`,
     `signature: ${cleanLine(input.meta.signature, "4/4")}`,
     `form: ${cleanLine(input.meta.form, durationPlan.form)}`,

@@ -15,8 +15,8 @@ import {
   emotionalModesFromArtist,
   hashRatio,
   pickEmotionalMode,
-  pickTempoBand,
-  pickTempoBpm,
+  bpmForTempoBand,
+  pickTempoBandAvoidingSlowRepeat,
   resolveIntroVariant,
   type EmotionalMode
 } from "./creativeVariationPolicy.js";
@@ -315,10 +315,13 @@ export function decideCreative(input: CreativeDirectorInput): CreativeDecision {
     aggression = "changeup";
   }
 
-  // --- Tempo (weighted pool, band + bpm from the same sub-seed) ---
+  // --- Tempo (weighted pool, band from the sub-seed, bpm from the duration plan) ---
+  // The slow half of the range never lands twice in a row: every other axis avoids
+  // an immediate repeat, and a run of mellow songs is exactly what the producer
+  // notices. The bpm is read from the band so the plan and the pack cannot disagree.
   const tempoSeed = `tempo:${seed}`;
-  const tempoBand = pickTempoBand(tempoSeed) as TempoBand;
-  const tempoBpm = pickTempoBpm(tempoSeed);
+  const tempoBand = pickTempoBandAvoidingSlowRepeat(tempoSeed, previous?.tempo.band) as TempoBand;
+  const tempoBpm = bpmForTempoBand(tempoBand);
 
   // --- Dopagaki (the single density computation) ---
   const dopagakiDecision = decideDopagakiVariation({
