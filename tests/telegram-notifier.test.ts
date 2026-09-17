@@ -115,6 +115,26 @@ describe("TelegramNotifier", () => {
     expect(text).not.toContain("バックグラウンドで進めていた");
   });
 
+  it("keeps internal retry tokens and missing counts out of the proactive notice", async () => {
+    const text = await formatRuntimeEvent({
+      type: "artist_proactive_notice",
+      trigger: "suno_trouble",
+      message: "作業が止まっている。",
+      nextAction: "待つ。",
+      draftCount: Number.NaN,
+      buildingCount: Number.NaN,
+      songId: "song-x",
+      reason: "suno_generate_retry_wait_until_2026-09-16T14:58:42.347Z",
+      stateKey: "k",
+      timestamp: 1
+    });
+
+    expect(text).toContain("理由: 少し置いてから作り直す");
+    expect(text).not.toContain("retry_wait_until");
+    expect(text).not.toContain("undefined");
+    expect(text).not.toContain("NaN");
+  });
+
   it("describes the song on the manual-Create card", async () => {
     const root = mkdtempSync(join(tmpdir(), "manual-create-card-"));
     const dir = join(root, "songs", "song-desc", "suno");

@@ -10,6 +10,8 @@ describe("summarizeStopReason", () => {
       .toBe("Suno のブラウザ画面が閉じていた");
     expect(summarizeStopReason("suno_human_assist_error:open_fill_failed:suno_prepare_readback_mismatch: variety"))
       .toBe("Suno の入力欄を設定し切れなかった");
+    expect(summarizeStopReason("suno_generate_retry_wait_until_2026-09-16T14:58:42.347Z"))
+      .toBe("少し置いてから作り直す");
     expect(summarizeStopReason("suno_human_assist_error:open_fill_failed:locator.click: Timeout 30000ms exceeded.\nCall log:\n  - waiting for locator('xpath=(//*[self::label"))
       .toBe("Suno の入力欄を設定し切れなかった");
     expect(summarizeStopReason("session_expired")).toContain("ログインが切れた");

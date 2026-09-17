@@ -13,6 +13,7 @@ const STOP_REASON_RULES: Array<{ pattern: RegExp; message: string }> = [
   { pattern: /(?:target )?(?:page|context|browser)[^;]{0,40}?(?:has been )?closed/i, message: "Suno のブラウザ画面が閉じていた" },
   { pattern: /(?:open[_ -]?fill[_ -]?failed|prepare[_ -]?(?:readback[_ -]?mismatch|control[_ -]?missing|control[_ -]?unwritable|control[_ -]?unknown[_ -]?option|invalid[_ -]?control|readback[_ -]?unknown))/i, message: "Suno の入力欄を設定し切れなかった" },
   { pattern: /(?:machine[_ -]?submit[_ -]?failed|human[_ -]?wait[_ -]?failed)/i, message: "Suno の Create 操作を見届けられなかった" },
+  { pattern: /retry[_ -]?wait[_ -]?until/i, message: "少し置いてから作り直す" },
   { pattern: /(?:not[_ -]?ready|not[_ -]?connected|disconnect|worker[_ -]?not)/i, message: "Suno にまだ接続できていない" },
   { pattern: /(?:timeout|timed[_ -]?out|deadline)/i, message: "時間切れ（Suno の応答が返ってこなかった）" },
   { pattern: /(?:quota|budget|limit|exhaust)/i, message: "利用上限に達した" },

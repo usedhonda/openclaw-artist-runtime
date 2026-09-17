@@ -2,8 +2,9 @@
 
 ## Unreleased
 
-- fix: translate Suno preparation and browser failures into one plain clause on
-  the producer's Telegram cards. A closed browser page, an unsettable control,
+- fix: translate Suno preparation, browser, and retry-wait failures into one
+  plain clause on the producer's Telegram cards, including the proactive
+  notice, which also stops printing draft counts it does not have. A closed browser page, an unsettable control,
   or a click timeout no longer arrives as a raw Playwright call-log dump; the
   full text stays in the ledger.
 

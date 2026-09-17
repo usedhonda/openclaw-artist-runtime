@@ -1962,8 +1962,10 @@ async function formatRuntimeEventRaw(
         "",
         TELEGRAM_SECTION_DIVIDER,
         event.title ? `対象: ${event.title}${event.songId ? ` (${event.songId})` : ""}` : event.songId ? `song: ${event.songId}` : undefined,
-        `草稿箱: draft ${event.draftCount}件 / building ${event.buildingCount}件`,
-        event.reason ? `理由: ${event.reason}` : undefined,
+        Number.isFinite(event.draftCount) && Number.isFinite(event.buildingCount)
+          ? `草稿箱: draft ${event.draftCount}件 / building ${event.buildingCount}件`
+          : undefined,
+        event.reason ? `理由: ${summarizeStopReason(event.reason)}` : undefined,
         event.nextAction
       ].filter(Boolean).join("\n");
     case "artist_pulse_drafted":
