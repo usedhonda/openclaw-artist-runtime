@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- fix: translate Suno preparation and browser failures into one plain clause on
+  the producer's Telegram cards. A closed browser page, an unsettable control,
+  or a click timeout no longer arrives as a raw Playwright call-log dump; the
+  full text stays in the ledger.
+
 - feat: the manual-Create Telegram card now describes the song before the
   producer presses Create: the observed news quote with its author and source
   URL, the artist's angle, the lyric concept, the hook line with why it was

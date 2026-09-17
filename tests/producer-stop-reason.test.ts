@@ -6,6 +6,12 @@ describe("summarizeStopReason", () => {
     expect(summarizeStopReason("playwright_live_timeout")).toContain("時間切れ");
     expect(summarizeStopReason("suno_worker_not_ready")).toContain("接続できていない");
     expect(summarizeStopReason("schema_drift detected")).toContain("画面が想定と変わっている");
+    expect(summarizeStopReason("suno_human_assist_error:open_fill_failed:browserContext.newPage: Target page, context or browser has been closed"))
+      .toBe("Suno のブラウザ画面が閉じていた");
+    expect(summarizeStopReason("suno_human_assist_error:open_fill_failed:suno_prepare_readback_mismatch: variety"))
+      .toBe("Suno の入力欄を設定し切れなかった");
+    expect(summarizeStopReason("suno_human_assist_error:open_fill_failed:locator.click: Timeout 30000ms exceeded.\nCall log:\n  - waiting for locator('xpath=(//*[self::label"))
+      .toBe("Suno の入力欄を設定し切れなかった");
     expect(summarizeStopReason("session_expired")).toContain("ログインが切れた");
     expect(summarizeStopReason("captcha_required")).toContain("captcha");
     expect(summarizeStopReason("no imported takes")).toContain("take");
