@@ -29,8 +29,8 @@ function hashText(value: string): string {
 
 const NORMAL_SUNO_CONTROLS = {
   variety: 2,
-  maxMode: false,
-  personalize: true,
+  maxMode: true,
+  personalize: false,
   duration: "3:30",
   styleInfluence: 100
 } as const;

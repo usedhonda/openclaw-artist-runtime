@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- feat: change the standing normal-generation Suno defaults to Max Mode On and
+  Personalize Off, keeping Custom Duration 3:30, Variety High (2), and Style
+  Influence 100. New prompt packs, the hashed payload, and the preparation
+  recommendation all carry the new pair.
+
 - fix: translate Suno preparation, browser, connection, and retry-wait failures
   into one plain clause on every producer Telegram card, including the hard
   stop, take-selection, and proactive notices. An unmapped reason that carries
