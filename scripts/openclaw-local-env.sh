@@ -174,7 +174,7 @@ export OPENCLAW_DEBUG_CALLBACK_DISPATCH="${OPENCLAW_DEBUG_CALLBACK_DISPATCH:-on}
 # v10.45 体感 verify enablement: spawn path 発火条件 (御大 GO 2026-05-25)。
 # planning_skeleton 路を素通りさせず、 spawn_proposed event 経由で
 # spawn_proposal_ready gate に到達させるための必須 enable。
-export OPENCLAW_SONG_SPAWN_ENABLED=on
+export OPENCLAW_SONG_SPAWN_ENABLED="${OPENCLAW_SONG_SPAWN_ENABLED:-on}"
 
 # Cadence rebalance (御大 2026-06-19「X 投稿ばかりで曲が来ない」): song spawn was
 # 24h vs X pulse 12h, so X arrived 2x as often AND songs were skipped on AI-proposer

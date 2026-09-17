@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- fix: the local launcher hardcoded `OPENCLAW_SONG_SPAWN_ENABLED=on`, so an
+  operator overlay could not turn the song-idea proposer off and the autopilot
+  kept waiting for a proposal instead of starting the song itself. The launcher
+  now honours an existing value.
+
 - feat: allow `songSpawn.minIntervalHours` down to 1. The 12-hour floor made a
   finished song sit idle for most of a day before the next idea could start,
   which read as the pipeline being stuck.
