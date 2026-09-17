@@ -22,10 +22,11 @@ const HORN_REDUCTION_EXCLUDES = ["solo sax lead", "horn section pad"] as const;
 // Producer ruling 2026-09-17: a fast song drifted into jazz-fusion once the bass
 // stepped forward. The genre line is display: a singing bass, a virtuoso fill and a
 // polished mix read as fusion even when every other tag is hip-hop.
-// Slap bass appears in 21% of rejected songs and 3.5% of kept ones, paired with
-// sustained electric piano and a "punchy/warm" polish: that is the fusion drift.
+// Slap is welcome as a momentary accent — several kept songs say "occasional slap
+// attacks". What runs six times more often in rejected songs is slap carrying the
+// groove, next to sustained electric piano and a polished mix: the fusion drift.
 const FAST_TEMPO_EXCLUDES = [
-  "slap bass",
+  "slap bass groove",
   "smooth jazz fusion",
   "glossy pop sheen",
   "soft ballad"

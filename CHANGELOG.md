@@ -6,7 +6,8 @@
   judged songs, slap bass appears in 21% of rejected songs and 3.5% of kept ones,
   together with sustained electric piano and a polished "punchy/warm" mix, while
   kept songs read raw with vinyl/tape texture. Fast songs now exclude slap bass,
-  smooth jazz fusion and a glossy sheen, and keep the bass percussive. Horn
+  a slap bass groove, smooth jazz fusion and a glossy sheen, while slap survives as
+  a momentary accent inside a fill, which is how the kept 148 BPM songs use it. Horn
   punctuation at section turns is kept, since it travels with the kept fast songs;
   only the horn pad and the solo sax lead are excluded.
 

@@ -80,12 +80,13 @@ describe("fast-band arrangement policy", () => {
     expect(fast).toContain("solo sax lead");
     expect(fast).toContain("horn section pad");
     expect(fast).not.toContain("horn stabs");
-    expect(fast).toContain("slap bass");
+    // Slap survives as an accent; only slap carrying the groove is excluded.
+    expect(fast).toContain("slap bass groove");
     expect(fast).toContain("smooth jazz fusion");
 
     const slow = buildExclude({ genre: "progressive rap", fastTempo: false }).items;
     expect(slow).toContain("solo sax lead");
-    expect(slow).not.toContain("slap bass");
+    expect(slow).not.toContain("slap bass groove");
     expect(slow).not.toContain("smooth jazz fusion");
   });
 });
