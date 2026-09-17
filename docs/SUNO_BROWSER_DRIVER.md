@@ -17,6 +17,9 @@ exact title, plain lyrics, Style, and Exclude after filling and after explicit
 control changes. Missing required fields, including a nonempty Exclude, or
 readback mismatches fail preparation instead of reporting a ready form. The
 runtime never refills or navigates the prepared form while waiting for Create.
+A finished manual-Create run closes its create page and shuts down a browser
+this plugin launched, so the window disappearing is the operator's success signal.
+
 New normal V6 prompt packs explicitly set the producer defaults: Max Mode On,
 Custom Duration 3:30, Variety High (2), Personalize Off, and Style Influence 100.
 These values are stored in the hashed prompt payload before preparation; the CLI

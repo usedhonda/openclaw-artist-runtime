@@ -175,6 +175,7 @@ export class CdpHumanAssistDriver implements HumanAssistBrowserDriver {
   private page: Page | undefined;
   private ownsPage = false;
   private preservePageOnClose = false;
+  private shutdownBrowserOnClose = false;
   private baselineSongUrls = new Set<string>();
   // Feed clip ids present before submit, so only genuinely new clips count as this
   // create's takes during network-primary reconciliation.
@@ -342,10 +343,11 @@ export class CdpHumanAssistDriver implements HumanAssistBrowserDriver {
   }
 
   async retireCreateSurface(): Promise<void> {
-    // Success means the generated takes are the operator's result surface. Keep that
-    // exact tab visible instead of closing it or navigating a reused tab back home.
-    this.preservePageOnClose = true;
-    await this.page?.bringToFront?.().catch(() => undefined);
+    // The producer reads a surviving Create window as an unfinished run, so a completed
+    // generation takes its window down. The takes reach the producer as URLs in the
+    // Telegram report, not as a tab left on the box's screen.
+    this.preservePageOnClose = false;
+    this.shutdownBrowserOnClose = true;
   }
 
   async close(): Promise<void> {
@@ -362,6 +364,10 @@ export class CdpHumanAssistDriver implements HumanAssistBrowserDriver {
       this.ownsPage = false;
       this.preservePageOnClose = false;
       await this.service.release();
+      if (this.shutdownBrowserOnClose) {
+        this.shutdownBrowserOnClose = false;
+        await this.service.shutdownIfLaunched().catch(() => undefined);
+      }
     }
   }
 

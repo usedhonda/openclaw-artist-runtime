@@ -140,6 +140,21 @@ export class SunoBrowserService {
     }
   }
 
+  /**
+   * Close a browser this service launched, once nothing holds it. The producer reads an
+   * open Create window as "the run is still waiting", so a finished human-assist run
+   * retires its own window instead of leaving it on the operator's screen. An attached
+   * browser (legacy CDP escape hatch) is never closed: we did not open it.
+   */
+  async shutdownIfLaunched(): Promise<void> {
+    const running = this.running;
+    if (!running || running.attached || this.operatorHeld || this.refCount > 0) {
+      return;
+    }
+    this.running = undefined;
+    await running.context.close().catch(() => undefined);
+  }
+
   private async launch(config: SunoBrowserConfigView | undefined, env: NodeJS.ProcessEnv): Promise<RunningBrowser> {
     if (isSunoCdpEnabled(config, env)) {
       const endpoint = sunoCdpEndpoint(config, env);
