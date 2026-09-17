@@ -12,6 +12,11 @@ describe("summarizeStopReason", () => {
       .toBe("Suno の入力欄を設定し切れなかった");
     expect(summarizeStopReason("suno_generate_retry_wait_until_2026-09-16T14:58:42.347Z"))
       .toBe("少し置いてから作り直す");
+    expect(summarizeStopReason("cdp_endpoint_unreachable")).toBe("Suno の操作用ブラウザに繋がらない");
+    // Any unmapped ASCII-only identifier is internal noise for the producer.
+    expect(summarizeStopReason("take_score_tie")).toBe("take の優劣が決めきれない");
+    expect(summarizeStopReason("some_unknown_internal_token")).toBe("詳しい原因は記録に残した");
+    expect(summarizeStopReason("歌詞が短すぎる")).toBe("歌詞が短すぎる");
     expect(summarizeStopReason("suno_human_assist_error:open_fill_failed:locator.click: Timeout 30000ms exceeded.\nCall log:\n  - waiting for locator('xpath=(//*[self::label"))
       .toBe("Suno の入力欄を設定し切れなかった");
     expect(summarizeStopReason("session_expired")).toContain("ログインが切れた");

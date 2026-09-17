@@ -1792,14 +1792,14 @@ async function formatRuntimeEventRaw(
       return hybridEventReport(
         event,
         `${event.theme}で行く。`,
-        [`theme: ${event.theme}`, `reason: ${event.reason}`].join("\n"),
+        [`theme: ${event.theme}`, `reason: ${summarizeStopReason(event.reason)}`].join("\n"),
         options
       );
     case "suno_budget_low":
       return hybridEventReport(
         event,
         `残り ${event.used}/${event.limit}。ペース落とす。`,
-        [`songId: ${event.songId ?? "(none)"}`, `used: ${event.used}`, `limit: ${event.limit}`, `reason: ${event.reason}`].join("\n"),
+        [`songId: ${event.songId ?? "(none)"}`, `used: ${event.used}`, `limit: ${event.limit}`, `reason: ${summarizeStopReason(event.reason)}`].join("\n"),
         options
       );
     case "lyrics_generation_degraded": {
@@ -1825,7 +1825,7 @@ async function formatRuntimeEventRaw(
         TELEGRAM_SECTION_DIVIDER,
         `song: ${event.songId}`,
         `retry: ${event.retryCount}`,
-        `reason: ${event.reason}`,
+        `reason: ${summarizeStopReason(event.reason)}`,
         event.nextRetryAt ? `next: ${event.nextRetryAt}` : undefined
       ].filter(Boolean).join("\n");
     case "suno_create_failed":
@@ -1857,7 +1857,7 @@ async function formatRuntimeEventRaw(
         "",
         TELEGRAM_SECTION_DIVIDER,
         event.songId ? `song: ${event.songId}` : undefined,
-        `reason: ${event.reason}`
+        `reason: ${summarizeStopReason(event.reason)}`
       ].filter(Boolean).join("\n");
     case "suno_human_assist_requested": {
       // 0 (or a non-finite value) is the "no time limit" sentinel: wait indefinitely.
@@ -1891,7 +1891,7 @@ async function formatRuntimeEventRaw(
       return hybridEventReport(
         event,
         "take の選別、ちょっと待ってる。",
-        [`songId: ${event.songId}`, `reason: ${event.reason}`].join("\n"),
+        [`songId: ${event.songId}`, `reason: ${summarizeStopReason(event.reason)}`].join("\n"),
         options
       );
     case "take_selection_stalled":
@@ -1912,7 +1912,7 @@ async function formatRuntimeEventRaw(
       return hybridEventReport(
         event,
         "今日は予算切れ。明日に。",
-        [`used: ${event.used}`, `limit: ${event.limit}`, `reason: ${event.reason}`].join("\n"),
+        [`used: ${event.used}`, `limit: ${event.limit}`, `reason: ${summarizeStopReason(event.reason)}`].join("\n"),
         options
       );
     case "bird_cooldown_triggered":

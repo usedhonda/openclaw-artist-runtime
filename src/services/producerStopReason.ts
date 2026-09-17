@@ -19,7 +19,9 @@ const STOP_REASON_RULES: Array<{ pattern: RegExp; message: string }> = [
   { pattern: /(?:quota|budget|limit|exhaust)/i, message: "利用上限に達した" },
   { pattern: /(?:no[_ -]?(?:imported[_ -]?)?takes?|no[_ -]?urls?|empty[_ -]?takes?)/i, message: "生成結果（take）が取得できなかった" },
   { pattern: /(?:asset|render|image|visual).*(?:fail|error|stall)/i, message: "素材（画像/クリップ）の生成に失敗した" },
-  { pattern: /rate[_ -]?limit/i, message: "アクセスが混み合っている（rate limit）" }
+  { pattern: /rate[_ -]?limit/i, message: "アクセスが混み合っている（rate limit）" },
+  { pattern: /(?:unreachable|refused|enotfound|econn|endpoint)/i, message: "Suno の操作用ブラウザに繋がらない" },
+  { pattern: /take[_ -]?score[_ -]?tie/i, message: "take の優劣が決めきれない" }
 ];
 
 function scrubInternalIdentifiers(value: string): string {
@@ -47,6 +49,11 @@ export function summarizeStopReason(reason: string | undefined): string {
   const scrubbed = scrubInternalIdentifiers(raw);
   if (!scrubbed) {
     return "原因は記録に残した";
+  }
+  // An unmapped reason that carries no Japanese is an internal identifier such as
+  // "take_score_tie". Those mean nothing to the producer, so name the ledger instead.
+  if (!/[\u3040-\u30ff\u3400-\u9fff]/.test(scrubbed)) {
+    return "詳しい原因は記録に残した";
   }
   const chars = Array.from(scrubbed);
   return chars.length > 100 ? `${chars.slice(0, 99).join("").trim()}…` : scrubbed;
