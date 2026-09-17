@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+- fix: render the lyric section budget from the song's own duration plan. The
+  prompt carried a fixed mid-band table, so a fast song was told to write 16-bar
+  verses while the same prompt's plan section asked for 22. An operator-supplied
+  BPM now also selects its own band, so a band never describes a tempo other than
+  the one being submitted.
+
 - fix: the song plan now owns a song's tempo. A model-authored brief could put any
   BPM in the `- Tempo:` line and it silently overrode the planned band, so plans
   asking for 122-148 BPM were delivered at 82-98 for weeks. Precedence is now the

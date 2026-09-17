@@ -31,14 +31,26 @@ describe("duration plan tempo bands", () => {
     expect(new Set(targets).size).toBe(5);
   });
 
-  it("keeps the mid template as the backward-compatible default (108 BPM, 80 bars, 1200/52 floor)", () => {
-    const mid = getDurationPlan();
-    expect(mid).toBe(getDurationPlan("mid"));
+  it("keeps the mid template available at 108 BPM, 80 bars, 1200/52 floor", () => {
+    // This test is specifically about mid-band behaviour, not about the no-arg
+    // default (see the next test), so it passes "mid" explicitly.
+    const mid = getDurationPlan("mid");
     expect(mid.templateId).toBe("default_nu_jazz_rap_full_v1");
     expect(mid.bpm.target).toBe(108);
     expect(mid.totalPlannedBars).toBe(80);
     expect(minimumBareLyricsChars(mid)).toBe(1200);
     expect(minimumBareLyricsLines(mid)).toBe(52);
+  });
+
+  it("defaults to the up template (126 BPM, 92 bars, 1380/60 floor)", () => {
+    // Producer ruling 2026-09-17: the no-arg default moved from mid to up.
+    const up = getDurationPlan();
+    expect(up).toBe(getDurationPlan("up"));
+    expect(up.templateId).toBe("up_tempo_rap_v1");
+    expect(up.bpm.target).toBe(126);
+    expect(up.totalPlannedBars).toBe(92);
+    expect(minimumBareLyricsChars(up)).toBe(1380);
+    expect(minimumBareLyricsLines(up)).toBe(60);
   });
 
   it("keeps every template internally coherent and achievable under repair caps", () => {
@@ -113,7 +125,8 @@ describe("duration plan tempo bands", () => {
     // Live autopilot briefs carry only a numeric BPM; it maps to the nearest band.
     expect(resolveTempoBandFromBrief("## Direction\n- Tempo: 142 BPM\n- Duration: 2:48\n")).toBe("dopagaki");
     expect(resolveTempoBandFromBrief("- Tempo: 108 BPM")).toBe("mid");
-    // A brief with no tempo line stays neutral (mid fallback via undefined).
+    // A brief with no tempo line stays neutral (undefined); callers that feed
+    // this into getDurationPlan() now land on its up default, not mid.
     expect(resolveTempoBandFromBrief("no tempo at all")).toBeUndefined();
     expect(resolveTempoBandFromBrief("")).toBeUndefined();
   });
@@ -130,13 +143,16 @@ describe("duration plan tempo bands", () => {
     expect(resolveTempoBandFromBrief("- Tempo: 166 BPM")).toBe("super");
   });
 
-  it("resolves a plan by template id and falls back to mid for unknown ids", () => {
+  it("resolves a plan by template id, falls back to mid for an unrecognized id, and to up when no id is given", () => {
     for (const band of TEMPO_BANDS) {
       const plan = getDurationPlan(band);
       expect(getDurationPlanByTemplateId(plan.templateId)).toBe(plan);
     }
+    // An id that does not match any template still falls back to mid (unchanged).
     expect(getDurationPlanByTemplateId("unknown_template")).toBe(getDurationPlan("mid"));
-    expect(getDurationPlanByTemplateId(undefined)).toBe(getDurationPlan("mid"));
+    // No id at all now falls back to the new no-arg default, up (producer ruling
+    // 2026-09-17).
+    expect(getDurationPlanByTemplateId(undefined)).toBe(getDurationPlan("up"));
   });
 });
 
@@ -189,9 +205,11 @@ describe("tempo band selection wiring", () => {
     expect(dopagakiYaml).toContain("template: dopagaki_fast_rap_v1");
     expect(dopagakiYaml).toContain("tempo: 148");
 
-    const mid = createSunoPromptPack({ ...base, songId: "song-mid" });
-    const midYaml = String((mid.payload as { payloadYaml?: string }).payloadYaml ?? "");
-    expect(midYaml).toContain("template: default_nu_jazz_rap_full_v1");
-    expect(midYaml).toContain("tempo: 108");
+    // No tempoBand given: exercises the no-arg default, which the producer's
+    // 2026-09-17 ruling moved from mid (108) to up (126).
+    const defaultBand = createSunoPromptPack({ ...base, songId: "song-default" });
+    const defaultYaml = String((defaultBand.payload as { payloadYaml?: string }).payloadYaml ?? "");
+    expect(defaultYaml).toContain("template: up_tempo_rap_v1");
+    expect(defaultYaml).toContain("tempo: 126");
   });
 });

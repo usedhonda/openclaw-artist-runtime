@@ -29,7 +29,12 @@ async function workspace(): Promise<string> {
   await writeFile(join(root, "artist", "CURRENT_STATE.md"), "## Current Obsessions\n- civic rooms replaced by chats\n", "utf8");
   await writeFile(join(root, "artist", "SOCIAL_VOICE.md"), "short and unsentimental\n", "utf8");
   await writeFile(join(root, "songs", "song-001", "song.md"), "# Repair Night\n", "utf8");
-  await writeFile(join(root, "songs", "song-001", "brief.md"), "government group chats make responsibility leave the room\n", "utf8");
+  // Explicit mid band: these fixtures (goodJsonDraft, denseBelowOldFloorDraft,
+  // fortyLineDraft) were sized against the mid template's 1200-char/52-line
+  // floor. The producer's 2026-09-17 tempo ruling moved the *default* band
+  // (no marker) to up (1380/60), which is not what any of these tests are
+  // exercising, so pin the band instead of inflating every fixture.
+  await writeFile(join(root, "songs", "song-001", "brief.md"), "government group chats make responsibility leave the room\n- Tempo band: mid\n", "utf8");
   return root;
 }
 

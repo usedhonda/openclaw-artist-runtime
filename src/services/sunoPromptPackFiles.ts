@@ -6,7 +6,7 @@ import { ensureArtistWorkspace, readArtistSnapshots } from "./artistWorkspace.js
 import { readSongState, updateSongState } from "./artistState.js";
 import { appendPromptLedger, createPromptLedgerEntry, getSongPromptLedgerPath } from "./promptLedger.js";
 import { createProductionRevisionPromptPack, createSunoPromptPack, createSunoPromptPackWithAi } from "../suno-production/generatePromptPack.js";
-import { resolveTempoBandFromBrief } from "../suno-production/durationPlan.js";
+import { bandForBpm, resolveTempoBandFromBrief } from "../suno-production/durationPlan.js";
 import { extractObservationSummary } from "./songIdeation.js";
 import { emitRuntimeEvent } from "./runtimeEventBus.js";
 import { buildSongCreationNote } from "./songCreationNote.js";
@@ -176,7 +176,11 @@ export async function createAndPersistSunoPromptPack(input: PersistSunoPromptPac
   const promptPackInput = {
     ...input,
     bpm: input.bpm ?? input.creativeDecision?.tempo.bpm ?? briefBpm,
-    tempoBand: input.tempoBand ?? (usePlanTempo ? input.creativeDecision!.tempo.band : resolveTempoBandFromBrief(briefText)),
+    // An operator-supplied bpm decides its own band, so a band never ends up
+    // describing a different tempo than the one being submitted.
+    tempoBand: input.tempoBand
+      ?? (input.bpm !== undefined ? bandForBpm(input.bpm) : undefined)
+      ?? (usePlanTempo ? input.creativeDecision!.tempo.band : resolveTempoBandFromBrief(briefText)),
     // Only thread the brief's Style notes when the song has a plan; the legacy
     // path must reach buildStyle with styleNotes undefined (byte-identity).
     styleNotes: input.creativeDecision ? parseBriefStyleNotes(briefText) : undefined,

@@ -32,7 +32,10 @@ describe("prompt pack character audit", () => {
     expect(metadata.charCounts.title).toBe("Character Gate".length);
     expect(metadata.charCounts.styleZone).toBe("sweet");
     expect(metadata.charCounts.lyricsZone).toMatch(/underused|near_max/);
-    expect(metadata.charCounts.plannedBars).toBe(80);
+    // No tempoBand/creativeDecision is passed here, so this falls through to the
+    // no-arg default, which the producer's 2026-09-17 ruling moved from mid (80
+    // bars) to up (92 bars).
+    expect(metadata.charCounts.plannedBars).toBe(92);
   });
 
   it("warns validation when submitted payload leaves box budget underused", () => {

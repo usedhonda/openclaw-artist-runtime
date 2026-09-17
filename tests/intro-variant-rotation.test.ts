@@ -35,7 +35,8 @@ describe("resolveIntroVariant", () => {
 describe("getDurationPlan intro override", () => {
   it("returns the shared band constant by reference with no opts (backward compatible)", () => {
     expect(getDurationPlan("mid")).toBe(getDurationPlan("mid"));
-    expect(getDurationPlan()).toBe(getDurationPlan("mid"));
+    // Producer ruling 2026-09-17 moved the no-arg default from mid to up.
+    expect(getDurationPlan()).toBe(getDurationPlan("up"));
     expect(getDurationPlan("up")).toBe(getDurationPlan("up"));
   });
 

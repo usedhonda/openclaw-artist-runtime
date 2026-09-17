@@ -75,7 +75,12 @@ async function bankWorkspace(bankMd: string): Promise<string> {
   await writeFile(join(root, "artist", "CURRENT_STATE.md"), "## Current Obsessions\n- civic rooms\n", "utf8");
   await writeFile(join(root, "artist", "SOCIAL_VOICE.md"), "short and unsentimental\n", "utf8");
   await writeFile(join(root, "songs", "song-001", "song.md"), "# Repair Night\n", "utf8");
-  await writeFile(join(root, "songs", "song-001", "brief.md"), "civic responsibility leaves the room\n- Mood: sharp satire\n", "utf8");
+  // Explicit mid band: denseDraftWithBankTerms() is sized against the mid
+  // template's 1200-char/52-line floor, and "writes a ledger entry..." below
+  // asserts record.tempoBand === "mid". The producer's 2026-09-17 ruling moved
+  // the *default* band (no marker) to up (1380/60); pin the band instead of
+  // inflating the fixture or changing the tempoBand assertion.
+  await writeFile(join(root, "songs", "song-001", "brief.md"), "civic responsibility leaves the room\n- Mood: sharp satire\n- Tempo band: mid\n", "utf8");
   return root;
 }
 

@@ -18,7 +18,11 @@ describe("Suno V5.5 exclude builder", () => {
     expect(result.items.length).toBeLessThanOrEqual(8);
     expect(result.text.length).toBeLessThanOrEqual(240);
     expect(result.text).toContain("festival EDM drop");
-    expect(result.text).toContain("autotune");
+    // Producer ruling 2026-09-17: brass-reduction excludes ("brass section",
+    // "horn stabs") always lead the list now, which pushes "autotune" past the
+    // 8-item cap in this fixture. Assert the always-on items instead.
+    expect(result.text).toContain("brass section");
+    expect(result.text).toContain("horn stabs");
   });
 
   it("removes copyright source names from exclude text", () => {

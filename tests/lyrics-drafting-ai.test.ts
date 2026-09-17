@@ -52,9 +52,15 @@ describe("AI lyrics drafting", () => {
     expect(prompt).toContain("Suno lyrics box limit: 4800 characters total");
     expect(prompt).toContain("news and x_reaction sources");
     expect(prompt).toContain("Rap density rule");
-    expect(prompt).toContain("| Verse | 14-16行 | × 2 / 各16 bars |");
+    // The section budget table is rendered from the song's own DurationPlan, so it
+    // reflects the resolved band (up by default) instead of a fixed mid-band table.
+    expect(prompt).toContain("| Verse 1 | 18-22 lines | 22 bars |");
+    expect(prompt).toContain("| Hook | 4 lines | 8 bars |");
     expect(prompt).toContain("dense rap phrasing, internal rhymes, no double-time");
-    expect(prompt).toContain("stay above the enforced 1200-character / 52-line bare-lyrics floor");
+    // Producer ruling 2026-09-17 moved the no-arg default band from mid (1200/52)
+    // to up (1380/60); this call passes no durationPlan/tempoBand, so it renders
+    // the new default's floor.
+    expect(prompt).toContain("stay above the enforced 1380-character / 60-line bare-lyrics floor");
     expect(prompt).toContain("target 2800-3400 lyric-body characters");
     expect(LYRICS_KNOWLEDGE_DIGEST_FILES).toContain("rap_and_flow.md");
     expect(LYRICS_KNOWLEDGE_DIGEST_FILES).toContain("english_lyrics.md");
