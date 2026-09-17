@@ -451,7 +451,7 @@
         },
         "minIntervalHours": {
           "type": "integer",
-          "minimum": 12,
+          "minimum": 1,
           "maximum": 168,
           "default": 24
         }

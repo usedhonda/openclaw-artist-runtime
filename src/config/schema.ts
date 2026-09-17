@@ -456,8 +456,8 @@ export function validateConfig(config: unknown): ValidationResult<ArtistRuntimeC
       if ("enabled" in config.songSpawn && typeof config.songSpawn.enabled !== "boolean") {
         errors.push("config.songSpawn.enabled must be a boolean");
       }
-      if ("minIntervalHours" in config.songSpawn && !isIntegerInRange(config.songSpawn.minIntervalHours, 12, 168)) {
-        errors.push("config.songSpawn.minIntervalHours must be an integer between 12 and 168");
+      if ("minIntervalHours" in config.songSpawn && !isIntegerInRange(config.songSpawn.minIntervalHours, 1, 168)) {
+        errors.push("config.songSpawn.minIntervalHours must be an integer between 1 and 168");
       }
     }
   }

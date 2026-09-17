@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- feat: allow `songSpawn.minIntervalHours` down to 1. The 12-hour floor made a
+  finished song sit idle for most of a day before the next idea could start,
+  which read as the pipeline being stuck.
+
 - fix: a finished manual-Create run now takes its own Suno window down. The
   create page is closed and a browser this plugin launched is shut down once
   nothing holds it, so a surviving window no longer reads as an unfinished run.
