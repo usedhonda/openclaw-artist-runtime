@@ -19,6 +19,8 @@ import { PLAYWRIGHT_EXPECTED_CREATE_CARD_COUNT } from "./sunoTakeConstants.js";
  */
 
 export const SUNO_CREATE_SELECTORS = {
+  songTab: '[role="tab"]:has-text("Song")',
+  soundsTab: '[role="tab"]:has-text("Sounds")',
   // The authenticated management workspace, not the transient compact composer.
   // All three controls are present together on the current /create page.
   createNav: 'a[href="/create"]',
@@ -122,20 +124,21 @@ export async function resolveFirstVisibleLocator(
   timeoutMs: number,
   fieldName: string
 ): Promise<Locator> {
-  const attempts = candidates.map(
-    (selector) =>
-      new Promise<string>((resolve, reject) => {
-        page
-          .locator(selector)
-          .first()
-          .waitFor({ state: "visible", timeout: timeoutMs })
-          .then(() => resolve(selector))
-          .catch((error) => reject(error));
+  const attempts = candidates.map(async (selector) => {
+    const matches = page.locator(selector);
+    const count = await matches.count();
+    const locators = count > 1
+      ? Array.from({ length: count }, (_, index) => matches.nth(index))
+      : [matches.first()];
+    return Promise.any(
+      locators.map(async (locator) => {
+        await locator.waitFor({ state: "visible", timeout: timeoutMs });
+        return locator;
       })
-  );
+    );
+  });
   try {
-    const selector = await Promise.any(attempts);
-    return page.locator(selector).first();
+    return await Promise.any(attempts);
   } catch {
     throw new Error(
       `${SUNO_CREATE_FORM_MISSING_REASON}: ${fieldName} not visible within ${timeoutMs}ms; tried ${candidates.join(" | ")}`
@@ -144,11 +147,49 @@ export async function resolveFirstVisibleLocator(
 }
 
 /**
+ * Select the current Song tab before resolving song-only fields.
+ *
+ * Older flat Create pages have no Song/Sounds tabs and remain supported. Once
+ * either top-level tab is visible, however, Song must exist and become selected;
+ * falling back to the Sounds form would target a different product surface.
+ */
+export async function ensureSunoSongMode(page: Page, timeoutMs: number): Promise<boolean> {
+  const songTab = page.locator(SUNO_CREATE_SELECTORS.songTab).first();
+  const soundsTab = page.locator(SUNO_CREATE_SELECTORS.soundsTab).first();
+  const [songVisible, soundsVisible] = await Promise.all([
+    songTab.isVisible().catch(() => false),
+    soundsTab.isVisible().catch(() => false)
+  ]);
+  if (!songVisible && !soundsVisible) {
+    return false;
+  }
+  if (!songVisible) {
+    throw new Error(`${SUNO_CREATE_FORM_MISSING_REASON}: tabbed Create UI exposes Sounds but Song is unavailable`);
+  }
+  if ((await songTab.getAttribute("aria-selected").catch(() => null)) !== "true") {
+    await clickVisibleLocatorWithRetry(page, [SUNO_CREATE_SELECTORS.songTab], timeoutMs, "Song tab");
+  }
+  const deadline = Date.now() + timeoutMs;
+  do {
+    if ((await songTab.getAttribute("aria-selected").catch(() => null)) === "true") {
+      return true;
+    }
+    await new Promise((resolve) => setTimeout(resolve, Math.min(25, Math.max(1, deadline - Date.now()))));
+  } while (Date.now() < deadline);
+  throw new Error(`${SUNO_CREATE_FORM_MISSING_REASON}: Song tab did not become selected within ${timeoutMs}ms`);
+}
+
+/**
  * Wait until the create form has rendered (any form-ready selector visible),
  * tolerating the Clerk handshake skeleton. Throws a DOM-missing error otherwise.
  */
 export async function waitForSunoCreateFormReady(page: Page, timeoutMs: number): Promise<void> {
   try {
+    const tabbedUi = await ensureSunoSongMode(page, timeoutMs);
+    if (tabbedUi) {
+      await resolveFirstVisibleLocator(page, SUNO_CREATE_FALLBACKS.createButton, timeoutMs, "Create song button");
+      return;
+    }
     // `/create` can paint the compact composer before the authenticated workspace
     // hydrates. Do not fill that partial UI: wait for the Create navigation, mode
     // picker, and producer Create boundary that make up the full workspace.
@@ -199,6 +240,7 @@ async function clickVisibleLocatorWithRetry(
  * textarea, which only tells Suno to invent lyrics and has a different character cap.
  */
 export async function ensureSunoLyricsMode(page: Page, timeoutMs: number): Promise<Locator> {
+  await ensureSunoSongMode(page, timeoutMs);
   const visibleEditor = async (): Promise<Locator | undefined> => {
     for (const selector of SUNO_CREATE_FALLBACKS.lyricsEditor) {
       const candidate = page.locator(selector).first();
@@ -253,6 +295,7 @@ export async function ensureSunoLyricsMode(page: Page, timeoutMs: number): Promi
  * textarea, opening that section when required, without touching the Create action.
  */
 export async function ensureSunoStyleMode(page: Page, timeoutMs: number): Promise<Locator> {
+  await ensureSunoSongMode(page, timeoutMs);
   for (const selector of SUNO_CREATE_FALLBACKS.style) {
     const candidate = page.locator(selector).first();
     if (await candidate.isVisible().catch(() => false)) return candidate;

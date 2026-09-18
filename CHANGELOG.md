@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+- fix: activate Suno's new top-level Song tab before resolving song fields, accept
+  the tabbed workspace without obsolete Create-navigation or Advanced landmarks,
+  and expand its Controls panel before filling title, exclusions, or V6 controls.
+  Visible Song fields now win over hidden duplicate nodes from the Sounds surface;
+  a tabbed page without an activatable Song tab fails closed.
+
 - feat: steer the fast arrangement by what the producer actually kept. Across 123
   judged songs, slap bass appears in 21% of rejected songs and 3.5% of kept ones,
   together with sustained electric piano and a polished "punchy/warm" mix, while

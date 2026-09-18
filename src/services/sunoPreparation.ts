@@ -1,6 +1,11 @@
 import type { Locator, Page } from "playwright";
 import type { SunoCreatePayload } from "../types.js";
-import { ensureSunoLyricsMode, ensureSunoStyleMode, resolveFirstVisibleLocator } from "./sunoCreateForm.js";
+import {
+  ensureSunoLyricsMode,
+  ensureSunoSongMode,
+  ensureSunoStyleMode,
+  resolveFirstVisibleLocator
+} from "./sunoCreateForm.js";
 
 export interface SunoPreparedControls {
   model?: string;
@@ -233,19 +238,25 @@ async function setSlider(page: Page, labels: readonly string[], value: number, n
   await stepSliderTo(locator, value, name);
 }
 
-// Live Suno keeps Variety, Max Mode and Personalize inside a collapsible
-// "More Options" panel. While it is collapsed the controls stay in the DOM and
-// accept keys, but the panel header intercepts every click.
-async function expandMoreOptions(page: Page): Promise<void> {
-  const header = page.locator('xpath=(//*[(@role="button" or self::button) and @aria-expanded][contains(normalize-space(.), "More Options")])[1]').first();
-  if (!await visible(header)) return;
-  if ((await header.getAttribute("aria-expanded").catch(() => null)) !== "false") return;
-  await header.click();
-  for (let attempt = 0; attempt < 20; attempt += 1) {
-    if ((await header.getAttribute("aria-expanded").catch(() => null)) === "true") return;
-    await new Promise((resolve) => setTimeout(resolve, 100));
+// Current Suno nests song controls under a top-level "Controls" accordion. Older
+// revisions used "More Options" for the same click-interception boundary. Expand
+// both semantic headers before resolving any row; never guess from a generic button.
+async function expandControlPanels(page: Page): Promise<void> {
+  for (const label of ["Controls", "More Options"]) {
+    const header = page.locator(
+      `xpath=(//*[(@role="button" or self::button) and @aria-expanded][normalize-space(.)=${JSON.stringify(label)} or .//*[normalize-space(.)=${JSON.stringify(label)}]])[1]`
+    ).first();
+    if (!await visible(header)) continue;
+    if ((await header.getAttribute("aria-expanded").catch(() => null)) !== "false") continue;
+    await header.click();
+    for (let attempt = 0; attempt < 20; attempt += 1) {
+      if ((await header.getAttribute("aria-expanded").catch(() => null)) === "true") break;
+      await new Promise((resolve) => setTimeout(resolve, 100));
+    }
+    if ((await header.getAttribute("aria-expanded").catch(() => null)) !== "true") {
+      throw new Error(`suno_prepare_control_unwritable: ${label.toLowerCase()}`);
+    }
   }
-  throw new Error("suno_prepare_control_unwritable: more options");
 }
 
 async function readSliderValue(locator: Locator): Promise<number> {
@@ -362,6 +373,12 @@ export async function readSunoControls(page: Page): Promise<SunoPreparedControls
 }
 
 export async function prepareSunoForm(page: Page, payload: SunoCreatePayload, timeoutMs: number): Promise<SunoPreparedForm> {
+  await ensureSunoSongMode(page, timeoutMs);
+  const hasSongControlInput = hasString(payload, "songName")
+    || hasString(payload, "excludeStyles")
+    || ["model", "duration", "weirdness", "styleInfluence", "audioInfluence", "variety", "maxMode", "personalize"]
+      .some((key) => payload[key] !== undefined);
+  if (hasSongControlInput) await expandControlPanels(page);
   const visibleControls = await readControls(page);
   const requestedControlKeys = ["model", "duration", "weirdness", "styleInfluence", "audioInfluence", "variety", "maxMode", "personalize"];
   const needsAdvanced = requestedControlKeys.some((key) => payload[key] !== undefined && visibleControls[key as keyof SunoPreparedControls] === undefined);
@@ -387,7 +404,7 @@ export async function prepareSunoForm(page: Page, payload: SunoCreatePayload, ti
   }
 
   const explicit = (key: string) => controlValue(payload, key);
-  if (requestedControlKeys.some((key) => key !== "model" && explicit(key) !== undefined)) await expandMoreOptions(page);
+  if (requestedControlKeys.some((key) => key !== "model" && explicit(key) !== undefined)) await expandControlPanels(page);
   const numeric = [["weirdness", LABELS.weirdness, 0, 100], ["styleInfluence", LABELS.styleInfluence, 0, 100], ["audioInfluence", LABELS.audioInfluence, 0, 100]] as const;
   for (const [key, labels, min, max] of numeric) {
     const value = explicit(key);
@@ -420,6 +437,7 @@ export async function prepareSunoForm(page: Page, payload: SunoCreatePayload, ti
   }
   // Re-read all supplied fields after controls: Suno can remount the composer when
   // model/advanced settings change and silently reset an earlier field.
+  await ensureSunoSongMode(page, timeoutMs);
   const finalLyrics = lyrics === undefined ? undefined : await readLocator(await ensureSunoLyricsMode(page, timeoutMs));
   const finalStyle = style === undefined ? undefined : await readLocator(await ensureSunoStyleMode(page, timeoutMs));
   const finalTitle = title === undefined ? undefined : await readLocator(await resolveFirstVisibleLocator(page, ['input[placeholder="Song Title (Optional)"]:visible', 'input[placeholder*="Song Title"]:visible'], timeoutMs, "title"));

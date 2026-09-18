@@ -92,6 +92,53 @@ describe("prepareSunoForm", () => {
     delete unknown.controls["Max Mode"].attrs;
     await expect(prepareSunoForm(unknown.page, { maxMode: false }, 20)).rejects.toThrow("suno_prepare_readback_unknown: maxMode");
   });
+
+  it("selects Song and expands the current Controls panel before filling song fields", async () => {
+    const browser = await chromium.launch({ headless: true });
+    try {
+      const page = await browser.newPage();
+      await page.setContent(`
+        <button role="tab" aria-selected="false" id="song-tab">Song</button>
+        <button role="tab" aria-selected="true" id="sounds-tab">Sounds</button>
+        <section id="song-panel" hidden>
+          <button id="controls" aria-expanded="false">Controls</button>
+          <div id="control-fields" hidden>
+            <input placeholder="Song Title (Optional)">
+            <input placeholder="Exclude styles">
+          </div>
+        </section>
+        <button id="create">Create</button>
+      `);
+      await page.evaluate(() => {
+        const songTab = document.getElementById("song-tab")!;
+        const soundsTab = document.getElementById("sounds-tab")!;
+        const songPanel = document.getElementById("song-panel")!;
+        songTab.addEventListener("click", () => {
+          songTab.setAttribute("aria-selected", "true");
+          soundsTab.setAttribute("aria-selected", "false");
+          songPanel.removeAttribute("hidden");
+        });
+        const controls = document.getElementById("controls")!;
+        controls.addEventListener("click", () => {
+          controls.setAttribute("aria-expanded", "true");
+          document.getElementById("control-fields")!.removeAttribute("hidden");
+        });
+        document.getElementById("create")!.addEventListener("click", () => document.body.dataset.createClicked = "true");
+      });
+
+      const prepared = await prepareSunoForm(page, {
+        songName: "Tabbed Song",
+        excludeStyles: "generic drop"
+      }, 500);
+
+      expect(prepared).toMatchObject({ title: "Tabbed Song", excludeStyles: "generic drop" });
+      expect(await page.locator('#song-tab').getAttribute("aria-selected")).toBe("true");
+      expect(await page.locator('#controls').getAttribute("aria-expanded")).toBe("true");
+      expect(await page.locator("body").getAttribute("data-create-clicked")).toBeNull();
+    } finally {
+      await browser.close();
+    }
+  });
 });
 
 describe("readSunoControls", () => {

@@ -5,6 +5,7 @@ import {
   SUNO_CREATE_FORM_MISSING_REASON,
   SUNO_CREATE_SELECTORS,
   SUNO_EXPECTED_TAKE_COUNT,
+  ensureSunoSongMode,
   ensureSunoLyricsMode,
   ensureSunoStyleMode,
   filterFreshTakeUrls,
@@ -24,29 +25,37 @@ type SelectorState = {
  * resolves iff visible, else rejects immediately (models a timeout without waiting).
  * .first() is identity; .click() runs an optional side effect (e.g. mode flip).
  */
-function makePage(states: Record<string, SelectorState>): { page: Page; clicks: string[] } {
+function makePage(states: Record<string, SelectorState | SelectorState[]>): { page: Page; clicks: string[] } {
   const clicks: string[] = [];
   const locatorFor = (selector: string) => {
-    const state = states[selector] ?? { visible: false };
-    const locator = {
-      first: () => locator,
-      isVisible: async () => state.visible,
-      getAttribute: async (name: string) => state.attrs?.[name] ?? null,
-      waitFor: async (_opts: { state: "visible"; timeout: number }) => {
-        if (!state.visible) {
-          throw new Error(`not visible: ${selector}`);
+    const selectorStates = Array.isArray(states[selector])
+      ? states[selector] as SelectorState[]
+      : [states[selector] as SelectorState ?? { visible: false }];
+    const locatorAt = (index: number) => {
+      const state = selectorStates[index] ?? { visible: false };
+      const locator = {
+        first: () => locatorAt(0),
+        nth: (nextIndex: number) => locatorAt(nextIndex),
+        count: async () => selectorStates.length,
+        isVisible: async () => state.visible,
+        getAttribute: async (name: string) => state.attrs?.[name] ?? null,
+        waitFor: async (_opts: { state: "visible"; timeout: number }) => {
+          if (!state.visible) {
+            throw new Error(`not visible: ${selector}`);
+          }
+        },
+        click: async () => {
+          clicks.push(selector);
+          if ((state.clickFailures ?? 0) > 0) {
+            state.clickFailures = (state.clickFailures ?? 0) - 1;
+            throw new Error(`detached before click: ${selector}`);
+          }
+          state.onClick?.();
         }
-      },
-      click: async () => {
-        clicks.push(selector);
-        if ((state.clickFailures ?? 0) > 0) {
-          state.clickFailures = (state.clickFailures ?? 0) - 1;
-          throw new Error(`detached before click: ${selector}`);
-        }
-        state.onClick?.();
-      }
+      };
+      return locator;
     };
-    return locator;
+    return locatorAt(0);
   };
   const page = { locator: (selector: string) => locatorFor(selector) } as unknown as Page;
   return { page, clicks };
@@ -72,6 +81,15 @@ describe("resolveFirstVisibleLocator", () => {
     expect(await resolvedC1.isVisible()).toBe(true);
   });
 
+  it("skips a hidden Sounds field before the visible Song field", async () => {
+    const selector = 'textarea[placeholder*="style" i]';
+    const { page } = makePage({
+      [selector]: [{ visible: false }, { visible: true }]
+    });
+    const locator = await resolveFirstVisibleLocator(page, [selector], 50, "style textarea");
+    expect(await locator.isVisible()).toBe(true);
+  });
+
   it("throws a DOM-missing error naming the tried candidates when none is visible", async () => {
     const { page } = makePage({});
     await expect(
@@ -81,6 +99,32 @@ describe("resolveFirstVisibleLocator", () => {
 });
 
 describe("waitForSunoCreateFormReady", () => {
+  it("selects Song from Sounds and accepts the tabbed UI without legacy workspace landmarks", async () => {
+    const songTab: SelectorState = { visible: true, attrs: { "aria-selected": "false" } };
+    const soundsTab: SelectorState = { visible: true, attrs: { "aria-selected": "true" } };
+    const { page, clicks } = makePage({
+      [SUNO_CREATE_SELECTORS.songTab]: {
+        ...songTab,
+        onClick: () => {
+          songTab.attrs!["aria-selected"] = "true";
+          soundsTab.attrs!["aria-selected"] = "false";
+        }
+      },
+      [SUNO_CREATE_SELECTORS.soundsTab]: soundsTab,
+      [SUNO_CREATE_SELECTORS.createButton]: { visible: true }
+    });
+
+    await expect(waitForSunoCreateFormReady(page, 50)).resolves.toBeUndefined();
+    expect(clicks).toEqual([SUNO_CREATE_SELECTORS.songTab]);
+  });
+
+  it("fails closed when the tabbed UI exposes Sounds without Song", async () => {
+    const { page } = makePage({
+      [SUNO_CREATE_SELECTORS.soundsTab]: { visible: true, attrs: { "aria-selected": "true" } },
+      [SUNO_CREATE_SELECTORS.createButton]: { visible: true }
+    });
+    await expect(ensureSunoSongMode(page, 50)).rejects.toThrow(SUNO_CREATE_FORM_MISSING_REASON);
+  });
   it("waits for the authenticated Create workspace before accepting form controls", async () => {
     const { page } = makePage({
       [SUNO_CREATE_SELECTORS.createNav]: { visible: true },

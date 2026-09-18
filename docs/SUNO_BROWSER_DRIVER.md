@@ -208,10 +208,12 @@ string to conclude live is unavailable.
 ## Captcha human-assist fallback (`captchaFallback: "human_click"`)
 
 Before any fields are filled, the runtime waits for the authenticated `/create`
-workspace to expose its Create navigation, Advanced mode picker, and producer-only
-Create boundary. A partially hydrated compact composer is rejected rather than used.
-For current Suno Create, the lyrics body is opened through `Advanced -> Write -> Lyrics`;
-the runtime never sends supplied lyrics to Suno's separate "write lyrics about" prompt.
+workspace and producer-only Create boundary. On the current tabbed surface it
+activates `Song` (never `Sounds`), then opens the Lyrics, Styles, and Controls
+sections required by the payload. Older flat Create workspaces retain their
+Create-navigation and Advanced readiness checks. A partially hydrated composer,
+or a tabbed page where Song cannot be activated, is rejected rather than used.
+The runtime never sends supplied lyrics to Suno's separate Cowriter prompt.
 
 Suno now requires a captcha token for generate, so a tokenless `suno-cli create`
 fails closed as `blocked_captcha` (exit 31). An automated browser click is often
@@ -278,14 +280,13 @@ Safety invariants:
 - The two-take delivery contract is unchanged: a run is accepted only once both
   `/song/<id>` take URLs are captured (`EXPECTED_SUNO_TAKE_URLS` = 2).
 
-Selector note: current Suno builds can render `Advanced` and `Create` as plain
-text buttons without the older ARIA metadata. Form readiness and mode switching
-accept both the semantic selectors and these observed text-button fallbacks. In the
-authenticated `/create` workspace, the driver first selects the visible `Write Lyrics` mode.
-For older Advanced surfaces it selects the visible `Custom` mode before waiting for
-the lyrics editor; the editor is not mounted in the default Advanced sub-mode. A
-transient detached-element click is re-resolved and retried because the current
-React surface can replace the mode button while Advanced mounts.
+Selector note: the top-level `Song` and `Sounds` controls are resolved as tabs by
+role, visible text, and `aria-selected`; generated IDs are not retained. Field
+resolution scans every matching node and uses the first visible match, so a hidden
+Sounds node cannot mask the active Song field. Older Advanced surfaces still select
+the visible `Write Lyrics` or `Custom` mode before waiting for the lyrics editor.
+A transient detached-element click is re-resolved and retried because the React
+surface can replace a tab or section control while it mounts.
 
 Failure diagnostics never persist raw page HTML or a query-bearing browser URL.
 They store a screenshot, a path-only URL, and a `.diagnostics.json` file containing
