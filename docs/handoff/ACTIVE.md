@@ -1,5 +1,15 @@
 # Handoff: Producer-musician creation loop
 
+## Analyzed: Suno tabbed Create UI (2026-09-18 JST)
+
+The live desktop Create page now has top-level Song and Sounds tabs. Song owns
+the collapsible Lyrics, Styles, and Controls panels; Sounds is a separate
+one-shot/loop generator with a 500-character sound description, BPM, and Key.
+The reusable DOM/ARIA map, extension state machine, selector hazards, and minimum
+regression matrix are documented in
+`docs/SUNO_CREATE_TABBED_UI_ANALYSIS.md`. No form value, browser/gateway state,
+Create action, or runtime source was changed during the investigation.
+
 ## Prepared, awaiting manual Create: Rubber Stamp Ears (2026-09-17 JST)
 
 The producer asked for the `Fifteen Second Expert` lyrics (`spawn_dc796c`) to be
