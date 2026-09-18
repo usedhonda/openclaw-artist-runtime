@@ -1,5 +1,21 @@
 # Handoff: Producer-musician creation loop
 
+## Completed: tabbed Create live generation and Telegram proof (2026-09-18 JST)
+
+`Unobserved Now` (`song-184`) completed the current Song/Sounds UI path. The
+actual GrokBot CDP target was verified before Create with 2922 lyric characters,
+980 style characters, title and Exclude filled, v6, Duration 3:30, Max Mode Off,
+Variety 2, Personalize On, and Style Influence 100. Run `suno_mu6fx5ic` was
+accepted with two take URLs and advanced to `take_selected`. Telegram completion
+message 1977 was verified in the live desktop app and contains the artist's
+explanation, lyric/technical notes, both links, previews, and review buttons.
+
+The final selector correction is `111265d`: the current model trigger is exposed
+as `Model: v6`. Earlier tab hydration and Lyrics/Styles role-button fixes are in
+`8ae6488` through `6b89bbe`. GrokBot runs `111265d`; no human-assist wait remains.
+Operational evidence is in
+`docs/log/codex/124-suno-tabbed-create-live-verification.md`.
+
 ## Analyzed: Suno tabbed Create UI (2026-09-18 JST)
 
 The live desktop Create page now has top-level Song and Sounds tabs. Song owns
