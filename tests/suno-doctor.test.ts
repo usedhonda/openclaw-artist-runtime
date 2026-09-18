@@ -11,19 +11,23 @@ chromiumMock.connectOverCDP = connectOverCDPMock;
 vi.mock("playwright", () => ({ chromium: chromiumMock }));
 
 function locatorMock(selector: string, events: string[]) {
+  const locator = {
+    waitFor: vi.fn(async () => events.push(`wait:${selector}`)),
+    isVisible: vi.fn(async () => {
+      events.push(`visible:${selector}`);
+      return !selector.includes('[role="tab"]');
+    }),
+    isEditable: vi.fn(async () => {
+      events.push(`editable:${selector}`);
+      return true;
+    }),
+    getAttribute: vi.fn(async () => null),
+    click: vi.fn(async () => events.push(`click:${selector}`))
+  };
   return {
-    first: () => ({
-      waitFor: vi.fn(async () => events.push(`wait:${selector}`)),
-      isVisible: vi.fn(async () => {
-        events.push(`visible:${selector}`);
-        return true;
-      }),
-      isEditable: vi.fn(async () => {
-        events.push(`editable:${selector}`);
-        return true;
-      }),
-      click: vi.fn(async () => events.push(`click:${selector}`))
-    })
+    first: () => locator,
+    nth: () => locator,
+    count: vi.fn(async () => 1)
   };
 }
 
