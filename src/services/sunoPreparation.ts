@@ -170,7 +170,7 @@ async function textControl(page: Page, key: "model" | "duration"): Promise<Locat
   if (key === "duration") return undefined;
   const getByRole = (page as Page & { getByRole?: Page["getByRole"] }).getByRole;
   if (typeof getByRole !== "function") return undefined;
-  const pattern = key === "model" ? /^v[0-9]+(?:\.[0-9]+)?$/i : /^(?:Auto|Custom)$/i;
+  const pattern = key === "model" ? /^(?:Model:\s*)?v[0-9]+(?:\.[0-9]+)?$/i : /^(?:Auto|Custom)$/i;
   const candidates = getByRole.call(page, "button", { name: pattern });
   const count = await candidates.count().catch(() => 0);
   for (let index = 0; index < count; index += 1) {

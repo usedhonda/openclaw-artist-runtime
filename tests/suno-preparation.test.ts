@@ -151,6 +151,23 @@ describe("readSunoControls", () => {
 });
 
 describe("readSunoControls DOM contract", () => {
+  it("recognizes the current Model: v6 accessible name", async () => {
+    const browser = await chromium.launch({ headless: true });
+    try {
+      const page = await browser.newPage();
+      await page.setContent(`
+        <button role="tab" aria-selected="true">Song</button>
+        <button role="tab" aria-selected="false">Sounds</button>
+        <button aria-label="Model: v6">v6</button>
+      `);
+      await expect(prepareSunoForm(page, { model: "v6" }, 500)).resolves.toMatchObject({
+        controls: { model: "v6" }
+      });
+    } finally {
+      await browser.close();
+    }
+  });
+
   it("does not borrow a neighbouring slider and maps selected segmented values", async () => {
     let browser;
     try {
