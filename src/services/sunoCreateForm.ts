@@ -37,7 +37,8 @@ export const SUNO_CREATE_SELECTORS = {
   advancedTab: 'button[role="tab"][aria-label="Advanced"]',
   writeLyricsTab: 'button:has-text("Write Lyrics")',
   writeModeButton: 'button:has-text("Write")',
-  stylesButton: 'button:has-text("Styles")',
+  lyricsButton: '[role="button"]:has-text("Lyrics")',
+  stylesButton: '[role="button"]:has-text("Styles")',
   addLyricsButton: 'button[aria-label="Add your own lyrics"]',
   stylesWrapper: '[data-testid="create-form-styles-wrapper"]',
   titleInput: 'input[placeholder="Song Title (Optional)"]:visible',
@@ -154,17 +155,27 @@ export async function resolveFirstVisibleLocator(
  * falling back to the Sounds form would target a different product surface.
  */
 export async function ensureSunoSongMode(page: Page, timeoutMs: number): Promise<boolean> {
+  const startedAt = Date.now();
   const songTab = page.locator(SUNO_CREATE_SELECTORS.songTab).first();
   const soundsTab = page.locator(SUNO_CREATE_SELECTORS.soundsTab).first();
-  const [songVisible, soundsVisible] = await Promise.all([
-    songTab.isVisible().catch(() => false),
-    soundsTab.isVisible().catch(() => false)
+  const tabbedSignal = Promise.any([
+    songTab.waitFor({ state: "visible", timeout: timeoutMs }).then(() => true),
+    soundsTab.waitFor({ state: "visible", timeout: timeoutMs }).then(() => true)
   ]);
-  if (!songVisible && !soundsVisible) {
+  const legacySignal = Promise.all(
+    SUNO_CREATE_WORKSPACE_SELECTORS.map((selector) =>
+      page.locator(selector).first().waitFor({ state: "visible", timeout: timeoutMs })
+    )
+  ).then(() => false);
+  const tabbedUi = await Promise.any([tabbedSignal, legacySignal]).catch(() => false);
+  if (!tabbedUi) {
     return false;
   }
-  if (!songVisible) {
-    throw new Error(`${SUNO_CREATE_FORM_MISSING_REASON}: tabbed Create UI exposes Sounds but Song is unavailable`);
+  if (!await songTab.isVisible().catch(() => false)) {
+    const remainingMs = Math.max(1, timeoutMs - (Date.now() - startedAt));
+    await songTab.waitFor({ state: "visible", timeout: remainingMs }).catch(() => {
+      throw new Error(`${SUNO_CREATE_FORM_MISSING_REASON}: tabbed Create UI exposes Sounds but Song is unavailable`);
+    });
   }
   if ((await songTab.getAttribute("aria-selected").catch(() => null)) !== "true") {
     await clickVisibleLocatorWithRetry(page, [SUNO_CREATE_SELECTORS.songTab], timeoutMs, "Song tab");
@@ -251,6 +262,13 @@ export async function ensureSunoLyricsMode(page: Page, timeoutMs: number): Promi
   const existingEditor = await visibleEditor();
   if (existingEditor) {
     return existingEditor;
+  }
+  const lyricsSection = page.locator(SUNO_CREATE_SELECTORS.lyricsButton).first();
+  if (await lyricsSection.isVisible().catch(() => false)) {
+    if ((await lyricsSection.getAttribute("aria-expanded").catch(() => null)) !== "true") {
+      await clickVisibleLocatorWithRetry(page, [SUNO_CREATE_SELECTORS.lyricsButton], timeoutMs, "Lyrics section");
+    }
+    return resolveFirstVisibleLocator(page, SUNO_CREATE_FALLBACKS.lyricsEditor, timeoutMs, "lyrics editor");
   }
   // Some prior Create revisions exposed one combined Write Lyrics control.
   const writeLyrics = page.locator(SUNO_CREATE_SELECTORS.writeLyricsTab).first();

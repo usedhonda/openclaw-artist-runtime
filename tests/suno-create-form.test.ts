@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import type { Page } from "playwright";
+import { chromium, type Page } from "playwright";
 import {
   SUNO_CREATE_FALLBACKS,
   SUNO_CREATE_FORM_MISSING_REASON,
@@ -99,6 +99,28 @@ describe("resolveFirstVisibleLocator", () => {
 });
 
 describe("waitForSunoCreateFormReady", () => {
+  it("waits for the tabbed UI to hydrate instead of falling through to legacy readiness", async () => {
+    const browser = await chromium.launch({ headless: true });
+    try {
+      const page = await browser.newPage();
+      await page.setContent('<main id="root"></main>');
+      await page.evaluate(() => {
+        setTimeout(() => {
+          document.getElementById("root")!.innerHTML = `
+            <div role="tab" aria-selected="false">Song</div>
+            <div role="tab" aria-selected="true">Sounds</div>
+            <button aria-label="Create song">Create</button>`;
+          const song = document.querySelector('[role="tab"]')!;
+          song.addEventListener("click", () => song.setAttribute("aria-selected", "true"));
+        }, 25);
+      });
+      await expect(waitForSunoCreateFormReady(page, 500)).resolves.toBeUndefined();
+      await expect(page.locator(SUNO_CREATE_SELECTORS.songTab).getAttribute("aria-selected")).resolves.toBe("true");
+    } finally {
+      await browser.close();
+    }
+  });
+
   it("selects Song from Sounds and accepts the tabbed UI without legacy workspace landmarks", async () => {
     const songTab: SelectorState = { visible: true, attrs: { "aria-selected": "false" } };
     const soundsTab: SelectorState = { visible: true, attrs: { "aria-selected": "true" } };
@@ -181,6 +203,24 @@ describe("filterFreshTakeUrls (take-attribution guard)", () => {
 });
 
 describe("ensureSunoLyricsMode", () => {
+  it("opens the current role-button Lyrics section before resolving the editor", async () => {
+    const editorState: SelectorState = { visible: false };
+    const lyricsSection: SelectorState = { visible: true, attrs: { "aria-expanded": "false" } };
+    const { page, clicks } = makePage({
+      [SUNO_CREATE_SELECTORS.lyricsEditor]: editorState,
+      [SUNO_CREATE_SELECTORS.lyricsButton]: {
+        ...lyricsSection,
+        onClick: () => {
+          lyricsSection.attrs!["aria-expanded"] = "true";
+          editorState.visible = true;
+        }
+      }
+    });
+    const locator = await ensureSunoLyricsMode(page, 50);
+    expect(clicks).toEqual([SUNO_CREATE_SELECTORS.lyricsButton]);
+    expect(await locator.isVisible()).toBe(true);
+  });
+
   it("returns the contenteditable lyrics editor directly when already visible", async () => {
     const { page, clicks } = makePage({
       [SUNO_CREATE_SELECTORS.lyricsEditor]: { visible: true }

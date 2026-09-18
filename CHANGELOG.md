@@ -57,8 +57,8 @@
   nothing holds it, so a surviving window no longer reads as an unfinished run.
   An attached browser from the legacy CDP escape hatch is never closed.
 
-- feat: change the standing normal-generation Suno defaults to Max Mode On and
-  Personalize Off, keeping Custom Duration 3:30, Variety High (2), and Style
+- fix: restore the standing normal-generation Suno defaults to Max Mode Off and
+  Personalize On, keeping Custom Duration 3:30, Variety High (2), and Style
   Influence 100. New prompt packs, the hashed payload, and the preparation
   recommendation all carry the new pair.
 

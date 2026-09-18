@@ -90,8 +90,8 @@ export function buildSunoV6Recommendation(payload: SunoCreatePayload) {
     && payload.variety >= 0 && payload.variety <= 4 ? payload.variety : undefined;
   const variety = requestedVariety ?? (exploratory ? 3 : precise ? 1 : 2);
   const defaultsApplied = requestedVariety === 2
-    && payload.maxMode === true
-    && payload.personalize === false
+    && payload.maxMode === false
+    && payload.personalize === true
     && payload.duration === "3:30"
     && payload.styleInfluence === 100;
   return {
@@ -103,13 +103,13 @@ export function buildSunoV6Recommendation(payload: SunoCreatePayload) {
       : precise
         ? "言葉の輪郭と余白を守りつつ、小さな変化を試すVariety 1。忠実さを優先するなら0。"
         : "主ジャンルを保ちながら編成の別案を試すVariety 2。狙いが決まったら0と比較する。",
-    personalize: false,
+    personalize: defaultsApplied ? true : false,
     personalizeReason: defaultsApplied
-      ? "通常生成の既定値としてPersonalize Offを画面へ適用。"
+      ? "通常生成の既定値としてPersonalize Onを画面へ適用。"
       : "今回は曲の指示を比較しやすくするためOffを提案。My Tasteを使う場合は画面で選ぶ。",
-    maxMode: defaultsApplied ? true : false,
+    maxMode: false,
     maxModeReason: defaultsApplied
-      ? "通常生成の既定値としてMax Mode On、Duration 3:30、Style Influence 100を画面へ適用。"
+      ? "通常生成の既定値としてMax Mode Off、Duration 3:30、Style Influence 100を画面へ適用。"
       : "まず通常モードで構成を確認する提案。Max Modeの効果は保証せず、使うかは画面で決める。",
     policy: defaultsApplied ? "payload_defaults_applied" : "recommendation_only_not_applied"
   };

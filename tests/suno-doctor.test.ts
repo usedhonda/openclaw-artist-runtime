@@ -12,7 +12,10 @@ vi.mock("playwright", () => ({ chromium: chromiumMock }));
 
 function locatorMock(selector: string, events: string[]) {
   const locator = {
-    waitFor: vi.fn(async () => events.push(`wait:${selector}`)),
+    waitFor: vi.fn(async () => {
+      events.push(`wait:${selector}`);
+      if (selector.includes('[role="tab"]')) throw new Error(`not visible: ${selector}`);
+    }),
     isVisible: vi.fn(async () => {
       events.push(`visible:${selector}`);
       return !selector.includes('[role="tab"]');
@@ -94,7 +97,7 @@ describe("Suno doctor", () => {
       waitUntil: "domcontentloaded",
       timeout: 100
     });
-    expect(events.some((event) => /Create song|submit/i.test(event))).toBe(false);
+    expect(events.some((event) => event.startsWith("click:") && /Create song|submit/i.test(event))).toBe(false);
   });
 
   it("fails before Playwright attach when CDP version is unreachable", async () => {
