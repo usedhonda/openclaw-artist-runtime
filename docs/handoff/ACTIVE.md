@@ -1,5 +1,29 @@
 # Handoff: Producer-musician creation loop
 
+## Implementing: grounded Telegram production notes (2026-09-19 JST)
+
+The producer judged the current manual-Create Telegram card unreadable and,
+more importantly, devoid of the artist's actual thought. The card repeated a
+multi-story observation under multiple labels, disconnected its displayed
+source from the stated angle, used generic fixed commentary as if authored by
+the artist, and contradicted itself by calling already prepared controls
+"unapplied guidance".
+
+The active change replaces that wall with spaced production-note sections and
+composes future notes from the final lyrics, bound observation, artist reason,
+and Style through the configured AI provider. Grounding rejects invented lyric
+quotes, source summaries with no overlap, generic commentary, and technique
+explanations that name no technique. Shallow/failed notes are reported as
+unavailable rather than impersonating the artist. Manual-Create settings are
+separated from the creative note and labelled as screen-applied because the
+event fires only after verified form preparation. Existing creation-note and
+ledger shapes are unchanged.
+
+The active `song-190` human-assist wait is intentionally preserved: no Create,
+browser close, gateway restart, or form mutation is part of this implementation
+checkpoint. Deploy and one live corrected Telegram proof must wait until that
+wait reaches a terminal state.
+
 ## Fixing: current Suno Advanced song composer (2026-09-19 JST)
 
 The producer observed an empty GrokBot browser. `song-190` (`Thermal Devotion`)

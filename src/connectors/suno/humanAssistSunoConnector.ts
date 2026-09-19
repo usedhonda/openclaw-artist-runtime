@@ -16,7 +16,7 @@ import {
 import { emitRuntimeEvent } from "../../services/runtimeEventBus.js";
 import { removeHumanAssistPending, writeHumanAssistPending } from "../../services/humanAssistPending.js";
 import { CdpHumanAssistDriver } from "../../services/cdpHumanAssistDriver.js";
-import { buildSunoV6Recommendation } from "../../services/sunoSubmissionEvidence.js";
+import { buildSunoPreparedSettingsSummary } from "../../services/sunoSubmissionEvidence.js";
 import { findTakeAttributionCollisions } from "../../services/takeAttributionGuard.js";
 import type { SunoBrowserConfigView } from "../../services/runtimeConfig.js";
 import type { SunoConnector } from "./SunoConnector.js";
@@ -116,13 +116,13 @@ export class HumanAssistSunoConnector implements SunoConnector {
     }
     let outcome;
     try {
-      const recommendation = buildSunoV6Recommendation(payload);
+      const preparedSettings = buildSunoPreparedSettingsSummary(payload);
       outcome = await runHumanAssistCreate({
         driver,
         notifier: {
           awaitingHumanCreate: (info) => this.deps.notifier.awaitingHumanCreate({
             ...info,
-            recommendation: [recommendation.rationale, recommendation.personalizeReason, recommendation.maxModeReason].join("\n")
+            ...(preparedSettings ? { recommendation: preparedSettings } : {})
           })
         },
         songId,

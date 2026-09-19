@@ -60,7 +60,8 @@ describe("song take observation privacy guard", () => {
     });
 
     expect(message).toContain("ニュースの概要\n[非表示]");
-    expect(message).toContain("俺が思ったこと\nこの観察を曲の起点として残した。");
+    expect(message).toContain("制作ノート\n制作意図の文章化に失敗した。薄い定型文では代用しない。");
+    expect(message).not.toContain("この観察を曲の起点として残した。");
     expect(message).not.toContain("API_KEY");
     expect(message).not.toContain("PASSWORD");
   });

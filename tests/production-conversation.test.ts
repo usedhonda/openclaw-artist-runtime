@@ -121,8 +121,8 @@ describe("producer conversation continuity", () => {
     await recordProductionRunBinding(root, { songId: "song-a", runId: "run-trial", ...revision, baselineStatus: "take_selected", baselineTake: { takeId: "old-take", url: "https://suno.com/song/old-take" }, createdAt: new Date().toISOString() });
     await writeFile(join(root, "songs/song-a/suno/runs.jsonl"), JSON.stringify({ runId: "run-trial", songId: "song-a", status: "accepted", urls, payloadHash: revision.payloadHash, createdAt: new Date().toISOString() }) + "\n");
     const report = await formatRuntimeEvent({ type: "song_take_completed", songId: "song-a", urls, timestamp: Date.now() }, { workspaceRoot: root });
-    expect(report).toContain("そして、曲へ\n148 BPM、短く切ったドラム");
-    expect(report).toContain("聴いてほしいところ");
+    expect(report).toContain("確認できた音の情報\n148 BPM、短く切ったドラム");
+    expect(report).toContain("確認事項");
     expect(report).toContain("前の音源より速くしても、言葉が潰れず抜けるところ");
     expect(report).not.toContain("urgent clipped drums");
     expect(report).toContain("https://suno.com/song/old-take");

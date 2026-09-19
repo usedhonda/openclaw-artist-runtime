@@ -197,7 +197,8 @@ describe("voice no-machine-leak contract (v10.16)", () => {
 
     expectNoMachineMarkers(text);
     expect(text).toContain("ニュースの概要\nold live houses disappear under identical signs");
-    expect(text).toContain("この観察を曲の起点として残した");
+    expect(text).toContain("制作意図の文章化に失敗した。薄い定型文では代用しない。");
+    expect(text).not.toContain("この観察を曲の起点として残した");
     expect(text).not.toContain("自分の都市観察");
     expect(text).toContain("old live houses disappear under identical signs");
   });

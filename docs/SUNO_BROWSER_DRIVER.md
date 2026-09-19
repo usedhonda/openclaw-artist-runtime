@@ -64,9 +64,17 @@ the title. Existing feed/DOM reconciliation remains the fallback when the reques
 was not observed; a prepared value is never promoted to an observed submission.
 
 Telegram explanations use the actual observed lyrics/style when changed, keeping
-the original source and reaction separate from the edited material. Unobserved
-new manual submissions are labelled as pre-Create design, not verified submitted
-content. Existing Prompt Ledger and run ledger formats are unchanged.
+the original source and reaction separate from the edited material. Before a
+manual Create, the alert renders a production note in distinct source, artist
+reaction, lyric transformation, lyric-technique, musical-intent, and listening
+sections. AI-authored notes are accepted only when their quoted lines occur in the
+saved lyrics, their source summary remains grounded in the bound observation, and
+their explanations name a concrete writing technique. A failed or generic note is
+identified as unavailable instead of being presented as the artist's thought.
+Prepared Suno values appear in a separate `Suno設定（画面反映済み）` section only
+after form preparation has completed. Unobserved new manual submissions remain
+labelled as pre-Create design, not verified submitted content. Existing Prompt
+Ledger and run ledger formats are unchanged.
 
 The CLI retains its `afb421d` vendor baseline plus the reviewed Variety delta
 from suno-kit `a3ae7cd`; it is not a wholesale vendor replacement. The current V6

@@ -115,6 +115,22 @@ export function buildSunoV6Recommendation(payload: SunoCreatePayload) {
   };
 }
 
+/** Values the browser preparation path explicitly writes and reads back before notifying Telegram. */
+export function buildSunoPreparedSettingsSummary(payload: SunoCreatePayload): string | undefined {
+  const first = [
+    typeof payload.model === "string" && payload.model.trim() ? payload.model.trim().toUpperCase() : undefined,
+    typeof payload.duration === "string" && payload.duration.trim() ? `Duration ${payload.duration.trim()}` : undefined,
+    typeof payload.maxMode === "boolean" ? `Max Mode ${payload.maxMode ? "On" : "Off"}` : undefined
+  ].filter((value): value is string => Boolean(value));
+  const second = [
+    typeof payload.personalize === "boolean" ? `Personalize ${payload.personalize ? "On" : "Off"}` : undefined,
+    typeof payload.variety === "number" ? `Variety ${payload.variety}` : undefined,
+    typeof payload.styleInfluence === "number" ? `Style Influence ${payload.styleInfluence}` : undefined
+  ].filter((value): value is string => Boolean(value));
+  const lines = [first.join(" / "), second.join(" / ")].filter(Boolean);
+  return lines.length > 0 ? lines.join("\n") : undefined;
+}
+
 export async function writeSunoPreparationEvidence(binding: SunoEvidenceBinding, payload: SunoCreatePayload, prepared: {
   title?: string; lyrics?: string; style?: string; excludeStyles?: string;
   controls: SunoUiControls;

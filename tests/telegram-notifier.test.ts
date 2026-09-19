@@ -139,16 +139,19 @@ describe("TelegramNotifier", () => {
     const root = mkdtempSync(join(tmpdir(), "manual-create-card-"));
     const dir = join(root, "songs", "song-desc", "suno");
     mkdirSync(dir, { recursive: true });
-    writeFileSync(join(dir, "lyrics-suno.md"), "[Hook]\nYour stopwatch isn't a witness.\n");
+    writeFileSync(join(dir, "lyrics-suno.md"), "[Verse]\nかんばんのうらで ねだんがほどける\n[Hook]\nYour stopwatch isn't a witness.\n");
     writeFileSync(join(dir, "style.md"), "High-velocity progressive rap, 96 BPM\nlonger detail line\n");
     writeFileSync(join(dir, "creative-note.json"), JSON.stringify({
       version: 1,
       source: { author: "news.example", summary: "落札価格は約26万円だった。" },
-      artistReaction: "金額だけで出来を分かった気になる目利き面が信用できない。",
-      lyricConcept: "「感」と「根拠」を一行ずつぶつけた。",
-      lyricHighlights: [{ quote: "Your stopwatch isn't a witness.", explanation: "主張を一度で残すフックにした。" }],
-      musicIntent: "96 BPM、乾いた質感で言葉を前に出した。",
-      listenFor: ["フックがどう残るか。"]
+      artistReaction: "金額だけで出来を分かった気になる目利き面が信用できない。俺も数字なら説明した気になれる、その逃げ方を持っている。値札の外に残るものを誰が判断できるのか、答えずに曲へ残した。",
+      lyricConcept: "鑑定の数字を、人間を急いで測るストップウォッチへ置き換えた。看板の表と裏で評価する側とされる側を反転させ、固有名詞を責めずに日常の道具へ圧力を閉じ込めた。最後まで正解を言わない構成にした。",
+      lyricHighlights: [
+        { quote: "Your stopwatch isn't a witness.", explanation: "stopwatch と witness の子音反復をパンチラインにして、英語の強勢が四拍へ刺さるフックにした。" },
+        { quote: "かんばんのうらで ねだんがほどける", explanation: "看板と値段を行中韻で結び、表の評価が裏側で崩れる視点反転を仕込んだ。" }
+      ],
+      musicIntent: "96 BPMの乾いたドラムで、評価の言葉だけを前へ押し出した。ローズピアノの濁りを残し、数字では割り切れない余韻が後ろへ滞留するようにした。",
+      listenFor: ["英語フックの強勢がどう残るか。", "看板の表裏で視点が切り替わるところ。"]
     }));
     const observation = {
       author: "news.example",
@@ -177,15 +180,15 @@ describe("TelegramNotifier", () => {
       timestamp: 1
     }, { workspaceRoot: root });
 
-    expect(text).toContain("見たもの: 落札価格は約26万円だった。（news.example）");
-    expect(text).toContain("🔗 https://news.example/articles/1");
-    expect(text).toContain("斬り口: 金額だけで出来を分かった気になる目利き面が信用できない。");
-    expect(text).toContain("狙い: 「感」と「根拠」を一行ずつぶつけた。");
-    expect(text).toContain("フック: Your stopwatch isn't a witness.");
-    expect(text).toContain("主張を一度で残すフックにした。");
-    expect(text).toContain("聴いてほしい点:");
-    expect(text).toContain("・フックがどう残るか。");
-    expect(text).toContain("音: 96 BPM、乾いた質感で言葉を前に出した。");
+    expect(text).toContain("きっかけになった出来事\n落札価格は約26万円だった。（news.example）\n🔗 https://news.example/articles/1");
+    expect(text).toContain("俺が思ったこと\n金額だけで出来を分かった気になる目利き面が信用できない。");
+    expect(text).toContain("歌詞へどう変えたか\n鑑定の数字を、人間を急いで測るストップウォッチへ置き換えた。");
+    expect(text).toContain("歌詞のテクニカルな要所\n・「Your stopwatch isn't a witness.」");
+    expect(text).toContain("子音反復をパンチラインにして");
+    expect(text).toContain("聴いてほしいところ");
+    expect(text).toContain("・英語フックの強勢がどう残るか。");
+    expect(text).toContain("音へどう変えたか\n96 BPMの乾いたドラムで");
+    expect(text).toContain("\n\n俺が思ったこと\n");
   });
 
   it("explains manual Suno parameter editing without claiming captcha", async () => {
@@ -199,7 +202,7 @@ describe("TelegramNotifier", () => {
     });
 
     expect(text).toContain("「Neon Alley」の入力は済ませた");
-    expect(text).toContain("残りを調整して");
+    expect(text).toContain("内容を確認して");
     expect(text).toContain("取込と選曲まで自動で続ける");
     expect(text).toContain("こちらから Create は押さない");
     expect(text).not.toContain("captcha が出た");
@@ -207,7 +210,7 @@ describe("TelegramNotifier", () => {
     expect(text).not.toContain("song:");
   });
 
-  it("renders a manual-submit recommendation as unapplied guidance", async () => {
+  it("renders settings reached after verified form preparation as applied", async () => {
     const text = await formatRuntimeEvent({
       type: "suno_human_assist_requested",
       songId: "song-recommendation",
@@ -217,7 +220,7 @@ describe("TelegramNotifier", () => {
       recommendation: "V6 / Variety 2 / Max Mode Off",
       timestamp: 1
     });
-    expect(text).toContain("推奨設定（適用済みではない）: V6 / Variety 2 / Max Mode Off");
+    expect(text).toContain("Suno設定（画面反映済み）\nV6 / Variety 2 / Max Mode Off");
     expect(text).toContain("こちらから Create は押さない");
   });
 

@@ -2,6 +2,17 @@
 
 ## Unreleased
 
+- fix: replace the manual-Create Telegram card's generic `見たもの / 斬り口 /
+  狙い` wall with a grounded, sectioned production note. New prompt packs ask
+  the configured AI provider for the artist's first-person reaction, the
+  source-to-lyric transformation, exact lyric quotes with named techniques,
+  musical intent, and concrete listening points; invented quotes, generic
+  commentary, and ungrounded source summaries are rejected. Telegram separates
+  creative explanation from verified form settings with blank lines, stops
+  repeating the observation roundup, and says explicitly when a proper note
+  could not be written instead of presenting a stock sentence as the artist's
+  thought.
+
 - fix: accept Suno's current `Simple / Advanced / Sounds` Create tabs. `Advanced`
   is now treated as the song composer when the former `Song` tab is absent, while
   the previous `Song / Sounds` layout remains supported and a Sounds-only surface

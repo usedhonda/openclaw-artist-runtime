@@ -9,7 +9,7 @@ import { createProductionRevisionPromptPack, createSunoPromptPack, createSunoPro
 import { bandForBpm, resolveTempoBandFromBrief } from "../suno-production/durationPlan.js";
 import { extractObservationSummary } from "./songIdeation.js";
 import { emitRuntimeEvent } from "./runtimeEventBus.js";
-import { buildSongCreationNote } from "./songCreationNote.js";
+import { composeSongCreationNote } from "./songCreationNote.js";
 
 async function nextPromptPackVersion(promptsDir: string, lyricsDir?: string, preserveExistingLyricsVersions = false): Promise<number> {
   try {
@@ -260,13 +260,13 @@ export async function createAndPersistSunoPromptPack(input: PersistSunoPromptPac
       ? extractObservationSummary(await readFile(input.observationPath, "utf8").catch(() => ""), input.artistReason)
       : undefined
   );
-  const creationNote = buildSongCreationNote({
+  const creationNote = await composeSongCreationNote({
     lyrics: originalLyricsText,
     style: pack.style,
     briefText,
     artistReason: input.artistReason,
     observation: observationSummary
-  });
+  }, input.aiReviewProvider);
 
   await Promise.all([
     writeText(lyricsVersioned, `${originalLyricsText}\n`),

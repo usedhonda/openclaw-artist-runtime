@@ -26,6 +26,7 @@ import { formatSongSubmissionReport } from "./songSubmissionReport.js";
 import {
   buildSongCreationNote,
   formatSongCreationMessage,
+  isGroundedSongCreationNote,
   parseSongCreationNote,
   type SongCreationNote
 } from "./songCreationNote.js";
@@ -1336,9 +1337,9 @@ async function formatSongSubmission(
       url: safeObservationUrl ?? (persistedNote?.source.url && /^https:\/\//.test(persistedNote.source.url) && !isGoogleNewsIntermediateUrl(persistedNote.source.url)
         ? persistedNote.source.url
         : undefined),
-      summary: safeObservation?.quote
-        ? safeObservation.quote
-        : persistedNote?.source.summary ?? fallbackNote.source.summary
+      summary: persistedNote?.source.summary
+        ?? safeObservation?.quote
+        ?? fallbackNote.source.summary
     },
     musicIntent: preCreateUnknown
       ? [persistedNote?.musicIntent ?? fallbackNote.musicIntent, "これはCreate前の設計。実際にSunoへ送った内容との差分は未確認。"].filter(Boolean).join(" ")
@@ -1359,6 +1360,7 @@ async function formatSongSubmission(
   return formatSongCreationMessage({
     title: observed?.title?.trim() || (revision?.effective.title ?? base?.title ?? (songState?.title !== event.songId ? songState?.title : undefined) ?? "今回の曲"),
     note,
+    lyrics,
     audioUrls: event.urls,
     previousAudioUrls: previousUrl ? [previousUrl] : undefined
   });
@@ -1687,7 +1689,9 @@ export async function formatRuntimeEvent(
   const musicReport = event.type === "song_take_completed"
     || event.type === "suno_take_url_ready"
     || event.type === "suno_adoption_download_imported";
-  const suppressOperationalSections = musicReport || event.type === "song_spawn_proposed";
+  const suppressOperationalSections = musicReport
+    || event.type === "song_spawn_proposed"
+    || event.type === "suno_human_assist_requested";
   const rawBody = stripTelegramHtmlComments(await formatRuntimeEventRaw(event, options));
   const body = musicReport ? rawBody : appendButtonEffectSection(event, rawBody);
   // Music reports are the producer's listening conversation. Do not append the
@@ -1706,30 +1710,35 @@ export async function formatRuntimeEvent(
 async function describeSongForManualCreate(workspaceRoot: string | undefined, songId: string): Promise<string[]> {
   if (!workspaceRoot) return [];
   const dir = join(workspaceRoot, "songs", songId, "suno");
-  const [rawNote, style, lyrics] = await Promise.all([
+  const [rawNote, lyrics] = await Promise.all([
     readFile(join(dir, "creative-note.json"), "utf8").then((text) => JSON.parse(text) as unknown).catch(() => null),
-    readFile(join(dir, "style.md"), "utf8").catch(() => ""),
     readFile(join(dir, "lyrics-suno.md"), "utf8").catch(() => "")
   ]);
   const note = parseSongCreationNote(rawNote, lyrics);
   const observation = (await readSongState(workspaceRoot, songId).catch(() => undefined))?.observationSummary;
-  const styleLine = style.split("\n").map((line) => line.trim()).find(Boolean);
-  const highlight = note?.lyricHighlights[0];
-  const sourceText = observation?.quote ?? note?.source.summary;
-  const author = observation?.author ?? note?.source.author;
-  const url = observation?.url ?? note?.source.url;
-  const listenFor = (note?.listenFor ?? []).slice(0, 2).map((item) => `・${truncatePlain(item, 160)}`);
-  const lines = [
-    sourceText ? `見たもの: ${truncatePlain(sourceText, 200)}${author ? `（${author}）` : ""}` : undefined,
-    url && !secretLikePattern.test(url) ? `🔗 ${url}` : undefined,
-    observation?.motivation ?? note?.artistReaction ? `斬り口: ${truncatePlain(observation?.motivation ?? note?.artistReaction ?? "", 220)}` : undefined,
-    note?.lyricConcept ? `狙い: ${truncatePlain(note.lyricConcept, 220)}` : undefined,
-    highlight ? `フック: ${truncatePlain(highlight.quote, 160)}` : undefined,
-    highlight?.explanation ? `  ${truncatePlain(highlight.explanation, 160)}` : undefined,
-    listenFor.length > 0 ? `聴いてほしい点:\n${listenFor.join("\n")}` : undefined,
-    note?.musicIntent ? `音: ${truncatePlain(note.musicIntent, 200)}` : styleLine ? `音: ${truncatePlain(styleLine, 200)}` : undefined
+  const sourceText = note?.source.summary ?? observation?.quote;
+  const author = note?.source.author ?? observation?.author;
+  const url = note?.source.url ?? observation?.url;
+  const grounded = note ? isGroundedSongCreationNote(note, lyrics) : false;
+  const sections: string[] = [];
+  const sourceLines = [
+    sourceText ? `${truncatePlain(sourceText, 360)}${author ? `（${author}）` : ""}` : undefined,
+    url && !secretLikePattern.test(url) ? `🔗 ${url}` : undefined
   ].filter((line): line is string => Boolean(line));
-  return lines.length > 0 ? [TELEGRAM_SECTION_DIVIDER, ...lines, TELEGRAM_SECTION_DIVIDER] : [];
+  if (sourceLines.length > 0) sections.push(`きっかけになった出来事\n${sourceLines.join("\n")}`);
+  if (!grounded || !note) {
+    sections.push("制作ノート\n制作意図の文章化に失敗した。薄い定型文では代用しない。");
+  } else {
+    sections.push(`俺が思ったこと\n${truncatePlain(note.artistReaction, 700)}`);
+    sections.push(`歌詞へどう変えたか\n${truncatePlain(note.lyricConcept, 700)}`);
+    sections.push(`歌詞のテクニカルな要所\n${note.lyricHighlights.map((highlight) => [
+      `・「${truncatePlain(highlight.quote, 180)}」`,
+      `  ${truncatePlain(highlight.explanation, 420)}`
+    ].join("\n")).join("\n\n")}`);
+    sections.push(`音へどう変えたか\n${truncatePlain(note.musicIntent, 600)}`);
+    sections.push(`聴いてほしいところ\n${note.listenFor.slice(0, 3).map((item) => `・${truncatePlain(item, 240)}`).join("\n")}`);
+  }
+  return sections.length > 0 ? ["", sections.join("\n\n"), "", TELEGRAM_SECTION_DIVIDER, ""] : [];
 }
 
 async function formatRuntimeEventRaw(
@@ -1865,14 +1874,16 @@ async function formatRuntimeEventRaw(
       if (event.mode === "manual_submit") {
         return [
           "【制作状況通知】",
-          `「${event.title}」の入力は済ませた。残りを調整して「Create」を押して。`,
+          `「${event.title}」の入力は済ませた。内容を確認して「Create」を押して。`,
           ...await describeSongForManualCreate(options.workspaceRoot, event.songId),
+          event.recommendation?.trim() ? `Suno設定（画面反映済み）\n${event.recommendation.trim()}` : undefined,
+          "",
+          "次",
           noTimeLimit
             ? "時間制限なし、押されるまで待つ。押した後は取込と選曲まで自動で続ける。"
             : `最大 ${event.timeoutMinutes} 分待つ。押した後は取込と選曲まで自動で続ける。`,
-          event.recommendation?.trim() ? `推奨設定（適用済みではない）: ${event.recommendation.trim()}` : undefined,
           "このモードでは、こちらから Create は押さない。"
-        ].join("\n");
+        ].filter((line): line is string => typeof line === "string").join("\n");
       }
       return [
         "【制作状況通知】",

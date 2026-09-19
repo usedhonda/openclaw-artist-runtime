@@ -41,7 +41,8 @@ describe("song take formatter observation source", () => {
     expect(message).toContain("🎵 「Civic Static」ができた。");
     expect(message).toContain("きっかけになったニュース");
     expect(message).toContain("ニュースの概要\nold live houses disappear under identical signs");
-    expect(message).toContain("俺が思ったこと\nこの観察を曲の起点として残した。");
+    expect(message).toContain("制作ノート\n制作意図の文章化に失敗した。薄い定型文では代用しない。");
+    expect(message).not.toContain("この観察を曲の起点として残した。");
     expect(message).not.toContain("ARTIST.md");
     expect(message).not.toContain("SOUL.md");
     expect(message).not.toContain("selected:");
@@ -114,13 +115,12 @@ describe("song take formatter observation source", () => {
 
     expect(message).toContain("きっかけになったニュース\nCity Desk\nhttps://example.com/venue-closure");
     expect(message).toContain("ニュースの概要\n再開発で老舗ライブハウスが閉館する");
-    expect(message).toContain("歌詞にどう入れたか");
-    expect(message).toContain("「消える前に名前を呼べ」と「同じ看板に塗るな」へ変えて");
-    expect(message).toContain("歌詞のテクニカルな要所");
+    expect(message).toContain("制作ノート\n制作意図の文章化に失敗した。薄い定型文では代用しない。");
+    expect(message).toContain("確認できた歌詞");
     expect(message).toContain("・「終電のガラスに 値札だけ光る」");
     expect(message).toContain("・「残響は立退き通知を読まない」");
-    expect(message).toContain("そして、曲へ\n94 BPM、乾いた質感、短く切ったドラム、少しくすんだローズピアノ、ウッドベース");
-    expect(message).toContain("聴いてほしいところ");
+    expect(message).toContain("確認できた音の情報\n94 BPM、乾いた質感、短く切ったドラム、少しくすんだローズピアノ、ウッドベース");
+    expect(message).toContain("確認事項");
     expect(message).not.toContain("dry jazz-rap");
     expect(message).not.toContain("Intro → Verse");
     expect(message).not.toContain("提出する");
@@ -151,8 +151,8 @@ describe("song take formatter observation source", () => {
     }, { workspaceRoot: root });
 
     expect(message).toContain("ニュースの概要\n老舗ライブハウスが今月閉館する");
-    expect(message).toContain("俺が思ったこと");
-    expect(message).toContain("そのまま終わらせたくなかった");
+    expect(message).toContain("制作ノート\n制作意図の文章化に失敗した。薄い定型文では代用しない。");
+    expect(message).not.toContain("そのまま終わらせたくなかった");
     expect(message).toContain("https://example.com/live-house");
   });
 
