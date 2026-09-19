@@ -1,18 +1,19 @@
 # Handoff: Producer-musician creation loop
 
-## Handoff to Cdx: reflect 901e7d4 on GrokBot (2026-09-19 JST)
+## Completed: reflected 901e7d4 on GrokBot (2026-09-19 JST)
 
-The producer transferred the working side from CC to Cdx. Open item: GrokBot
-must run `901e7d4` so new songs use Max Mode On / Personalize Off.
+The producer transferred the working side from CC to Cdx. GrokBot now runs the
+build from `901e7d4`, so new songs use Max Mode On / Personalize Off.
 
-- Done on GrokBot: `git pull --ff-only` to `901e7d4`, `npm run build:runtime`
-  exited 0. No `human-assist-pending.json` existed (no manual Create wait).
-- Not done: the running gateway still has the old code in memory.
-  `scripts/openclaw-local-gateway restart` returned a restart-request JSON
-  (`delayMs: 0`, `coalesced: false`), but gateway pid `2429441` was unchanged
-  180 s later. Why the drain-aware restart did not replace the child is unknown.
-- Acceptance: new gateway pid, `status` connectivity ok, and the next prompt
-  pack / Suno form showing Max Mode On and Personalize Off.
+- GrokBot was already at `901e7d4` with `npm run build:runtime` completed and no
+  human-assist wait. The earlier drain-aware restart request did not replace old
+  child pid `2429441`, so Cdx used the documented forced stop followed by start.
+- New supervisor pid is `3067824`; new gateway child pid is `3067894`.
+  `scripts/openclaw-local-gateway status` reports `gateway_state=running` and
+  `Connectivity probe: ok`.
+- The loaded build artifact exports the producer defaults as Variety 2, Max Mode
+  On, Personalize Off, Duration 3:30, and Style Influence 100. No song was
+  generated and Create was not pressed during this deployment verification.
 - Tailscale SSH: the added `accept` rule for user `box` has no effect, because
   Tailscale applies `check` over `accept` when both match. Removing the check
   needs the default `check` rule's users narrowed to `["root"]` in the tailnet
