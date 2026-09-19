@@ -20,6 +20,7 @@ import { PLAYWRIGHT_EXPECTED_CREATE_CARD_COUNT } from "./sunoTakeConstants.js";
 
 export const SUNO_CREATE_SELECTORS = {
   songTab: '[role="tab"]:has-text("Song")',
+  advancedSongTab: '[role="tab"][aria-label="Advanced"]',
   soundsTab: '[role="tab"]:has-text("Sounds")',
   // The authenticated management workspace, not the transient compact composer.
   // All three controls are present together on the current /create page.
@@ -157,9 +158,11 @@ export async function resolveFirstVisibleLocator(
 export async function ensureSunoSongMode(page: Page, timeoutMs: number): Promise<boolean> {
   const startedAt = Date.now();
   const songTab = page.locator(SUNO_CREATE_SELECTORS.songTab).first();
+  const advancedSongTab = page.locator(SUNO_CREATE_SELECTORS.advancedSongTab).first();
   const soundsTab = page.locator(SUNO_CREATE_SELECTORS.soundsTab).first();
   const tabbedSignal = Promise.any([
     songTab.waitFor({ state: "visible", timeout: timeoutMs }).then(() => true),
+    advancedSongTab.waitFor({ state: "visible", timeout: timeoutMs }).then(() => true),
     soundsTab.waitFor({ state: "visible", timeout: timeoutMs }).then(() => true)
   ]);
   const legacySignal = Promise.all(
@@ -171,23 +174,31 @@ export async function ensureSunoSongMode(page: Page, timeoutMs: number): Promise
   if (!tabbedUi) {
     return false;
   }
-  if (!await songTab.isVisible().catch(() => false)) {
+  let target = await songTab.isVisible().catch(() => false) ? songTab : advancedSongTab;
+  let targetSelector = target === songTab ? SUNO_CREATE_SELECTORS.songTab : SUNO_CREATE_SELECTORS.advancedSongTab;
+  if (!await target.isVisible().catch(() => false)) {
     const remainingMs = Math.max(1, timeoutMs - (Date.now() - startedAt));
-    await songTab.waitFor({ state: "visible", timeout: remainingMs }).catch(() => {
-      throw new Error(`${SUNO_CREATE_FORM_MISSING_REASON}: tabbed Create UI exposes Sounds but Song is unavailable`);
+    await Promise.any([
+      songTab.waitFor({ state: "visible", timeout: remainingMs }).then(() => ({ target: songTab, selector: SUNO_CREATE_SELECTORS.songTab })),
+      advancedSongTab.waitFor({ state: "visible", timeout: remainingMs }).then(() => ({ target: advancedSongTab, selector: SUNO_CREATE_SELECTORS.advancedSongTab }))
+    ]).then((resolved) => {
+      target = resolved.target;
+      targetSelector = resolved.selector;
+    }).catch(() => {
+      throw new Error(`${SUNO_CREATE_FORM_MISSING_REASON}: tabbed Create UI exposes Sounds but no song composer tab is available`);
     });
   }
-  if ((await songTab.getAttribute("aria-selected").catch(() => null)) !== "true") {
-    await clickVisibleLocatorWithRetry(page, [SUNO_CREATE_SELECTORS.songTab], timeoutMs, "Song tab");
+  if ((await target.getAttribute("aria-selected").catch(() => null)) !== "true") {
+    await clickVisibleLocatorWithRetry(page, [targetSelector], timeoutMs, "song composer tab");
   }
   const deadline = Date.now() + timeoutMs;
   do {
-    if ((await songTab.getAttribute("aria-selected").catch(() => null)) === "true") {
+    if ((await target.getAttribute("aria-selected").catch(() => null)) === "true") {
       return true;
     }
     await new Promise((resolve) => setTimeout(resolve, Math.min(25, Math.max(1, deadline - Date.now()))));
   } while (Date.now() < deadline);
-  throw new Error(`${SUNO_CREATE_FORM_MISSING_REASON}: Song tab did not become selected within ${timeoutMs}ms`);
+  throw new Error(`${SUNO_CREATE_FORM_MISSING_REASON}: song composer tab did not become selected within ${timeoutMs}ms`);
 }
 
 /**

@@ -140,6 +140,25 @@ describe("waitForSunoCreateFormReady", () => {
     expect(clicks).toEqual([SUNO_CREATE_SELECTORS.songTab]);
   });
 
+  it("accepts the current Advanced song composer when the Song tab no longer exists", async () => {
+    const advancedTab: SelectorState = { visible: true, attrs: { "aria-selected": "false" } };
+    const soundsTab: SelectorState = { visible: true, attrs: { "aria-selected": "true" } };
+    const { page, clicks } = makePage({
+      [SUNO_CREATE_SELECTORS.advancedSongTab]: {
+        ...advancedTab,
+        onClick: () => {
+          advancedTab.attrs!["aria-selected"] = "true";
+          soundsTab.attrs!["aria-selected"] = "false";
+        }
+      },
+      [SUNO_CREATE_SELECTORS.soundsTab]: soundsTab,
+      [SUNO_CREATE_SELECTORS.createButton]: { visible: true }
+    });
+
+    await expect(waitForSunoCreateFormReady(page, 50)).resolves.toBeUndefined();
+    expect(clicks).toEqual([SUNO_CREATE_SELECTORS.advancedSongTab]);
+  });
+
   it("fails closed when the tabbed UI exposes Sounds without Song", async () => {
     const { page } = makePage({
       [SUNO_CREATE_SELECTORS.soundsTab]: { visible: true, attrs: { "aria-selected": "true" } },

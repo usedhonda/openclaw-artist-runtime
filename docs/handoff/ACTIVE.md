@@ -1,5 +1,20 @@
 # Handoff: Producer-musician creation loop
 
+## Fixing: current Suno Advanced song composer (2026-09-19 JST)
+
+The producer observed an empty GrokBot browser. `song-190` (`Thermal Devotion`)
+had already produced a 2518-character lyric pack, but form preparation failed
+before writing anything with `tabbed Create UI exposes Sounds but Song is
+unavailable`; Create was never pressed. The failed target was retired, leaving
+the visible browser on `about:blank`, which explains the empty window.
+
+A read-only reload of the authenticated Create page showed Suno changed its
+top-level tabs again: `Simple / Advanced / Sounds`. `Advanced`, not `Song`, is
+the selected full song composer and contains Lyrics, Styles, controls, and
+Create. The local fix adds `Advanced` as the current song target while retaining
+the prior `Song / Sounds` contract and Sounds-only fail-closed behavior. Focused
+tests pass 31/31; deployment and a live form retry remain pending.
+
 ## Deployed: 901e7d4 on GrokBot; live Suno output pending (2026-09-19 JST)
 
 The producer transferred the working side from CC to Cdx. GrokBot has restarted

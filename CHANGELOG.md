@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- fix: accept Suno's current `Simple / Advanced / Sounds` Create tabs. `Advanced`
+  is now treated as the song composer when the former `Song` tab is absent, while
+  the previous `Song / Sounds` layout remains supported and a Sounds-only surface
+  still fails closed before any form write or Create action.
+
 - fix: restore the producer's standing Suno defaults, Max Mode On and Personalize
   Off. An unrelated Song-tab fix had reverted them to Off/On. The ruling is now
   recorded in `docs/PRODUCER_DECISIONS.md`, and a guard test fails when the code or

@@ -40,11 +40,17 @@ persisted as selectors.
 
 ## Song mode structure
 
+> Live update, 2026-09-19: the top-level labels changed from `Song / Sounds` to
+> `Simple / Advanced / Sounds`. `Advanced` now owns the full lyrics, Styles,
+> controls, and Create surface. Runtime selection therefore accepts either the
+> former `Song` tab or the current `Advanced` tab as the song composer, but never
+> treats `Sounds` as a song surface.
+
 ### Always-visible shell
 
 | Element | Observed semantic signal | Notes |
 |---|---|---|
-| Song tab | `[role="tab"]`, visible text `Song`, `aria-selected` | Select this before any song operation |
+| Song composer tab | `[role="tab"]`, visible text `Song`, or `aria-label="Advanced"`; `aria-selected` | Select this before any song operation |
 | Sounds tab | `[role="tab"]`, visible text `Sounds` | Never select during a song fill |
 | Model | button `aria-label="Model: v6"`; currently also `data-testid="mobile-create-model-button"` | Prefer aria label; treat test ID as secondary |
 | Song description | visible textarea under heading `Describe your song` | No stable placeholder or aria label was observed |
@@ -247,4 +253,3 @@ repair.
 Preparation ends when all requested fields have been read back and the Create
 button is visible. Clicking Create is a separate action and must never be hidden
 inside discovery, selector recovery, or extension auto-fill logic.
-
