@@ -1,5 +1,24 @@
 # Handoff: Producer-musician creation loop
 
+## Handoff to Cdx: reflect 901e7d4 on GrokBot (2026-09-19 JST)
+
+The producer transferred the working side from CC to Cdx. Open item: GrokBot
+must run `901e7d4` so new songs use Max Mode On / Personalize Off.
+
+- Done on GrokBot: `git pull --ff-only` to `901e7d4`, `npm run build:runtime`
+  exited 0. No `human-assist-pending.json` existed (no manual Create wait).
+- Not done: the running gateway still has the old code in memory.
+  `scripts/openclaw-local-gateway restart` returned a restart-request JSON
+  (`delayMs: 0`, `coalesced: false`), but gateway pid `2429441` was unchanged
+  180 s later. Why the drain-aware restart did not replace the child is unknown.
+- Acceptance: new gateway pid, `status` connectivity ok, and the next prompt
+  pack / Suno form showing Max Mode On and Personalize Off.
+- Tailscale SSH: the added `accept` rule for user `box` has no effect, because
+  Tailscale applies `check` over `accept` when both match. Removing the check
+  needs the default `check` rule's users narrowed to `["root"]` in the tailnet
+  policy file. The producer approved one check at about 14:00 JST; it lasts
+  about 12 h.
+
 ## Restored: Suno Max Mode On / Personalize Off (2026-09-19 JST)
 
 The producer confirmed the standing normal controls are Max Mode On and
