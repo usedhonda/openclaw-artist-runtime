@@ -238,11 +238,11 @@ against primary evidence. Private memory is not visible to Codex or subagents an
 must never be the only record of a durable decision. Record durable project
 decisions in `docs/handoff/ACTIVE.md` or a commit message.
 
-**Codex** merges `AGENTS.md` files from the global instructions through repository
-subdirectories. The combined size is capped by `project_doc_max_bytes` (32 KiB by
-default) — if the global file is large, this contract can be silently dropped.
-Verify that §3's vocabulary is visible before trusting that these rules are in
-effect. Codex persona and machine settings live in `.codex/config.toml` (untracked).
+**Codex** merges `AGENTS.md` files from the repository root through working
+subdirectories. Keep this project instruction chain within the configured
+`project_doc_max_bytes` budget, and confirm the relevant guidance is loaded before
+relying on it. Codex persona and machine settings live in `.codex/config.toml`
+(untracked).
 
 ## 12. On-demand references
 
