@@ -1,19 +1,31 @@
 # Handoff: Producer-musician creation loop
 
-## Completed: reflected 901e7d4 on GrokBot (2026-09-19 JST)
+## Deployed: 901e7d4 on GrokBot; live Suno output pending (2026-09-19 JST)
 
-The producer transferred the working side from CC to Cdx. GrokBot now runs the
-build from `901e7d4`, so new songs use Max Mode On / Personalize Off.
+The producer transferred the working side from CC to Cdx. GrokBot has restarted
+after building `901e7d4`; live Max Mode On / Personalize Off output still needs
+to be observed on the next normal prompt pack / Suno form.
 
 - GrokBot was already at `901e7d4` with `npm run build:runtime` completed and no
-  human-assist wait. The earlier drain-aware restart request did not replace old
-  child pid `2429441`, so Cdx used the documented forced stop followed by start.
+  human-assist wait. The earlier `restart` request correctly performed an
+  in-process SIGUSR1 restart: its unchanged child pid `2429441` was expected,
+  and loaded JS modules were not refreshed. For a code update, Cdx therefore
+  used a full stop followed by start. In future, when no human-assist wait is
+  active, use ordinary `stop` first; `--force` is unnecessary.
 - New supervisor pid is `3067824`; new gateway child pid is `3067894`.
   `scripts/openclaw-local-gateway status` reports `gateway_state=running` and
-  `Connectivity probe: ok`.
-- The loaded build artifact exports the producer defaults as Variety 2, Max Mode
-  On, Personalize Off, Duration 3:30, and Style Influence 100. No song was
-  generated and Create was not pressed during this deployment verification.
+  `Connectivity probe: ok`. The built artifact timestamp is
+  `2026-09-19 10:11:23 UTC`; the child start time is
+  `2026-09-19 10:22:45 UTC`, so the process started after that build.
+- The built artifact exports the producer defaults as Variety 2, Max Mode On,
+  Personalize Off, Duration 3:30, and Style Influence 100. This is deployment
+  evidence, not live Suno-output proof. No song was generated and Create was not
+  pressed; verify the next normal prompt pack and actual form before calling the
+  behavior proven live.
+- `restart` is for rebuilding in-process lane/config state, not loading new JS.
+  When it is used, record its returned `status` (`scheduled`, `deferred`, or
+  `coalesced`); for `deferred`, also preserve the `restart deferred: <reason>`
+  log entry.
 - Tailscale SSH: the added `accept` rule for user `box` has no effect, because
   Tailscale applies `check` over `accept` when both match. Removing the check
   needs the default `check` rule's users narrowed to `["root"]` in the tailnet
