@@ -124,6 +124,14 @@ Enforced by `tests/tracked-file-hygiene.test.ts` and `npm run leak-scan`.
 `openclaw.plugin.json` `configSchema` shape, append-only ledger formats, `compat`
 version pins, or anything under `.github/workflows/`.
 
+**Producer decisions.** Standing values the producer set (for example the normal
+Suno generation controls) are recorded in `docs/PRODUCER_DECISIONS.md` and pinned
+by `tests/producer-decisions.test.ts`. Change one only on an explicit producer
+instruction: update that file, the code, and dependent docs in the same commit, and
+name the instruction in the commit message. Never flip a producer decision inside
+an unrelated fix. When the producer states a new standing preference, record it
+there in the same turn.
+
 ## 6. Invariants
 
 **OpenClaw-native.** Do not fork OpenClaw, deep-import its internals (`src/*`,
@@ -250,5 +258,6 @@ Read these when the task touches them. Do not preload.
 | Security posture | `docs/THREAT_MODEL.md`, `docs/INCIDENT_RESPONSE.md`, `SECURITY.md` |
 | Publishing | `PUBLISHING.md`, `MARKETPLACE.md`, `docs/PACKAGE_CONTENTS.md` |
 | Role detail | `docs/agents/ORCHESTRATOR.md`, `docs/agents/IMPLEMENTER.md`, `docs/agents/REVIEWER.md` |
+| Producer-set standing values | `docs/PRODUCER_DECISIONS.md` |
 | Handoff | `docs/handoff/TEMPLATE.md`, `docs/handoff/ACTIVE.md` |
 | Historical build phases | `docs/history/IMPLEMENTATION_PHASES.md` |

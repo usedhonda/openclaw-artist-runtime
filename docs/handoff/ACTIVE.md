@@ -1,5 +1,16 @@
 # Handoff: Producer-musician creation loop
 
+## Restored: Suno Max Mode On / Personalize Off (2026-09-19 JST)
+
+The producer confirmed the standing normal controls are Max Mode On and
+Personalize Off (ruling of 2026-09-17, `ce23c62`). `6b89bbe` had silently reverted
+them to Off/On inside the tabbed-form fix, so `song-184` was generated with the
+wrong pair. The revert is undone, and the ruling is now recorded in
+`docs/PRODUCER_DECISIONS.md` and pinned by `tests/producer-decisions.test.ts`.
+AGENTS.md §5 forbids changing a producer decision without the producer's
+instruction. Sections below that say "Max Mode Off, Personalize On" are
+historical.
+
 ## Completed: tabbed Create live generation and Telegram proof (2026-09-18 JST)
 
 `Unobserved Now` (`song-184`) completed the current Song/Sounds UI path. The
@@ -521,6 +532,7 @@ Several parallel lanes landed fixes toward Linux parity:
 | Mac gateway posture is retired; Linux is a first-class host | Operator moved primary operation to a Linux host |
 | Tracked supervisor (not systemd) owns the gateway on a Linux host without systemd | Containers have no init/session to run `systemd --user` |
 | Suno browser **launch** (not attach) is the default ownership mode | No CDP endpoint is configured by default; attach is reserved for operator-started Chrome |
+| Suno normal controls: Max Mode On, Personalize Off, Duration 3:30, Variety 2, Style Influence 100 | Producer ruling; source of truth is `docs/PRODUCER_DECISIONS.md` |
 | Creative spine stays Dis-dominant (本気 Dis default posture) | Producer ruling recorded in project memory; see `project-creative-decision-spine` |
 
 ## Rejected alternatives

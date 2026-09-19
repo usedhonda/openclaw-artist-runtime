@@ -48,10 +48,10 @@ describe("Suno V6 prompt pack orchestration", () => {
     expect(pack.payload.payloadYaml).toBe(pack.yamlLyrics);
     expect(pack.payload.model).toBe("v6");
     expect(pack.payload).toMatchObject({
-      maxMode: false,
+      maxMode: true,
       duration: "3:30",
       variety: 2,
-      personalize: true,
+      personalize: false,
       styleInfluence: 100
     });
     expect(pack.sliders.styleInfluence).toBe(100);

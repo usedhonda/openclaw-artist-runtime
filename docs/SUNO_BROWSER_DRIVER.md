@@ -22,8 +22,8 @@ runtime never refills or navigates the prepared form while waiting for Create.
 A finished manual-Create run closes its create page and shuts down a browser
 this plugin launched, so the window disappearing is the operator's success signal.
 
-New normal V6 prompt packs explicitly set the producer defaults: Max Mode Off,
-Custom Duration 3:30, Variety High (2), Personalize On, and Style Influence 100.
+New normal V6 prompt packs explicitly set the producer defaults: Max Mode On,
+Custom Duration 3:30, Variety High (2), Personalize Off, and Style Influence 100.
 These values are stored in the hashed prompt payload before preparation; the CLI
 receives the same Style Influence value through its slider payload. Unspecified
 controls retain their current UI values. Explicit controls are
