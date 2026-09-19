@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { execFileSync } from "node:child_process";
-import { existsSync, readFileSync, statSync } from "node:fs";
-import { dirname, join, resolve } from "node:path";
+import { existsSync, lstatSync, readFileSync, statSync } from "node:fs";
+import { join, resolve } from "node:path";
 
 const repoRoot = resolve(__dirname, "..");
 
@@ -13,9 +13,9 @@ const PROJECT_CONTRACT_MAX_BYTES = 16 * 1024;
 const read = (p: string) => readFileSync(join(repoRoot, p), "utf8");
 
 describe("agent instruction system", () => {
-  it("bridges AGENTS.md into Claude Code via the @import on the first line", () => {
-    const firstLine = read("CLAUDE.md").split("\n")[0].trim();
-    expect(firstLine).toBe("@AGENTS.md");
+  it("uses root AGENTS.md without a root CLAUDE.md adapter", () => {
+    expect(existsSync(join(repoRoot, "AGENTS.md"))).toBe(true);
+    expect(existsSync(join(repoRoot, "CLAUDE.md"))).toBe(false);
   });
 
   it("keeps the project contract inside the Codex document budget", () => {
@@ -26,14 +26,12 @@ describe("agent instruction system", () => {
 
   it("only references files that exist", () => {
     const missing: string[] = [];
-    for (const file of ["AGENTS.md", "CLAUDE.md"]) {
-      const body = read(file);
-      const refs = body.matchAll(/[`(]([A-Za-z0-9_./-]+\.(?:md|json|ts|mjs|sh))[`)]/g);
-      for (const [, ref] of refs) {
-        if (ref.startsWith("http")) continue;
-        if (!ref.includes("/") && !ref.endsWith(".md")) continue;
-        if (!existsSync(join(repoRoot, ref))) missing.push(`${file} -> ${ref}`);
-      }
+    const body = read("AGENTS.md");
+    const refs = body.matchAll(/[`(]([A-Za-z0-9_./-]+\.(?:md|json|ts|mjs|sh))[`)]/g);
+    for (const [, ref] of refs) {
+      if (ref.startsWith("http")) continue;
+      if (!ref.includes("/") && !ref.endsWith(".md")) continue;
+      if (!existsSync(join(repoRoot, ref))) missing.push(`AGENTS.md -> ${ref}`);
     }
     expect(missing).toEqual([]);
   });
@@ -45,18 +43,17 @@ describe("agent instruction system", () => {
     expect(unknown).toEqual([]);
   });
 
-  it("never leaves a directory rule visible to only one tool", () => {
+  it("tracks AGENTS.md files as regular files and no CLAUDE.md instruction files", () => {
     const tracked = execFileSync("git", ["ls-files"], { cwd: repoRoot, encoding: "utf8" })
       .split("\n")
       .filter(Boolean);
-    const oneSided: string[] = [];
+    const invalid: string[] = [];
     for (const path of tracked) {
-      const base = path.split("/").pop();
-      if (base !== "AGENTS.md" && base !== "CLAUDE.md") continue;
-      const dir = dirname(path);
-      const sibling = base === "AGENTS.md" ? "CLAUDE.md" : "AGENTS.md";
-      if (!existsSync(join(repoRoot, dir, sibling))) oneSided.push(`${path} has no ${sibling}`);
+      if (!existsSync(join(repoRoot, path))) continue;
+      if (path.endsWith("/CLAUDE.md") || path === "CLAUDE.md") invalid.push(`${path} is tracked`);
+      if (!path.endsWith("AGENTS.md")) continue;
+      if (!lstatSync(join(repoRoot, path)).isFile()) invalid.push(`${path} is not a regular file`);
     }
-    expect(oneSided).toEqual([]);
+    expect(invalid).toEqual([]);
   });
 });

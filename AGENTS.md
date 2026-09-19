@@ -3,8 +3,7 @@
 This file is the **single source of truth** for every coding agent working on this
 repository, regardless of which tool or model is running.
 
-- **Codex** reads this file natively.
-- **Claude Code** reads it because `CLAUDE.md` starts with `@AGENTS.md`.
+- **Codex** and **Claude Code** read this file as the project instruction contract.
 
 Rules here are written by **role** (orchestrator / implementer / reviewer), never by
 tool name. Nothing in this repository assumes that a particular tool plans and
@@ -225,20 +224,25 @@ Work state must never live only in one model's conversation or private memory.
 - Decisions listed under `Decided (do not relitigate)` are settled. Reopen one only
   with new evidence, and say what the new evidence is.
 
-## 11. Tool adapters
+## 11. Agent tooling
 
-Only genuinely tool-dependent mechanics belong here.
+The project contract is shared through `AGENTS.md`; tool-specific settings and
+mechanics remain in their native local directories.
 
-**Claude Code** loads `CLAUDE.md`, which imports this file. Claude-specific
-mechanics — skills, subagents, hooks, settings — live in `CLAUDE.md` and
-`.claude/`. Claude Code does not read `AGENTS.md` directly.
+**Claude Code** reusable procedures live in `.claude/skills/`. Prefer a skill over
+another always-loaded section here. Subagents may not inherit the current
+conversation or private memory, so put required context in their prompt, this file,
+or `docs/handoff/ACTIVE.md`. Delegation messages carry Task Intent, target files,
+concrete work, explicit exclusions, and completion conditions; verify results
+against primary evidence. Private memory is not visible to Codex or subagents and
+must never be the only record of a durable decision. Record durable project
+decisions in `docs/handoff/ACTIVE.md` or a commit message.
 
-**Codex** loads this file natively, merging `~/.codex/AGENTS.md` first and then
-repository files from root down to the working directory. The combined size is capped
-by `project_doc_max_bytes` (32 KiB by default) — if the global file is large, this
-contract can be silently dropped. Verify that §3's vocabulary is visible before
-trusting that these rules are in effect. Codex persona and machine settings live in
-`.codex/config.toml` (untracked).
+**Codex** merges `AGENTS.md` files from the global instructions through repository
+subdirectories. The combined size is capped by `project_doc_max_bytes` (32 KiB by
+default) — if the global file is large, this contract can be silently dropped.
+Verify that §3's vocabulary is visible before trusting that these rules are in
+effect. Codex persona and machine settings live in `.codex/config.toml` (untracked).
 
 ## 12. On-demand references
 
