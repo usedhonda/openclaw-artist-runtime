@@ -1,0 +1,145 @@
+import type { SunoPromptPack, SunoPromptPackValidation } from "../types.js";
+import { getSunoLyricsLimit } from "../services/runtimeConfig.js";
+import { extractLyricsBody } from "../services/lyricsExtraction.js";
+import {
+  CANONICAL_STYLE_CORE_MAX_CHARS,
+  CANONICAL_STYLE_HARD_MAX_CHARS,
+  CANONICAL_STYLE_TARGET_MAX_CHARS
+} from "../suno-production/buildStyle.js";
+import { getDurationPlanByTemplateId, type StructureVariant } from "../suno-production/durationPlan.js";
+
+function sunoLyricsBoxLimit(): number {
+  return getSunoLyricsLimit();
+}
+
+function headerLabels(lyrics: string): string[] {
+  return lyrics
+    .split(/\r?\n/)
+    .map((line) => line.trim().match(/^\[([^\]]+)\]$/)?.[1]?.split(" - ")[0]?.trim())
+    .filter((label): label is string => Boolean(label));
+}
+
+function plannedBarsFromHeaders(lyrics: string): number {
+  return lyrics
+    .split(/\r?\n/)
+    .map((line) => Number.parseInt(line.match(/^\[[^\]]*?\b(\d+)\s+bars\b/i)?.[1] ?? "", 10))
+    .filter((value) => Number.isFinite(value))
+    .reduce((sum, value) => sum + value, 0);
+}
+
+function styleCoreLine(style: string): string | undefined {
+  return style
+    .split(/\r?\n/)
+    .map((line) => line.replace(/^[-*]\s*/, "").trim())
+    .filter((line) => line && !/^#\s*Style\b/i.test(line))[0];
+}
+
+function validateDurationPlanStructure(payloadYaml: string, warnings: string[], structure: StructureVariant): void {
+  if (!payloadYaml.includes("duration_plan:") && !payloadYaml.includes("LYRICS START")) {
+    return;
+  }
+  const templateId = payloadYaml.match(/^\s*template:\s*(\S+)\s*$/m)?.[1];
+  const plan = getDurationPlanByTemplateId(templateId, { structure });
+  // The plan's own section list carries the structure's real prehook count (2 for
+  // "standard", 1 for both variants, which drop prehook2), so the expectation is
+  // derived from the resolved plan instead of a hardcoded "2".
+  const expectedPrehookCount = plan.sectionPlan.filter((section) => /^pre[-\s]?hook/i.test(section.label) || /^pre[-\s]?chorus/i.test(section.label)).length;
+  const lyrics = extractLyricsBody(payloadYaml);
+  const labels = headerLabels(lyrics);
+  const sectionCount = labels.length;
+  const prehookCount = labels.filter((label) => /^pre[-\s]?hook/i.test(label) || /^pre[-\s]?chorus/i.test(label)).length;
+  const hookRepeatCount = labels.filter((label) => /^(?:hook|chorus)(?:\s+\d+)?$/i.test(label) || /^final\s+(?:hook|chorus)$/i.test(label)).length;
+  const plannedBars = plannedBarsFromHeaders(lyrics);
+  if (sectionCount < plan.sectionPlan.length) {
+    warnings.push(`duration_plan_section_count_below_plan: ${sectionCount}/${plan.sectionPlan.length}`);
+  }
+  if (prehookCount < expectedPrehookCount) {
+    warnings.push(`duration_plan_prehook_count_below_plan: ${prehookCount}/${expectedPrehookCount}`);
+  }
+  if (hookRepeatCount < plan.chorusPolicy.physicalRepeats) {
+    warnings.push(`duration_plan_hook_repeats_below_plan: ${hookRepeatCount}/${plan.chorusPolicy.physicalRepeats}`);
+  }
+  if (plannedBars > 0 && plannedBars < plan.totalPlannedBars) {
+    warnings.push(`duration_plan_planned_bars_below_plan: ${plannedBars}/${plan.totalPlannedBars}`);
+  }
+}
+
+function classifyLanguageWarning(value: string): "error" | "warning" {
+  return /^(?:residual_kanji|ascii_number):/.test(value) ? "error" : "warning";
+}
+
+export function validateSunoPromptPack(pack: Partial<SunoPromptPack>, structure: StructureVariant = "standard"): SunoPromptPackValidation {
+  const errors: string[] = [];
+  const warnings: string[] = [];
+  if (!pack.songId) {
+    errors.push("missing songId");
+  }
+  if (!pack.songTitle) {
+    errors.push("missing songTitle");
+  } else if (pack.songTitle.length < 4 || pack.songTitle.length > 80) {
+    errors.push(`title length out of range: ${pack.songTitle.length}`);
+  }
+  if (!pack.style) {
+    errors.push("missing style");
+  } else {
+    const coreLine = styleCoreLine(pack.style);
+    if (pack.style.length > CANONICAL_STYLE_HARD_MAX_CHARS) {
+      errors.push(`styleAndFeel length exceeds hard cap: ${pack.style.length}/${CANONICAL_STYLE_HARD_MAX_CHARS}`);
+    }
+    if ((coreLine?.length ?? 0) > CANONICAL_STYLE_CORE_MAX_CHARS) {
+      errors.push(`styleAndFeel core exceeds canonical cap: ${coreLine?.length}/${CANONICAL_STYLE_CORE_MAX_CHARS}`);
+    }
+    if (pack.style.length > CANONICAL_STYLE_TARGET_MAX_CHARS) {
+      warnings.push(`styleAndFeel exceeds canonical target: ${pack.style.length}/${CANONICAL_STYLE_TARGET_MAX_CHARS}`);
+    }
+  }
+  if (!pack.exclude) {
+    errors.push("missing exclude");
+  }
+  if (!pack.yamlLyrics) {
+    errors.push("missing YAML lyrics");
+  } else if (!/gender:\s*(male|female|neutral)/i.test(pack.yamlLyrics)) {
+    errors.push("missing vocal gender");
+  }
+  if (!pack.payload) {
+    errors.push("missing payload");
+  } else {
+    const payloadYaml = typeof pack.payload.payloadYaml === "string" ? pack.payload.payloadYaml : "";
+    const lyricsLimit = sunoLyricsBoxLimit();
+    if (payloadYaml.length > lyricsLimit) {
+      errors.push(`payloadYaml length exceeds Suno lyrics box limit: ${payloadYaml.length}/${lyricsLimit}`);
+    }
+    if (payloadYaml && payloadYaml.length < Math.floor(lyricsLimit * 0.8)) {
+      warnings.push(`payloadYaml leaves Suno lyrics box budget underused: ${payloadYaml.length}/${lyricsLimit}`);
+    }
+    validateDurationPlanStructure(payloadYaml, warnings, structure);
+    const warningsValue = (pack.payload as { languageWarnings?: unknown }).languageWarnings;
+    if (Array.isArray(warningsValue) && warningsValue.length > 0) {
+      for (const warning of warningsValue.map(String)) {
+        if (classifyLanguageWarning(warning) === "error") {
+          errors.push(`suno lyrics registration text still has non-hiragana Japanese: ${warning}`);
+        } else {
+          warnings.push(warning);
+        }
+      }
+    }
+  }
+  if (!pack.artistSnapshotHash) {
+    errors.push("missing artist snapshot hash");
+  }
+  if (!pack.currentStateHash) {
+    errors.push("missing current state hash");
+  }
+  if (!pack.payloadHash) {
+    errors.push("missing payload hash");
+  }
+  if (!pack.knowledgePackHash) {
+    errors.push("missing knowledge pack hash");
+  }
+
+  return {
+    valid: errors.length === 0,
+    errors,
+    warnings
+  };
+}

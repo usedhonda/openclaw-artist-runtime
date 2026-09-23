@@ -1,0 +1,993 @@
+import { mkdir } from "node:fs/promises";
+import { mkdtempSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import { ensureSongState, readSongState, updateSongState, writeSongBrief } from "../src/services/artistState";
+import { readAutopilotRunState, writeAutopilotRunState } from "../src/services/autopilotService";
+import { readCallbackActionEntries, registerCallbackAction } from "../src/services/callbackActionRegistry";
+import { classifyTelegramFreeText, readTelegramInbox, routeTelegramCommand } from "../src/services/telegramCommandRouter";
+import * as autopilotTicker from "../src/services/autopilotTicker";
+import { readAdoptionDownloadJobEntries } from "../src/services/sunoAdoptionDownloadJob";
+import { appendFailedNotification } from "../src/services/failedNotifyLedger";
+import { getRuntimeEventBus, type RuntimeEvent } from "../src/services/runtimeEventBus";
+import { appendSpawnProposal } from "../src/services/spawnProposalQueue";
+import { appendConversationTurn } from "../src/services/conversationalSession";
+import { proposalForDetection } from "../src/services/songDistributionPoller";
+import type { CommissionBrief, SpawnProposal } from "../src/types";
+
+const baseInput = {
+  fromUserId: 123,
+  chatId: 456
+};
+
+function makeRoot(): string {
+  return mkdtempSync(join(tmpdir(), "artist-runtime-telegram-router-"));
+}
+
+function spawnProposal(songId = "spawn-status"): SpawnProposal {
+  return {
+    proposalId: songId,
+    createdAt: "2026-06-20T00:00:00.000Z",
+    status: "draft",
+    title: "Status Draft",
+    voiceTop: "この草稿で作る。",
+    coreTheme: "Telegramだけで戻れる草稿",
+    observationSources: [
+      { kind: "news", label: "fixture", quote: "draft source", url: "https://example.com/draft" }
+    ],
+    cascadeTrace: {
+      observationSources: [
+        { kind: "news", label: "fixture", quote: "draft source", url: "https://example.com/draft" }
+      ],
+      artistVoice: "この草稿で作る。",
+      title: "Status Draft",
+      lyricsTheme: "Telegramだけで戻れる草稿",
+      styleLayer: "fast noisy pop, dry vocal"
+    }
+  };
+}
+
+async function latestCallbackEntriesById(root: string) {
+  return new Map((await readCallbackActionEntries(root)).map((entry) => [entry.callbackId, entry]));
+}
+
+afterEach(() => {
+  vi.unstubAllEnvs();
+  vi.restoreAllMocks();
+});
+
+describe("telegram command router", () => {
+  it("routes /help to the command list", async () => {
+    const result = await routeTelegramCommand({ ...baseInput, text: "/help" });
+
+    expect(result.kind).toBe("help");
+    expect(result.responseText).toContain("/status");
+    expect(result.responseText).toContain("/pause");
+    expect(result.responseText).toContain("/review");
+    expect(result.shouldStoreFreeText).toBe(false);
+  });
+
+  it("routes /replay to resend failed Telegram notifications (Plan v10.56 Phase 3)", async () => {
+    const root = makeRoot();
+    await mkdir(join(root, "runtime"), { recursive: true });
+    const brief: CommissionBrief = {
+      songId: "spawn_x",
+      title: "t",
+      brief: "b",
+      lyricsTheme: "lt",
+      mood: "m",
+      tempo: "120 BPM",
+      styleNotes: "s",
+      duration: "3:00",
+      sourceText: "src",
+      createdAt: "2026-05-31T00:00:00.000Z"
+    };
+    await appendFailedNotification(root, {
+      event: { type: "song_spawn_proposed", brief, reason: "r", candidateSongId: "spawn_x", timestamp: 1 },
+      chatId: 456,
+      error: new Error("ENETUNREACH")
+    });
+
+    const events: RuntimeEvent[] = [];
+    const bus = getRuntimeEventBus();
+    bus.clearForTest();
+    const unsub = bus.subscribe((e) => events.push(e));
+    const result = await routeTelegramCommand({ ...baseInput, text: "/replay", workspaceRoot: root });
+    unsub();
+
+    expect(result.kind).toBe("replay");
+    expect(result.responseText).toContain("再送");
+    expect(events.some((e) => e.type === "song_spawn_proposed")).toBe(true);
+  });
+
+  it("routes /replay to a no-op message when nothing failed to deliver", async () => {
+    const root = makeRoot();
+    await mkdir(join(root, "runtime"), { recursive: true });
+    const result = await routeTelegramCommand({ ...baseInput, text: "/replay", workspaceRoot: root });
+    expect(result.kind).toBe("replay");
+    expect(result.responseText).toContain("再送が必要な通知はありません");
+  });
+
+  it("routes /status to formatted autopilot status", async () => {
+    const result = await routeTelegramCommand({
+      ...baseInput,
+      text: "/status",
+      autopilotStatus: {
+        enabled: true,
+        dryRun: true,
+        stage: "planning",
+        nextAction: "decide_next_song",
+        currentSongId: "song-001"
+      }
+    });
+
+    expect(result.kind).toBe("status");
+    expect(result.responseText).toContain("Autopilot: enabled (dry-run)");
+    expect(result.responseText).toContain("Stage: planning");
+    expect(result.shouldStoreFreeText).toBe(false);
+  });
+
+  it("returns latest decision button metadata for /status", async () => {
+    const root = makeRoot();
+    await ensureSongState(root, "song-ready", "Ready Song");
+    await updateSongState(root, "song-ready", {
+      status: "take_selected",
+      selectedTakeId: "take-ready",
+      replacePublicLinks: ["https://suno.com/song/take-ready"]
+    });
+    await registerCallbackAction(root, {
+      action: "song_archive",
+      songId: "song-ready",
+      selectedTakeId: "take-ready",
+      chatId: 456,
+      messageId: 77,
+      userId: 123
+    });
+    await registerCallbackAction(root, {
+      action: "song_discard",
+      songId: "song-ready",
+      selectedTakeId: "take-ready",
+      chatId: 456,
+      messageId: 77,
+      userId: 123
+    });
+
+    const result = await routeTelegramCommand({ ...baseInput, text: "/status", workspaceRoot: root });
+
+    expect(result.kind).toBe("status");
+    expect(result.statusDecisionButtons).toEqual({
+      songId: "song-ready",
+      selectedTakeId: "take-ready",
+      actions: ["song_archive", "song_discard"]
+    });
+  });
+
+  it("recreates URL-ready decision button metadata for /status when callbacks are missing", async () => {
+    const root = makeRoot();
+    await ensureSongState(root, "song-url", "URL Ready Song");
+    await updateSongState(root, "song-url", {
+      status: "suno_take_url_ready",
+      selectedTakeId: "take-url",
+      appendPublicLinks: ["https://suno.com/song/take-url"]
+    });
+
+    const result = await routeTelegramCommand({ ...baseInput, text: "/status", workspaceRoot: root });
+
+    expect(result.kind).toBe("status");
+    expect(result.responseText).toContain("Suno URL 採用待ち");
+    expect(result.statusDecisionButtons).toEqual({
+      songId: "song-url",
+      selectedTakeId: "take-url",
+      actions: ["song_archive", "song_discard"]
+    });
+  });
+
+  it("recreates selected-take adoption button metadata for /status when callbacks are missing", async () => {
+    const root = makeRoot();
+    await ensureSongState(root, "song-selected", "Selected Song");
+    await updateSongState(root, "song-selected", {
+      status: "take_selected",
+      selectedTakeId: "take-selected",
+      appendPublicLinks: ["https://suno.com/song/take-selected"]
+    });
+
+    const result = await routeTelegramCommand({ ...baseInput, text: "/status", workspaceRoot: root });
+
+    expect(result.kind).toBe("status");
+    expect(result.responseText).toContain("完成曲採用待ち");
+    expect(result.statusDecisionButtons).toEqual({
+      songId: "song-selected",
+      selectedTakeId: "take-selected",
+      actions: ["song_archive", "song_discard"]
+    });
+  });
+
+  it("returns take-select button metadata for /status when low-score take callbacks are pending", async () => {
+    const root = makeRoot();
+    await ensureSongState(root, "song-low", "Low Score Song");
+    await updateSongState(root, "song-low", { status: "takes_imported" });
+    for (const action of ["take_select_accept", "take_select_regenerate", "take_select_skip"] as const) {
+      await registerCallbackAction(root, {
+        action,
+        songId: "song-low",
+        selectedTakeId: action === "take_select_accept" ? "take-low" : undefined,
+        chatId: 456,
+        messageId: 78,
+        userId: 123
+      });
+    }
+
+    const result = await routeTelegramCommand({ ...baseInput, text: "/status", workspaceRoot: root });
+
+    expect(result.kind).toBe("status");
+    expect(result.statusDecisionButtons).toEqual({
+      songId: "song-low",
+      selectedTakeId: "take-low",
+      actions: ["take_select_accept", "take_select_regenerate", "take_select_skip"]
+    });
+  });
+
+  it("recreates prompt-pack GO button metadata for /status when callbacks are missing", async () => {
+    const root = makeRoot();
+    await ensureSongState(root, "song-prompt", "Prompt Ready Song");
+    await updateSongState(root, "song-prompt", { status: "suno_prompt_pack" });
+    await writeAutopilotRunState(root, {
+      runId: "prompt-ready",
+      currentSongId: "song-prompt",
+      stage: "prompt_pack",
+      suspendedAt: "prompt_pack_ready",
+      paused: false,
+      retryCount: 0,
+      cycleCount: 0,
+      updatedAt: new Date().toISOString()
+    });
+
+    const result = await routeTelegramCommand({ ...baseInput, text: "/status", workspaceRoot: root });
+
+    expect(result.kind).toBe("status");
+    expect(result.responseText).toContain("Suno 生成GO待ち");
+    expect(result.statusDecisionButtons).toEqual({
+      songId: "song-prompt",
+      actions: ["prompt_pack_go", "prompt_pack_edit", "prompt_pack_skip"]
+    });
+  });
+
+  it("recreates degraded lyrics recovery button metadata for /status when callbacks are missing", async () => {
+    const root = makeRoot();
+    await ensureSongState(root, "song-lyrics", "Lyrics Stuck");
+    await updateSongState(root, "song-lyrics", {
+      status: "brief",
+      degradedLyrics: true,
+      reason: "lyrics_generation_degraded: provider fallback response"
+    });
+    await writeAutopilotRunState(root, {
+      runId: "lyrics-degraded",
+      currentSongId: "song-lyrics",
+      stage: "paused",
+      paused: true,
+      blockedReason: "lyrics_generation_degraded: provider fallback response",
+      retryCount: 1,
+      cycleCount: 1,
+      updatedAt: new Date().toISOString()
+    });
+
+    const result = await routeTelegramCommand({ ...baseInput, text: "/status", workspaceRoot: root });
+
+    expect(result.kind).toBe("status");
+    expect(result.responseText).toContain("歌詞生成停止");
+    expect(result.statusDecisionButtons).toEqual({
+      songId: "song-lyrics",
+      actions: ["lyrics_redraft", "song_discard"]
+    });
+  });
+
+  it("recreates planning skeleton recovery button metadata for /status when callbacks are missing", async () => {
+    const root = makeRoot();
+    await ensureSongState(root, "song-plan", "Planning Stuck");
+    await writeSongBrief(root, "song-plan", "# Brief\n\n- Mood: cold");
+    await writeAutopilotRunState(root, {
+      runId: "planning-pending",
+      currentSongId: "song-plan",
+      stage: "planning",
+      suspendedAt: "planning_skeleton_pending",
+      blockedReason: "planning_skeleton_incomplete:tempo,duration,style notes",
+      paused: false,
+      retryCount: 0,
+      cycleCount: 1,
+      updatedAt: new Date().toISOString()
+    });
+
+    const result = await routeTelegramCommand({ ...baseInput, text: "/status", workspaceRoot: root });
+
+    expect(result.kind).toBe("status");
+    expect(result.responseText).toContain("Planning補完待ち");
+    expect(result.statusDecisionButtons).toMatchObject({
+      songId: "song-plan",
+      actions: ["planning_skeleton_apply", "planning_skeleton_skip", "planning_skeleton_edit"]
+    });
+    expect(result.statusDecisionButtons?.proposalId).toMatch(/^planning-song-plan-/);
+  });
+
+  it("replaces stale planning skeleton callbacks when the proposal session is gone", async () => {
+    const root = makeRoot();
+    await ensureSongState(root, "song-plan", "Planning Stuck");
+    await writeSongBrief(root, "song-plan", "# Brief\n\n- Mood: cold");
+    await writeAutopilotRunState(root, {
+      runId: "planning-pending",
+      currentSongId: "song-plan",
+      stage: "planning",
+      suspendedAt: "planning_skeleton_pending",
+      blockedReason: "planning_skeleton_incomplete:tempo,duration,style notes",
+      paused: false,
+      retryCount: 0,
+      cycleCount: 1,
+      updatedAt: new Date().toISOString()
+    });
+    await registerCallbackAction(root, {
+      action: "planning_skeleton_apply",
+      proposalId: "expired-proposal",
+      songId: "song-plan",
+      chatId: 456,
+      messageId: 77,
+      userId: 123
+    });
+
+    const result = await routeTelegramCommand({ ...baseInput, text: "/status", workspaceRoot: root });
+
+    expect(result.statusDecisionButtons).toMatchObject({
+      songId: "song-plan",
+      actions: ["planning_skeleton_apply", "planning_skeleton_skip", "planning_skeleton_edit"]
+    });
+    expect(result.statusDecisionButtons?.proposalId).toMatch(/^planning-song-plan-/);
+    expect(result.statusDecisionButtons?.proposalId).not.toBe("expired-proposal");
+  });
+
+  it("returns latest spawn proposal button metadata for /status", async () => {
+    const root = makeRoot();
+    await appendSpawnProposal(root, spawnProposal("spawn-ready"));
+    for (const action of ["song_spawn_inject", "song_spawn_skip", "song_spawn_edit"] as const) {
+      await registerCallbackAction(root, {
+        action,
+        songId: "spawn-ready",
+        proposalId: "spawn-ready",
+        chatId: 456,
+        messageId: 88,
+        userId: 123
+      });
+    }
+
+    const result = await routeTelegramCommand({ ...baseInput, text: "/status", workspaceRoot: root });
+
+    expect(result.kind).toBe("status");
+    expect(result.statusDecisionButtons).toMatchObject({
+      songId: "spawn-ready",
+      proposalId: "spawn-ready",
+      commissionBrief: {
+        songId: "spawn-ready",
+        title: "Status Draft"
+      },
+      actions: ["song_spawn_inject", "song_spawn_skip", "song_spawn_edit"]
+    });
+  });
+
+  it("recreates draft-box spawn proposal button metadata for /status when callbacks are missing", async () => {
+    const root = makeRoot();
+    await appendSpawnProposal(root, spawnProposal());
+
+    const result = await routeTelegramCommand({ ...baseInput, text: "/status", workspaceRoot: root });
+
+    expect(result.kind).toBe("status");
+    expect(result.responseText).toContain("草稿箱: draft 1件");
+    expect(result.statusDecisionButtons).toMatchObject({
+      songId: "spawn-status",
+      proposalId: "spawn-status",
+      commissionBrief: {
+        songId: "spawn-status",
+        title: "Status Draft",
+        lyricsTheme: "Telegramだけで戻れる草稿"
+      },
+      actions: ["song_spawn_inject", "song_spawn_skip", "song_spawn_edit"]
+    });
+  });
+
+  it("returns latest confirmation button metadata for /status when no producer decision is pending", async () => {
+    const root = makeRoot();
+    for (const action of ["proposal_yes", "proposal_no", "proposal_edit_open"] as const) {
+      await registerCallbackAction(root, {
+        action,
+        proposalId: "commission-abc",
+        chatId: 456,
+        messageId: 89,
+        userId: 123
+      });
+    }
+
+    const result = await routeTelegramCommand({ ...baseInput, text: "/status", workspaceRoot: root });
+
+    expect(result.kind).toBe("status");
+    expect(result.statusDecisionButtons).toBeUndefined();
+    expect(result.proposalButtons).toEqual({ proposalId: "commission-abc" });
+  });
+
+  it("adopts a URL-ready song from text when Telegram buttons are unusable", async () => {
+    const root = makeRoot();
+    const runNow = vi.spyOn(autopilotTicker.getAutopilotTicker(), "runNow").mockResolvedValue({
+      outcome: "ran",
+      state: { stage: "planning", paused: false, retryCount: 0, cycleCount: 1, updatedAt: new Date().toISOString() }
+    });
+    await ensureSongState(root, "song-url", "URL Ready Song");
+    await updateSongState(root, "song-url", {
+      status: "suno_take_url_ready",
+      selectedTakeId: "take-url",
+      appendPublicLinks: ["https://suno.com/song/take-url"]
+    });
+    for (const action of ["song_archive", "song_discard"] as const) {
+      await registerCallbackAction(root, {
+        action,
+        songId: "song-url",
+        selectedTakeId: "take-url",
+        chatId: 456,
+        messageId: 77,
+        userId: 123,
+        now: 1000
+      });
+    }
+
+    const result = await routeTelegramCommand({
+      ...baseInput,
+      text: "/song adopt song-url",
+      workspaceRoot: root
+    });
+
+    expect(result.kind).toBe("song");
+    expect(result.responseText).toContain("採用しました");
+    expect(result.responseText).toContain("音源ファイル取得を予約しました");
+    expect(await readSongState(root, "song-url")).toMatchObject({ status: "archived", selectedTakeId: "take-url" });
+    expect(await readAdoptionDownloadJobEntries(root)).toEqual([
+      expect.objectContaining({ songId: "song-url", status: "queued" })
+    ]);
+    const latestCallbacks = [...(await latestCallbackEntriesById(root)).values()];
+    expect(latestCallbacks.filter((entry) => entry.status === "pending")).toEqual([]);
+    expect(latestCallbacks.filter((entry) => entry.resolveReason === "telegram_text:song_archive")).toHaveLength(2);
+    await new Promise((resolve) => setTimeout(resolve, 10));
+    expect(runNow).toHaveBeenCalledTimes(1);
+  });
+
+  it("discards a selected song from text and releases the current autopilot lane", async () => {
+    const root = makeRoot();
+    const runNow = vi.spyOn(autopilotTicker.getAutopilotTicker(), "runNow").mockResolvedValue({
+      outcome: "ran",
+      state: { stage: "planning", paused: false, retryCount: 0, cycleCount: 1, updatedAt: new Date().toISOString() }
+    });
+    await ensureSongState(root, "song-selected", "Selected Song");
+    await writeSongBrief(root, "song-selected", "# Brief\n\nKeep the seed.");
+    await updateSongState(root, "song-selected", {
+      status: "take_selected",
+      selectedTakeId: "take-selected",
+      appendPublicLinks: ["https://suno.com/song/take-selected"]
+    });
+    await writeAutopilotRunState(root, {
+      runId: "take-review",
+      currentSongId: "song-selected",
+      stage: "take_selection",
+      paused: true,
+      suspendedAt: "producer_decision",
+      blockedReason: "waiting_for_song_archive_or_discard",
+      retryCount: 0,
+      cycleCount: 1,
+      updatedAt: new Date(0).toISOString()
+    });
+    for (const action of ["song_archive", "song_discard"] as const) {
+      await registerCallbackAction(root, {
+        action,
+        songId: "song-selected",
+        selectedTakeId: "take-selected",
+        chatId: 456,
+        messageId: 77,
+        userId: 123,
+        now: 1000
+      });
+    }
+
+    const result = await routeTelegramCommand({
+      ...baseInput,
+      text: "/song discard song-selected",
+      workspaceRoot: root
+    });
+
+    expect(result.kind).toBe("song");
+    expect(result.responseText).toContain("破棄しました");
+    const song = await readSongState(root, "song-selected");
+    expect(song).toMatchObject({ status: "discarded" });
+    expect(song.selectedTakeId).toBeUndefined();
+    expect(song.publicLinks).toEqual([]);
+    expect(await readAdoptionDownloadJobEntries(root)).toEqual([]);
+    const state = await readAutopilotRunState(root);
+    expect(state).toMatchObject({ stage: "idle", paused: false });
+    expect(state.currentSongId).toBeUndefined();
+    expect(state.blockedReason).toBeUndefined();
+    const latestCallbacks = [...(await latestCallbackEntriesById(root)).values()];
+    expect(latestCallbacks.filter((entry) => entry.status === "pending")).toEqual([]);
+    expect(latestCallbacks.filter((entry) => entry.resolveReason === "telegram_text:song_discard")).toHaveLength(2);
+    await new Promise((resolve) => setTimeout(resolve, 10));
+    expect(runNow).toHaveBeenCalledTimes(1);
+  });
+
+  it("dispatches prompt-pack GO from text through the pending decision handler", async () => {
+    const root = makeRoot();
+    const now = Date.now();
+    await ensureSongState(root, "song-prompt", "Prompt Ready Song");
+    await updateSongState(root, "song-prompt", { status: "suno_prompt_pack" });
+    await writeAutopilotRunState(root, {
+      runId: "prompt-ready",
+      currentSongId: "song-prompt",
+      stage: "prompt_pack",
+      suspendedAt: "prompt_pack_ready",
+      paused: false,
+      retryCount: 0,
+      cycleCount: 1,
+      updatedAt: new Date(0).toISOString()
+    });
+    await registerCallbackAction(root, {
+      action: "prompt_pack_go",
+      songId: "song-prompt",
+      chatId: 456,
+      messageId: 77,
+      userId: 123,
+      now
+    });
+
+    const result = await routeTelegramCommand({ ...baseInput, text: "/suno go song-prompt", workspaceRoot: root });
+
+    expect(result.kind).toBe("free_text");
+    expect(result.responseText).toContain("Suno 行く");
+    expect(await readAutopilotRunState(root)).toMatchObject({ stage: "suno_generation", suspendedAt: null });
+    const latestCallbacks = [...(await latestCallbackEntriesById(root)).values()];
+    expect(latestCallbacks.find((entry) => entry.action === "prompt_pack_go")).toMatchObject({
+      status: "applied",
+      resolveReason: "prompt_pack_go"
+    });
+  });
+
+  it("dispatches low-score take regeneration from text through the pending decision handler", async () => {
+    const root = makeRoot();
+    const now = Date.now();
+    await ensureSongState(root, "song-low", "Low Score Song");
+    await updateSongState(root, "song-low", { status: "takes_imported" });
+    await writeAutopilotRunState(root, {
+      runId: "take-low",
+      currentSongId: "song-low",
+      stage: "take_selection",
+      paused: false,
+      retryCount: 0,
+      cycleCount: 1,
+      updatedAt: new Date(0).toISOString()
+    });
+    await registerCallbackAction(root, {
+      action: "take_select_regenerate",
+      songId: "song-low",
+      chatId: 456,
+      messageId: 77,
+      userId: 123,
+      now
+    });
+
+    const result = await routeTelegramCommand({ ...baseInput, text: "/take regen song-low", workspaceRoot: root });
+
+    expect(result.kind).toBe("free_text");
+    expect(result.responseText).toContain("Suno regeneration queued");
+    expect(await readSongState(root, "song-low")).toMatchObject({
+      status: "suno_prompt_pack",
+      lastReason: "take_select_regenerate_requested"
+    });
+    expect(await readAutopilotRunState(root)).toMatchObject({
+      stage: "suno_generation",
+      blockedReason: "take_select_regenerate_requested"
+    });
+  });
+
+  it("dispatches draft-box skip from text through the pending decision handler", async () => {
+    vi.stubEnv("OPENCLAW_SONG_SPAWN_ENABLED", "on");
+    const root = makeRoot();
+    const now = Date.now();
+    await appendSpawnProposal(root, spawnProposal("spawn-ready"));
+    await writeAutopilotRunState(root, {
+      runId: "spawn-wait",
+      currentSongId: "spawn-ready",
+      stage: "planning",
+      suspendedAt: "spawn_proposal_ready",
+      paused: false,
+      retryCount: 0,
+      cycleCount: 1,
+      updatedAt: new Date(0).toISOString()
+    });
+    await registerCallbackAction(root, {
+      action: "song_spawn_skip",
+      songId: "spawn-ready",
+      proposalId: "spawn-ready",
+      chatId: 456,
+      messageId: 77,
+      userId: 123,
+      now
+    });
+
+    const result = await routeTelegramCommand({ ...baseInput, text: "/draft skip spawn-ready", workspaceRoot: root });
+
+    expect(result.kind).toBe("free_text");
+    expect(result.responseText).toContain("却下した");
+    expect(await readAutopilotRunState(root)).toMatchObject({
+      stage: "planning",
+      suspendedAt: null
+    });
+  });
+
+  it("dispatches daily voice cancel from text through the pending decision handler", async () => {
+    vi.stubEnv("OPENCLAW_ARTIST_PULSE_ENABLED", "on");
+    const root = makeRoot();
+    const now = Date.now();
+    await registerCallbackAction(root, {
+      action: "daily_voice_cancel",
+      draftHash: "daily-hash",
+      draftCharCount: 42,
+      chatId: 456,
+      messageId: 77,
+      userId: 123,
+      now
+    });
+
+    const result = await routeTelegramCommand({ ...baseInput, text: "/pulse cancel", workspaceRoot: root });
+
+    expect(result.kind).toBe("free_text");
+    expect(result.responseText).toContain("普段の投稿は取り消した");
+    const latestCallbacks = [...(await latestCallbackEntriesById(root)).values()];
+    expect(latestCallbacks.find((entry) => entry.action === "daily_voice_cancel")).toMatchObject({
+      status: "discarded",
+      resolveReason: "daily_voice_cancelled"
+    });
+  });
+
+  it("dispatches distribution skip from text through the pending decision handler", async () => {
+    const root = makeRoot();
+    const now = Date.now();
+    const proposal = proposalForDetection({
+      songId: "song-dist",
+      title: "Song Dist",
+      platform: "spotify",
+      url: "https://open.spotify.com/track/dist",
+      detectedAt: new Date(now).toISOString()
+    });
+    await appendConversationTurn(root, {
+      chatId: 456,
+      userId: 123,
+      topic: { kind: "song", songId: "song-dist" },
+      pendingChangeSet: proposal,
+      turn: { role: "artist", text: "配信検出を反映する?" },
+      now
+    });
+    await registerCallbackAction(root, {
+      action: "dist_skip",
+      proposalId: proposal.id,
+      songId: "song-dist",
+      platform: "spotify",
+      chatId: 456,
+      messageId: 77,
+      userId: 123,
+      now
+    });
+
+    const result = await routeTelegramCommand({ ...baseInput, text: `/dist skip ${proposal.id}`, workspaceRoot: root });
+
+    expect(result.kind).toBe("free_text");
+    expect(result.responseText).toContain("Skipped spotify for song-dist");
+    const latestCallbacks = [...(await latestCallbackEntriesById(root)).values()];
+    expect(latestCallbacks.find((entry) => entry.action === "dist_skip")).toMatchObject({
+      status: "discarded",
+      resolveReason: "discarded"
+    });
+  });
+
+  it("lists recent songs", async () => {
+    const root = makeRoot();
+    await ensureSongState(root, "song-001", "Ash Road");
+    await ensureSongState(root, "song-002", "Cold Relay");
+
+    const result = await routeTelegramCommand({ ...baseInput, text: "/songs", workspaceRoot: root, dashboardBaseUrl: "http://127.0.0.1:8787" });
+
+    expect(result.kind).toBe("songs");
+    expect(result.responseText).toContain("song-001");
+    expect(result.responseText).toContain("Cold Relay");
+    expect(result.responseText).toContain("path: songs/song-001/");
+    expect(result.responseText).toContain("http://127.0.0.1:8787/plugins/artist-runtime#song=song-001");
+  });
+
+  it("routes /timeline to recent lifecycle rows with dashboard links", async () => {
+    const root = makeRoot();
+    await ensureSongState(root, "song-001", "Ash Road");
+    await updateSongState(root, "song-001", { status: "suno_running", reason: "test" });
+    await ensureSongState(root, "song-002", "Cold Relay");
+    await updateSongState(root, "song-002", { status: "published", reason: "test" });
+
+    const result = await routeTelegramCommand({ ...baseInput, text: "/timeline", workspaceRoot: root, dashboardBaseUrl: "http://127.0.0.1:8787" });
+
+    expect(result.kind).toBe("timeline");
+    expect(result.responseText).toContain("🎬 Timeline (recent 10 songs)");
+    expect(result.responseText).toContain("▶ song-001 | suno_generation | \"Ash Road\"");
+    expect(result.responseText).toContain("  song-002 | completed | \"Cold Relay\"");
+    expect(result.responseText).toContain("path: songs/song-001/");
+    expect(result.responseText).toContain("http://127.0.0.1:8787/plugins/artist-runtime#song=song-001");
+  });
+
+  it("shows a song detail summary", async () => {
+    const root = makeRoot();
+    await writeSongBrief(root, "song-001", "# Brief\n\nA cold wire hymn.");
+    await updateSongState(root, "song-001", {
+      status: "take_selected",
+      selectedTakeId: "take-a",
+      reason: "test",
+      lastImportOutcome: {
+        runId: "run-1",
+        urlCount: 1,
+        pathCount: 1,
+        paths: [join(root, "runtime", "suno", "run-1", "take-a.mp3")],
+        at: new Date().toISOString()
+      }
+    });
+
+    const result = await routeTelegramCommand({ ...baseInput, text: "/song song-001", workspaceRoot: root, dashboardBaseUrl: "http://127.0.0.1:8787" });
+
+    expect(result.kind).toBe("song");
+    expect(result.responseText).toContain("take-a");
+    expect(result.responseText).toContain("Imported assets: 1");
+    expect(result.responseText).toContain("A cold wire hymn");
+    expect(result.responseText).toContain("操作: この返信の「採用」で残す。「破棄」でこの曲を閉じる。");
+    expect(result.responseText).toContain("brief path: songs/song-001/brief.md");
+    expect(result.responseText).toContain("lyrics path: songs/song-001/LYRICS.md");
+    expect(result.responseText).toContain("http://127.0.0.1:8787/plugins/artist-runtime#song=song-001");
+    expect(result.statusDecisionButtons).toEqual({
+      songId: "song-001",
+      selectedTakeId: "take-a",
+      actions: ["song_archive", "song_discard"]
+    });
+  });
+
+  it("queues /regen as a dry-run inbox request", async () => {
+    const root = makeRoot();
+    const result = await routeTelegramCommand({ ...baseInput, text: "/regen song-001", workspaceRoot: root });
+    const inbox = await readTelegramInbox(root);
+
+    expect(result.kind).toBe("regen");
+    expect(result.responseText).toContain("No Suno create was started");
+    expect(inbox[0]).toMatchObject({ type: "regen_requested", songId: "song-001" });
+  });
+
+  it("routes setup to the conversational artist without writing persona files", async () => {
+    const root = makeRoot();
+    const result = await routeTelegramCommand({ ...baseInput, text: "/setup", workspaceRoot: root });
+
+    expect(result.kind).toBe("setup");
+    expect(result.responseText).not.toContain("I heard this:");
+    expect(result.responseText.length).toBeGreaterThan(0);
+    expect(result.shouldStoreFreeText).toBe(true);
+  });
+
+  it("does not revive the legacy setup wizard when the persona proposer flag is off", async () => {
+    vi.stubEnv("OPENCLAW_PERSONA_PROPOSER", "off");
+    const root = makeRoot();
+    const result = await routeTelegramCommand({ ...baseInput, text: "/setup", workspaceRoot: root });
+
+    expect(result.responseText).not.toContain("I heard this:");
+    expect(result.responseText.length).toBeGreaterThan(0);
+    expect(result.shouldStoreFreeText).toBe(true);
+  });
+
+  it("pauses and resumes autopilot through the control service", async () => {
+    const root = makeRoot();
+    await mkdir(join(root, "runtime"), { recursive: true });
+
+    const paused = await routeTelegramCommand({ ...baseInput, text: "/pause", workspaceRoot: root });
+    const pausedState = await readAutopilotRunState(root);
+    const resumed = await routeTelegramCommand({ ...baseInput, text: "/resume", workspaceRoot: root });
+    const resumedState = await readAutopilotRunState(root);
+
+    expect(paused.kind).toBe("pause");
+    expect(pausedState.paused).toBe(true);
+    expect(pausedState.pausedReason).toBe("telegram:123");
+    expect(resumed.kind).toBe("resume");
+    expect(resumedState.paused).toBe(false);
+  });
+
+  it("kicks an immediate cycle from /resume to continue a mid-pipeline song (Plan v10.66)", async () => {
+    const root = makeRoot();
+    await ensureSongState(root, "spawn-test", "Resume Continue");
+    await updateSongState(root, "spawn-test", { status: "suno_prompt_pack" });
+    await writeAutopilotRunState(root, {
+      runId: "auto-resume",
+      currentSongId: "spawn-test",
+      stage: "paused",
+      paused: true,
+      blockedReason: "suno_generate_failed:suno_worker_not_connected",
+      retryCount: 3,
+      cycleCount: 4,
+      updatedAt: new Date(1000).toISOString(),
+      lastRunAt: new Date(1000).toISOString()
+    });
+    const runNow = vi.fn().mockResolvedValue({ outcome: "ran", state: {} });
+    vi.spyOn(autopilotTicker, "getAutopilotTicker").mockReturnValue(
+      { runNow } as unknown as ReturnType<typeof autopilotTicker.getAutopilotTicker>
+    );
+
+    const result = await routeTelegramCommand({ ...baseInput, text: "/resume", workspaceRoot: root });
+    const state = await readAutopilotRunState(root);
+
+    expect(result.kind).toBe("resume");
+    expect(runNow).toHaveBeenCalledTimes(1);
+    expect(result.responseText).toContain("spawn-test");
+    expect(state.paused).toBe(false);
+    expect(state.blockedReason).toBeUndefined();
+    // manual resume grants a fresh Suno retry budget so the next tick re-attempts
+    expect(state.retryCount).toBe(0);
+  });
+
+  it("emits a Telegram-visible failure when /resume immediate cycle fails", async () => {
+    const root = makeRoot();
+    await ensureSongState(root, "spawn-test", "Resume Continue");
+    await updateSongState(root, "spawn-test", { status: "suno_prompt_pack" });
+    await writeAutopilotRunState(root, {
+      runId: "auto-resume",
+      currentSongId: "spawn-test",
+      stage: "paused",
+      paused: true,
+      blockedReason: "suno_generate_failed:suno_worker_not_connected",
+      retryCount: 3,
+      cycleCount: 4,
+      updatedAt: new Date(1000).toISOString(),
+      lastRunAt: new Date(1000).toISOString()
+    });
+    const runNow = vi.fn().mockRejectedValue(new Error("ticker_run_failed"));
+    vi.spyOn(autopilotTicker, "getAutopilotTicker").mockReturnValue(
+      { runNow } as unknown as ReturnType<typeof autopilotTicker.getAutopilotTicker>
+    );
+    const events: RuntimeEvent[] = [];
+    const bus = getRuntimeEventBus();
+    bus.clearForTest();
+    const unsubscribe = bus.subscribe((event) => events.push(event));
+
+    const result = await routeTelegramCommand({ ...baseInput, text: "/resume", workspaceRoot: root });
+
+    expect(result.kind).toBe("resume");
+    expect(result.responseText).toContain("続きを今すぐ進める");
+    await vi.waitFor(() => {
+      expect(events).toEqual(expect.arrayContaining([
+        expect.objectContaining({
+          type: "error",
+          source: "telegram_resume_run_now",
+          reason: "ticker_run_failed",
+          songId: "spawn-test"
+        })
+      ]));
+    });
+    unsubscribe();
+  });
+
+  it("kicks an immediate proposal search from /resume when no song is active but spawn is waiting", async () => {
+    const root = makeRoot();
+    await mkdir(join(root, "runtime"), { recursive: true });
+    await writeAutopilotRunState(root, {
+      runId: "auto-spawn-wait",
+      stage: "planning",
+      paused: false,
+      blockedReason: "song_spawn_waiting_for_proposal",
+      retryCount: 0,
+      cycleCount: 4,
+      updatedAt: new Date(1000).toISOString(),
+      lastRunAt: new Date(1000).toISOString()
+    });
+    const runNow = vi.fn().mockResolvedValue({ outcome: "ran", state: {} });
+    vi.spyOn(autopilotTicker, "getAutopilotTicker").mockReturnValue(
+      { runNow } as unknown as ReturnType<typeof autopilotTicker.getAutopilotTicker>
+    );
+
+    const result = await routeTelegramCommand({ ...baseInput, text: "/resume", workspaceRoot: root });
+    const state = await readAutopilotRunState(root);
+
+    expect(result.kind).toBe("resume");
+    expect(runNow).toHaveBeenCalledTimes(1);
+    expect(result.responseText).toContain("次の曲案を今すぐ探す");
+    expect(state.blockedReason).toBeUndefined();
+  });
+
+  it("does not kick a cycle from /resume when a producer GO gate is pending (Plan v10.66)", async () => {
+    const root = makeRoot();
+    await ensureSongState(root, "spawn-gated", "Awaiting GO");
+    await updateSongState(root, "spawn-gated", { status: "idea" });
+    await writeAutopilotRunState(root, {
+      runId: "auto-gate",
+      currentSongId: "spawn-gated",
+      stage: "paused",
+      paused: true,
+      suspendedAt: "spawn_proposal_ready",
+      retryCount: 0,
+      cycleCount: 1,
+      updatedAt: new Date(1000).toISOString(),
+      lastRunAt: new Date(1000).toISOString()
+    });
+    const runNow = vi.fn().mockResolvedValue({ outcome: "ran", state: {} });
+    vi.spyOn(autopilotTicker, "getAutopilotTicker").mockReturnValue(
+      { runNow } as unknown as ReturnType<typeof autopilotTicker.getAutopilotTicker>
+    );
+
+    const result = await routeTelegramCommand({ ...baseInput, text: "/resume", workspaceRoot: root });
+    const state = await readAutopilotRunState(root);
+
+    expect(result.kind).toBe("resume");
+    expect(runNow).not.toHaveBeenCalled();
+    // GO-gate suspension survives resume and waits for the operator's GO button
+    expect(state.suspendedAt).toBe("spawn_proposal_ready");
+  });
+
+  it("re-surfaces degraded lyrics from /resume without resuming the paused autopilot", async () => {
+    const root = makeRoot();
+    await ensureSongState(root, "song-lyrics", "Lyrics Stuck");
+    await updateSongState(root, "song-lyrics", {
+      status: "brief",
+      degradedLyrics: true,
+      reason: "lyrics_generation_degraded: provider fallback response"
+    });
+    await writeAutopilotRunState(root, {
+      runId: "degraded",
+      currentSongId: "song-lyrics",
+      stage: "paused",
+      paused: true,
+      blockedReason: "lyrics_generation_degraded: provider fallback response",
+      retryCount: 1,
+      cycleCount: 1,
+      updatedAt: new Date(1000).toISOString(),
+      lastRunAt: new Date(1000).toISOString()
+    });
+    const events: RuntimeEvent[] = [];
+    const bus = getRuntimeEventBus();
+    bus.clearForTest();
+    const unsubscribe = bus.subscribe((event) => events.push(event));
+
+    const result = await routeTelegramCommand({ ...baseInput, text: "/resume", workspaceRoot: root });
+    const state = await readAutopilotRunState(root);
+    unsubscribe();
+
+    expect(result.kind).toBe("resume");
+    expect(result.responseText).toContain("歌詞生成に失敗");
+    expect(result.responseText).toContain("破棄");
+    expect(result.responseText).toContain("歌詞を作り直す");
+    expect(state).toMatchObject({
+      currentSongId: "song-lyrics",
+      stage: "paused",
+      paused: true,
+      blockedReason: "lyrics_generation_degraded: provider fallback response"
+    });
+    expect(events).toHaveLength(1);
+    expect(events[0]).toMatchObject({ type: "lyrics_generation_degraded", songId: "song-lyrics" });
+  });
+
+  it("returns a safe response for unknown commands", async () => {
+    const result = await routeTelegramCommand({ ...baseInput, text: "/wat" });
+
+    expect(result.kind).toBe("unknown");
+    expect(result.responseText).toContain("Unknown command");
+    expect(result.shouldStoreFreeText).toBe(false);
+  });
+
+  it("stages free-text for the local inbox path", async () => {
+    const result = await routeTelegramCommand({ ...baseInput, text: "please make the next hook colder" });
+
+    expect(result.kind).toBe("free_text");
+    expect(result.responseText).toContain("local artist inbox");
+    expect(result.shouldStoreFreeText).toBe(true);
+  });
+
+  it("classifies free-text command suggestions without forwarding to CC or Cdx", () => {
+    expect(classifyTelegramFreeText("please pause")).toBe("pause");
+    expect(classifyTelegramFreeText("resume the artist")).toBe("resume");
+    expect(classifyTelegramFreeText("status?")).toBe("status");
+    expect(classifyTelegramFreeText("make the hook colder")).toBe("artist_inbox");
+  });
+});

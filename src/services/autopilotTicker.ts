@@ -1,0 +1,370 @@
+import { applyConfigDefaults } from "../config/schema.js";
+import type { AutopilotRunState, ArtistRuntimeConfig } from "../types.js";
+import { ArtistAutopilotService, readAutopilotRunState, writeAutopilotRunState, PRODUCER_REVIEW_SUSPENDED_AT, isDegradedLyricsBoxReason } from "./autopilotService.js";
+import { emitRuntimeEvent } from "./runtimeEventBus.js";
+import { getAutopilotFastChainMs, getAutopilotImportPollMs, getAutopilotTickStallMs, resolveDefaultWorkspaceRoot, resolveRuntimeConfig } from "./runtimeConfig.js";
+import { writeAutopilotHeartbeat } from "./supervisorHealth.js";
+
+type PartialDeep<T> = {
+  [K in keyof T]?: T[K] extends string[] ? string[] : T[K] extends Record<string, unknown> ? PartialDeep<T[K]> : T[K];
+};
+
+export type AutopilotTickOutcome =
+  | "ran"
+  | "skipped:disabled"
+  | "skipped:paused"
+  | "skipped:hardStop"
+  | "skipped:concurrent"
+  | "error";
+
+export interface AutopilotTickerOptions {
+  intervalMs?: number;
+  getConfig?: () => PartialDeep<ArtistRuntimeConfig> | undefined;
+  onOutcome?: (outcome: AutopilotTickOutcome) => void;
+}
+
+export interface AutopilotManualRunResult {
+  outcome: AutopilotTickOutcome;
+  state: AutopilotRunState;
+}
+
+const FALLBACK_INTERVAL_MS = 5 * 60 * 1000;
+
+let intervalHandle: ReturnType<typeof setInterval> | null = null;
+let fastChainHandle: ReturnType<typeof setTimeout> | null = null;
+let running = false;
+let runningStartedAt: number | undefined;
+let singleton: AutopilotTicker | null = null;
+let lastOutcome: AutopilotTickOutcome | undefined;
+let lastTickAt: string | undefined;
+
+const FALLBACK_STALL_MS = 10 * 60 * 1000;
+
+// When a cycle advances an in-flight song (e.g. suno_generation -> import -> take
+// selection), the next stage would otherwise wait the full cycle interval (default
+// 3h), so a song that finished generating sits undelivered for hours. A successful
+// cycle that made progress and is not waiting on the operator schedules a near-term
+// follow-up tick to drive the pipeline tail (create -> import -> take_completed ->
+// Telegram) within ~minutes. Set OPENCLAW_AUTOPILOT_FAST_CHAIN_MS=0 to disable.
+const FALLBACK_FAST_CHAIN_MS = 20 * 1000;
+
+// Stages where the pipeline is idle or terminal: nothing to fast-chain toward.
+const FAST_CHAIN_STOP_STAGES = new Set(["idle", "paused", "completed", "failed_closed"]);
+
+// Suno generation is two-tick: tick A submits the create and parks the lane on this
+// blockedReason; the import only lands on a later tick. The progress-gated fast-chain
+// stops after one no-progress repeat, so without dedicated polling that later tick is
+// the next full interval (default 3h) — a take that renders in minutes sits
+// undelivered for hours (2026-06-12 incident; same class as the 06-09 stall). While a
+// run is awaiting import, keep re-ticking on a slower cadence. The lifecycle contract
+// (v10.42) fails a dead run closed, which changes blockedReason and ends the polling.
+// Set OPENCLAW_AUTOPILOT_IMPORT_POLL_MS=0 to disable.
+const SUNO_IMPORT_WAIT_REASON = "waiting for Suno result import"; // autopilotService.ts setSongStage
+const FALLBACK_IMPORT_POLL_MS = 60 * 1000;
+
+function resolveStallMs(): number {
+  return getAutopilotTickStallMs() ?? FALLBACK_STALL_MS;
+}
+
+function resolveFastChainMs(): number {
+  return getAutopilotFastChainMs() ?? FALLBACK_FAST_CHAIN_MS;
+}
+
+function resolveImportPollMs(): number {
+  return getAutopilotImportPollMs() ?? FALLBACK_IMPORT_POLL_MS;
+}
+
+function isAwaitingSunoImport(state: AutopilotRunState): boolean {
+  if (state.paused || state.suspendedAt || state.hardStopReason) return false;
+  if (FAST_CHAIN_STOP_STAGES.has(state.stage)) return false;
+  if (state.blockedReason === SUNO_IMPORT_WAIT_REASON) return true;
+  // A transient degraded lyrics box self-heals across ticks; re-poll at the same slow
+  // cadence so the create lands within minutes once Suno restores the normal box,
+  // instead of waiting the full cycle interval.
+  return isDegradedLyricsBoxReason(state.blockedReason);
+}
+
+// Progress fingerprint: a same-stage advance (e.g. create -> pending import within
+// suno_generation) changes blockedReason, so stage alone is too coarse. Comparing the
+// full tuple lets a same-stage advance chain while a no-progress repeat stops it.
+function progressKey(state: AutopilotRunState): string {
+  return `${state.stage}|${state.blockedReason ?? ""}|${state.currentSongId ?? ""}`;
+}
+
+function shouldFastChain(before: AutopilotRunState, after: AutopilotRunState): boolean {
+  if (after.paused) return false;
+  if (after.suspendedAt) return false;
+  if (after.hardStopReason) return false;
+  if (FAST_CHAIN_STOP_STAGES.has(after.stage)) return false;
+  // Only chain when this cycle actually moved the pipeline forward; a repeated state
+  // (e.g. import still not ready) falls back to the normal interval to avoid runaway.
+  return progressKey(before) !== progressKey(after);
+}
+
+function logHeartbeatFailure(context: string, error: unknown): void {
+  const reason = error instanceof Error ? error.message : String(error);
+  console.error(`[autopilot-ticker] ${context} failed: ${reason}`);
+}
+
+// A cycle must resolve its config from the on-disk runtime overrides, never from an
+// in-memory default. Passing the (possibly undefined/partial) in-memory config as the
+// payload means the disk overrides for the target workspace are always read and the
+// caller's explicit fields still win. Without this, a missing in-memory config silently
+// produced the pure default config (driver "mock", dryRun true) and a live song was
+// completed with mock data (2026-07-02 spawn_385428 incident).
+export async function resolveAutopilotTickConfig(
+  baseConfig?: PartialDeep<ArtistRuntimeConfig>
+): Promise<ArtistRuntimeConfig> {
+  return resolveRuntimeConfig(baseConfig as Partial<ArtistRuntimeConfig> | undefined);
+}
+
+export class AutopilotTicker {
+  constructor(private readonly options: AutopilotTickerOptions = {}) {}
+
+  start(): void {
+    if (intervalHandle) {
+      return;
+    }
+    const intervalMs = this.resolveIntervalMs();
+    void this.tick();
+    intervalHandle = setInterval(() => {
+      void this.tick();
+    }, intervalMs);
+  }
+
+  stop(): void {
+    if (intervalHandle) {
+      clearInterval(intervalHandle);
+      intervalHandle = null;
+    }
+    if (fastChainHandle) {
+      clearTimeout(fastChainHandle);
+      fastChainHandle = null;
+    }
+  }
+
+  // Drive the pipeline tail without waiting the full cycle interval. Scheduled as a
+  // one-shot; the next runNow re-evaluates from fresh on-disk state, and its running
+  // guard prevents overlap with the regular interval tick. A progressing cycle chains
+  // at the fast cadence; a no-progress cycle that is awaiting a Suno result import
+  // keeps polling at the slower import cadence instead of stopping outright.
+  private maybeScheduleFastChain(before: AutopilotRunState, after: AutopilotRunState): void {
+    const progressed = shouldFastChain(before, after);
+    const delayMs = progressed ? resolveFastChainMs() : isAwaitingSunoImport(after) ? resolveImportPollMs() : 0;
+    if (delayMs <= 0) return;
+    if (fastChainHandle) {
+      clearTimeout(fastChainHandle);
+    }
+    fastChainHandle = setTimeout(() => {
+      fastChainHandle = null;
+      void this.tick();
+    }, delayMs);
+    if (typeof fastChainHandle.unref === "function") {
+      fastChainHandle.unref();
+    }
+  }
+
+  async tick(configOverride?: PartialDeep<ArtistRuntimeConfig>): Promise<AutopilotTickOutcome> {
+    return (await this.runNow(configOverride)).outcome;
+  }
+
+  async runNow(
+    configOverride?: PartialDeep<ArtistRuntimeConfig>,
+    manualSeed?: { hint: string; weirdness?: number; allowNoObservation?: boolean },
+    operatorRequestedSpawn = false,
+    forceObservationRefresh = false
+  ): Promise<AutopilotManualRunResult> {
+    const baseConfig = configOverride ?? this.scheduledBaseConfig();
+    let resolved: ArtistRuntimeConfig;
+    try {
+      resolved = await resolveAutopilotTickConfig(baseConfig);
+    } catch (error) {
+      // Fail closed: if the on-disk runtime config cannot be read, skip the cycle and
+      // record a blockedReason instead of running against the default (mock) config.
+      return this.failClosedOnUnresolvedConfig(baseConfig, error);
+    }
+    const workspaceRoot = resolved.artist.workspaceRoot;
+    await writeAutopilotHeartbeat(workspaceRoot, {
+      lastTickAttempt: new Date().toISOString()
+    }).catch((error) => logHeartbeatFailure("heartbeat attempt write", error));
+
+    if (!manualSeed && !resolved.autopilot.enabled) {
+      return {
+        outcome: await this.emitWithHeartbeat(workspaceRoot, "skipped:disabled"),
+        state: await readAutopilotRunState(workspaceRoot)
+      };
+    }
+
+    const state = await readAutopilotRunState(workspaceRoot);
+    // Plan v10.54 Phase C wire fix: producer_review_after_take_selected は paused でも
+    // runCycle に通す。runCycle 内 runIdeaQueueLane が currentSongId lane を停止維持したまま
+    // ideaQueue lane だけ tick する (プロデューサー「自然と新曲提案降ってくる」)。それ以外の paused
+    // (operator pause / safety stop) は従来どおり skip。
+    if (state.paused && state.suspendedAt !== PRODUCER_REVIEW_SUSPENDED_AT) {
+      return { outcome: await this.emitWithHeartbeat(workspaceRoot, "skipped:paused", state), state };
+    }
+    if (state.hardStopReason) {
+      return { outcome: await this.emitWithHeartbeat(workspaceRoot, "skipped:hardStop", state), state };
+    }
+    if (running) {
+      const startedAt = runningStartedAt;
+      const ageMs = typeof startedAt === "number" ? Date.now() - startedAt : 0;
+      if (!startedAt || ageMs < resolveStallMs()) {
+        return { outcome: await this.emitWithHeartbeat(workspaceRoot, "skipped:concurrent", state), state };
+      }
+      running = false;
+      runningStartedAt = undefined;
+      emitRuntimeEvent({
+        type: "error",
+        source: "autopilot_ticker_stall",
+        reason: `tick_stalled:${ageMs}ms`,
+        songId: state.currentSongId,
+        timestamp: Date.now()
+      });
+    }
+
+    running = true;
+    runningStartedAt = Date.now();
+    try {
+      const nextState = await new ArtistAutopilotService().runCycle({
+        workspaceRoot,
+        config: resolved,
+        manualSeed,
+        operatorRequestedSpawn,
+        forceObservationRefresh
+      });
+      this.maybeScheduleFastChain(state, nextState);
+      return {
+        outcome: await this.emitWithHeartbeat(workspaceRoot, "ran", nextState),
+        state: nextState
+      };
+    } catch {
+      const errorState = await readAutopilotRunState(workspaceRoot);
+      return {
+        outcome: await this.emitWithHeartbeat(workspaceRoot, "error", errorState),
+        state: errorState
+      };
+    } finally {
+      running = false;
+      runningStartedAt = undefined;
+    }
+  }
+
+  // Scheduled ticks (interval / fast chain / import poll) carry no request config.
+  // Pin only the workspace from the boot-time snapshot: every other field of that
+  // snapshot goes stale the moment an operator changes an on-disk override (for
+  // example enabling autopilot from the Console), and passing the whole snapshot
+  // as the payload lets it win over the override. On the Linux box (2026-09-07)
+  // every scheduled tick stayed skipped:disabled after autopilot was enabled at
+  // runtime; only request-driven ticks (run-cycle, safe tick) saw the new value.
+  private scheduledBaseConfig(): PartialDeep<ArtistRuntimeConfig> | undefined {
+    const workspaceRoot = this.options.getConfig?.()?.artist?.workspaceRoot;
+    // PartialDeep does not recurse into the ArtistConfig interface, so the
+    // workspace-only pin needs an explicit cast; resolveRuntimeConfig merges it
+    // over the persisted config field by field.
+    return workspaceRoot ? ({ artist: { workspaceRoot } } as PartialDeep<ArtistRuntimeConfig>) : undefined;
+  }
+
+  private async failClosedOnUnresolvedConfig(
+    baseConfig: PartialDeep<ArtistRuntimeConfig> | undefined,
+    error: unknown
+  ): Promise<AutopilotManualRunResult> {
+    const reason = error instanceof Error ? error.message : String(error);
+    const workspaceRoot = baseConfig?.artist?.workspaceRoot ?? resolveDefaultWorkspaceRoot();
+    emitRuntimeEvent({
+      type: "error",
+      source: "autopilot_config_unresolved",
+      reason,
+      timestamp: Date.now()
+    });
+    const current = await readAutopilotRunState(workspaceRoot).catch(() => undefined);
+    const blocked: AutopilotRunState | undefined = current
+      ? { ...current, blockedReason: `config_unresolved_fail_closed: ${reason}` }
+      : undefined;
+    if (blocked) {
+      await writeAutopilotRunState(workspaceRoot, blocked).catch((writeError) =>
+        logHeartbeatFailure("fail-closed run-state write", writeError)
+      );
+    }
+    const state = blocked ?? await readAutopilotRunState(workspaceRoot);
+    return { outcome: await this.emitWithHeartbeat(workspaceRoot, "error", state), state };
+  }
+
+  private resolveIntervalMs(): number {
+    if (this.options.intervalMs) {
+      return this.options.intervalMs;
+    }
+    const baseConfig = this.options.getConfig?.();
+    const resolved = applyConfigDefaults(baseConfig);
+    const minutes = resolved.autopilot.cycleIntervalMinutes;
+    if (typeof minutes === "number" && minutes > 0) {
+      return minutes * 60 * 1000;
+    }
+    return FALLBACK_INTERVAL_MS;
+  }
+
+  private emit(outcome: AutopilotTickOutcome): AutopilotTickOutcome {
+    lastOutcome = outcome;
+    lastTickAt = new Date().toISOString();
+    emitRuntimeEvent({
+      type: "autopilot_state_changed",
+      enabled: outcome !== "skipped:disabled",
+      paused: outcome === "skipped:paused",
+      reason: outcome,
+      timestamp: Date.now()
+    });
+    this.options.onOutcome?.(outcome);
+    return outcome;
+  }
+
+  private async emitWithHeartbeat(
+    workspaceRoot: string,
+    outcome: AutopilotTickOutcome,
+    state?: AutopilotRunState
+  ): Promise<AutopilotTickOutcome> {
+    const emitted = this.emit(outcome);
+    await writeAutopilotHeartbeat(workspaceRoot, {
+      lastTickResult: emitted,
+      currentStage: state?.stage
+    }).catch((error) => logHeartbeatFailure("heartbeat result write", error));
+    return emitted;
+  }
+}
+
+export function getAutopilotTicker(options?: AutopilotTickerOptions): AutopilotTicker {
+  if (!singleton) {
+    singleton = new AutopilotTicker(options);
+  }
+  return singleton;
+}
+
+export function resetAutopilotTickerForTest(): void {
+  if (intervalHandle) {
+    clearInterval(intervalHandle);
+    intervalHandle = null;
+  }
+  if (fastChainHandle) {
+    clearTimeout(fastChainHandle);
+    fastChainHandle = null;
+  }
+  singleton = null;
+  running = false;
+  runningStartedAt = undefined;
+  lastOutcome = undefined;
+  lastTickAt = undefined;
+}
+
+export function getLastOutcome(): AutopilotTickOutcome | undefined {
+  return lastOutcome;
+}
+
+export function getLastTickAt(): string | undefined {
+  return lastTickAt;
+}
+
+export function getAutopilotTickerIntervalMs(config?: PartialDeep<ArtistRuntimeConfig>): number {
+  if (config?.autopilot?.cycleIntervalMinutes && config.autopilot.cycleIntervalMinutes > 0) {
+    return config.autopilot.cycleIntervalMinutes * 60 * 1000;
+  }
+  return FALLBACK_INTERVAL_MS;
+}

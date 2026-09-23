@@ -1,0 +1,277 @@
+import { readdir } from "node:fs/promises";
+import { join, relative } from "node:path";
+import type { ArtistRuntimeConfig, ObservationSummary, SongIdeaResult } from "../types.js";
+import { ensureSongState, readArtistMind, updateSongState, writeSongBrief } from "./artistState.js";
+import { ensureArtistWorkspace } from "./artistWorkspace.js";
+import { appendPromptLedger, createPromptLedgerEntry, getSongPromptLedgerPath } from "./promptLedger.js";
+import { decideCreative, jstDate } from "./creativeDirector.js";
+import { bpmForTempoBand } from "./creativeVariationPolicy.js";
+import { readRecentCreativeDecisions } from "./creativeQualityLedger.js";
+import { writeSongPlan } from "./songPlan.js";
+import {
+  CURRENT_ARTIST_CORE_HEADING,
+  CURRENT_OBSESSIONS_HEADING,
+  headingMatches
+} from "./personaHeadings.js";
+import { renderBrief, type BriefModel } from "./briefRenderer.js";
+import type { TempoBand } from "../suno-production/durationPlan.js";
+
+function titleCase(value: string): string {
+  return value
+    .split(/[^a-zA-Z0-9]+/)
+    .filter(Boolean)
+    .map((segment) => segment.charAt(0).toUpperCase() + segment.slice(1).toLowerCase())
+    .join(" ");
+}
+
+function firstBulletSection(source: string, header: string): string[] {
+  const lines = source.split("\n");
+  const startIndex = lines.findIndex((line) => headingMatches(line, header));
+  if (startIndex === -1) {
+    return [];
+  }
+
+  const values: string[] = [];
+  for (const line of lines.slice(startIndex + 1)) {
+    if (line.startsWith("## ")) {
+      break;
+    }
+    const trimmed = line.trim();
+    if (trimmed.startsWith("- ")) {
+      values.push(trimmed.slice(2).trim());
+    }
+  }
+  return values;
+}
+
+async function nextSongNumber(root: string): Promise<number> {
+  const entries = await readdir(join(root, "songs"), { withFileTypes: true }).catch(() => []);
+  return entries.filter((entry) => entry.isDirectory()).length + 1;
+}
+
+function chooseTheme(artist: string, currentState: string): string {
+  const obsessions = firstBulletSection(currentState, CURRENT_OBSESSIONS_HEADING);
+  if (obsessions.length > 0) {
+    return obsessions[0];
+  }
+  const core = firstBulletSection(artist, CURRENT_ARTIST_CORE_HEADING);
+  if (core.length > 0) {
+    return core[0];
+  }
+  return "signal in the ruins";
+}
+
+function buildTitle(theme: string, index: number): string {
+  const themed = titleCase(theme);
+  return themed.length >= 4 ? themed : `Song ${String(index).padStart(3, "0")}`;
+}
+
+function excerpt(value?: string): string {
+  return (value ?? "").split(/\r?\n/).map((line) => line.trim()).filter(Boolean).slice(0, 6).join("\n").slice(0, 900);
+}
+
+function observationRef(root: string, observationPath?: string): string | undefined {
+  if (!observationPath) {
+    return undefined;
+  }
+  const rel = relative(root, observationPath);
+  return rel && !rel.startsWith("..") ? rel : observationPath;
+}
+
+function parseObservationField(value: string): string | undefined {
+  const trimmed = value.trim();
+  if (!trimmed || trimmed === "null" || trimmed === "none") {
+    return undefined;
+  }
+  try {
+    const parsed = JSON.parse(trimmed) as unknown;
+    return typeof parsed === "string" ? parsed : undefined;
+  } catch {
+    return trimmed.replace(/^["']|["']$/g, "");
+  }
+}
+
+const placeholderPattern = /^(?:-|tbd|未定|未記入|todo|fixme|none|n\/a|null)$/i;
+const machineReasonPattern = /(?:ARTIST\.md|SOUL\.md|INNER\.md|PRODUCER\.md|IDENTITY\.md|themes:|geo:|vocab:|sound:|motif anchor:|\bparse\b|\bbuild\b|\bfield\b|\bconfig\b|\bruntime\b|\bmock\b)|基礎人格|基礎トーン|基礎理性|基礎商業|に基づき|に従い|を変換|を生成/i;
+
+function cleanVoiceToken(value?: string): string | undefined {
+  const token = value?.split(/[/|,、]/)[0]?.trim();
+  return token && !placeholderPattern.test(token) ? token : undefined;
+}
+
+function tokenAfter(label: string, source: string): string | undefined {
+  const match = source.match(new RegExp(`${label}:\\s*([^|\\n]+)`, "i"));
+  return cleanVoiceToken(match?.[1]);
+}
+
+function artistReasonVoice(theme: string, reason?: string): string {
+  const clean = reason?.replace(/\s+/g, " ").trim();
+  if (clean && !placeholderPattern.test(clean) && !machineReasonPattern.test(clean)) {
+    return clean;
+  }
+  const source = `${theme} | ${clean ?? ""}`;
+  const place = tokenAfter("geo", source) ?? cleanVoiceToken(theme) ?? "街";
+  const object = tokenAfter("vocab", source) ?? tokenAfter("themes", source) ?? cleanVoiceToken(theme) ?? "引っかかり";
+  const sound = tokenAfter("sound", source) ?? "低い輪郭";
+  return `${place}の${object}を刺すために、${sound}の輪郭で書く。自分の癖が出る場所だと思う。`;
+}
+
+export function extractObservationSummary(observationText?: string, motivation?: string): ObservationSummary | undefined {
+  const source = observationText?.trim();
+  if (!source) {
+    return undefined;
+  }
+  const text = source.match(/^-\s+text:\s*(.+)$/m)?.[1];
+  const author = source.match(/^\s+author:\s*(.+)$/m)?.[1];
+  const url = source.match(/^\s+url:\s*(.+)$/m)?.[1];
+  const quote = parseObservationField(text ?? "") ?? excerpt(source).replace(/\s+/g, " ");
+  return {
+    author: parseObservationField(author ?? ""),
+    url: parseObservationField(url ?? ""),
+    quote,
+    motivation: motivation?.trim() || "observation matched the artist direction"
+  };
+}
+
+function buildBrief(
+  title: string,
+  theme: string,
+  artistReason: string,
+  tempoBand: TempoBand,
+  tempoBpm: number,
+  emotionalMode: { label: string; mood: string },
+  observationText?: string,
+  observationPath?: string
+): string {
+  const excerptText = excerpt(observationText);
+  const model: BriefModel = {
+    title,
+    whyExists: `A public-facing song grown from ${theme}.`,
+    coreTheme: theme,
+    artistReason,
+    mood: emotionalMode.mood,
+    emotionalModeLabel: emotionalMode.label,
+    tempoBand,
+    // The bpm line is what fixes inventory bug #1: readBriefTempo matches only
+    // `- Tempo:`, so before this the ideation brief carried a band but no bpm.
+    tempoLine: `${tempoBpm} BPM`,
+    directionExtras: ["Keep the images concrete and the chorus short"]
+  };
+  if (excerptText) {
+    const summary = extractObservationSummary(observationText, artistReason);
+    model.observation = {
+      path: observationPath ?? "(runtime observation)",
+      author: summary?.author ?? "unknown",
+      url: summary?.url ?? "",
+      quote: summary?.quote ?? excerptText.replace(/\s+/g, " "),
+      motivation: summary?.motivation ?? artistReason,
+      extract: excerptText
+    };
+  }
+  return renderBrief(model);
+}
+
+export interface CreateSongIdeaInput {
+  workspaceRoot: string;
+  config?: Partial<ArtistRuntimeConfig>;
+  title?: string;
+  artistReason?: string;
+  theme?: string;
+  tempoBand?: TempoBand;
+  observationText?: string;
+  observationPath?: string;
+}
+
+// Choose the song's tempo band. An explicit band wins. Per producer direction
+// the center of gravity is fast: the everyday song sits on a fast band, so the
+// mechanical default is "up" with the dopagaki variation lifting it to the
+// high-speed "dopagaki" band. Slower bands (mid/slow) and the hyper-fast "super"
+// band are occasional changes the artist selects explicitly.
+
+export async function createSongIdea(input: CreateSongIdeaInput): Promise<SongIdeaResult> {
+  await ensureArtistWorkspace(input.workspaceRoot);
+  const now = new Date();
+  const date = jstDate(now);
+  const artistMind = await readArtistMind(input.workspaceRoot);
+  const sequence = await nextSongNumber(input.workspaceRoot);
+  const theme = input.theme?.trim() || chooseTheme(artistMind.artist, artistMind.currentState);
+  const title = input.title?.trim() || buildTitle(theme, sequence);
+  const songId = `song-${String(sequence).padStart(3, "0")}`;
+  const artistReason = artistReasonVoice(theme, input.artistReason ?? `caught on ${theme}`);
+  const observationSummary = extractObservationSummary(input.observationText, artistReason);
+  // The director decides every creative axis once. Its values feed the brief and
+  // are persisted as song-plan.json so downstream stages read the decision rather
+  // than re-hashing mood/tempo/dopagaki independently.
+  const recentDecisions = await readRecentCreativeDecisions(input.workspaceRoot, 6);
+  const directorObservation = input.observationText?.trim()
+    ? {
+        url: observationSummary?.url ?? "",
+        author: observationSummary?.author ?? "",
+        motifScore: 0,
+        text: input.observationText
+      }
+    : null;
+  const decision = decideCreative({
+    songId,
+    jstDate: date,
+    personaText: artistMind.artist,
+    observation: directorObservation,
+    recentDecisions
+  });
+  // An explicit tempo band (operator/API) wins over the director's choice. Fold
+  // it into the decision so the persisted plan — which downstream stages read —
+  // reflects the override rather than silently dropping it.
+  if (input.tempoBand && input.tempoBand !== decision.tempo.band) {
+    decision.tempo = { band: input.tempoBand, bpm: bpmForTempoBand(input.tempoBand) };
+  }
+  const emotionalMode = { label: decision.emotionalMode.label, mood: decision.emotionalMode.spec };
+  const tempoBand = decision.tempo.band;
+  const briefText = buildBrief(title, theme, artistReason, tempoBand, decision.tempo.bpm, emotionalMode, input.observationText, input.observationPath);
+  const observationInputRef = input.observationText?.trim() ? observationRef(input.workspaceRoot, input.observationPath) : undefined;
+  const inputRefs = ["ARTIST.md", "artist/CURRENT_STATE.md", observationInputRef].filter(Boolean) as string[];
+
+  await ensureSongState(input.workspaceRoot, songId, title);
+  await writeSongPlan(input.workspaceRoot, decision);
+  const state = await writeSongBrief(input.workspaceRoot, songId, briefText);
+  await updateSongState(input.workspaceRoot, songId, {
+    title,
+    status: "brief",
+    reason: artistReason,
+    observationSummary
+  });
+
+  const ledgerPath = getSongPromptLedgerPath(input.workspaceRoot, songId);
+  const ideationEntry = await appendPromptLedger(
+    ledgerPath,
+    createPromptLedgerEntry({
+      stage: "song_ideation",
+      songId,
+      actor: "artist",
+      artistReason,
+      inputRefs,
+      outputRefs: [join(input.workspaceRoot, "songs", songId, "song.md")],
+      outputSummary: title
+    })
+  );
+  const briefEntry = await appendPromptLedger(
+    ledgerPath,
+    createPromptLedgerEntry({
+      stage: "song_brief_creation",
+      songId,
+      actor: "artist",
+      artistReason,
+      inputRefs,
+      outputRefs: [join(input.workspaceRoot, "songs", songId, "brief.md")],
+      outputSummary: briefText
+    })
+  );
+
+  return {
+    songId,
+    title,
+    briefPath: state.briefPath ?? join(input.workspaceRoot, "songs", songId, "brief.md"),
+    status: "brief",
+    artistReason,
+    ledgerEntryIds: [ideationEntry.id, briefEntry.id]
+  };
+}

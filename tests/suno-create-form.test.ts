@@ -1,0 +1,353 @@
+import { describe, expect, it } from "vitest";
+import { chromium, type Page } from "playwright";
+import {
+  SUNO_CREATE_FALLBACKS,
+  SUNO_CREATE_FORM_MISSING_REASON,
+  SUNO_CREATE_SELECTORS,
+  SUNO_EXPECTED_TAKE_COUNT,
+  ensureSunoSongMode,
+  ensureSunoLyricsMode,
+  ensureSunoStyleMode,
+  filterFreshTakeUrls,
+  resolveFirstVisibleLocator,
+  waitForSunoCreateFormReady
+} from "../src/services/sunoCreateForm";
+
+type SelectorState = {
+  visible: boolean;
+  onClick?: () => void;
+  attrs?: Record<string, string>;
+  clickFailures?: number;
+};
+
+/**
+ * Minimal Playwright Page fake: each selector maps to a state. waitFor({visible})
+ * resolves iff visible, else rejects immediately (models a timeout without waiting).
+ * .first() is identity; .click() runs an optional side effect (e.g. mode flip).
+ */
+function makePage(states: Record<string, SelectorState | SelectorState[]>): { page: Page; clicks: string[] } {
+  const clicks: string[] = [];
+  const locatorFor = (selector: string) => {
+    const selectorStates = Array.isArray(states[selector])
+      ? states[selector] as SelectorState[]
+      : [states[selector] as SelectorState ?? { visible: false }];
+    const locatorAt = (index: number) => {
+      const state = selectorStates[index] ?? { visible: false };
+      const locator = {
+        first: () => locatorAt(0),
+        nth: (nextIndex: number) => locatorAt(nextIndex),
+        count: async () => selectorStates.length,
+        isVisible: async () => state.visible,
+        getAttribute: async (name: string) => state.attrs?.[name] ?? null,
+        waitFor: async (_opts: { state: "visible"; timeout: number }) => {
+          if (!state.visible) {
+            throw new Error(`not visible: ${selector}`);
+          }
+        },
+        click: async () => {
+          clicks.push(selector);
+          if ((state.clickFailures ?? 0) > 0) {
+            state.clickFailures = (state.clickFailures ?? 0) - 1;
+            throw new Error(`detached before click: ${selector}`);
+          }
+          state.onClick?.();
+        }
+      };
+      return locator;
+    };
+    return locatorAt(0);
+  };
+  const page = { locator: (selector: string) => locatorFor(selector) } as unknown as Page;
+  return { page, clicks };
+}
+
+describe("resolveFirstVisibleLocator", () => {
+  it("returns the first visible candidate in list order", async () => {
+    const [c0, c1, c2] = SUNO_CREATE_FALLBACKS.createButton;
+    const { page } = makePage({
+      [c0]: { visible: false },
+      [c1]: { visible: true },
+      [c2]: { visible: true }
+    });
+    const locator = await resolveFirstVisibleLocator(
+      page,
+      SUNO_CREATE_FALLBACKS.createButton,
+      50,
+      "Create song button"
+    );
+    expect(await locator.isVisible()).toBe(true);
+    // c1 is the first visible; c0 was skipped because it never became visible.
+    const resolvedC1 = page.locator(c1).first();
+    expect(await resolvedC1.isVisible()).toBe(true);
+  });
+
+  it("skips a hidden Sounds field before the visible Song field", async () => {
+    const selector = 'textarea[placeholder*="style" i]';
+    const { page } = makePage({
+      [selector]: [{ visible: false }, { visible: true }]
+    });
+    const locator = await resolveFirstVisibleLocator(page, [selector], 50, "style textarea");
+    expect(await locator.isVisible()).toBe(true);
+  });
+
+  it("throws a DOM-missing error naming the tried candidates when none is visible", async () => {
+    const { page } = makePage({});
+    await expect(
+      resolveFirstVisibleLocator(page, ["a.one", "b.two"], 10, "lyrics textarea")
+    ).rejects.toThrow(new RegExp(`${SUNO_CREATE_FORM_MISSING_REASON}.*lyrics textarea.*a\\.one \\| b\\.two`));
+  });
+});
+
+describe("waitForSunoCreateFormReady", () => {
+  it("waits for the tabbed UI to hydrate instead of falling through to legacy readiness", async () => {
+    const browser = await chromium.launch({ headless: true });
+    try {
+      const page = await browser.newPage();
+      await page.setContent('<main id="root"></main>');
+      await page.evaluate(() => {
+        setTimeout(() => {
+          document.getElementById("root")!.innerHTML = `
+            <div role="tab" aria-selected="false">Song</div>
+            <div role="tab" aria-selected="true">Sounds</div>
+            <button aria-label="Create song">Create</button>`;
+          const song = document.querySelector('[role="tab"]')!;
+          song.addEventListener("click", () => song.setAttribute("aria-selected", "true"));
+        }, 25);
+      });
+      await expect(waitForSunoCreateFormReady(page, 500)).resolves.toBeUndefined();
+      await expect(page.locator(SUNO_CREATE_SELECTORS.songTab).getAttribute("aria-selected")).resolves.toBe("true");
+    } finally {
+      await browser.close();
+    }
+  });
+
+  it("selects Song from Sounds and accepts the tabbed UI without legacy workspace landmarks", async () => {
+    const songTab: SelectorState = { visible: true, attrs: { "aria-selected": "false" } };
+    const soundsTab: SelectorState = { visible: true, attrs: { "aria-selected": "true" } };
+    const { page, clicks } = makePage({
+      [SUNO_CREATE_SELECTORS.songTab]: {
+        ...songTab,
+        onClick: () => {
+          songTab.attrs!["aria-selected"] = "true";
+          soundsTab.attrs!["aria-selected"] = "false";
+        }
+      },
+      [SUNO_CREATE_SELECTORS.soundsTab]: soundsTab,
+      [SUNO_CREATE_SELECTORS.createButton]: { visible: true }
+    });
+
+    await expect(waitForSunoCreateFormReady(page, 50)).resolves.toBeUndefined();
+    expect(clicks).toEqual([SUNO_CREATE_SELECTORS.songTab]);
+  });
+
+  it("accepts the current Advanced song composer when the Song tab no longer exists", async () => {
+    const advancedTab: SelectorState = { visible: true, attrs: { "aria-selected": "false" } };
+    const soundsTab: SelectorState = { visible: true, attrs: { "aria-selected": "true" } };
+    const { page, clicks } = makePage({
+      [SUNO_CREATE_SELECTORS.advancedSongTab]: {
+        ...advancedTab,
+        onClick: () => {
+          advancedTab.attrs!["aria-selected"] = "true";
+          soundsTab.attrs!["aria-selected"] = "false";
+        }
+      },
+      [SUNO_CREATE_SELECTORS.soundsTab]: soundsTab,
+      [SUNO_CREATE_SELECTORS.createButton]: { visible: true }
+    });
+
+    await expect(waitForSunoCreateFormReady(page, 50)).resolves.toBeUndefined();
+    expect(clicks).toEqual([SUNO_CREATE_SELECTORS.advancedSongTab]);
+  });
+
+  it("fails closed when the tabbed UI exposes Sounds without Song", async () => {
+    const { page } = makePage({
+      [SUNO_CREATE_SELECTORS.soundsTab]: { visible: true, attrs: { "aria-selected": "true" } },
+      [SUNO_CREATE_SELECTORS.createButton]: { visible: true }
+    });
+    await expect(ensureSunoSongMode(page, 50)).rejects.toThrow(SUNO_CREATE_FORM_MISSING_REASON);
+  });
+  it("waits for the authenticated Create workspace before accepting form controls", async () => {
+    const { page } = makePage({
+      [SUNO_CREATE_SELECTORS.createNav]: { visible: true },
+      [SUNO_CREATE_SELECTORS.advancedMode]: { visible: true },
+      [SUNO_CREATE_SELECTORS.createButton]: { visible: true }
+    });
+    await expect(waitForSunoCreateFormReady(page, 50)).resolves.toBeUndefined();
+  });
+
+  it("rejects the compact composer when Advanced mode has not hydrated", async () => {
+    const { page } = makePage({
+      [SUNO_CREATE_SELECTORS.createNav]: { visible: true },
+      [SUNO_CREATE_SELECTORS.createButton]: { visible: true }
+    });
+    await expect(waitForSunoCreateFormReady(page, 50)).rejects.toThrow(SUNO_CREATE_FORM_MISSING_REASON);
+  });
+
+  it("rejects with DOM-missing when no form-ready selector is visible", async () => {
+    const { page } = makePage({});
+    await expect(waitForSunoCreateFormReady(page, 10)).rejects.toThrow(SUNO_CREATE_FORM_MISSING_REASON);
+  });
+});
+
+
+describe("filterFreshTakeUrls (take-attribution guard)", () => {
+  const u = (n: number) => `https://suno.com/song/${n}`;
+
+  it("returns new URLs not present in the baseline", () => {
+    const baseline = new Set([u(1), u(2)]);
+    const result = filterFreshTakeUrls([u(1), u(2), u(3), u(4)], baseline);
+    expect(result.overCount).toBe(false);
+    expect(result.urls.sort()).toEqual([u(3), u(4)].sort());
+  });
+
+  it("returns empty when nothing new appeared (still awaiting the real generation)", () => {
+    const baseline = new Set([u(1), u(2)]);
+    const result = filterFreshTakeUrls([u(1), u(2)], baseline);
+    expect(result).toEqual({ urls: [], overCount: false });
+  });
+
+  it("rejects and flags overCount when more than the expected take count appears (workspace bleed)", () => {
+    // The false-accepted bug: a captcha-blocked submit surfaced 14 unrelated workspace
+    // songs. Anything beyond the expected take count must be rejected, not accepted.
+    const bleed = Array.from({ length: 14 }, (_, i) => u(100 + i));
+    const result = filterFreshTakeUrls(bleed, new Set(), SUNO_EXPECTED_TAKE_COUNT);
+    expect(result).toEqual({ urls: [], overCount: true });
+  });
+
+  it("accepts exactly the expected take count", () => {
+    const result = filterFreshTakeUrls([u(9), u(8)], new Set(), SUNO_EXPECTED_TAKE_COUNT);
+    expect(result.overCount).toBe(false);
+    expect(result.urls).toHaveLength(SUNO_EXPECTED_TAKE_COUNT);
+  });
+});
+
+describe("ensureSunoLyricsMode", () => {
+  it("opens the current role-button Lyrics section before resolving the editor", async () => {
+    const editorState: SelectorState = { visible: false };
+    const lyricsSection: SelectorState = { visible: true, attrs: { "aria-expanded": "false" } };
+    const { page, clicks } = makePage({
+      [SUNO_CREATE_SELECTORS.lyricsEditor]: editorState,
+      [SUNO_CREATE_SELECTORS.lyricsButton]: {
+        ...lyricsSection,
+        onClick: () => {
+          lyricsSection.attrs!["aria-expanded"] = "true";
+          editorState.visible = true;
+        }
+      }
+    });
+    const locator = await ensureSunoLyricsMode(page, 50);
+    expect(clicks).toEqual([SUNO_CREATE_SELECTORS.lyricsButton]);
+    expect(await locator.isVisible()).toBe(true);
+  });
+
+  it("returns the contenteditable lyrics editor directly when already visible", async () => {
+    const { page, clicks } = makePage({
+      [SUNO_CREATE_SELECTORS.lyricsEditor]: { visible: true }
+    });
+    const locator = await ensureSunoLyricsMode(page, 50);
+    expect(await locator.isVisible()).toBe(true);
+    expect(clicks).toHaveLength(0);
+  });
+
+  it("selects Write Lyrics in the current homepage Create workspace before resolving the editor", async () => {
+    const editorState: SelectorState = { visible: false };
+    const { page, clicks } = makePage({
+      [SUNO_CREATE_SELECTORS.lyricsEditor]: editorState,
+      [SUNO_CREATE_SELECTORS.writeLyricsTab]: {
+        visible: true,
+        onClick: () => {
+          editorState.visible = true;
+        }
+      }
+    });
+
+    const locator = await ensureSunoLyricsMode(page, 50);
+    expect(clicks).toEqual([SUNO_CREATE_SELECTORS.writeLyricsTab]);
+    expect(await locator.isVisible()).toBe(true);
+  });
+
+  it("selects Write and Lyrics before resolving the current editor", async () => {
+    const editorState: SelectorState = { visible: false };
+    const { page, clicks } = makePage({
+      [SUNO_CREATE_SELECTORS.advancedTab]: { visible: true, attrs: { "aria-selected": "true" } },
+      [SUNO_CREATE_SELECTORS.writeModeButton]: { visible: true },
+      [SUNO_CREATE_SELECTORS.addLyricsButton]: {
+        visible: true,
+        onClick: () => {
+          editorState.visible = true;
+        }
+      },
+      [SUNO_CREATE_SELECTORS.lyricsEditor]: editorState
+    });
+
+    const locator = await ensureSunoLyricsMode(page, 50);
+    expect(clicks).toEqual([SUNO_CREATE_SELECTORS.writeModeButton, SUNO_CREATE_SELECTORS.addLyricsButton]);
+    expect(await locator.isVisible()).toBe(true);
+  });
+
+  it("selects the Advanced tab to reveal the lyrics editor when it is hidden", async () => {
+    const editorState: SelectorState = { visible: false };
+    const { page, clicks } = makePage({
+      [SUNO_CREATE_SELECTORS.lyricsEditor]: editorState,
+      [SUNO_CREATE_SELECTORS.advancedTab]: {
+        visible: true,
+        attrs: { "aria-selected": "false" },
+        onClick: () => {
+          editorState.visible = true;
+        }
+      }
+    });
+    const locator = await ensureSunoLyricsMode(page, 50);
+    expect(clicks).toContain(SUNO_CREATE_SELECTORS.advancedTab);
+    expect(await locator.isVisible()).toBe(true);
+  });
+
+  it("selects Advanced before Write and Lyrics when needed", async () => {
+    const editorState: SelectorState = { visible: false };
+    const plainAdvanced = 'button:has-text("Advanced")';
+    const { page, clicks } = makePage({
+      [SUNO_CREATE_SELECTORS.lyricsEditor]: editorState,
+      [plainAdvanced]: {
+        visible: true,
+        attrs: { "aria-selected": "false" }
+      },
+      [SUNO_CREATE_SELECTORS.writeModeButton]: { visible: true },
+      [SUNO_CREATE_SELECTORS.addLyricsButton]: { visible: true, onClick: () => { editorState.visible = true; } }
+    });
+    const locator = await ensureSunoLyricsMode(page, 50);
+    expect(clicks).toEqual([plainAdvanced, SUNO_CREATE_SELECTORS.writeModeButton, SUNO_CREATE_SELECTORS.addLyricsButton]);
+    expect(await locator.isVisible()).toBe(true);
+  });
+
+  it("does not re-click the Advanced tab when it is already selected", async () => {
+    // Advanced already selected but editor still resolving: must not toggle it off.
+    const { page, clicks } = makePage({
+      [SUNO_CREATE_SELECTORS.lyricsEditor]: { visible: false },
+      [`[role="textbox"][aria-label="Lyrics editor"]`]: { visible: true },
+      [SUNO_CREATE_SELECTORS.advancedTab]: { visible: true, attrs: { "aria-selected": "true" } }
+    });
+    const locator = await ensureSunoLyricsMode(page, 50);
+    expect(clicks).toHaveLength(0);
+    expect(await locator.isVisible()).toBe(true);
+  });
+});
+
+describe("ensureSunoStyleMode", () => {
+  it("opens the current collapsed Styles section before resolving its textarea", async () => {
+    const textarea = 'textarea[placeholder*="style" i]';
+    const textareaState: SelectorState = { visible: false };
+    const { page, clicks } = makePage({
+      [textarea]: textareaState,
+      [SUNO_CREATE_SELECTORS.stylesButton]: {
+        visible: true,
+        onClick: () => {
+          textareaState.visible = true;
+        }
+      }
+    });
+
+    const locator = await ensureSunoStyleMode(page, 50);
+    expect(clicks).toEqual([SUNO_CREATE_SELECTORS.stylesButton]);
+    expect(await locator.isVisible()).toBe(true);
+  });
+});

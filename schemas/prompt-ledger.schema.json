@@ -1,0 +1,27 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "required": [
+    "id",
+    "timestamp",
+    "stage"
+  ],
+  "additionalProperties": true,
+  "properties": {
+    "id": {
+      "type": "string"
+    },
+    "timestamp": {
+      "type": "string"
+    },
+    "stage": {
+      "type": "string"
+    },
+    "songId": {
+      "type": "string"
+    },
+    "payloadHash": {
+      "type": "string"
+    }
+  }
+}

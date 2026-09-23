@@ -1,0 +1,629 @@
+import { execFile } from "node:child_process";
+import { existsSync } from "node:fs";
+import { join } from "node:path";
+import { fileURLToPath } from "node:url";
+import type {
+  SunoCreatePayload,
+  SunoCreateRequest,
+  SunoCreateResult,
+  SunoImportResult,
+  SunoWorkerStatus
+} from "../../types.js";
+import type { SunoConnector } from "./SunoConnector.js";
+import { SunoBrowserService, sunoBrowserService } from "../../services/sunoBrowserService.js";
+import { sunoCliEntry, type SunoBrowserConfigView } from "../../services/runtimeConfig.js";
+
+// The bundled suno-cli entry, resolved relative to this module so it works in both the
+// source (src/connectors/suno) and compiled/npm-packed (dist/connectors/suno) layouts,
+// which share the same depth to the package root that holds vendor/.
+function resolveVendorSunoCliEntry(): string | undefined {
+  try {
+    const candidate = fileURLToPath(new URL("../../../vendor/suno-cli/dist/src/cli.js", import.meta.url));
+    return existsSync(candidate) ? candidate : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+/**
+ * Result of a single suno-cli invocation. The connector judges outcomes by
+ * `exitCode` only (never by string-matching stdout/stderr) per the suno-cli
+ * contract.
+ */
+export interface CliRunResult {
+  stdout: string;
+  stderr: string;
+  exitCode: number;
+}
+
+/**
+ * Injectable child-process runner. The default spawns `node <entry> ...args`;
+ * tests supply a stub so no real suno-cli process or network is touched.
+ */
+export type CliRunner = (
+  entry: string,
+  args: readonly string[],
+  env: NodeJS.ProcessEnv
+) => Promise<CliRunResult>;
+
+export interface CliSunoConnectorLogger {
+  warn: (message: string) => void;
+}
+
+export interface CliSunoConnectorOptions {
+  env?: NodeJS.ProcessEnv;
+  runner?: CliRunner;
+  logger?: CliSunoConnectorLogger;
+  browserService?: Pick<SunoBrowserService, "getCdpEndpoint">;
+  config?: SunoBrowserConfigView;
+  // Override the bundled vendor entry resolver (tests inject a fixed path or undefined
+  // to exercise the resolution order without depending on the real vendored file).
+  vendorEntry?: () => string | undefined;
+}
+
+// suno-cli's own per-day/min-interval budget gate must never double-reject:
+// artist-runtime's SunoBudgetTracker stays authoritative, so we neutralize the
+// CLI gate with a zero interval and a high per-day ceiling.
+const MAX_GENERATIONS_PER_DAY = 100000;
+
+// suno-cli exit code -> stable, token-free fail-closed reason. 0 is success and
+// handled separately.
+const EXIT_REASONS: Record<number, string> = {
+  2: "suno_cli_usage",
+  30: "suno_cli_blocked_login",
+  31: "suno_cli_blocked_captcha",
+  32: "suno_cli_blocked_quota",
+  40: "suno_cli_schema_drift",
+  50: "suno_cli_retryable",
+  70: "suno_cli_internal"
+};
+
+// A retryable (exit 50) download failure can mean two different things: Suno hasn't
+// finished rendering the audio yet (self-heals on the next poll), or the account's
+// feed no longer has the clip at all (the take was deleted, so retrying forever never
+// helps). The vendored CLI's feed client tags the latter with `code:
+// "suno_feed_target_missing"` on the thrown error (vendor/suno-cli/dist/src/http/feed.js),
+// which the CLI's top-level error handler serializes to stdout as
+// `{ error: "Suno feed response missing requested clip id(s): ..." }` under the same
+// exit 50. Detect that message text (never mutate the vendored CLI) so callers can stop
+// retrying a permanently missing take instead of treating it like "not ready yet".
+export const SUNO_CLI_RETRYABLE_FEED_TARGET_MISSING_REASON = "suno_cli_retryable:suno_feed_target_missing";
+
+function isFeedTargetMissingStdout(stdout: string): boolean {
+  try {
+    const parsed = JSON.parse(stdout) as Record<string, unknown>;
+    const message = typeof parsed?.error === "string" ? parsed.error : "";
+    return /missing requested clip id\(s\)/.test(message);
+  } catch {
+    return false;
+  }
+}
+
+function defaultRunner(entry: string, args: readonly string[], env: NodeJS.ProcessEnv): Promise<CliRunResult> {
+  return new Promise((resolve) => {
+    execFile("node", [entry, ...args], { env, maxBuffer: 16 * 1024 * 1024 }, (error, stdout, stderr) => {
+      const code = (error as NodeJS.ErrnoException | null)?.code;
+      // Numeric code = the child's real exit code. A non-numeric code (e.g.
+      // ENOENT on spawn failure) means the process never ran: treat as internal.
+      const exitCode = typeof code === "number" ? code : error ? 70 : 0;
+      resolve({ stdout: stdout?.toString() ?? "", stderr: stderr?.toString() ?? "", exitCode });
+    });
+  });
+}
+
+function readText(value: unknown): string | undefined {
+  return typeof value === "string" && value.trim() ? value : undefined;
+}
+
+function readSlider(value: unknown): number | undefined {
+  return typeof value === "number" && Number.isFinite(value) ? value : undefined;
+}
+
+function readVariety(value: unknown): number | undefined {
+  return typeof value === "number" && Number.isInteger(value) && value >= 0 && value <= 4 ? value : undefined;
+}
+
+function hasOwn(value: object, key: string): boolean {
+  return Object.prototype.hasOwnProperty.call(value, key);
+}
+
+function validV6Controls(payload: SunoCreatePayload): boolean {
+  if (hasOwn(payload, "variety") && readVariety(payload.variety) === undefined) return false;
+  if (hasOwn(payload, "maxMode") && typeof payload.maxMode !== "boolean") return false;
+  return true;
+}
+
+// Clip identity for run reconciliation. A Suno take URL and its downloaded audio
+// file share the same clip UUID: `https://suno.com/song/<uuid>` <-> `<uuid>.mp3`.
+function sunoUrlSlug(url: string): string | undefined {
+  return url.match(/https?:\/\/(?:www\.)?suno\.com\/song\/([^/?#]+)/i)?.[1];
+}
+
+function downloadFileSlug(path: string): string | undefined {
+  const base = path.split(/[\\/]/).pop() ?? "";
+  const slug = base.replace(/\.[^.]+$/, "");
+  return slug ? slug : undefined;
+}
+
+/**
+ * Pick the `suno-cli download` targets. Prefer the run's harvested song-URLs: a
+ * human-assist/attach create submits through the browser and never populates suno-cli's
+ * own ledger with clip ids, so `download <runId>` resolves to an empty clip list. suno-cli
+ * resolves a song-URL (or clip id) straight to its clip (resolve-target `parseSongUrl`),
+ * so downloading by URL fetches the audio regardless of the ledger. Fall back to the runId
+ * only when no usable URL is supplied — the CLI-API create path, whose ledger run carries
+ * clip ids. Both empty yields [] (fail-closed: no download target).
+ */
+export function selectDownloadTargets(urls: readonly string[], runId: string): string[] {
+  const validUrls = Array.from(
+    new Set(urls.filter((url): url is string => typeof url === "string" && sunoUrlSlug(url) !== undefined))
+  );
+  if (validUrls.length > 0) {
+    return validUrls;
+  }
+  const id = typeof runId === "string" ? runId.trim() : "";
+  return id ? [id] : [];
+}
+
+// Parse one `suno-cli download` stdout into its clip song-URLs and downloaded file paths.
+// Returns null on non-JSON output (schema drift). Reconciliation against the run's expected
+// URLs happens after aggregating across targets.
+function parseDownloadClips(stdout: string): { urls: string[]; paths: string[]; runId?: string } | null {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(stdout);
+  } catch {
+    return null;
+  }
+  const record = typeof parsed === "object" && parsed !== null ? (parsed as Record<string, unknown>) : {};
+  const clips = Array.isArray(record.clips) ? record.clips : [];
+  const urls = clips
+    .map((clip) => (typeof (clip as Record<string, unknown>)?.songUrl === "string" ? (clip as Record<string, unknown>).songUrl as string : undefined))
+    .filter((url): url is string => Boolean(url));
+  const paths = Array.isArray(record.downloadedFiles)
+    ? record.downloadedFiles.filter((path): path is string => typeof path === "string")
+    : [];
+  const runId = readText(record.runId);
+  return runId ? { urls, paths, runId } : { urls, paths };
+}
+
+function vocalGenderFlag(value: unknown): "m" | "f" | undefined {
+  const normalized = typeof value === "string" ? value.trim().toLowerCase() : "";
+  if (normalized === "male" || normalized === "m") {
+    return "m";
+  }
+  if (normalized === "female" || normalized === "f") {
+    return "f";
+  }
+  return undefined;
+}
+
+// Mirror PlaywrightSunoDriver.extractPayloadLyrics so the CLI receives the same
+// lyrics body the browser driver would submit.
+function extractLyrics(payload: SunoCreatePayload): string | undefined {
+  return readText(payload.payloadYaml) ?? readText(payload.lyrics) ?? readText(payload.lyricsText);
+}
+
+function safeLogRunId(value: string): string {
+  const normalized = value.trim();
+  return /^[A-Za-z0-9][A-Za-z0-9._-]{0,79}$/.test(normalized) ? normalized : "redacted";
+}
+
+function createLogContext(
+  input: SunoCreateRequest,
+  runId: string,
+  captchaProvided: boolean
+): string {
+  const payload = input.payload ?? {};
+  return [
+    `run=${safeLogRunId(runId)}`,
+    `titleChars=${readText(payload.songName)?.length ?? 0}`,
+    `styleChars=${readText(payload.styleAndFeel)?.length ?? 0}`,
+    `lyricsChars=${extractLyrics(payload)?.length ?? 0}`,
+    `excludeChars=${readText(payload.excludeStyles)?.length ?? 0}`,
+    `instrumental=${Boolean(payload.instrumental)}`,
+    `captcha=${captchaProvided ? "provided" : "none"}`
+  ].join(" ");
+}
+
+function downloadLogContext(runId: string, target: string): string {
+  return `run=${safeLogRunId(runId)} target=${sunoUrlSlug(target) ? "song_url" : "run_id"}`;
+}
+
+/**
+ * SunoConnector that drives song creation by shelling out to the external
+ * suno-cli tool (an authenticated HTTP POST to Suno's generate endpoint),
+ * replacing the fragile browser DOM worker for the CREATE path.
+ *
+ * Captcha is an optional escape-hatch supplied per-create via env (fresh,
+ * single-use, short-TTL, browser-minted); on a trusted session it is omitted so
+ * suno-cli drives the create with token=null. Fail-closed: dry-run and missing
+ * CLI entry return accepted:false with a stable reason and never fabricate URLs.
+ */
+export class CliSunoConnector implements SunoConnector {
+  private readonly env: NodeJS.ProcessEnv;
+  private readonly runner: CliRunner;
+  private readonly logger: CliSunoConnectorLogger;
+  private readonly browserService: Pick<SunoBrowserService, "getCdpEndpoint">;
+  private readonly config?: SunoBrowserConfigView;
+  private readonly vendorEntry: () => string | undefined;
+
+  constructor(private readonly workspaceRoot = ".", options: CliSunoConnectorOptions = {}) {
+    this.env = options.env ?? process.env;
+    this.runner = options.runner ?? defaultRunner;
+    this.logger = options.logger ?? { warn: (message: string) => console.warn(message) };
+    this.browserService = options.browserService ?? sunoBrowserService;
+    this.config = options.config;
+    this.vendorEntry = options.vendorEntry ?? resolveVendorSunoCliEntry;
+  }
+
+  async status(): Promise<SunoWorkerStatus> {
+    // Auth is suno-cli's internal concern (JWT env > cookie env/file > saved
+    // session.json from `suno-cli login`), and a trusted session may be authed
+    // via a session.json artist-runtime never sees. So entry-configured alone is
+    // sufficient for connected; cookie presence is reported as informational.
+    const connected = Boolean(this.entryPath());
+    return {
+      state: connected ? "connected" : "disconnected",
+      connected,
+      lastTransitionAt: new Date().toISOString(),
+      ...(connected
+        ? this.cookieConfigured()
+          ? {}
+          : { sunoProfileDetail: "suno_cli configured; no cookie env (session.json/JWT may still auth)" }
+        : { sunoProfileDetail: "suno_cli entry not configured" })
+    };
+  }
+
+  async create(input: SunoCreateRequest): Promise<SunoCreateResult> {
+    const runId = input.runId ?? `suno_cli_${Date.now().toString(36)}`;
+
+    // Fail-closed: never fire a live create under dry-run.
+    if (input.dryRun) {
+      return { accepted: false, runId, reason: "suno_cli_dry_run", urls: [], dryRun: true };
+    }
+
+    const entry = this.entryPath();
+    if (!entry) {
+      return { accepted: false, runId, reason: "suno_cli_not_configured", urls: [], dryRun: false };
+    }
+
+    // Reject malformed explicit controls before the child process can observe them.
+    // Omitted controls remain optional and continue to use the CLI defaults.
+    if (!validV6Controls(input.payload)) {
+      return { accepted: false, runId, reason: "suno_cli_usage", urls: [], dryRun: false };
+    }
+
+    // Captcha is now an optional escape-hatch: on a trusted session suno-cli
+    // succeeds with token=null. Only supply the pair when BOTH env vars are
+    // present and valid; a half pair is treated as "not supplied".
+    const captcha = this.resolveCaptcha();
+    const args = this.buildArgs(input, runId, captcha);
+    const logContext = createLogContext(input, runId, Boolean(captcha));
+    // Inherit the cookie envs (SUNO_KIT_COOKIE / SUNO_KIT_COOKIE_FILE) into the
+    // child; their values are never read or logged here.
+    const childEnv: NodeJS.ProcessEnv = { ...this.env };
+    // suno-cli's captcha mint can attach to an existing browser over CDP instead of
+    // spawning its own profile (avoids the bot-detection/window-visibility issues a
+    // fresh automation profile has). Reuse the browser SunoBrowserService already has
+    // running (or a legacy CDP attach); getCdpEndpoint never launches a window, so a
+    // create/status never opens a browser just to mint. Strip any inherited value when
+    // no endpoint is available so it cannot leak through and silently change behavior.
+    const mintEndpoint = this.browserService.getCdpEndpoint(this.config, this.env);
+    if (mintEndpoint) {
+      childEnv.SUNO_KIT_CDP_ENDPOINT = mintEndpoint;
+    } else {
+      delete childEnv.SUNO_KIT_CDP_ENDPOINT;
+    }
+
+    let run: CliRunResult;
+    try {
+      run = await this.runner(entry, args, childEnv);
+    } catch {
+      this.logger.warn(`[suno-cli] create spawn error ${logContext}`);
+      return { accepted: false, runId, reason: "suno_cli_internal", urls: [], dryRun: false };
+    }
+
+    if (run.exitCode === 0) {
+      return this.parseSuccess(run.stdout, runId);
+    }
+
+    this.logger.warn(`[suno-cli] create failed exit=${run.exitCode} ${logContext}`);
+    return {
+      accepted: false,
+      runId,
+      reason: EXIT_REASONS[run.exitCode] ?? "suno_cli_internal",
+      urls: [],
+      dryRun: false
+    };
+  }
+
+  async importResults(input: { runId: string; urls: string[] }): Promise<SunoImportResult> {
+    const runId = input.runId;
+
+    const entry = this.entryPath();
+    if (!entry) {
+      return { urls: [], runId, reason: "suno_cli_not_configured" };
+    }
+
+    // Download by the harvested song-URLs first (runId fallback inside). No usable target
+    // -> fail closed rather than silently succeed.
+    const targets = selectDownloadTargets(input.urls, runId);
+    if (targets.length === 0) {
+      return { urls: [], runId, reason: "suno_cli_no_download_target" };
+    }
+
+    // Cookie/JWT envs (SUNO_KIT_COOKIE / SUNO_KIT_COOKIE_FILE) flow into the child
+    // for the authenticated audio fetch; their values are never read or logged here.
+    const childEnv: NodeJS.ProcessEnv = { ...this.env };
+
+    // A song-URL resolves to a single clip, so a two-take run needs one download per URL.
+    // Aggregate across targets, then dedupe (a URL whose clip is already in a ledger run
+    // can return the whole run, and re-downloading is idempotent) before reconciling.
+    const aggregatedUrls: string[] = [];
+    const aggregatedPaths: string[] = [];
+    const downloadingByUrl = targets.some((target) => sunoUrlSlug(target) !== undefined);
+    let resolvedRunId = runId;
+    for (const target of targets) {
+      const args = this.buildDownloadArgs(target);
+      const logContext = downloadLogContext(runId, target);
+      let run: CliRunResult;
+      try {
+        run = await this.runner(entry, args, childEnv);
+      } catch {
+        this.logger.warn(`[suno-cli] download spawn error ${logContext}`);
+        return { urls: [], runId, reason: "suno_cli_internal" };
+      }
+      if (run.exitCode !== 0) {
+        // Exit 50 (retryable_unknown) -> audio not ready yet, EXCEPT when stdout carries
+        // the feed's "missing requested clip id(s)" message: that clip is gone from the
+        // account's feed, not merely still rendering, so callers must stop treating it as
+        // transient. An empty urls result either way makes the autopilot/adoption import
+        // path retry the whole set rather than fail. Other non-zero codes map to their
+        // stable fail-closed reason. Never fabricate URLs.
+        const reason = run.exitCode === 50 && isFeedTargetMissingStdout(run.stdout)
+          ? SUNO_CLI_RETRYABLE_FEED_TARGET_MISSING_REASON
+          : EXIT_REASONS[run.exitCode] ?? "suno_cli_internal";
+        this.logger.warn(`[suno-cli] download failed exit=${run.exitCode} reason=${reason} ${logContext}`);
+        return { urls: [], runId, reason };
+      }
+      const parsed = parseDownloadClips(run.stdout);
+      if (!parsed) {
+        return { urls: [], runId, reason: "suno_cli_schema_drift" };
+      }
+      aggregatedUrls.push(...parsed.urls);
+      aggregatedPaths.push(...parsed.paths);
+      // Direct URL downloads report a transient clip_* run id. Keep the accepted
+      // create run identity so the importer appends to that run; only a run-id
+      // fallback download may adopt the CLI's parsed run id.
+      if (parsed.runId && !downloadingByUrl) {
+        resolvedRunId = parsed.runId;
+      }
+    }
+
+    return this.reconcileDownload(
+      Array.from(new Set(aggregatedUrls)),
+      Array.from(new Set(aggregatedPaths)),
+      resolvedRunId,
+      input.urls
+    );
+  }
+
+  // Resolution order: explicit config music.suno.cliEntry, then legacy
+  // OPENCLAW_SUNO_CLI_ENTRY, then the bundled vendor/suno-cli copy. Undefined only when
+  // none resolve (config/env unset and the vendored entry is absent) -> fail-closed.
+  private entryPath(): string | undefined {
+    return sunoCliEntry(this.config, this.env) ?? this.vendorEntry();
+  }
+
+  private cookieConfigured(): boolean {
+    return Boolean(readText(this.env.SUNO_KIT_COOKIE) || readText(this.env.SUNO_KIT_COOKIE_FILE));
+  }
+
+  private parseSuccess(stdout: string, fallbackRunId: string): SunoCreateResult {
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(stdout);
+    } catch {
+      return { accepted: false, runId: fallbackRunId, reason: "suno_cli_schema_drift", urls: [], dryRun: false };
+    }
+
+    const record = typeof parsed === "object" && parsed !== null ? (parsed as Record<string, unknown>) : {};
+    const clips = Array.isArray(record.clips) ? record.clips : [];
+    const urls = clips
+      .map((clip) => (typeof (clip as Record<string, unknown>)?.songUrl === "string" ? (clip as Record<string, unknown>).songUrl as string : undefined))
+      .filter((url): url is string => Boolean(url));
+
+    const runId = readText(record.runId) ?? fallbackRunId;
+    if (urls.length === 0) {
+      return { accepted: false, runId, reason: "suno_cli_schema_drift", urls: [], dryRun: false };
+    }
+
+    return {
+      accepted: true,
+      runId,
+      reason: "suno_cli_submitted",
+      urls,
+      pendingTakeUrl: urls[0],
+      dryRun: false
+    };
+  }
+
+  private reconcileDownload(
+    urls: string[],
+    paths: string[],
+    fallbackRunId: string,
+    expectedUrls: string[]
+  ): SunoImportResult {
+    const runId = fallbackRunId;
+    if (urls.length === 0 || paths.length === 0) {
+      return { urls: [], runId, reason: "suno_cli_schema_drift" };
+    }
+
+    // Restrict imported takes to the run's known clip URLs. The external download
+    // CLI can emit every audio file accumulated in the downloads directory across
+    // past runs; without this guard a single run imports unrelated takes and
+    // notifies their URLs. When no expected URLs are supplied (no run identity to
+    // reconcile against), preserve the raw CLI output.
+    const expectedSlugs = new Set(
+      expectedUrls.map(sunoUrlSlug).filter((slug): slug is string => Boolean(slug))
+    );
+    if (expectedSlugs.size === 0) {
+      return {
+        accepted: true,
+        urls,
+        paths,
+        runId,
+        importedAt: new Date().toISOString(),
+        reason: "suno_cli_downloaded"
+      };
+    }
+
+    const matchedUrls = urls.filter((url) => {
+      const slug = sunoUrlSlug(url);
+      return slug !== undefined && expectedSlugs.has(slug);
+    });
+    const matchedPaths = paths.filter((path) => {
+      const slug = downloadFileSlug(path);
+      return slug !== undefined && expectedSlugs.has(slug);
+    });
+    const unmatchedUrls = urls.filter((url) => {
+      const slug = sunoUrlSlug(url);
+      return slug === undefined || !expectedSlugs.has(slug);
+    });
+    if (unmatchedUrls.length > 0) {
+      this.logger.warn(
+        `[suno-cli] unmatched_download run=${runId} dropped=${unmatchedUrls.length} kept=${matchedUrls.length}`
+      );
+    }
+    if (matchedUrls.length === 0 || matchedPaths.length === 0) {
+      return { urls: [], runId, reason: "suno_cli_no_run_take", unmatchedUrls };
+    }
+
+    return {
+      accepted: true,
+      urls: matchedUrls,
+      paths: matchedPaths,
+      runId,
+      importedAt: new Date().toISOString(),
+      reason: "suno_cli_downloaded",
+      unmatchedUrls: unmatchedUrls.length > 0 ? unmatchedUrls : undefined
+    };
+  }
+
+  private buildDownloadArgs(runId: string): string[] {
+    const args: string[] = ["download", runId, "--out", this.downloadDir()];
+    const dataDir = this.dataDir();
+    if (dataDir) {
+      args.push("--data-dir", dataDir);
+    }
+    return args;
+  }
+
+  private downloadDir(): string {
+    const base = !this.workspaceRoot || this.workspaceRoot === "." ? "." : this.workspaceRoot;
+    return join(base, "runtime", "suno", "cli", "downloads");
+  }
+
+  // Resolve the optional captcha escape-hatch. Returns the pair only when BOTH
+  // OPENCLAW_SUNO_CAPTCHA_TOKEN (non-empty) and OPENCLAW_SUNO_TOKEN_PROVIDER
+  // (safe integer) are present; a half pair yields undefined (omit both flags).
+  private resolveCaptcha(): { token: string; provider: number } | undefined {
+    const token = readText(this.env.OPENCLAW_SUNO_CAPTCHA_TOKEN);
+    const providerRaw = readText(this.env.OPENCLAW_SUNO_TOKEN_PROVIDER);
+    const provider = providerRaw !== undefined ? Number(providerRaw) : Number.NaN;
+    if (!token || !Number.isSafeInteger(provider)) {
+      return undefined;
+    }
+    return { token, provider };
+  }
+
+  private buildArgs(input: SunoCreateRequest, runId: string, captcha: { token: string; provider: number } | undefined): string[] {
+    const payload = input.payload ?? {};
+    const args: string[] = ["create", "--live"];
+
+    const title = readText(payload.songName);
+    if (title) {
+      args.push("--title", title);
+    }
+    const style = readText(payload.styleAndFeel);
+    if (style) {
+      args.push("--style", style);
+    }
+
+    const instrumental = Boolean(payload.instrumental);
+    const lyrics = extractLyrics(payload);
+    if (instrumental) {
+      args.push("--instrumental");
+    } else if (lyrics) {
+      args.push("--lyrics", lyrics);
+    }
+
+    const exclude = readText(payload.excludeStyles);
+    if (exclude) {
+      args.push("--exclude", exclude);
+    }
+
+    const model = readText(payload.model) ?? "v6";
+    args.push("--model", model);
+
+    if (captcha) {
+      args.push("--captcha-token", captcha.token);
+      args.push("--token-provider", String(captcha.provider));
+    }
+    args.push("--run-id", runId);
+
+    const vocal = vocalGenderFlag(payload.vocalGender);
+    if (vocal) {
+      args.push("--vocal-gender", vocal);
+    }
+
+    const sliders = payload.sliders;
+    if (sliders && typeof sliders === "object") {
+      const record = sliders as Record<string, unknown>;
+      const weirdness = readSlider(record.weirdness);
+      if (weirdness !== undefined) {
+        args.push("--weirdness", String(weirdness));
+      }
+      const styleInfluence = readSlider(record.styleInfluence);
+      if (styleInfluence !== undefined) {
+        args.push("--style-influence", String(styleInfluence));
+      }
+      const audioInfluence = readSlider(record.audioInfluence);
+      if (audioInfluence !== undefined) {
+        args.push("--audio-influence", String(audioInfluence));
+      }
+    }
+
+    const variety = readVariety(payload.variety);
+    if (variety !== undefined) {
+      args.push("--variety", String(variety));
+    }
+
+    if (payload.maxMode === true) {
+      args.push("--max-mode");
+    }
+
+    const personaId = readText(payload.personaId);
+    if (personaId) {
+      args.push("--persona-id", personaId);
+    }
+
+    args.push("--min-minutes-between-creates", "0");
+    args.push("--max-generations-per-day", String(MAX_GENERATIONS_PER_DAY));
+
+    const dataDir = this.dataDir();
+    if (dataDir) {
+      args.push("--data-dir", dataDir);
+    }
+
+    return args;
+  }
+
+  private dataDir(): string | undefined {
+    if (!this.workspaceRoot || this.workspaceRoot === ".") {
+      return undefined;
+    }
+    return join(this.workspaceRoot, "runtime", "suno", "cli");
+  }
+}

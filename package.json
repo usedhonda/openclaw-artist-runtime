@@ -1,0 +1,159 @@
+{
+  "name": "@yzhonda/openclaw-artist-runtime",
+  "version": "0.3.0",
+  "description": "OpenClaw native plugin that runs a public autonomous AI musician with Suno generation and social distribution.",
+  "type": "module",
+  "main": "dist/index.js",
+  "exports": {
+    ".": "./dist/index.js"
+  },
+  "files": [
+    "dist/**/*.js",
+    "ui/dist/index.html",
+    "ui/dist/assets/**",
+    "templates/**",
+    "prompts/**",
+    "schemas/**",
+    "workspace-template/**",
+    "vendor/suno-cli/dist/**/*.js",
+    "vendor/suno-cli/package.json",
+    "vendor/suno-cli/LICENSE",
+    "vendor/suno-cli/README.md",
+    "vendor/suno-cli/VENDOR_COMMIT",
+    "config.default.json",
+    "openclaw.plugin.json",
+    "LICENSE",
+    "NOTICE.md",
+    "README.md",
+    "CHANGELOG.md",
+    "CAPABILITIES.md",
+    "MARKETPLACE.md",
+    "PRIVACY.md",
+    "SECURITY.md",
+    "CONTRIBUTING.md",
+    "PUBLISHING.md",
+    "docs/OPERATOR_QUICKSTART.md",
+    "docs/OPERATOR_RUNBOOK.md",
+    "docs/CONNECTOR_AUTH.md",
+    "docs/GATEWAY_AUTH.md",
+    "docs/API_ROUTES.md",
+    "docs/PRODUCER_CONSOLE.md",
+    "docs/PERSONA_CANONICAL.md",
+    "docs/RUNTIME_SETTINGS.md",
+    "docs/TROUBLESHOOTING.md",
+    "docs/ERRORS.md",
+    "docs/PACKAGE_CONTENTS.md",
+    "docs/SUNO_BROWSER_DRIVER.md",
+    "docs/RUNTIME_CLEANUP.md",
+    "docs/INCIDENT_RESPONSE.md",
+    "docs/X_LIVE_PUBLISH_DESIGN.md",
+    "scripts/openclaw-doctor.sh",
+    "scripts/suno-doctor.sh",
+    "scripts/openclaw-suno-login.sh",
+    "scripts/openclaw-suno-login.mjs",
+    "scripts/reset-config.sh",
+    "scripts/runtime-disk-usage.sh",
+    "scripts/snapshot-runtime-state.sh",
+    "scripts/rotate-runtime-logs.sh",
+    "scripts/start-chrome-cdp.sh",
+    "scripts/cleanup-runtime.sh",
+    "scripts/runtime-retention-enforce.sh",
+    "scripts/suno-profile-diagnose.sh",
+    "scripts/import-obsidian-artist.mjs",
+    "scripts/import-obsidian-song.mjs"
+  ],
+  "scripts": {
+    "build:runtime": "npm run build:knowledge && tsc -p tsconfig.json",
+    "build:knowledge": "node scripts/build-knowledge-bundle.mjs --check",
+    "build:ui": "npm --prefix ui install --package-lock=false --include=dev --no-fund --no-audit && npm --prefix ui run build",
+    "build": "npm run build:runtime && npm run build:ui",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "lint": "eslint src tests scripts ui/src --max-warnings 0",
+    "format": "prettier --write \"src/**/*.{ts,tsx}\" \"tests/**/*.ts\" \"scripts/**/*.{js,mjs}\" \"ui/src/**/*.{ts,tsx,css}\" \"*.{json,md}\" \"docs/**/*.md\"",
+    "test": "vitest run",
+    "test:coverage": "vitest run --coverage",
+    "boundary-grep": "node ./scripts/boundary-grep.mjs",
+    "leak-scan": "node ./scripts/maintainer-leak-scan.mjs",
+    "pack:verify": "node ./scripts/verify-package.mjs",
+    "pack:dry-run": "npm pack --dry-run",
+    "clawhub:dry-run": "clawhub package publish . --dry-run",
+    "prepublish:local": "npm run typecheck && npm test && npm run build && npm run pack:verify && npm run leak-scan && npm run pack:dry-run"
+  },
+  "keywords": [
+    "openclaw",
+    "plugin",
+    "artist",
+    "suno",
+    "music",
+    "x",
+    "instagram",
+    "tiktok",
+    "autonomous-agent"
+  ],
+  "author": "yzhonda",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/usedhonda/openclaw-artist-runtime.git"
+  },
+  "bugs": {
+    "url": "https://github.com/usedhonda/openclaw-artist-runtime/issues"
+  },
+  "homepage": "https://github.com/usedhonda/openclaw-artist-runtime#readme",
+  "dependencies": {
+    "playwright": "^1.59.1",
+    "playwright-extra": "^4.3.6",
+    "puppeteer-extra-plugin-stealth": "^2.11.2"
+  },
+  "optionalDependencies": {
+    "rebrowser-playwright": "^1.52.0"
+  },
+  "devDependencies": {
+    "@types/node": "^25.6.0",
+    "@typescript-eslint/eslint-plugin": "^8.59.0",
+    "@typescript-eslint/parser": "^8.59.0",
+    "@vitest/coverage-v8": "^2.1.9",
+    "eslint": "^8.57.1",
+    "eslint-config-prettier": "^9.1.2",
+    "eslint-plugin-prettier": "^5.5.5",
+    "prettier": "^3.8.3",
+    "typescript": "^6.0.3",
+    "vitest": "^2.1.0"
+  },
+  "overrides": {
+    "@aws-sdk/xml-builder": "^3.972.19",
+    "@mariozechner/pi-ai": "0.70.0",
+    "@mariozechner/pi-coding-agent": "0.70.0",
+    "esbuild": "^0.25.0",
+    "fast-xml-parser": "^5.7.2",
+    "gaxios": "^7.1.4",
+    "google-auth-library": "^10.6.2",
+    "uuid": "^14.0.0"
+  },
+  "peerDependencies": {
+    "openclaw": ">=2026.9.5"
+  },
+  "peerDependenciesMeta": {
+    "openclaw": {
+      "optional": true
+    }
+  },
+  "openclaw": {
+    "extensions": [
+      "./dist/index.js"
+    ],
+    "compat": {
+      "pluginApi": ">=2026.9.5"
+    },
+    "install": {
+      "minHostVersion": ">=2026.9.5"
+    },
+    "build": {
+      "openclawVersion": "2026.3.24-beta.2",
+      "pluginSdkVersion": "2026.3.24-beta.2"
+    }
+  },
+  "engines": {
+    "node": ">=24.16.0 <25 || >=26.1.0"
+  }
+}

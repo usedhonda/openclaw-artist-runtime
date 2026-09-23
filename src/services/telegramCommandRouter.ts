@@ -1,0 +1,1492 @@
+import { appendFile, mkdir, readFile } from "node:fs/promises";
+import { dirname, join } from "node:path";
+import type { AiReviewProvider, ArtistRuntimeConfig, AutopilotStatus, CommissionBrief, CommissionBriefSource, SpawnProposal } from "../types.js";
+import { readAutopilotRunState, stageFromSong, writeAutopilotRunState } from "./autopilotService.js";
+import { AutopilotControlService } from "./autopilotControlService.js";
+import { getAutopilotTicker } from "./autopilotTicker.js";
+import { listSongStates, readSongState } from "./artistState.js";
+import { formatDebugAiReviewResult, reviewSongDebugMaterial } from "./debugAiReviewService.js";
+import { auditPersonaCompleteness, formatPersonaAuditReport, type PersonaFieldAudit } from "./personaFieldAuditor.js";
+import { readArtistPersonaSummary } from "./personaFileBuilder.js";
+import { proposePersonaFields } from "./personaProposer.js";
+import { getSongDetail, listRecentSongs } from "./songQueryService.js";
+import { readSongMaterial } from "./songMaterialReader.js";
+import { createTelegramPersonaSession, handleTelegramPersonaSessionMessage } from "./telegramPersonaSession.js";
+import { formatPersonaMigratePlan, planPersonaMigrate } from "./personaMigrator.js";
+import { isLegacyWizardEnabled, resolveRuntimeConfig } from "./runtimeConfig.js";
+import { readSoulPersonaSummary } from "./soulFileBuilder.js";
+import { isConversationalSongCreate, routeTelegramConversation, type TelegramProposalButtonsRequest } from "./telegramConversationalRouter.js";
+import { readObservationsReport, type ObservationReport } from "./xObservationCollector.js";
+import { wrapCommandVoice, type CommandVoiceKind } from "./commandVoiceWrapper.js";
+import { composeProducerStatus } from "./producerStatusComposer.js";
+import { isProposalConfirmationAction, listPendingCallbackActionSummaries, markPendingCallbacksForSongResolved, readCallbackActionEntries, resolveCallbackAction, type CallbackActionEntry } from "./callbackActionRegistry.js";
+import { emitRuntimeEvent } from "./runtimeEventBus.js";
+import { appendFailedNotifyReplayRecord, appendFailedNotifyTerminalSkipRecord, latestFailedNotifyEntry, listUnreplayedFailedNotifications, terminalReplaySongStatus } from "./failedNotifyLedger.js";
+import { resurfaceDegradedLyrics } from "./degradedLyricsResurfaceService.js";
+import { resurfacePromptPackReady } from "./promptPackResurfaceService.js";
+import { stampInbound } from "./receiveHealthService.js";
+import { loadSpawnProposalQueue } from "./spawnProposalQueue.js";
+import { appendConversationTurn, listPendingProposalDetails } from "./conversationalSession.js";
+import { validatePlanningFiles } from "./planningSkeletonValidator.js";
+import { handleSongPublishActionRequest, type SongPublishAction } from "./songPublishActionRegistry.js";
+import { scheduleDownloadAfterAdoptionJob } from "./sunoAdoptionDownloadJob.js";
+import { routeTelegramCallback, type TelegramCallbackResult } from "./telegramCallbackHandler.js";
+import type { TelegramClient } from "./telegramClient.js";
+
+export type TelegramCommandKind =
+  | "help"
+  | "status"
+  | "songs"
+  | "song"
+  | "timeline"
+  | "regen"
+  | "review"
+  | "pause"
+  | "resume"
+  | "replay"
+  | "setup"
+  | "persona"
+  | "observations"
+  | "unknown"
+  | "free_text";
+
+export interface TelegramRouteInput {
+  text: string;
+  fromUserId: number;
+  chatId: number;
+  workspaceRoot?: string;
+  autopilotStatus?: AutopilotStatus;
+  aiReviewProvider?: AiReviewProvider;
+  dashboardBaseUrl?: string;
+}
+
+export interface TelegramRouteResult {
+  kind: TelegramCommandKind;
+  responseText: string;
+  shouldStoreFreeText: boolean;
+  proposalButtons?: TelegramProposalButtonsRequest;
+  statusDecisionButtons?: TelegramStatusDecisionButtonsRequest;
+}
+
+export type TelegramStatusDecisionAction =
+  | "song_archive"
+  | "song_discard"
+  | "song_songbook_write"
+  | "song_skip"
+  | "song_spawn_inject"
+  | "song_spawn_skip"
+  | "song_spawn_edit"
+  | "dist_apply"
+  | "dist_skip"
+  | "daily_voice_publish"
+  | "daily_voice_edit"
+  | "daily_voice_cancel"
+  | "prompt_pack_go"
+  | "prompt_pack_edit"
+  | "prompt_pack_skip"
+  | "lyrics_redraft"
+  | "planning_skeleton_apply"
+  | "planning_skeleton_skip"
+  | "planning_skeleton_edit"
+  | "take_select_accept"
+  | "take_select_regenerate"
+  | "take_select_skip";
+
+export interface TelegramStatusDecisionButtonsRequest {
+  songId: string;
+  proposalId?: string;
+  selectedTakeId?: string;
+  commissionBrief?: CommissionBrief;
+  spawnReason?: string;
+  actions: TelegramStatusDecisionAction[];
+}
+
+function inboxPath(root: string): string {
+  return join(root, "runtime", "telegram-inbox.jsonl");
+}
+
+function formatStatus(status?: AutopilotStatus): string {
+  if (!status) {
+    return "Autopilot status unavailable.";
+  }
+  return [
+    `Autopilot: ${status.enabled ? "enabled" : "disabled"}${status.dryRun ? " (dry-run)" : ""}`,
+    `Stage: ${status.stage}`,
+    `Next: ${status.nextAction}`,
+    status.currentSongId ? `Song: ${status.currentSongId}` : undefined,
+    status.blockedReason ? `Blocked: ${status.blockedReason}` : undefined
+  ].filter(Boolean).join("\n");
+}
+
+export function isProducerStatusIntent(text: string): boolean {
+  const normalized = text.trim().replace(/[？?。!！\s]/g, "").toLowerCase();
+  if (!normalized) return false;
+  return /^(いま|今|状況|状況教えて|どこ|どこまで|進捗|進捗教えて|何待ち|なに待ち|ステータス|status)$/.test(normalized);
+}
+
+async function voiceCommand(kind: CommandVoiceKind, info: string, input: TelegramRouteInput, userMessage?: string): Promise<string> {
+  return wrapCommandVoice({
+    kind,
+    info,
+    workspaceRoot: input.workspaceRoot,
+    userMessage: userMessage ?? input.text
+  });
+}
+
+function logCommandSideEffectFailure(context: string, error: unknown): void {
+  const reason = error instanceof Error ? error.message : String(error);
+  console.error(`[telegram-command] ${context} failed: ${reason}`);
+}
+
+// Scoped to the caller's own workspace root (see the identical fix and rationale
+// in telegramCallbackHandler.ts's kickAutopilotCycleAfterProducerDecision): left
+// unscoped, the ticker resolves via resolveDefaultWorkspaceRoot() instead of the
+// workspace this text command is actually operating on. Stays fire-and-forget.
+function kickAutopilotCycleAfterTextDecision(root: string, context: string): void {
+  void resolveRuntimeConfig({ artist: { workspaceRoot: root } } as Partial<ArtistRuntimeConfig>)
+    .then((config) => getAutopilotTicker().runNow(config))
+    .catch((error) => {
+      const reason = error instanceof Error ? error.message : String(error);
+      logCommandSideEffectFailure(`text decision runNow ${context}`, error);
+      emitRuntimeEvent({
+        type: "error",
+        source: "telegram_text_decision_run_now",
+        reason,
+        timestamp: Date.now()
+      });
+    });
+}
+
+async function releaseDiscardedCurrentSongLane(root: string, songId: string, now: number): Promise<void> {
+  const state = await readAutopilotRunState(root);
+  if (state.currentSongId !== songId) return;
+  await writeAutopilotRunState(root, {
+    ...state,
+    currentSongId: undefined,
+    stage: "idle",
+    paused: false,
+    pausedReason: undefined,
+    hardStopReason: undefined,
+    suspendedAt: undefined,
+    blockedReason: undefined,
+    lastError: undefined,
+    lastRunAt: new Date(now).toISOString()
+  });
+}
+
+async function runTelegramTextSongReviewAction(input: {
+  root: string;
+  action: Extract<SongPublishAction, "song_archive" | "song_discard">;
+  songId: string;
+  chatId: number;
+  userId: number;
+  now?: number;
+}): Promise<string> {
+  const now = input.now ?? Date.now();
+  const previousSong = await readSongState(input.root, input.songId);
+  const result = await handleSongPublishActionRequest({
+    action: input.action,
+    root: input.root,
+    songId: input.songId,
+    now,
+    actor: { kind: "telegram_text", chatId: input.chatId, userId: input.userId }
+  });
+  await markPendingCallbacksForSongResolved(input.root, {
+    songId: input.songId,
+    actions: SONG_REVIEW_ACTIONS,
+    status: input.action === "song_archive" ? "applied" : "discarded",
+    reason: `telegram_text:${input.action}`,
+    now
+  });
+  let message = result.message;
+  if (input.action === "song_archive" && result.status === "applied" && previousSong.status === "suno_take_url_ready") {
+    const job = await scheduleDownloadAfterAdoptionJob({
+      root: input.root,
+      songId: input.songId,
+      chatId: input.chatId,
+      now
+    });
+    message = [
+      result.message,
+      `音源ファイル取得を予約しました${job.scheduledFor ? ` (${job.scheduledFor})` : ""}。`,
+      "取れなくても Suno URL は有効です。"
+    ].join("\n");
+  }
+  if (input.action === "song_discard") {
+    await releaseDiscardedCurrentSongLane(input.root, input.songId, now);
+  }
+  kickAutopilotCycleAfterTextDecision(input.root, input.action);
+  return message;
+}
+
+const STATUS_DECISION_ACTIONS: readonly TelegramStatusDecisionAction[] = [
+  "song_archive",
+  "song_discard",
+  "song_songbook_write",
+  "song_skip",
+  "song_spawn_inject",
+  "song_spawn_skip",
+  "song_spawn_edit",
+  "dist_apply",
+  "dist_skip",
+  "daily_voice_publish",
+  "daily_voice_edit",
+  "daily_voice_cancel",
+  "prompt_pack_go",
+  "prompt_pack_edit",
+  "prompt_pack_skip",
+  "lyrics_redraft",
+  "planning_skeleton_apply",
+  "planning_skeleton_skip",
+  "planning_skeleton_edit",
+  "take_select_accept",
+  "take_select_regenerate",
+  "take_select_skip"
+];
+const SONG_REVIEW_ACTIONS = new Set(["song_archive", "song_discard", "song_songbook_write", "song_skip"]);
+const TEXT_DECISION_ACTIONS = new Set<TelegramStatusDecisionAction>([
+  "song_spawn_inject",
+  "song_spawn_skip",
+  "song_spawn_edit",
+  "dist_apply",
+  "dist_skip",
+  "daily_voice_publish",
+  "daily_voice_edit",
+  "daily_voice_cancel",
+  "prompt_pack_go",
+  "prompt_pack_edit",
+  "prompt_pack_skip",
+  "lyrics_redraft",
+  "planning_skeleton_apply",
+  "planning_skeleton_skip",
+  "planning_skeleton_edit",
+  "take_select_accept",
+  "take_select_regenerate",
+  "take_select_skip"
+]);
+
+interface TextDecisionRequest {
+  action: TelegramStatusDecisionAction;
+  songId?: string;
+  proposalId?: string;
+  help: string;
+}
+
+type CapturedTelegramClient = TelegramClient & { sentMessages: string[] };
+
+function captureTelegramClient(): CapturedTelegramClient {
+  const sentMessages: string[] = [];
+  return {
+    sentMessages,
+    answerCallbackQuery: async () => true,
+    editMessageReplyMarkup: async () => true,
+    editMessageText: async () => true,
+    sendMessage: async (chatId: number | string, text: string) => {
+      sentMessages.push(text);
+      return { message_id: 0, chat: { id: Number(chatId) || 0, type: "private" }, date: Math.floor(Date.now() / 1000) };
+    }
+  } as unknown as CapturedTelegramClient;
+}
+
+function parseTextDecision(command: string, args: string[]): TextDecisionRequest | undefined {
+  const subcommand = args[0]?.toLowerCase();
+  const target = args[1];
+  if (command === "/suno") {
+    const action = subcommand === "go" || subcommand === "start"
+      ? "prompt_pack_go"
+      : subcommand === "edit" || subcommand === "lyrics"
+        ? "prompt_pack_edit"
+        : subcommand === "hold" || subcommand === "skip"
+          ? "prompt_pack_skip"
+          : undefined;
+    return action ? { action, songId: target, help: "Usage: /suno go <songId> | /suno edit <songId> | /suno hold <songId>" } : undefined;
+  }
+  if (command === "/lyrics") {
+    const action = subcommand === "redo" || subcommand === "redraft"
+      ? "lyrics_redraft"
+      : undefined;
+    return action ? { action, songId: target, help: "Usage: /lyrics redo <songId>" } : undefined;
+  }
+  if (command === "/plan") {
+    const action = subcommand === "apply" || subcommand === "go"
+      ? "planning_skeleton_apply"
+      : subcommand === "skip" || subcommand === "cancel"
+        ? "planning_skeleton_skip"
+        : subcommand === "edit" || subcommand === "rewrite"
+          ? "planning_skeleton_edit"
+          : undefined;
+    return action ? { action, songId: target, help: "Usage: /plan apply <songId> | /plan skip <songId> | /plan edit <songId>" } : undefined;
+  }
+  if (command === "/take") {
+    const action = subcommand === "accept" || subcommand === "adopt"
+      ? "take_select_accept"
+      : subcommand === "regen" || subcommand === "regenerate"
+        ? "take_select_regenerate"
+        : subcommand === "skip" || subcommand === "hold"
+          ? "take_select_skip"
+          : undefined;
+    return action ? { action, songId: target, help: "Usage: /take accept <songId> | /take regen <songId> | /take skip <songId>" } : undefined;
+  }
+  if (command === "/draft" || command === "/spawn") {
+    const action = subcommand === "make" || subcommand === "go" || subcommand === "start" || subcommand === "create"
+      ? "song_spawn_inject"
+      : subcommand === "skip" || subcommand === "hold"
+        ? "song_spawn_skip"
+        : subcommand === "edit" || subcommand === "rewrite"
+          ? "song_spawn_edit"
+          : undefined;
+    return action ? { action, proposalId: target, help: "Usage: /draft make <proposalId> | /draft skip <proposalId> | /draft edit <proposalId>" } : undefined;
+  }
+  if (command === "/dist" || command === "/distribution") {
+    const action = subcommand === "apply" || subcommand === "yes"
+      ? "dist_apply"
+      : subcommand === "skip" || subcommand === "no" || subcommand === "later"
+        ? "dist_skip"
+        : undefined;
+    return action ? { action, proposalId: target, help: "Usage: /dist apply [songId|proposalId] | /dist skip [songId|proposalId]" } : undefined;
+  }
+  if (command === "/voice" || command === "/pulse") {
+    const action = subcommand === "publish" || subcommand === "post"
+      ? "daily_voice_publish"
+      : subcommand === "edit" || subcommand === "rewrite"
+        ? "daily_voice_edit"
+        : subcommand === "cancel" || subcommand === "skip"
+          ? "daily_voice_cancel"
+          : undefined;
+    return action ? { action, help: "Usage: /pulse publish | /pulse edit | /pulse cancel" } : undefined;
+  }
+  return undefined;
+}
+
+async function findLatestPendingTextDecision(root: string, request: TextDecisionRequest, chatId: number, userId: number): Promise<CallbackActionEntry | undefined> {
+  const entries = await readCallbackActionEntries(root);
+  return entries
+    .filter((entry) => entry.status === "pending")
+    .filter((entry) => entry.action === request.action)
+    .filter((entry) => entry.chatId === chatId && entry.userId === userId)
+    .filter((entry) => request.songId ? entry.songId === request.songId : true)
+    .filter((entry) => request.proposalId ? (entry.proposalId === request.proposalId || entry.songId === request.proposalId) : true)
+    .sort((a, b) => b.createdAt - a.createdAt)[0];
+}
+
+function textDecisionResultMessage(result: TelegramCallbackResult, captured: CapturedTelegramClient): string {
+  if (captured.sentMessages.length > 0) {
+    return captured.sentMessages.join("\n");
+  }
+  if (result.result === "applied" || result.result === "updated" || result.result === "discarded") {
+    return `実行しました: ${result.reason ?? result.result}`;
+  }
+  return `実行できませんでした: ${result.reason ?? result.result}`;
+}
+
+async function runTelegramTextDecision(input: {
+  root: string;
+  request: TextDecisionRequest;
+  chatId: number;
+  userId: number;
+  now?: number;
+}): Promise<string> {
+  if (!TEXT_DECISION_ACTIONS.has(input.request.action)) {
+    throw new Error(`text_decision_action_not_allowed:${input.request.action}`);
+  }
+  const entry = await findLatestPendingTextDecision(input.root, input.request, input.chatId, input.userId);
+  if (!entry) {
+    throw new Error(`pending_decision_not_found:${input.request.action}`);
+  }
+  const client = captureTelegramClient();
+  const result = await routeTelegramCallback({
+    root: input.root,
+    client,
+    callbackQueryId: `telegram_text:${entry.callbackId}`,
+    data: `cb:${entry.callbackId}`,
+    fromUserId: entry.userId,
+    chatId: entry.chatId,
+    messageId: entry.messageId,
+    now: input.now,
+    actor: "telegram_text"
+  });
+  if (result.result === "failed" || result.result === "blocked" || result.result === "unauthorized" || result.result === "expired") {
+    throw new Error(result.reason ?? result.result);
+  }
+  return textDecisionResultMessage(result, client);
+}
+
+interface StatusDecisionContext {
+  chatId: number;
+  userId: number;
+  aiReviewProvider?: AiReviewProvider;
+}
+
+async function latestUrlReadyDecisionButtons(root: string): Promise<TelegramStatusDecisionButtonsRequest | undefined> {
+  const song = (await listSongStates(root)).find((candidate) =>
+    candidate.status === "suno_take_url_ready"
+    && candidate.selectedTakeId
+    && candidate.publicLinks.length > 0
+  );
+  if (!song) {
+    return undefined;
+  }
+  return songReviewDecisionButtons(song);
+}
+
+function songReviewDecisionButtons(song: Awaited<ReturnType<typeof readSongState>>): TelegramStatusDecisionButtonsRequest | undefined {
+  if (
+    song.status === "suno_take_url_ready"
+    && song.selectedTakeId
+    && song.publicLinks.length > 0
+  ) {
+    return {
+      songId: song.songId,
+      selectedTakeId: song.selectedTakeId,
+      actions: ["song_archive", "song_discard"]
+    };
+  }
+  if (
+    song.status === "take_selected"
+    && (Boolean(song.selectedTakeId) || song.publicLinks.length > 0)
+  ) {
+    return {
+      songId: song.songId,
+      selectedTakeId: song.selectedTakeId,
+      actions: ["song_archive", "song_discard"]
+    };
+  }
+  return undefined;
+}
+
+async function latestTakeSelectedDecisionButtons(root: string): Promise<TelegramStatusDecisionButtonsRequest | undefined> {
+  const song = (await listSongStates(root)).find((candidate) =>
+    candidate.status === "take_selected"
+    && (Boolean(candidate.selectedTakeId) || candidate.publicLinks.length > 0)
+  );
+  if (!song) {
+    return undefined;
+  }
+  return songReviewDecisionButtons(song);
+}
+
+function commissionSourcesFromSpawnProposal(proposal: SpawnProposal): CommissionBriefSource[] | undefined {
+  const sources = proposal.observationSources
+    .filter((source) => (source.kind === "x" || source.kind === "news" || source.kind === "x_reaction") && source.url)
+    .map((source) => ({
+      kind: source.kind as "x" | "news" | "x_reaction",
+      url: source.url ?? "",
+      author: source.author ?? source.label,
+      quote: source.quote,
+      impactScore: source.impactScore
+    }));
+  return sources.length > 0 ? sources : undefined;
+}
+
+function commissionBriefFromSpawnProposal(proposal: SpawnProposal): CommissionBrief {
+  return {
+    songId: proposal.proposalId,
+    title: proposal.title,
+    brief: proposal.voiceTop || proposal.coreTheme,
+    lyricsTheme: proposal.cascadeTrace.lyricsTheme || proposal.coreTheme,
+    mood: "artist decides",
+    tempo: "artist decides",
+    styleNotes: proposal.cascadeTrace.styleLayer || "artist decides",
+    duration: "artist decides",
+    sourceText: "spawn proposal draft box",
+    createdAt: proposal.createdAt,
+    sources: commissionSourcesFromSpawnProposal(proposal)
+  };
+}
+
+async function draftSpawnDecisionButtons(root: string, proposalId?: string): Promise<TelegramStatusDecisionButtonsRequest | undefined> {
+  const proposals = await loadSpawnProposalQueue(root).catch(() => []);
+  const proposal = proposals.find((candidate) =>
+    candidate.status === "draft"
+    && (!proposalId || candidate.proposalId === proposalId)
+  ) ?? proposals.find((candidate) => candidate.status === "draft");
+  if (!proposal) {
+    return undefined;
+  }
+  return {
+    songId: proposal.proposalId,
+    proposalId: proposal.proposalId,
+    commissionBrief: commissionBriefFromSpawnProposal(proposal),
+    spawnReason: "producer approved draft box proposal from /status",
+    actions: ["song_spawn_inject", "song_spawn_skip", "song_spawn_edit"]
+  };
+}
+
+async function promptPackReadyDecisionButtons(root: string): Promise<TelegramStatusDecisionButtonsRequest | undefined> {
+  const state = await readAutopilotRunState(root);
+  if (state.suspendedAt !== "prompt_pack_ready" || !state.currentSongId) {
+    return undefined;
+  }
+  const song = await readSongState(root, state.currentSongId).catch(() => undefined);
+  if (!song || ["scheduled", "published", "archived", "discarded", "failed"].includes(song.status)) {
+    return undefined;
+  }
+  return {
+    songId: song.songId,
+    actions: ["prompt_pack_go", "prompt_pack_edit", "prompt_pack_skip"]
+  };
+}
+
+async function degradedLyricsDecisionButtons(root: string): Promise<TelegramStatusDecisionButtonsRequest | undefined> {
+  const state = await readAutopilotRunState(root);
+  const terminalStatuses = new Set(["scheduled", "published", "archived", "discarded", "failed"]);
+  const preferred = state.currentSongId
+    ? await readSongState(root, state.currentSongId).catch(() => undefined)
+    : undefined;
+  const song = preferred?.degradedLyrics && !terminalStatuses.has(preferred.status)
+    ? preferred
+    : (await listSongStates(root)).find((candidate) => candidate.degradedLyrics && !terminalStatuses.has(candidate.status));
+  if (!song) {
+    return undefined;
+  }
+  return {
+    songId: song.songId,
+    actions: ["lyrics_redraft", "song_discard"]
+  };
+}
+
+async function planningSkeletonDecisionButtons(root: string, context?: StatusDecisionContext): Promise<TelegramStatusDecisionButtonsRequest | undefined> {
+  const state = await readAutopilotRunState(root);
+  if (state.suspendedAt !== "planning_skeleton_pending" || !state.currentSongId) {
+    return undefined;
+  }
+  const song = await readSongState(root, state.currentSongId).catch(() => undefined);
+  if (!song || ["scheduled", "published", "archived", "discarded", "failed"].includes(song.status)) {
+    return undefined;
+  }
+  const pendingProposal = (await listPendingProposalDetails(root).catch(() => []))
+    .find((proposal) => proposal.domain === "song" && proposal.songId === state.currentSongId);
+  const proposal = pendingProposal ?? (await validatePlanningFiles(root, state.currentSongId, {
+    aiReviewProvider: context?.aiReviewProvider
+  }).catch(() => undefined))?.proposal;
+  if (!proposal) {
+    return undefined;
+  }
+  if (context) {
+    await appendConversationTurn(root, {
+      chatId: context.chatId,
+      userId: context.userId,
+      topic: { kind: "song", songId: state.currentSongId },
+      pendingChangeSet: proposal,
+      turn: { role: "artist", text: "Planning補完案を /status で再表示した。" }
+    });
+  }
+  return {
+    songId: state.currentSongId,
+    proposalId: proposal.id,
+    actions: ["planning_skeleton_apply", "planning_skeleton_skip", "planning_skeleton_edit"]
+  };
+}
+
+async function latestRecoverableDecisionButtons(root: string, context?: StatusDecisionContext): Promise<TelegramStatusDecisionButtonsRequest | undefined> {
+  return await latestUrlReadyDecisionButtons(root)
+    ?? await promptPackReadyDecisionButtons(root)
+    ?? await degradedLyricsDecisionButtons(root)
+    ?? await planningSkeletonDecisionButtons(root, context)
+    ?? await latestTakeSelectedDecisionButtons(root)
+    ?? await draftSpawnDecisionButtons(root);
+}
+
+async function latestStatusDecisionButtons(root: string, context?: StatusDecisionContext, now = Date.now()): Promise<TelegramStatusDecisionButtonsRequest | undefined> {
+  const pending = await listPendingCallbackActionSummaries(root, {
+    category: "producer_decision",
+    limit: 30,
+    now
+  });
+  const latest = pending.recent[0];
+  if (!latest?.songId) {
+    return latestRecoverableDecisionButtons(root, context);
+  }
+  const actions = STATUS_DECISION_ACTIONS.filter((action) =>
+    pending.recent.some((entry) =>
+      entry.songId === latest.songId
+      && entry.messageId === latest.messageId
+      && entry.action === action
+    )
+  );
+  if (actions.length === 0) {
+    return latestRecoverableDecisionButtons(root, context);
+  }
+  if (actions.some((action) => action === "song_spawn_inject" || action === "song_spawn_skip" || action === "song_spawn_edit")) {
+    const full = await resolveCallbackAction(root, latest.callbackId);
+    const proposalButtons = await draftSpawnDecisionButtons(root, latest.proposalId ?? latest.songId);
+    if (proposalButtons) {
+      return {
+        ...proposalButtons,
+        commissionBrief: full?.commissionBrief ?? proposalButtons.commissionBrief,
+        spawnReason: full?.spawnReason ?? proposalButtons.spawnReason,
+        actions
+      };
+    }
+    if (!full?.commissionBrief) {
+      return undefined;
+    }
+    return {
+      songId: latest.songId ?? full.commissionBrief.songId,
+      proposalId: latest.proposalId,
+      commissionBrief: full.commissionBrief,
+      spawnReason: full.spawnReason,
+      actions
+    };
+  }
+  if (actions.some((action) => action === "planning_skeleton_apply" || action === "planning_skeleton_skip" || action === "planning_skeleton_edit")) {
+    const proposal = latest.proposalId
+      ? (await listPendingProposalDetails(root).catch(() => [])).find((candidate) => candidate.id === latest.proposalId)
+      : undefined;
+    if (!proposal) {
+      return latestRecoverableDecisionButtons(root, context);
+    }
+    return {
+      songId: latest.songId,
+      proposalId: latest.proposalId,
+      actions
+    };
+  }
+  if (actions.some((action) => action === "take_select_accept" || action === "take_select_regenerate" || action === "take_select_skip")) {
+    const song = latest.songId ? await readSongState(root, latest.songId).catch(() => undefined) : undefined;
+    if (!song || song.status !== "takes_imported") {
+      return latestRecoverableDecisionButtons(root, context);
+    }
+    const acceptSummary = pending.recent.find((entry) =>
+      entry.songId === latest.songId
+      && entry.messageId === latest.messageId
+      && entry.action === "take_select_accept"
+    );
+    const full = acceptSummary ? await resolveCallbackAction(root, acceptSummary.callbackId) : undefined;
+    return {
+      songId: latest.songId,
+      selectedTakeId: full?.selectedTakeId,
+      actions
+    };
+  }
+  const songReviewActions = new Set<TelegramStatusDecisionAction>(["song_archive", "song_discard", "song_songbook_write", "song_skip"]);
+  const requiresReviewSong = actions.some((action) => songReviewActions.has(action));
+  const song = latest.songId ? await readSongState(root, latest.songId).catch(() => undefined) : undefined;
+  if (requiresReviewSong && (!song || (song.status !== "take_selected" && song.status !== "suno_take_url_ready"))) {
+    return latestRecoverableDecisionButtons(root, context);
+  }
+  return {
+    songId: latest.songId,
+    selectedTakeId: song?.selectedTakeId,
+    actions
+  };
+}
+
+async function latestProposalButtons(root: string, now = Date.now()): Promise<TelegramProposalButtonsRequest | undefined> {
+  const pending = await listPendingCallbackActionSummaries(root, {
+    category: "working_confirmation",
+    limit: 30,
+    now
+  });
+  const latest = pending.recent.find((entry) => entry.proposalId && isProposalConfirmationAction(entry.action));
+  return latest?.proposalId ? { proposalId: latest.proposalId } : undefined;
+}
+
+function helpInfo(): string {
+  return [
+    "Available commands:",
+    "/status - show autopilot status",
+    "/timeline - show song lifecycle timeline",
+    "/songs - list recent songs",
+    "/song <songId> - show song detail",
+    "/song adopt <songId> - adopt a selected/URL-ready song without publishing",
+    "/song discard <songId> - discard a song and keep its brief for reuse",
+    "/suno go|edit|hold <songId> - decide a prompt-pack/Suno wait without buttons",
+    "/lyrics redo <songId> - redraft degraded lyrics without buttons",
+    "/plan apply|skip|edit <songId> - decide a planning-completion wait without buttons",
+    "/take accept|regen|skip <songId> - decide a low-score take wait without buttons",
+    "/draft make|skip|edit <proposalId> - decide a draft-box proposal without buttons",
+    "/dist apply|skip [id] - decide a distribution detection without buttons",
+    "/pulse publish|edit|cancel - decide the latest daily voice draft without buttons",
+    "/song create [hint] - ask the artist to make a song",
+    "/commission <brief> - propose a producer commission for autopilot",
+    "/regen <songId> - queue a dry-run regeneration note",
+    "/review <songId> - run a debug-only mock AI review",
+    "/setup - talk with the artist about persona direction",
+    "/persona show|fields|check|reset|migrate - inspect or migrate persona files",
+    "/observations [YYYY-MM-DD] - show what artist-runtime collected from X",
+    "/pause - pause autopilot",
+    "/resume - resume autopilot",
+    "/replay - resend failed Telegram notifications",
+    "/help - show this help"
+  ].join("\n");
+}
+
+function dashboardSongLink(input: TelegramRouteInput, songId: string): string | undefined {
+  const baseUrl = input.dashboardBaseUrl?.replace(/\/+$/, "");
+  return baseUrl ? `↗ ${baseUrl}/plugins/artist-runtime#song=${songId}` : undefined;
+}
+
+function songResourceLines(input: TelegramRouteInput, songId: string): string[] {
+  return [
+    `path: songs/${songId}/`,
+    dashboardSongLink(input, songId)
+  ].filter((line): line is string => Boolean(line));
+}
+
+function formatUpdatedAt(value?: string, now = Date.now()): string {
+  if (!value) return "unknown";
+  const time = new Date(value).getTime();
+  if (!Number.isFinite(time)) return value;
+  const diffMinutes = Math.max(0, Math.round((now - time) / 60_000));
+  if (diffMinutes < 1) return "just now";
+  if (diffMinutes < 60) return `${diffMinutes}分前`;
+  const diffHours = Math.round(diffMinutes / 60);
+  if (diffHours < 24) return `${diffHours}時間前`;
+  return `${Math.round(diffHours / 24)}日前`;
+}
+
+function isSongActive(status: string): boolean {
+  return !["published", "archived", "failed"].includes(status);
+}
+
+async function formatTimelineInfo(input: TelegramRouteInput): Promise<string> {
+  if (!input.workspaceRoot) {
+    return "Timeline unavailable: workspace root missing.";
+  }
+  const songs = await listRecentSongs(input.workspaceRoot, 10);
+  if (songs.length === 0) {
+    return "No songs yet.";
+  }
+  const lines = ["🎬 Timeline (recent 10 songs)", ""];
+  for (const song of songs) {
+    const stage = stageFromSong({ status: song.status } as Parameters<typeof stageFromSong>[0]);
+    const prefix = isSongActive(song.status) ? "▶" : " ";
+    lines.push(`${prefix} ${song.songId} | ${stage} | "${song.title}"`);
+    lines.push(`  更新: ${formatUpdatedAt(song.updatedAt)}`);
+    lines.push(`  path: songs/${song.songId}/`);
+    const link = dashboardSongLink(input, song.songId);
+    if (link) lines.push(`  ${link}`);
+    lines.push("");
+  }
+  return lines.join("\n").trimEnd();
+}
+
+export async function routeTelegramCommand(input: TelegramRouteInput): Promise<TelegramRouteResult> {
+  const text = input.text.trim();
+  // Plan v10.65 Layer 1: record that inbound text physically reached the plugin.
+  if (input.workspaceRoot) {
+    await stampInbound(input.workspaceRoot);
+  }
+  if (!text) {
+    return {
+      kind: "unknown",
+      responseText: await voiceCommand("error", "Send /help for available artist-runtime commands.", input, "empty command"),
+      shouldStoreFreeText: false
+    };
+  }
+
+  if (input.workspaceRoot) {
+    const personaSessionResponse = await handleTelegramPersonaSessionMessage(input.workspaceRoot, text);
+    if (personaSessionResponse) {
+      return { kind: "persona", responseText: personaSessionResponse, shouldStoreFreeText: false };
+    }
+  }
+
+  const [commandRaw, ...args] = text.split(/\s+/);
+  const command = commandRaw.toLowerCase();
+  if (input.workspaceRoot && (!command.startsWith("/") ? isProducerStatusIntent(text) : command === "/status")) {
+    const statusDecisionButtons = await latestStatusDecisionButtons(input.workspaceRoot, {
+      chatId: input.chatId,
+      userId: input.fromUserId,
+      aiReviewProvider: input.aiReviewProvider
+    });
+    return {
+      kind: "status",
+      responseText: await composeProducerStatus(input.workspaceRoot, {
+        dashboardBaseUrl: input.dashboardBaseUrl,
+        autopilotStatus: input.autopilotStatus
+      }),
+      shouldStoreFreeText: false,
+      statusDecisionButtons,
+      proposalButtons: statusDecisionButtons ? undefined : await latestProposalButtons(input.workspaceRoot)
+    };
+  }
+  const textDecision = parseTextDecision(command, args);
+  if (textDecision) {
+    if (!input.workspaceRoot) {
+      return {
+        kind: "free_text",
+        responseText: await voiceCommand("error", textDecision.help, input, "text decision usage"),
+        shouldStoreFreeText: false
+      };
+    }
+    try {
+      const message = await runTelegramTextDecision({
+        root: input.workspaceRoot,
+        request: textDecision,
+        chatId: input.chatId,
+        userId: input.fromUserId
+      });
+      return {
+        kind: "free_text",
+        responseText: await voiceCommand("ack", message, input, `text decision ${textDecision.action}`),
+        shouldStoreFreeText: false
+      };
+    } catch (error) {
+      const reason = error instanceof Error ? error.message : String(error);
+      return {
+        kind: "free_text",
+        responseText: await voiceCommand("error", `Decision failed: ${reason}. ${textDecision.help}`, input, `text decision ${textDecision.action} failed`),
+        shouldStoreFreeText: false
+      };
+    }
+  }
+  if (input.workspaceRoot && !isLegacyWizardEnabled()) {
+    if (
+      command === "/talk"
+      || command === "/commission"
+      || command === "/yes"
+      || command === "/no"
+      || command === "/edit"
+      || command === "/one"
+      || command === "/confirm"
+      || command === "/cancel"
+      || (command === "/persona" && !["check", "show", "fields", "edit", "reset", "migrate"].includes(args[0]?.toLowerCase() ?? ""))
+      || (command === "/song" && (isConversationalSongCreate(text) || (args.length > 1 && !["update", "add", "adopt", "archive", "discard"].includes(args[0]?.toLowerCase() ?? ""))))
+      || !command.startsWith("/")
+    ) {
+      const routed = await routeTelegramConversation({
+        text,
+        fromUserId: input.fromUserId,
+        chatId: input.chatId,
+        workspaceRoot: input.workspaceRoot,
+        autopilotStatus: input.autopilotStatus,
+        aiReviewProvider: input.aiReviewProvider
+      });
+      return { kind: command === "/song" ? "song" : command === "/persona" ? "persona" : "free_text", ...routed };
+    }
+    if (command === "/skip" || command === "/back" || command === "/answer") {
+      return {
+        kind: "free_text",
+        responseText: await voiceCommand("ack", "Legacy wizard command ignored. Speak normally and the artist conversation router will pick it up.", input, "legacy wizard ignored"),
+        shouldStoreFreeText: false
+      };
+    }
+  }
+  if (command === "/help" || command === "/start") {
+    return {
+      kind: "help",
+      responseText: await voiceCommand("help", helpInfo(), input),
+      shouldStoreFreeText: false
+    };
+  }
+
+  if (command === "/setup") {
+    if (!input.workspaceRoot) {
+      return { kind: "setup", responseText: "Persona setup unavailable: workspace root missing.", shouldStoreFreeText: false };
+    }
+    const routed = await routeTelegramConversation({
+      text: args.length > 0 ? `/persona ${args.join(" ")}` : "/persona アーティストの輪郭を一緒に決めたい",
+      fromUserId: input.fromUserId,
+      chatId: input.chatId,
+      workspaceRoot: input.workspaceRoot,
+      autopilotStatus: input.autopilotStatus,
+      aiReviewProvider: input.aiReviewProvider
+    });
+    return { kind: "setup", ...routed };
+  }
+
+  if (command === "/persona") {
+    if (!input.workspaceRoot) {
+      return { kind: "persona", responseText: "Persona command unavailable: workspace root missing.", shouldStoreFreeText: false };
+    }
+    const subcommand = args[0]?.toLowerCase();
+    if (subcommand === "fields") {
+      return { kind: "persona", responseText: formatPersonaFields(), shouldStoreFreeText: false };
+    }
+    if (subcommand === "show") {
+      return { kind: "persona", responseText: await formatPersonaShow(input.workspaceRoot), shouldStoreFreeText: false };
+    }
+    if (subcommand === "check") {
+      const mode = args[1]?.toLowerCase();
+      const report = await auditPersonaCompleteness(input.workspaceRoot);
+      if (mode === "fill") {
+        return {
+          kind: "persona",
+          responseText: [
+            formatPersonaCheckSummary(report),
+            "",
+            "Wizard fill has been retired. Tell the artist what you want changed in normal language, then approve the proposed ChangeSet with /yes."
+          ].join("\n"),
+          shouldStoreFreeText: false
+        };
+      }
+      if (mode === "suggest") {
+        return {
+          kind: "persona",
+          responseText: await formatPersonaSuggestions(report, input.aiReviewProvider, input.workspaceRoot),
+          shouldStoreFreeText: false
+        };
+      }
+      return { kind: "persona", responseText: formatPersonaCheckReport(report), shouldStoreFreeText: false };
+    }
+    if (subcommand === "edit") {
+      const routed = await routeTelegramConversation({
+        text: `/persona ${args.slice(1).join(" ") || "personaを自然な会話で直したい"}`,
+        fromUserId: input.fromUserId,
+        chatId: input.chatId,
+        workspaceRoot: input.workspaceRoot,
+        autopilotStatus: input.autopilotStatus,
+        aiReviewProvider: input.aiReviewProvider
+      });
+      return { kind: "persona", ...routed };
+    }
+    if (subcommand === "reset") {
+      await createTelegramPersonaSession(input.workspaceRoot, {
+        mode: "reset_confirm",
+        chatId: input.chatId,
+        userId: input.fromUserId
+      });
+      return {
+        kind: "persona",
+        responseText: "This will replace Telegram-managed ARTIST/SOUL persona blocks. Reply /confirm reset or /cancel.",
+        shouldStoreFreeText: false
+      };
+    }
+    if (subcommand === "migrate") {
+      const migrateMatch = text.match(/^\/persona\s+migrate(?:\s+([\s\S]*))?$/i);
+      const intent = migrateMatch?.[1]?.trim() || undefined;
+      const plan = await planPersonaMigrate(input.workspaceRoot, { intent, aiReviewProvider: input.aiReviewProvider });
+      await createTelegramPersonaSession(input.workspaceRoot, {
+        mode: "migrate_confirm",
+        chatId: input.chatId,
+        userId: input.fromUserId,
+        migrateIntent: intent,
+        migrateAiReviewProvider: input.aiReviewProvider
+      });
+      return {
+        kind: "persona",
+        responseText: formatPersonaMigratePlan(plan),
+        shouldStoreFreeText: false
+      };
+    }
+    return {
+      kind: "persona",
+      responseText: "Usage: /persona show | /persona fields | /persona check [suggest] | /persona reset | /persona migrate",
+      shouldStoreFreeText: false
+    };
+  }
+
+  if (command === "/status") {
+    return {
+      kind: "status",
+      responseText: await voiceCommand("status", formatStatus(input.autopilotStatus), input),
+      shouldStoreFreeText: false
+    };
+  }
+
+  if (command === "/timeline") {
+    const info = await formatTimelineInfo(input);
+    return {
+      kind: "timeline",
+      responseText: await voiceCommand("songs", info, input),
+      shouldStoreFreeText: false
+    };
+  }
+
+  if (command === "/songs") {
+    if (!input.workspaceRoot) {
+      return { kind: "songs", responseText: await voiceCommand("error", "Song list unavailable: workspace root missing.", input, "songs unavailable"), shouldStoreFreeText: false };
+    }
+    const songs = await listRecentSongs(input.workspaceRoot, 10);
+    const info = songs.length === 0
+      ? "No songs yet."
+      : songs.map((song) => [
+        `${song.songId} | ${song.status} | ${song.title}`,
+        ...songResourceLines(input, song.songId).map((line) => `  ${line}`)
+      ].join("\n")).join("\n");
+    return {
+      kind: "songs",
+      responseText: await voiceCommand("songs", info, input),
+      shouldStoreFreeText: false
+    };
+  }
+
+  if (command === "/song") {
+    const subcommand = args[0]?.toLowerCase();
+    if (subcommand === "adopt" || subcommand === "archive" || subcommand === "discard") {
+      if (!input.workspaceRoot || !args[1]) {
+        return {
+          kind: "song",
+          responseText: await voiceCommand("error", "Usage: /song adopt <songId> | /song discard <songId>", input, "song review action usage"),
+          shouldStoreFreeText: false
+        };
+      }
+      const action = subcommand === "discard" ? "song_discard" : "song_archive";
+      try {
+        const message = await runTelegramTextSongReviewAction({
+          root: input.workspaceRoot,
+          action,
+          songId: args[1],
+          chatId: input.chatId,
+          userId: input.fromUserId
+        });
+        return {
+          kind: "song",
+          responseText: await voiceCommand("ack", message, input, `song ${subcommand}`),
+          shouldStoreFreeText: false
+        };
+      } catch (error) {
+        const reason = error instanceof Error ? error.message : String(error);
+        return {
+          kind: "song",
+          responseText: await voiceCommand("error", `Song action failed: ${reason}`, input, `song ${subcommand} failed`),
+          shouldStoreFreeText: false
+        };
+      }
+    }
+    if (subcommand === "update") {
+      if (!input.workspaceRoot || !args[1]) {
+        return { kind: "song", responseText: await voiceCommand("error", "Usage: /song update <songId>", input, "song update usage"), shouldStoreFreeText: false };
+      }
+      const routed = await routeTelegramConversation({
+        text: `/song ${args[1]} ${args.slice(2).join(" ") || "この曲を更新したい"}`,
+        fromUserId: input.fromUserId,
+        chatId: input.chatId,
+        workspaceRoot: input.workspaceRoot,
+        autopilotStatus: input.autopilotStatus,
+        aiReviewProvider: input.aiReviewProvider
+      });
+      return { kind: "song", ...routed };
+    }
+    if (subcommand === "add") {
+      if (!input.workspaceRoot) {
+        return { kind: "song", responseText: await voiceCommand("error", "Song add unavailable: workspace root missing.", input, "song add unavailable"), shouldStoreFreeText: false };
+      }
+      const routed = await routeTelegramConversation({
+        text: `/song create ${args.slice(1).join(" ")}`.trim(),
+        fromUserId: input.fromUserId,
+        chatId: input.chatId,
+        workspaceRoot: input.workspaceRoot,
+        autopilotStatus: input.autopilotStatus,
+        aiReviewProvider: input.aiReviewProvider
+      });
+      return { kind: "song", ...routed };
+    }
+    if (subcommand === "create") {
+      if (!input.workspaceRoot) {
+        return { kind: "song", responseText: await voiceCommand("error", "Song create unavailable: workspace root missing.", input, "song create unavailable"), shouldStoreFreeText: false };
+      }
+      const routed = await routeTelegramConversation({
+        text,
+        fromUserId: input.fromUserId,
+        chatId: input.chatId,
+        workspaceRoot: input.workspaceRoot,
+        autopilotStatus: input.autopilotStatus,
+        aiReviewProvider: input.aiReviewProvider
+      });
+      return { kind: "song", ...routed };
+    }
+    const songId = args[0];
+    if (!input.workspaceRoot || !songId) {
+      return { kind: "song", responseText: await voiceCommand("error", "Usage: /song <songId> | /song update <songId> | /song add", input, "song usage"), shouldStoreFreeText: false };
+    }
+    const [song, songState] = await Promise.all([
+      getSongDetail(input.workspaceRoot, songId),
+      readSongState(input.workspaceRoot, songId)
+    ]);
+    const statusDecisionButtons = songReviewDecisionButtons(songState);
+    const operationLine = statusDecisionButtons
+      ? songState.status === "suno_take_url_ready"
+        ? `操作: この返信の「採用」で採用。「破棄」でこの曲を閉じる。ボタン不可なら /song adopt ${song.songId} または /song discard ${song.songId}`
+        : `操作: この返信の「採用」で残す。「破棄」でこの曲を閉じる。ボタン不可なら /song adopt ${song.songId} または /song discard ${song.songId}`
+      : undefined;
+    const info = [
+      `${song.songId} | ${song.status} | ${song.title}`,
+      song.selectedTakeId ? `Selected take: ${song.selectedTakeId}` : undefined,
+      `Imported assets: ${song.importedPaths.length}`,
+      song.brief ? `Brief: ${song.brief.slice(0, 240)}` : undefined,
+      operationLine,
+      `brief path: songs/${song.songId}/brief.md`,
+      `lyrics path: songs/${song.songId}/LYRICS.md`,
+      dashboardSongLink(input, song.songId)
+    ].filter(Boolean).join("\n");
+    return {
+      kind: "song",
+      responseText: await voiceCommand("song", info, input, "song detail"),
+      shouldStoreFreeText: false,
+      statusDecisionButtons
+    };
+  }
+
+  if (command === "/observations") {
+    if (!input.workspaceRoot) {
+      return { kind: "observations", responseText: await voiceCommand("error", "Observations unavailable: workspace root missing.", input, "observations unavailable"), shouldStoreFreeText: false };
+    }
+    const dateArg = args[0]?.trim();
+    const report = await readObservationsReport(input.workspaceRoot, dateArg || new Date());
+    return { kind: "observations", responseText: await voiceCommand("observations", formatObservationsReport(report), input, "observations report"), shouldStoreFreeText: false };
+  }
+
+  if (command === "/regen") {
+    const songId = args[0];
+    if (!input.workspaceRoot || !songId) {
+      return { kind: "regen", responseText: "Usage: /regen <songId>", shouldStoreFreeText: false };
+    }
+    await storeTelegramInbox(input.workspaceRoot, {
+      type: "regen_requested",
+      songId,
+      fromUserId: input.fromUserId,
+      chatId: input.chatId,
+      text,
+      timestamp: Date.now()
+    });
+    return {
+      kind: "regen",
+      responseText: `Queued dry-run regeneration request for ${songId}. No Suno create was started.`,
+      shouldStoreFreeText: false
+    };
+  }
+
+  if (command === "/review") {
+    const songId = args[0];
+    if (!input.workspaceRoot || !songId) {
+      return { kind: "review", responseText: "Usage: /review <songId>", shouldStoreFreeText: false };
+    }
+    try {
+      const material = await readSongMaterial(input.workspaceRoot, songId);
+      const result = await reviewSongDebugMaterial(input.workspaceRoot, material, input.aiReviewProvider);
+      return { kind: "review", responseText: formatDebugAiReviewResult(result), shouldStoreFreeText: false };
+    } catch {
+      return {
+        kind: "review",
+        responseText: `Debug review unavailable for ${songId}: song material was not found.`,
+        shouldStoreFreeText: false
+      };
+    }
+  }
+
+  if (command === "/pause") {
+    if (!input.workspaceRoot) {
+      return { kind: "pause", responseText: await voiceCommand("error", "Pause unavailable: workspace root missing.", input, "pause unavailable"), shouldStoreFreeText: false };
+    }
+    await new AutopilotControlService().pause(input.workspaceRoot, `telegram:${input.fromUserId}`);
+    return { kind: "pause", responseText: await voiceCommand("ack", "Autopilot paused.", input, "autopilot paused"), shouldStoreFreeText: false };
+  }
+
+  if (command === "/resume") {
+    if (!input.workspaceRoot) {
+      return { kind: "resume", responseText: await voiceCommand("error", "Resume unavailable: workspace root missing.", input, "resume unavailable"), shouldStoreFreeText: false };
+    }
+    const state = await readAutopilotRunState(input.workspaceRoot);
+    const currentSong = state.currentSongId
+      ? await readSongState(input.workspaceRoot, state.currentSongId).catch(() => undefined)
+      : undefined;
+    if (currentSong?.degradedLyrics && typeof state.blockedReason === "string" && state.blockedReason.includes("lyrics_generation_degraded")) {
+      const resurface = await resurfaceDegradedLyrics(input.workspaceRoot, { songId: currentSong.songId });
+      const info = resurface.resurfaced
+        ? `この曲は歌詞生成に失敗して止まってる。${currentSong.songId} の「破棄」か「歌詞を作り直す」を選んで。`
+        : `この曲は歌詞生成に失敗して止まってる。再表示できなかった: ${resurface.reason}`;
+      return { kind: "resume", responseText: await voiceCommand("ack", info, input, "lyrics degraded recovery surfaced"), shouldStoreFreeText: false };
+    }
+    await new AutopilotControlService().resume(input.workspaceRoot, { reason: `telegram:${input.fromUserId}`, source: "telegram" });
+    const resurface = await resurfacePromptPackReady(input.workspaceRoot, { requireExpiredGo: true });
+    if (resurface.resurfaced) {
+      const info = `Autopilot resumed. ${resurface.songId} は Suno 生成 GO 待ちだったので、最新の GO ボタンを再表示した。`;
+      return { kind: "resume", responseText: await voiceCommand("ack", info, input, "autopilot resumed"), shouldStoreFreeText: false };
+    }
+    // Plan v10.66: /resume must CONTINUE the current song from Telegram, not just clear
+    // the block and idle until the next ticker tick (cycleIntervalMinutes, default 180).
+    // Telegram is the operator's only surface, so "再開して" has to actually move the song.
+    // Kick one immediate cycle when a mid-pipeline current song remains AND no producer
+    // GO gate is pending — GO-gate suspensions (spawn_proposal_ready / prompt_pack_ready /
+    // planning_skeleton_pending) keep their suspendedAt through resume and must wait for
+    // the operator's GO button, never auto-fire. This is the operator's own Telegram
+    // action, so the resulting LIVE work is operator-initiated, not an autopilot
+    // script-fire. runCycle advances one stage and re-applies downstream gates.
+    const afterResume = await readAutopilotRunState(input.workspaceRoot);
+    const resumedSong = afterResume.currentSongId
+      ? await readSongState(input.workspaceRoot, afterResume.currentSongId).catch(() => undefined)
+      : undefined;
+    const terminalStatuses = new Set(["published", "archived", "discarded", "failed"]);
+    if (
+      !afterResume.currentSongId
+      && !afterResume.suspendedAt
+      && state.blockedReason === "song_spawn_waiting_for_proposal"
+    ) {
+      void resolveRuntimeConfig({ artist: { workspaceRoot: input.workspaceRoot } } as Partial<ArtistRuntimeConfig>)
+        .then((config) => getAutopilotTicker().runNow(config))
+        .catch((error) => {
+          const reason = error instanceof Error ? error.message : String(error);
+          logCommandSideEffectFailure("resume spawn proposal runNow", error);
+          emitRuntimeEvent({
+            type: "error",
+            source: "telegram_resume_run_now",
+            reason,
+            timestamp: Date.now()
+          });
+        });
+      const info = "Autopilot resumed。次の曲案を今すぐ探す。提案が出たらTelegramに出す。";
+      return { kind: "resume", responseText: await voiceCommand("ack", info, input, "autopilot resumed and spawn proposal cycle kicked"), shouldStoreFreeText: false };
+    }
+    if (afterResume.currentSongId && !afterResume.suspendedAt && resumedSong && !terminalStatuses.has(resumedSong.status)) {
+      void resolveRuntimeConfig({ artist: { workspaceRoot: input.workspaceRoot } } as Partial<ArtistRuntimeConfig>)
+        .then((config) => getAutopilotTicker().runNow(config))
+        .catch((error) => {
+          const reason = error instanceof Error ? error.message : String(error);
+          logCommandSideEffectFailure("resume immediate runNow", error);
+          emitRuntimeEvent({
+            type: "error",
+            source: "telegram_resume_run_now",
+            reason,
+            songId: afterResume.currentSongId,
+            timestamp: Date.now()
+          });
+        });
+      const info = `Autopilot resumed。${afterResume.currentSongId} の続きを今すぐ進める。できあがったら知らせる。`;
+      return { kind: "resume", responseText: await voiceCommand("ack", info, input, "autopilot resumed and cycle kicked"), shouldStoreFreeText: false };
+    }
+    return { kind: "resume", responseText: await voiceCommand("ack", "Autopilot resumed.", input, "autopilot resumed"), shouldStoreFreeText: false };
+  }
+
+  if (command === "/replay") {
+    if (!input.workspaceRoot) {
+      return { kind: "replay", responseText: await voiceCommand("error", "Replay unavailable: workspace root missing.", input, "replay unavailable"), shouldStoreFreeText: false };
+    }
+    // Plan v10.56 Phase 3: re-send critical Telegram notifications that previously
+    // failed to deliver — from Telegram itself (was API/UI-only). Re-emits the stored
+    // event payload through the runtime bus so the notifier formatter re-delivers it.
+    const pending = await listUnreplayedFailedNotifications(input.workspaceRoot);
+    if (pending.length === 0) {
+      return { kind: "replay", responseText: await voiceCommand("ack", "再送が必要な通知はありません。", input, "no failed notifications"), shouldStoreFreeText: false };
+    }
+    let replayed = 0;
+    let terminalSkipped = 0;
+    for (const summary of pending) {
+      const entry = await latestFailedNotifyEntry(input.workspaceRoot, summary.notifyId);
+      if (!entry || entry.status === "replayed") {
+        continue;
+      }
+      // Do not re-emit a notification whose song is already terminal — that is exactly the
+      // song-018 zombie (an archived song's stale take-completed notice re-surfacing on every
+      // replay). Retire it as aged_out so it stops being a candidate.
+      const terminalStatus = await terminalReplaySongStatus(input.workspaceRoot, entry.songId);
+      if (terminalStatus) {
+        await appendFailedNotifyTerminalSkipRecord(input.workspaceRoot, entry, { songStatus: terminalStatus });
+        terminalSkipped += 1;
+        continue;
+      }
+      try {
+        emitRuntimeEvent(entry.eventPayload);
+        await appendFailedNotifyReplayRecord(input.workspaceRoot, entry, { ok: true });
+        replayed += 1;
+      } catch (error) {
+        await appendFailedNotifyReplayRecord(input.workspaceRoot, entry, { ok: false, error });
+      }
+    }
+    const replayNote = terminalSkipped > 0
+      ? `届かなかった通知を ${replayed} 件再送した。完了済みの曲の通知 ${terminalSkipped} 件は再送せず終了扱いにした。`
+      : `届かなかった通知を ${replayed} 件再送した。`;
+    return { kind: "replay", responseText: await voiceCommand("ack", replayNote, input, "failed notifications replayed"), shouldStoreFreeText: false };
+  }
+
+  if (command.startsWith("/")) {
+    return {
+      kind: "unknown",
+      responseText: await voiceCommand("error", `Unknown command: ${command}. Send /help for available commands.`, input, "unknown command"),
+      shouldStoreFreeText: false
+    };
+  }
+
+  return {
+    kind: "free_text",
+    responseText: await voiceCommand("ack", "Instruction received for local artist inbox staging.", input, "free text staged"),
+    shouldStoreFreeText: true
+  };
+}
+
+function needsPersonaFill(field: PersonaFieldAudit): boolean {
+  return field.status === "missing" || field.status === "thin";
+}
+
+function formatPersonaCheckSummary(report: Awaited<ReturnType<typeof auditPersonaCompleteness>>): string {
+  const needs = report.fields.filter(needsPersonaFill).map((field) => field.field);
+  return [
+    `Persona check: ${report.summary.filled} filled, ${report.summary.thin} thin, ${report.summary.missing} missing.`,
+    needs.length > 0 ? `Needs: ${needs.join(", ")}` : "All fields filled.",
+    report.customSections.length > 0 ? `Custom sections: ${report.customSections.join(", ")}` : undefined
+  ].filter(Boolean).join("\n");
+}
+
+function formatPersonaCheckReport(report: Awaited<ReturnType<typeof auditPersonaCompleteness>>): string {
+  const full = formatPersonaAuditReport(report);
+  if (full.length <= 1500) {
+    return full;
+  }
+  return formatPersonaCheckSummary(report);
+}
+
+async function formatPersonaSuggestions(
+  report: Awaited<ReturnType<typeof auditPersonaCompleteness>>,
+  provider?: AiReviewProvider,
+  root?: string
+): Promise<string> {
+  const fields = report.fields.filter(needsPersonaFill).map((field) => field.field);
+  if (fields.length === 0) {
+    return "Persona suggestion mode: all fields are filled.";
+  }
+  const [artistMd, soulMd] = root
+    ? await Promise.all([
+        readFile(join(root, "ARTIST.md"), "utf8").catch(() => ""),
+        readFile(join(root, "SOUL.md"), "utf8").catch(() => "")
+      ])
+    : ["", ""];
+  const result = await proposePersonaFields({
+    fields,
+    source: {
+      artistMd,
+      soulMd,
+      customSections: report.customSections
+    }
+  }, { aiReviewProvider: provider });
+  return [
+    "Persona suggestion mode:",
+    `Provider: ${result.provider}`,
+    ...result.drafts.map((draft) =>
+      draft.status === "skipped"
+        ? `- ${draft.field}: skipped${draft.reasoning ? ` (${draft.reasoning})` : ""}`
+        : `- ${draft.field}: ${draft.draft}${draft.reasoning ? ` (${draft.reasoning})` : ""}`
+    ),
+    result.provider === "mock" ? "Mock provider placeholder drafts only." : undefined,
+    result.provider === "not_configured" ? "Configure AI provider for suggestions (currently mock)." : undefined,
+    result.warnings.length > 0 ? `Warnings: ${result.warnings.join("; ")}` : undefined
+  ].filter(Boolean).join("\n");
+}
+
+function formatPersonaFields(): string {
+  return [
+    "Editable persona fields:",
+    "CONFIG: artistName",
+    "ARTIST: identity, sound, themes, lyrics, social",
+    "SOUL: soul-tone, soul-refusal"
+  ].join("\n");
+}
+
+async function formatPersonaShow(root: string): Promise<string> {
+  const [artist, soul] = await Promise.all([readArtistPersonaSummary(root), readSoulPersonaSummary(root)]);
+  const response = [
+    `Artist: ${artist.artistName}`,
+    `Identity: ${artist.identityLine}`,
+    `Sound: ${artist.soundDna}`,
+    `Themes: ${artist.obsessions}`,
+    `Lyrics guard: ${artist.lyricsRules}`,
+    `Social voice: ${artist.socialVoice}`,
+    "---",
+    `Conversation tone: ${soul.conversationTone || "(not set)"}`,
+    `Refusal style: ${soul.refusalStyle || "(not set)"}`
+  ].join("\n");
+  return response.length > 1600 ? `${response.slice(0, 1597)}...` : response;
+}
+
+function truncateInline(value: string, max: number): string {
+  const collapsed = value.replace(/\s+/g, " ").trim();
+  return collapsed.length <= max ? collapsed : `${collapsed.slice(0, max - 1)}…`;
+}
+
+function topRejectReasons(counts: Partial<Record<string, number>> | undefined): string {
+  const entries = Object.entries(counts ?? {})
+    .filter(([, count]) => typeof count === "number" && count > 0)
+    .sort((a, b) => Number(b[1]) - Number(a[1]))
+    .slice(0, 3);
+  return entries.length > 0 ? entries.map(([reason, count]) => `${reason} x${count}`).join(", ") : "none";
+}
+
+function formatObservationDiagnostics(report: ObservationReport): string[] {
+  const diagnostics = report.diagnostics;
+  if (!diagnostics?.attempts.length) return [];
+  const lines = ["", "🔎 探し方"];
+  diagnostics.attempts.forEach((attempt, index) => {
+    const query = attempt.query?.trim() || "timeline";
+    lines.push(`${index + 1}. ${truncateInline(query, 160)} — raw ${attempt.rawCount} → accepted ${attempt.acceptedCount}`);
+    const rejectTop = topRejectReasons(attempt.rejectedCountsByReason);
+    if (rejectTop !== "none") {
+      lines.push(`   reject: ${rejectTop}`);
+    }
+  });
+  const totalRaw = diagnostics.attempts.reduce((sum, attempt) => sum + attempt.rawCount, 0);
+  const totalAccepted = diagnostics.attempts.reduce((sum, attempt) => sum + attempt.acceptedCount, 0);
+  const allRejects = topRejectReasons(diagnostics.attempts.reduce<Partial<Record<string, number>>>((counts, attempt) => {
+    for (const [reason, count] of Object.entries(attempt.rejectedCountsByReason)) {
+      counts[reason] = (counts[reason] ?? 0) + (count ?? 0);
+    }
+    return counts;
+  }, {}));
+  lines.push(`summary: raw ${totalRaw} → accepted ${totalAccepted}; rejected top: ${allRejects}`);
+  if (totalAccepted === 0) {
+    const reason = totalRaw === 0 ? "全クエリで raw 0" : `全候補が reject (${allRejects})`;
+    lines.push(`0件理由: ${reason}`);
+    if (diagnostics.emptyCache.active) {
+      lines.push(`空キャッシュ: ${diagnostics.emptyCache.ttlMinutes}分中${diagnostics.emptyCache.until ? ` (until ${diagnostics.emptyCache.until})` : ""}`);
+    }
+  }
+  return lines;
+}
+
+export function formatObservationsReport(report: ObservationReport): string {
+  const header = `🌐 X 観察 ${report.date}`;
+  if (!report.exists || report.entries.length === 0) {
+    return [
+      header,
+      report.exists ? "(エントリなし)" : "(まだ収集されてない)",
+      ...formatObservationDiagnostics(report),
+      `Source: ${report.path}`
+    ].join("\n");
+  }
+  const top = report.entries
+    .filter((entry) => {
+      const text = entry.text?.trim() ?? "";
+      if (!text) return false;
+      if (/^date:\s+/i.test(text)) return false;
+      return true;
+    })
+    .slice(0, 10);
+  const lines = [
+    header,
+    report.query ? `Query: ${report.query}` : "Source: timeline",
+    `Total: ${report.entries.length} entries (showing ${top.length})`,
+    ""
+  ];
+  top.forEach((entry, index) => {
+    const author = entry.author ? `@${entry.author}` : "(anonymous)";
+    const text = truncateInline(entry.text, 180);
+    lines.push(`${index + 1}. ${author}`);
+    lines.push(`   ${text}`);
+    if (entry.url) {
+      lines.push(`   ${entry.url}`);
+    }
+  });
+  lines.push(...formatObservationDiagnostics(report));
+  lines.push("");
+  lines.push(`Source: ${report.path}`);
+  const joined = lines.join("\n");
+  return joined.length > 3500 ? `${joined.slice(0, 3497)}...` : joined;
+}
+
+export function classifyTelegramFreeText(text: string): "pause" | "resume" | "status" | "artist_inbox" {
+  const normalized = text.toLowerCase();
+  if (normalized.includes("pause")) {
+    return "pause";
+  }
+  if (normalized.includes("resume")) {
+    return "resume";
+  }
+  if (normalized.includes("status")) {
+    return "status";
+  }
+  return "artist_inbox";
+}
+
+export async function storeTelegramInbox(root: string, value: Record<string, unknown>): Promise<void> {
+  const path = inboxPath(root);
+  await mkdir(dirname(path), { recursive: true });
+  await appendFile(path, `${JSON.stringify(value)}\n`, "utf8");
+}
+
+export async function readTelegramInbox(root: string): Promise<Record<string, unknown>[]> {
+  const contents = await readFile(inboxPath(root), "utf8").catch(() => "");
+  return contents
+    .split("\n")
+    .filter(Boolean)
+    .map((line) => JSON.parse(line) as Record<string, unknown>);
+}

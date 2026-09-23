@@ -1,0 +1,20 @@
+# systemd --user timer template pairing with
+# openclaw-artist-healthcheck.service.template. No placeholders here; install
+# it unmodified next to the filled-in service unit.
+#
+# Install:
+#   cp scripts/linux/openclaw-artist-healthcheck.timer.template \
+#     ~/.config/systemd/user/openclaw-artist-healthcheck.timer
+#   systemctl --user daemon-reload
+#   systemctl --user enable --now openclaw-artist-healthcheck.timer
+
+[Unit]
+Description=Run the OpenClaw Artist Runtime gateway healthcheck periodically
+
+[Timer]
+OnBootSec=2min
+OnUnitActiveSec=5min
+Persistent=true
+
+[Install]
+WantedBy=timers.target

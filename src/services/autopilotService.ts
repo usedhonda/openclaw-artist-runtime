@@ -1,0 +1,2360 @@
+import { readFile } from "node:fs/promises";
+import { isAbsolute, join } from "node:path";
+import { resolveSunoConnector } from "../connectors/suno/resolveSunoConnector.js";
+import { SUNO_CLI_RETRYABLE_FEED_TARGET_MISSING_REASON } from "../connectors/suno/cliSunoConnector.js";
+import type { AutopilotRunState, AutopilotStage, AutopilotStatus, ArtistRuntimeConfig, CommissionBrief, CommissionBriefSource, ObservationSummary, SocialPublishLedgerEntry, SocialPublishResult, SongState, SpawnProposal, SunoRunRecord } from "../types.js";
+import { composeDailyVoice } from "./artistDailyVoiceComposer.js";
+import { markPulsed, shouldPulse } from "./artistPulseRateLimiter.js";
+import { AutopilotControlService } from "./autopilotControlService.js";
+import {
+  defaultAutopilotRunState,
+  readAutopilotState,
+  writeAutopilotState
+} from "./autopilotRecovery.js";
+import { listSongStates, readArtistMind, readSongState, updateSongState } from "./artistState.js";
+import { readSongPlan } from "./songPlan.js";
+import { createSongIdea } from "./songIdeation.js";
+import { draftLyrics } from "./lyricsDrafting.js";
+import { prepareSocialAssets } from "./socialAssets.js";
+import { createAndPersistSunoPromptPack } from "./sunoPromptPackFiles.js";
+import { evaluateSunoGenerationLimits, generateSunoRun, importSunoResults, readLatestSunoRun } from "./sunoRuns.js";
+import { publishSocialAction } from "./socialPublishing.js";
+import { selectTake } from "./takeSelection.js";
+import { evaluateSunoTakeSelection } from "./sunoTakeSelector.js";
+import { emitRuntimeEvent, type RuntimeEvent } from "./runtimeEventBus.js";
+import {
+  collectSunoTakeUrls,
+  evaluateSunoTakeUrlReadiness,
+  SINGLE_TAKE_URL_FALLBACK_REASON,
+  type SunoTakeUrlReadiness
+} from "./sunoTakeUrls.js";
+import { classifySunoGenerateFailure, nextSunoRetryDecision } from "./sunoRetryHandler.js";
+import { HUMAN_ASSIST_TIMEOUT_REASON, HUMAN_ASSIST_FEED_UNAVAILABLE_REASON } from "./sunoHumanAssist.js";
+import { PLAYWRIGHT_LYRICS_BOX_DEGRADED_REASON } from "./sunoPlaywrightDriver.js";
+import { collectObservations, type XObservationContext } from "./xObservationCollector.js";
+import { collectNewsObservations } from "./newsObservationCollector.js";
+import { buildNewsReactionQueries } from "./newsReactionQuery.js";
+import { proposeTheme } from "./themeProposer.js";
+import { pollSongDistribution } from "./songDistributionPoller.js";
+import { cleanupExpiredCallbacks } from "./callbackLedgerMaintenance.js";
+import { readCallbackActionEntries } from "./callbackActionRegistry.js";
+import { getArtistPulseIntervalHours, getSongSpawnIntervalHours, getStaleQueueCleanupHours, isArtistPulseConfigured, isSongbookAutoSyncEnabled, isSongSpawnConfigured, resolveRuntimeConfig } from "./runtimeConfig.js";
+import { proposeSpawn, type ActiveQueueContextEntry } from "./songSpawnProposer.js";
+import { appendSpawnProposal, listBuildingSpawnProposals, listPendingSpawnProposals, markSpawnProposalBuilding, markSpawnProposalDone } from "./spawnProposalQueue.js";
+import { buildCascadeTrace } from "./cascadeTrace.js";
+import { markSpawned, shouldSpawn } from "./songSpawnRateLimiter.js";
+import { validatePlanningFiles } from "./planningSkeletonValidator.js";
+import { applyChangeSet } from "./changeSetApplier.js";
+import { syncSongbookFromITunes } from "./songbookSyncer.js";
+import { composeVoiceTopOnly } from "./commandVoiceWrapper.js";
+import { runStaleQueueMaintenance, suppressRestartStaleError } from "./staleQueueMaintenance.js";
+import {
+  appendTakeAttributionAudit,
+  findDryRunImportPaths,
+  findTakeAttributionCollisions
+} from "./takeAttributionGuard.js";
+import { emitDraftBoxProactiveNoticeIfNeeded } from "./draftBoxProactiveNotice.js";
+import { readPersonaSetupStatus } from "./personaSetupDetector.js";
+import { injectCommissionSong } from "./songStateInjector.js";
+import { appendDopagakiMoodHint, decideDopagakiVariation } from "./creativeVariationPolicy.js";
+
+export function isPublishBlockedByDryRun(
+  result: Pick<SocialPublishResult, "accepted" | "dryRun">,
+  entry: Pick<SocialPublishLedgerEntry, "policyDecision">
+): boolean {
+  if (result.accepted) {
+    return false;
+  }
+  if (result.dryRun === true) {
+    return true;
+  }
+  return entry.policyDecision?.policyDecision === "deny_dry_run";
+}
+
+export interface AutopilotTickInput {
+  enabled: boolean;
+  dryRun: boolean;
+  paused?: boolean;
+  hardStop?: boolean;
+  promptPackReady?: boolean;
+  takeSelected?: boolean;
+  assetsReady?: boolean;
+}
+
+export interface RunAutopilotCycleInput {
+  workspaceRoot: string;
+  config?: Partial<ArtistRuntimeConfig>;
+  manualSeed?: { hint: string; weirdness?: number; allowNoObservation?: boolean };
+  /** Direct producer request: bypass only the autonomous recent-completion spawn cooldown. */
+  operatorRequestedSpawn?: boolean;
+  /** Producer rejected a proposal: collect fresh material within existing source limits. */
+  forceObservationRefresh?: boolean;
+  observationRunner?: XObservationContext["runner"];
+}
+
+function nowIso(): string {
+  return new Date().toISOString();
+}
+
+// A fail-closed self-pause is a transition INTO a paused-flag state through the cycle's
+// own stage writer. A manual /pause never routes through here (it writes via
+// AutopilotControlService), and the producer-review suspension sets stage="paused" but not
+// paused=true, so keying on the paused flag isolates the autonomous pauses. Returns the
+// notification event exactly on the not-paused -> paused edge (so a still-paused resurface
+// on the next tick stays quiet), or undefined otherwise.
+export function buildAutoPauseEvent(
+  previous: Pick<AutopilotRunState, "paused" | "stage">,
+  next: Pick<AutopilotRunState, "paused" | "stage" | "currentSongId" | "pausedReason" | "blockedReason">
+): Extract<RuntimeEvent, { type: "autopilot_auto_paused" }> | undefined {
+  if (previous.paused === true || next.paused !== true) {
+    return undefined;
+  }
+  return {
+    type: "autopilot_auto_paused",
+    songId: next.currentSongId,
+    reason: next.pausedReason ?? next.blockedReason ?? "autopilot paused",
+    previousStage: previous.stage,
+    timestamp: Date.now()
+  };
+}
+
+export async function writeStageState(root: string, previous: AutopilotRunState, next: AutopilotRunState): Promise<AutopilotRunState> {
+  if (previous.stage !== next.stage || previous.currentSongId !== next.currentSongId) {
+    emitRuntimeEvent({
+      type: "autopilot_stage_changed",
+      songId: next.currentSongId,
+      from: previous.stage,
+      to: next.stage,
+      timestamp: Date.now()
+    });
+  }
+  const written = await writeAutopilotRunState(root, next);
+  // Announce a self-pause AFTER the pause is persisted, and never let a notify failure
+  // unwind the pause (emit is fire-and-forget; a throwing subscriber is swallowed here).
+  const autoPauseEvent = buildAutoPauseEvent(previous, written);
+  if (autoPauseEvent) {
+    try {
+      emitRuntimeEvent(autoPauseEvent);
+    } catch (error) {
+      console.warn(`[artist-runtime] auto-pause notify emit failed: ${error instanceof Error ? error.message : String(error)}`);
+    }
+  }
+  await emitDraftBoxProactiveNoticeIfNeeded(root, written).catch((error) => {
+    const reason = error instanceof Error ? error.message : String(error);
+    console.warn(`[artist-runtime] draft box proactive notice failed: ${reason}`);
+  });
+  return written;
+}
+
+function isMockSunoGenerationBypass(config: ArtistRuntimeConfig): boolean {
+  return config.music.suno.driver === "mock";
+}
+
+function isPreGenerationApprovalEnabled(env: NodeJS.ProcessEnv = process.env): boolean {
+  const value = env.OPENCLAW_PRE_GENERATION_APPROVAL?.trim().toLowerCase();
+  return value === "on" || value === "1" || value === "true";
+}
+
+const PRODUCER_APPROVAL_REQUIRED_STATUSES = new Set<SongState["status"]>(["idea", "brief", "lyrics"]);
+export const PRODUCER_REVIEW_SUSPENDED_AT = "producer_review_after_take_selected";
+export const PRODUCER_REVIEW_PAUSED_REASON = "take selected after bounded one-shot Suno create; awaiting producer review";
+
+function isPrePromptSongWithoutApprovalGate(song: SongState): boolean {
+  return PRODUCER_APPROVAL_REQUIRED_STATUSES.has(song.status);
+}
+
+function releaseAfterTakeCompletion(baseState: AutopilotRunState): AutopilotRunState {
+  return {
+    ...baseState,
+    currentSongId: undefined,
+    stage: "completed",
+    paused: false,
+    pausedReason: undefined,
+    suspendedAt: undefined,
+    blockedReason: undefined,
+    lastError: undefined,
+    lastSuccessfulStage: "completed"
+  };
+}
+
+function releaseAfterSunoTakeUrlReady(baseState: AutopilotRunState): AutopilotRunState {
+  return {
+    ...baseState,
+    currentSongId: undefined,
+    stage: "idle",
+    paused: false,
+    pausedReason: undefined,
+    suspendedAt: undefined,
+    blockedReason: undefined,
+    lastError: undefined,
+    lastSuccessfulStage: "suno_generation"
+  };
+}
+
+function takeIdFromSunoUrl(url: string | undefined): string | undefined {
+  return url?.match(/https?:\/\/(?:www\.)?suno\.com\/song\/([^/?#]+)/i)?.[1] ?? url;
+}
+
+export function shouldEmitOperationalEpisode(existing: AutopilotRunState, marker: string): boolean {
+  return existing.blockedReason !== marker && existing.lastError !== marker;
+}
+
+// The same-runId idempotency guard legitimately fires only when a song's status maps to
+// a stage already recorded as lastSuccessfulStage without advancing — which in practice
+// means the run state and the song status have drifted out of sync (e.g. a status
+// rollback). That is exactly the "silent stall" shape (2026-07-28 spawn_cc1049 sat 26h
+// emitting only ran/safe_recovery), so when the guard holds with no action, surface a
+// visible reason instead of staying silent. Emitting on every 20-min tick would be spam,
+// so collapse to at most one event per calendar day per song+stage. This is a Telegram-
+// silent "error"-type event (source not in /suno/ nor SELF_HEAL_SOURCES): it lands in the
+// runtime-events ledger / Console but does not ping the producer.
+const idempotentHoldEmittedOnDay = new Map<string, string>();
+
+export function emitIdempotentHoldOncePerDay(songId: string | undefined, stage: AutopilotStage, now = new Date()): void {
+  const key = `${songId ?? "?"}|${stage}`;
+  const day = now.toISOString().slice(0, 10);
+  if (idempotentHoldEmittedOnDay.get(key) === day) {
+    return;
+  }
+  idempotentHoldEmittedOnDay.set(key, day);
+  emitRuntimeEvent({
+    type: "error",
+    source: "autopilot_idempotent_hold",
+    reason: `stage_${stage}_held_no_action:song_status_maps_to_already_successful_stage_possible_rollback`,
+    songId,
+    timestamp: now.getTime()
+  });
+}
+
+export function resetIdempotentHoldDedupForTest(): void {
+  idempotentHoldEmittedOnDay.clear();
+}
+
+const DEFAULT_SUNO_IMPORT_STALL_MS = 20 * 60 * 1000;
+const SUNO_IMPORT_NO_URLS_REASON = "playwright_import_no_urls";
+const SUNO_IMPORT_NO_URLS_BLOCKED_REASON = `suno_generate_retry:${SUNO_IMPORT_NO_URLS_REASON}`;
+
+function sunoImportStallMs(env: NodeJS.ProcessEnv = process.env): number {
+  const raw = env.OPENCLAW_SUNO_IMPORT_STALL_MINUTES?.trim();
+  if (!raw) {
+    return DEFAULT_SUNO_IMPORT_STALL_MS;
+  }
+  const minutes = Number(raw);
+  if (!Number.isFinite(minutes) || minutes <= 0) {
+    return DEFAULT_SUNO_IMPORT_STALL_MS;
+  }
+  return minutes * 60 * 1000;
+}
+
+function isStaleAcceptedSunoRunWithoutUrls(createdAt: string | undefined, now = Date.now()): boolean {
+  if (!createdAt) {
+    return false;
+  }
+  const createdMs = Date.parse(createdAt);
+  if (!Number.isFinite(createdMs)) {
+    return false;
+  }
+  return now - createdMs >= sunoImportStallMs();
+}
+
+// A song's accepted Suno run can have its take(s) deleted from the account's feed after
+// the fact (operator cleanup, Suno-side retention). The CLI download then fails with
+// SUNO_CLI_RETRYABLE_FEED_TARGET_MISSING_REASON on every sweep cycle forever, because the
+// clip will never come back. Suno's feed can also lag briefly right after a run completes,
+// so give it a bounded grace window before concluding the take is really gone.
+const SUNO_IMPORT_MISSING_GRACE_MS = 72 * 60 * 60 * 1000;
+export const SUNO_TAKES_MISSING_FROM_FEED_REASON = "suno_takes_missing_from_feed";
+
+function isSunoFeedTargetMissingReason(reason: string | undefined): boolean {
+  return reason === SUNO_CLI_RETRYABLE_FEED_TARGET_MISSING_REASON;
+}
+
+function isPastSunoImportMissingGrace(createdAt: string | undefined, now = Date.now()): boolean {
+  if (!createdAt) {
+    return false;
+  }
+  const createdMs = Date.parse(createdAt);
+  if (!Number.isFinite(createdMs)) {
+    return false;
+  }
+  return now - createdMs >= SUNO_IMPORT_MISSING_GRACE_MS;
+}
+
+// Park a song whose accepted run's takes are gone from the Suno feed for good, instead of
+// sweeping it every cycle forever. Song-state-only (no AutopilotRunState mutation): sweep
+// runs across every suno_take_url_ready song independently of the current lane.
+async function parkSongForMissingFeedTakes(root: string, songId: string, runId: string | undefined): Promise<void> {
+  const parkedReason = `parked_needs_operator: ${SUNO_TAKES_MISSING_FROM_FEED_REASON}`;
+  await updateSongState(root, songId, {
+    status: "failed",
+    reason: parkedReason
+  });
+  emitRuntimeEvent({
+    type: "suno_generate_failed",
+    songId,
+    reason: parkedReason,
+    retryCount: 0,
+    timestamp: Date.now()
+  });
+  console.error(`[artist-runtime] ${parkedReason}:${songId}${runId ? `:${runId}` : ""}`);
+}
+
+// Suno's lyrics box transiently degrades (5000 -> 1250 maxLength). The driver surfaces
+// this as a retryable suno_lyrics_box_degraded reason (not a hard truncation), so the
+// autopilot self-heals across ticks instead of hard-pausing for the operator. The cap
+// bounds the self-heal window so a genuinely stuck box eventually surfaces to the producer.
+export const SUNO_LYRICS_BOX_DEGRADED_MARKER = PLAYWRIGHT_LYRICS_BOX_DEGRADED_REASON;
+const SUNO_LYRICS_BOX_DEGRADED_MAX_ATTEMPTS = 8;
+export function isDegradedLyricsBoxReason(value?: string | null): boolean {
+  return Boolean(value && value.includes(SUNO_LYRICS_BOX_DEGRADED_MARKER));
+}
+
+// suno-cli's login/captcha blocks (EXIT_REASONS 30/31 in cliSunoConnector.ts) are
+// terminal: they never self-heal on a retry, so they must skip the generic retry
+// ladder and route straight to a hard stop. The reason string arrives verbatim
+// (e.g. "suno_cli_blocked_login"); startsWith tolerates any future ":detail" suffix.
+function isCliTerminalBlockReason(reason: string): boolean {
+  return reason.startsWith("suno_cli_blocked_login") || reason.startsWith("suno_cli_blocked_captcha");
+}
+
+async function hasProducerSpawnApproval(root: string, songId: string): Promise<boolean> {
+  const entries = await readCallbackActionEntries(root).catch(() => []);
+  return entries.some((entry) => entry.songId === songId && entry.action === "song_spawn_inject" && entry.status === "applied");
+}
+
+function firstBriefField(contents: string, labels: string[]): string | undefined {
+  for (const label of labels) {
+    const escaped = label.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    const match = contents.match(new RegExp(`^-\\s*${escaped}:\\s*(.+)$`, "im"));
+    if (match?.[1]?.trim()) return match[1].trim();
+  }
+  return undefined;
+}
+
+function firstSectionLine(contents: string, heading: string): string | undefined {
+  const lines = contents.split(/\r?\n/);
+  const start = lines.findIndex((line) => line.trim().toLowerCase() === `## ${heading}`.toLowerCase());
+  if (start < 0) return undefined;
+  for (const line of lines.slice(start + 1)) {
+    const trimmed = line.trim();
+    if (trimmed.startsWith("## ")) break;
+    if (trimmed && !trimmed.startsWith("-")) return trimmed;
+  }
+  return undefined;
+}
+
+function observationFromBrief(contents: string, song: SongState): ObservationSummary | undefined {
+  if (song.observationSummary) return song.observationSummary;
+  const url = firstBriefField(contents, ["URL", "Url", "url"]);
+  const author = firstBriefField(contents, ["Author", "author"])?.replace(/^@/, "");
+  const quote = firstBriefField(contents, ["Quote", "quote"]) ?? firstSectionLine(contents, "Observation source");
+  if (!url && !author && !quote) return undefined;
+  return { url, author, quote };
+}
+
+function sourcesFromObservation(summary?: ObservationSummary): CommissionBriefSource[] | undefined {
+  if (!summary?.url) return undefined;
+  return [{
+    kind: /^https:\/\/(?:x|twitter)\.com\//i.test(summary.url) ? "x" : "news",
+    url: summary.url,
+    author: summary.author,
+    quote: summary.quote
+  }];
+}
+
+async function commissionBriefFromExistingSong(root: string, song: SongState): Promise<{ brief: CommissionBrief; observationSummary?: ObservationSummary }> {
+  const contents = await readFile(join(root, "songs", song.songId, "brief.md"), "utf8").catch(() => "");
+  const observationSummary = observationFromBrief(contents, song);
+  const briefText = firstSectionLine(contents, "Producer commission")
+    ?? firstSectionLine(contents, "Direction")
+    ?? song.lastReason
+    ?? `${song.title}を曲にする。`;
+  const brief: CommissionBrief = {
+    songId: song.songId,
+    title: song.title || song.songId,
+    brief: briefText,
+    lyricsTheme: firstBriefField(contents, ["Lyrics theme", "lyricsTheme", "Core theme"]) ?? briefText,
+    mood: firstBriefField(contents, ["Mood", "mood"]) ?? "artist decides",
+    tempo: firstBriefField(contents, ["Tempo", "tempo"]) ?? "artist decides",
+    duration: firstBriefField(contents, ["Duration", "duration"]) ?? "artist decides",
+    styleNotes: firstBriefField(contents, ["Style notes", "style", "Style"]) ?? "artist decides",
+    sourceText: "existing song awaiting producer spawn approval",
+    createdAt: song.createdAt,
+    sources: sourcesFromObservation(observationSummary)
+  };
+  return { brief, observationSummary };
+}
+
+async function suspendForProducerSpawnApproval(
+  root: string,
+  previous: AutopilotRunState,
+  song: SongState,
+  baseState: AutopilotRunState
+): Promise<AutopilotRunState> {
+  const proposal = await commissionBriefFromExistingSong(root, song);
+  const reason = song.lastReason && song.lastReason !== "brief updated"
+    ? song.lastReason
+    : proposal.brief.brief;
+  const voiceTop = await composeVoiceTopOnly("propose", root, undefined, [], { runId: song.songId }).catch(() => undefined);
+  emitRuntimeEvent({
+    type: "song_spawn_proposed",
+    brief: proposal.brief,
+    reason,
+    candidateSongId: song.songId,
+    voiceTop,
+    observationSummary: proposal.observationSummary,
+    timestamp: Date.now()
+  });
+  return writeStageState(root, previous, {
+    ...baseState,
+    currentSongId: song.songId,
+    stage: "planning",
+    suspendedAt: "spawn_proposal_ready",
+    blockedReason: "spawn_proposal_ready",
+    lastError: undefined,
+    cycleCount: previous.cycleCount + 1
+  });
+}
+
+function activeQueueContextFromProposals(proposals: SpawnProposal[]): ActiveQueueContextEntry[] {
+  return proposals.map((proposal) => ({
+    title: proposal.title,
+    coreTheme: proposal.coreTheme,
+    observationSources: proposal.observationSources,
+    motifRank: proposal.motifRank
+  }));
+}
+
+function spawnProposalRecordFromGenerated(
+  proposal: NonNullable<Awaited<ReturnType<typeof proposeSpawn>>>,
+  voiceTop: string | undefined
+): SpawnProposal {
+  const cascadeTrace = buildCascadeTrace({
+    songId: proposal.candidateSongId,
+    title: proposal.brief.title,
+    artistVoice: voiceTop,
+    lyricsTheme: proposal.brief.lyricsTheme,
+    styleLayer: proposal.brief.styleNotes,
+    observationSummary: proposal.observationSummary,
+    commissionSources: proposal.brief.sources
+  });
+  return {
+    proposalId: proposal.candidateSongId,
+    createdAt: proposal.brief.createdAt,
+    status: "draft",
+    title: proposal.brief.title,
+    voiceTop: voiceTop ?? "",
+    coreTheme: proposal.brief.lyricsTheme || proposal.brief.brief,
+    observationSources: cascadeTrace.observationSources,
+    cascadeTrace
+  };
+}
+
+function isProducerReviewOnlyLane(state: AutopilotRunState): boolean {
+  void state;
+  return false;
+}
+
+async function weeklySongLimitBlocked(root: string, config: ArtistRuntimeConfig, now = new Date()): Promise<string | undefined> {
+  if (config.autopilot.songsPerWeek <= 0) {
+    return "weekly song creation limit is 0";
+  }
+  const weekAgo = now.getTime() - 7 * 24 * 60 * 60 * 1000;
+  const songs = await listSongStates(root);
+  const recent = songs.filter((song) => {
+    const createdAt = Date.parse(song.createdAt);
+    return Number.isFinite(createdAt) && createdAt >= weekAgo && createdAt <= now.getTime();
+  });
+  return recent.length >= config.autopilot.songsPerWeek
+    ? `weekly song creation limit reached (${recent.length}/${config.autopilot.songsPerWeek})`
+    : undefined;
+}
+
+async function runIdeaQueueLane(
+  root: string,
+  existing: AutopilotRunState,
+  config: ArtistRuntimeConfig,
+  options: { preserveCurrentSongLane?: boolean; ignoreRecentCompletion?: boolean; operatorRequestedSpawn?: boolean } = {}
+): Promise<{ state?: AutopilotRunState; emitted: boolean; skippedForFullQueue: boolean; heldForObservation: boolean }> {
+  const skippedForFullQueue = false;
+  let emitted = false;
+  let heldForObservation = false;
+  await shouldSpawn(root, { minIntervalHours: getSongSpawnIntervalHours(process.env, config) }).then(async (allowed) => {
+    if (!allowed && !options.operatorRequestedSpawn) {
+      return;
+    }
+    const personaSetup = await readPersonaSetupStatus(root);
+    if (personaSetup.needsSetup) {
+      return;
+    }
+    const pendingProposals = await listPendingSpawnProposals(root);
+    if (pendingProposals.length > 0) {
+      return;
+    }
+    const proposal = await proposeSpawn(root, {
+      aiReviewProvider: config.aiReview.provider,
+      activeQueueContext: activeQueueContextFromProposals(pendingProposals),
+      ignoreRecentCompletion: options.ignoreRecentCompletion === true || options.preserveCurrentSongLane === true
+    });
+    if (!proposal) {
+      return;
+    }
+    // No news/X material tonight: the director marked the decision observation_null
+    // and the AI cited no source, so this would be a bank-only song. Producer
+    // direction is "ニュース無しはマンネリ直行" -> hold instead of materializing.
+    // markSpawned is intentionally left untouched so the next cycle retries as
+    // soon as observation exists, rather than waiting a full spawn interval.
+    if (
+      proposal.brief.creativeDecision?.degradedInputs?.includes("observation_null")
+      && !proposal.brief.sources?.length
+    ) {
+      heldForObservation = true;
+      return;
+    }
+    const voiceTop = await composeVoiceTopOnly("propose", root, undefined, [], { runId: proposal.candidateSongId }).catch(() => undefined);
+    const record = await appendSpawnProposal(root, spawnProposalRecordFromGenerated(proposal, voiceTop));
+    emitted = true;
+    if (!isPreGenerationApprovalEnabled()) {
+      await markSpawnProposalBuilding(root, record.proposalId);
+      await injectCommissionSong(root, proposal.brief);
+      await markSpawnProposalDone(root, record.proposalId);
+      await markSpawned(root);
+      return;
+    }
+    emitRuntimeEvent({
+      type: "song_spawn_proposed",
+      brief: proposal.brief,
+      reason: proposal.reason,
+      candidateSongId: proposal.candidateSongId,
+      voiceTop,
+      observationSummary: proposal.observationSummary,
+      timestamp: Date.now()
+    });
+  }).catch((error) => {
+    const reason = error instanceof Error ? error.message : String(error);
+    console.warn(`[artist-runtime] song spawn proposal failed: ${reason}`);
+  });
+  if (!emitted) {
+    return { emitted, skippedForFullQueue, heldForObservation };
+  }
+  if (!isPreGenerationApprovalEnabled()) {
+    return {
+      state: await readAutopilotRunState(root),
+      emitted,
+      skippedForFullQueue,
+      heldForObservation
+    };
+  }
+  if (options.preserveCurrentSongLane) {
+    return {
+      state: await writeStageState(root, existing, {
+        ...existing,
+        lastRunAt: nowIso()
+      }),
+      emitted,
+      skippedForFullQueue,
+      heldForObservation
+    };
+  }
+  return {
+    state: await writeStageState(root, existing, {
+      ...existing,
+      currentSongId: existing.currentSongId,
+      stage: existing.currentSongId ? existing.stage : "planning",
+      suspendedAt: "spawn_proposal_ready",
+      blockedReason: "spawn_proposal_ready",
+      lastError: undefined,
+      lastRunAt: nowIso()
+    }),
+    emitted,
+    skippedForFullQueue,
+    heldForObservation
+  };
+}
+
+async function isBuildingDraftSong(root: string, songId: string): Promise<boolean> {
+  return (await listBuildingSpawnProposals(root)).some((proposal) => proposal.proposalId === songId);
+}
+
+async function markBuildingDraftDone(root: string, songId: string): Promise<void> {
+  await markSpawnProposalDone(root, songId).catch((error) => {
+    const reason = error instanceof Error ? error.message : String(error);
+    if (!reason.startsWith("spawn_proposal_not_found:")) {
+      throw error;
+    }
+  });
+}
+
+async function importMockSunoGeneration(root: string, songId: string, state: AutopilotRunState, config: ArtistRuntimeConfig): Promise<void> {
+  const runId = `${state.runId ?? songId}-mock`.replace(/[^A-Za-z0-9_-]/g, "-");
+  await importSunoResults({
+    workspaceRoot: root,
+    songId,
+    runId,
+    urls: [
+      `mock://take/${songId}/${runId}/take-1`,
+      `mock://take/${songId}/${runId}/take-2`
+    ],
+    selectedTakeId: "take-1",
+    resultRefs: [],
+    config
+  });
+}
+
+export async function writeAutopilotRunState(root: string, state: AutopilotRunState): Promise<AutopilotRunState> {
+  return writeAutopilotState(root, state);
+}
+
+async function importPendingSunoGeneration(
+  root: string,
+  songId: string,
+  config: ArtistRuntimeConfig,
+  existing?: AutopilotRunState
+): Promise<{ imported: true } | { imported: false; reason?: string; pause?: true } | undefined> {
+  const connector = resolveSunoConnector(root, config);
+  const latestRun = await readLatestSunoRun(root, songId);
+  const workerStatus = await connector.status().catch(() => undefined);
+  const hasAcceptedRun = latestRun?.status === "accepted";
+  if (!hasAcceptedRun && workerStatus?.state !== "generating") {
+    return undefined;
+  }
+
+  // Prefer the song's own accepted run id. This import is scoped to one songId,
+  // but worker.currentRunId is global: once the lane advances to the next song
+  // while this song's takes are still pending, falling back to worker.currentRunId
+  // mismatches latestRun (urls=[]) and wedges on "waiting for Suno result import"
+  // forever (cross-song attribution wedge).
+  const runId = hasAcceptedRun && latestRun?.runId
+    ? latestRun.runId
+    : workerStatus?.currentRunId ?? latestRun?.runId;
+  if (!runId) {
+    return { imported: false, reason: "suno_import_missing_run_id" };
+  }
+
+  const urls = latestRun?.runId === runId ? latestRun.urls : [];
+  if (hasAcceptedRun) {
+    const reason = `suno_lifecycle_contract_pending_import:${runId}`;
+    console.error(`[artist-runtime] ${reason}`);
+    emitRuntimeEvent({
+      type: "error",
+      source: "suno_lifecycle_contract",
+      reason,
+      songId,
+      timestamp: Date.now()
+    });
+  }
+  if (urls.length === 0) {
+    if (hasAcceptedRun && isStaleAcceptedSunoRunWithoutUrls(latestRun?.createdAt)) {
+      if (!existing || shouldEmitOperationalEpisode(existing, SUNO_IMPORT_NO_URLS_BLOCKED_REASON)) {
+        emitRuntimeEvent({
+          type: "suno_generate_retry",
+          songId,
+          reason: SUNO_IMPORT_NO_URLS_REASON,
+          retryCount: existing ? existing.retryCount + 1 : 1,
+          timestamp: Date.now()
+        });
+      }
+      return { imported: false, reason: SUNO_IMPORT_NO_URLS_BLOCKED_REASON };
+    }
+    return { imported: false, reason: "waiting for Suno result import" };
+  }
+
+  const existingCollisions = await findTakeAttributionCollisions(root, songId, urls);
+  if (existingCollisions.length > 0) {
+    await appendTakeAttributionAudit(root, "take_attribution_collision_blocked", { songId, runId, collisions: existingCollisions });
+    emitRuntimeEvent({
+      type: "error",
+      source: "take_attribution",
+      reason: "take_attribution_collision_blocked",
+      songId,
+      timestamp: Date.now()
+    });
+    return { imported: false, reason: "take_attribution_collision_blocked", pause: true };
+  }
+
+  // Reference-only import: the operator's Suno download quota is limited, so the
+  // accepted take URLs become the song's assets as-is. No connector download, no
+  // feed reconciliation, no local audio files; the lifecycle continues exactly as
+  // after a downloaded import.
+  if (config.music.suno.audioImport === "skip") {
+    await importSunoResults({
+      workspaceRoot: root,
+      songId,
+      runId,
+      urls,
+      resultRefs: [],
+      config
+    });
+    return { imported: true };
+  }
+
+  const result = await connector.importResults({ runId, urls });
+  if (result.unmatchedUrls && result.unmatchedUrls.length > 0) {
+    // Downloads unrelated to this run were excluded from import. Silent warning
+    // event only (never a hard stop / Telegram push) so the audit trail records
+    // the drop without notifying the operator.
+    emitRuntimeEvent({
+      type: "error",
+      source: "suno_take_reconcile",
+      reason: `unmatched_download:${result.unmatchedUrls.length}`,
+      songId,
+      timestamp: Date.now()
+    });
+  }
+  if (result.urls.length === 0) {
+    return { imported: false, reason: result.reason ?? "waiting for Suno result import" };
+  }
+  const dryRunPaths = findDryRunImportPaths(result.paths ?? []);
+  if (dryRunPaths.length > 0) {
+    await appendTakeAttributionAudit(root, "dryrun_take_import_blocked", { songId, runId, paths: dryRunPaths });
+    emitRuntimeEvent({
+      type: "error",
+      source: "take_attribution",
+      reason: "dryrun_take_import_blocked",
+      songId,
+      timestamp: Date.now()
+    });
+    return { imported: false, reason: "dryrun_take_import_blocked", pause: true };
+  }
+  const collisions = await findTakeAttributionCollisions(root, songId, result.urls);
+  if (collisions.length > 0) {
+    await appendTakeAttributionAudit(root, "take_attribution_collision_blocked", { songId, runId, collisions });
+    emitRuntimeEvent({
+      type: "error",
+      source: "take_attribution",
+      reason: "take_attribution_collision_blocked",
+      songId,
+      timestamp: Date.now()
+    });
+    return { imported: false, reason: "take_attribution_collision_blocked", pause: true };
+  }
+
+  await importSunoResults({
+    workspaceRoot: root,
+    songId,
+    runId: result.runId ?? runId,
+    urls: result.urls,
+    selectedTakeId: result.selectedTakeId,
+    resultRefs: result.paths ?? [],
+    metadata: result.metadata,
+    config
+  });
+  return { imported: true };
+}
+
+// While an accepted run has only one of its two take URLs, hold delivery so the
+// suno_take_url_ready notification never fires with a single URL when the second is (or
+// will imminently be) available. This runs before the audio import-first path because a
+// suno_running song with one captured URL would otherwise try to import audio and never
+// surface the URL-ready notification. Once the bounded fallback window elapses, the single
+// URL is delivered rather than never delivering (fail-open).
+const AWAITING_SECOND_SUNO_TAKE_URL_REASON = "awaiting_second_suno_take_url";
+
+async function holdSingleSunoTakeUrl(
+  root: string,
+  existing: AutopilotRunState,
+  baseState: AutopilotRunState,
+  song: SongState
+): Promise<AutopilotRunState | undefined> {
+  if (song.status === "suno_take_url_ready") {
+    return undefined;
+  }
+  const latestRun = await readLatestSunoRun(root, song.songId).catch(() => undefined);
+  if (latestRun?.status !== "accepted") {
+    return undefined;
+  }
+  // Only the exactly-one-take-URL case is handled here. Zero URLs falls through to the
+  // audio import-first recovery, and >= expected URLs is delivered by the normal paths.
+  if (collectSunoTakeUrls(latestRun.urls).length !== 1) {
+    return undefined;
+  }
+  const readiness = evaluateSunoTakeUrlReadiness(latestRun.urls, Date.parse(latestRun.createdAt), Date.now());
+  if (!readiness.emit) {
+    return writeStageState(root, existing, {
+      ...baseState,
+      currentSongId: song.songId,
+      stage: "suno_generation",
+      blockedReason: AWAITING_SECOND_SUNO_TAKE_URL_REASON,
+      lastError: undefined,
+      lastSuccessfulStage: existing.lastSuccessfulStage,
+      cycleCount: existing.cycleCount + 1
+    });
+  }
+  return deliverSunoTakeUrlReady(root, existing, baseState, song, latestRun, readiness);
+}
+
+async function recoverAcceptedRunUrlReady(
+  root: string,
+  existing: AutopilotRunState,
+  baseState: AutopilotRunState,
+  song: SongState
+): Promise<AutopilotRunState | undefined> {
+  if (song.status === "suno_take_url_ready") {
+    return undefined;
+  }
+  const latestRun = await readLatestSunoRun(root, song.songId).catch(() => undefined);
+  if (latestRun?.status !== "accepted") {
+    return undefined;
+  }
+  const readiness = evaluateSunoTakeUrlReadiness(latestRun.urls, Date.parse(latestRun.createdAt), Date.now());
+  if (!readiness.emit) {
+    return undefined;
+  }
+  return deliverSunoTakeUrlReady(root, existing, baseState, song, latestRun, readiness);
+}
+
+async function deliverSunoTakeUrlReady(
+  root: string,
+  existing: AutopilotRunState,
+  baseState: AutopilotRunState,
+  song: SongState,
+  latestRun: SunoRunRecord,
+  readiness: SunoTakeUrlReadiness
+): Promise<AutopilotRunState> {
+  const collisions = await findTakeAttributionCollisions(root, song.songId, latestRun.urls);
+  if (collisions.length > 0) {
+    await appendTakeAttributionAudit(root, "take_attribution_collision_blocked", {
+      songId: song.songId,
+      runId: latestRun.runId,
+      collisions
+    });
+    emitRuntimeEvent({
+      type: "error",
+      source: "take_attribution",
+      reason: "take_attribution_collision_blocked",
+      songId: song.songId,
+      timestamp: Date.now()
+    });
+    return writeStageState(root, existing, {
+      ...baseState,
+      currentSongId: song.songId,
+      paused: true,
+      stage: "paused",
+      blockedReason: "take_attribution_collision_blocked",
+      lastError: "take_attribution_collision_blocked",
+      lastSuccessfulStage: existing.lastSuccessfulStage,
+      cycleCount: existing.cycleCount + 1
+    });
+  }
+  const selectedTakeId = takeIdFromSunoUrl(readiness.urls[0]);
+  await updateSongState(root, song.songId, {
+    status: "suno_take_url_ready",
+    reason: "Suno take URL ready; recovered stale generation lane",
+    selectedTakeId,
+    appendPublicLinks: latestRun.urls
+  });
+  emitRuntimeEvent({
+    type: "suno_take_url_ready",
+    songId: song.songId,
+    runId: latestRun.runId,
+    urls: readiness.urls,
+    selectedTakeId,
+    reason: readiness.fallback ? SINGLE_TAKE_URL_FALLBACK_REASON : undefined,
+    timestamp: Date.now()
+  });
+  await markBuildingDraftDone(root, song.songId);
+  return writeStageState(root, existing, {
+    ...releaseAfterSunoTakeUrlReady(baseState),
+    cycleCount: existing.cycleCount + 1
+  });
+}
+
+// Songs at "suno_take_url_ready" are excluded from currentSong() selection, so once
+// the lane advances to the next song their accepted Suno run would never be imported
+// by the per-current-song stage machine. Sweep them each cycle and import by their
+// own songId so pending takes always complete regardless of the current lane.
+async function sweepPendingTakeImports(root: string, config: ArtistRuntimeConfig): Promise<void> {
+  const songs = await listSongStates(root).catch(() => [] as SongState[]);
+  for (const song of songs) {
+    if (song.status !== "suno_take_url_ready") {
+      continue;
+    }
+    const result = await importPendingSunoGeneration(root, song.songId, config).catch((error) => {
+      emitRuntimeEvent({
+        type: "error",
+        source: "suno_pending_import_sweep",
+        reason: error instanceof Error ? error.message : String(error),
+        songId: song.songId,
+        timestamp: Date.now()
+      });
+      return undefined;
+    });
+    if (result && !result.imported && result.reason) {
+      if (isSunoFeedTargetMissingReason(result.reason)) {
+        const latestRun = await readLatestSunoRun(root, song.songId).catch(() => undefined);
+        if (isPastSunoImportMissingGrace(latestRun?.createdAt)) {
+          await parkSongForMissingFeedTakes(root, song.songId, latestRun?.runId);
+          continue;
+        }
+      }
+      emitRuntimeEvent({
+        type: "error",
+        source: "suno_pending_import_sweep",
+        reason: result.reason,
+        songId: song.songId,
+        timestamp: Date.now()
+      });
+    }
+  }
+}
+
+export async function readAutopilotRunState(root: string): Promise<AutopilotRunState> {
+  return readAutopilotState(root);
+}
+
+export async function pauseAutopilot(root: string, reason = "paused by operator"): Promise<AutopilotRunState> {
+  return new AutopilotControlService().pause(root, reason);
+}
+
+export async function resumeAutopilot(root: string): Promise<AutopilotRunState> {
+  return new AutopilotControlService().resume(root);
+}
+
+function nextActionForStage(stage: AutopilotStage): string {
+  switch (stage) {
+    case "planning":
+      return "decide_next_song";
+    case "prompt_pack":
+      return "create_or_validate_prompt_pack";
+    case "suno_generation":
+      return "create_or_wait_for_suno_run";
+    case "take_selection":
+      return "select_best_take";
+    case "asset_generation":
+      return "prepare_social_assets";
+    case "publishing":
+      return "publish_distribution_set";
+    case "completed":
+      return "idle";
+    case "paused":
+      return "await_manual_resume";
+    case "failed_closed":
+      return "surface_alert";
+    default:
+      return "idle";
+  }
+}
+
+function nextActionForState(state: AutopilotRunState, stage: AutopilotStage): string {
+  if (state.paused) {
+    if (state.suspendedAt === PRODUCER_REVIEW_SUSPENDED_AT) {
+      return "await_producer_review";
+    }
+    return "await_manual_resume";
+  }
+  return nextActionForStage(stage);
+}
+
+export function stageFromSong(song?: SongState): AutopilotStage {
+  if (!song) {
+    return "planning";
+  }
+  switch (song.status) {
+    case "idea":
+    case "brief":
+    case "lyrics":
+      return "prompt_pack";
+    case "suno_prompt_pack":
+    case "suno_running":
+    case "suno_take_url_ready":
+    case "takes_imported":
+      return song.status === "takes_imported" ? "take_selection" : "suno_generation";
+    case "take_selected":
+      return "asset_generation";
+    case "social_assets":
+    case "publishing":
+      return "publishing";
+    case "published":
+      return "completed";
+    case "archived":
+    case "discarded":
+    case "failed":
+      return "failed_closed";
+    default:
+      return "planning";
+  }
+}
+
+async function currentSong(root: string, preferredSongId?: string): Promise<SongState | undefined> {
+  const songs = await listSongStates(root);
+  const preferred = preferredSongId ? songs.find((song) => song.songId === preferredSongId) : undefined;
+  if (preferred && !["scheduled", "published", "archived", "discarded", "failed", "suno_take_url_ready"].includes(preferred.status)) {
+    return preferred;
+  }
+  return songs.find((song) => !["scheduled", "published", "archived", "discarded", "failed", "take_selected", "suno_take_url_ready"].includes(song.status));
+}
+
+async function ensureLyrics(root: string, song: SongState, config?: Partial<ArtistRuntimeConfig>, correctionGuidance?: string[]): Promise<SongState> {
+  const hasGuidance = Boolean(correctionGuidance && correctionGuidance.length > 0);
+  // Corrective re-draft must run even when lyrics already exist, so the offending
+  // kanji/numbers can be opened or replaced. Without guidance we keep the cheap
+  // early return for songs that are already past the lyrics stage.
+  if (!hasGuidance && (song.status === "lyrics" || song.status === "suno_prompt_pack" || song.status === "suno_running" || song.status === "suno_take_url_ready" || song.status === "takes_imported" || song.status === "take_selected" || song.status === "social_assets" || song.status === "published")) {
+    return song;
+  }
+  await draftLyrics({
+    workspaceRoot: root,
+    songId: song.songId,
+    config,
+    aiReviewProvider: config?.aiReview?.provider,
+    correctionGuidance,
+    deferDegradedNotification: true
+  });
+  return readSongState(root, song.songId);
+}
+
+async function createPromptPackForSong(root: string, song: SongState, config?: Partial<ArtistRuntimeConfig>, weirdnessOverride?: number, correctionGuidance?: string[]): Promise<SongState> {
+  const readySong = await ensureLyrics(root, song, config, correctionGuidance);
+  const lyricsVersion = readySong.lyricsVersion ?? 1;
+  const lyricsPath = join(root, "songs", readySong.songId, "lyrics", `lyrics.v${lyricsVersion}.md`);
+  const [lyricsText, briefText, moodHint] = await Promise.all([
+    readFile(lyricsPath, "utf8").catch(() => ""),
+    readFile(join(root, "songs", readySong.songId, "brief.md"), "utf8").catch(() => ""),
+    readFile(join(root, "songs", readySong.songId, "mood-hint.txt"), "utf8").catch(() => "")
+  ]);
+  // Read the single dopagaki decision from the persisted plan. Only legacy songs
+  // without a plan fall back to recomputing it here.
+  const plan = await readSongPlan(root, readySong.songId);
+  const dopagakiVariation = plan
+    ? {
+        active: plan.dopagaki.active,
+        intensity: (plan.dopagaki.active ? "overt" : "off") as "overt" | "off",
+        score: 0,
+        threshold: plan.dopagaki.threshold,
+        variationSeed: plan.dopagaki.variationSeed
+      }
+    : decideDopagakiVariation({
+        songId: readySong.songId,
+        date: readySong.createdAt,
+        briefText
+      });
+  const observationPath = briefText.match(/^- Path:\s*(.+)$/m)?.[1]?.trim();
+  await createAndPersistSunoPromptPack({
+    workspaceRoot: root,
+    songId: readySong.songId,
+    songTitle: readySong.title,
+    artistReason: readySong.lastReason ?? "autopilot prompt pack",
+    lyricsText: lyricsText || briefText || readySong.title,
+    knowledgePackVersion: "local-dev",
+    configSnapshot: config,
+    creativeDecision: plan ?? undefined,
+    moodHint: appendDopagakiMoodHint(moodHint.trim() || undefined, dopagakiVariation),
+    styleVariationSeed: dopagakiVariation.variationSeed,
+    weirdnessOverride,
+    observationPath: observationPath && observationPath !== "(runtime observation)" ? isAbsolute(observationPath) ? observationPath : join(root, observationPath) : undefined,
+    aiReviewProvider: config?.aiReview?.provider,
+    // Correctable content lint stays inside the autopilot retry loop. Only an
+    // exhausted/non-content failure is surfaced to the producer.
+    deferDegradedNotification: true
+  });
+  return readSongState(root, readySong.songId);
+}
+
+// Pull the offending kanji/number tokens out of a prompt-pack validation failure
+// so the artist can be told exactly what to open to hiragana or rewrite. Returns
+// undefined when the failure is not a lyrics-content class we can guide (style
+// cap, missing fields, lyrics-box overflow), which routes straight to parking.
+// Above this many offending tokens, enumerating each one is fragile: only one
+// bounded corrective re-drafts are allowed, and the model missing a single token in a long
+// list can still re-fail validation and park the song. Dense fast-band lyrics regularly
+// cross this, so switch to a blanket all-hiragana rewrite instead of a per-token
+// list. Expanding the deterministic kana dictionary is deliberately not the fix.
+const BLANKET_HIRAGANA_REWRITE_THRESHOLD = 8;
+
+export function correctionGuidanceFromDegraded(reason: string): string[] | undefined {
+  const short = reason.match(/lyrics_too_short_for_duration_plan: bare lyric body (\d+)\/(\d+), lines (\d+)\/(\d+)/);
+  if (short) {
+    return [
+      `Suno用の歌詞本文が短い。現在${short[1]}文字・${short[3]}行なので、意味と構成を保ちながら最低${short[2]}文字・${short[4]}行以上へ書き直すこと。薄い反復で水増しせず、具体像と展開を足す。`
+    ];
+  }
+  if (reason.includes("lyrics_too_long_for_suno_box")) {
+    return ["Sunoの歌詞欄に収まるよう、意味・フック・展開を保ちながら本文を短く書き直すこと。"];
+  }
+  const kanji = [...reason.matchAll(/residual_kanji:([^:]+):line_(\d+)/g)];
+  const numbers = [...reason.matchAll(/ascii_number:([^:]+):line_(\d+)/g)];
+  if (kanji.length === 0 && numbers.length === 0) {
+    return undefined;
+  }
+  if (kanji.length + numbers.length >= BLANKET_HIRAGANA_REWRITE_THRESHOLD) {
+    return [
+      "この曲の Suno 登録用歌詞本文には漢字や数字が多く残っている。個別に直すのではなく、歌詞本文（セクションタグ内の各行）を、漢字を一切使わず、数字もひらがなの読みにして、全文をひらがなで書き直すこと（カタカナと英語はそのまま、意味・行数・歌いやすさは保つ。1文字でも漢字が残ると不合格）。"
+    ];
+  }
+  // Each corrective re-draft should resolve every reported token. Leaving known
+  // tokens behind wastes the bounded retry budget and can still park the song.
+  const notes: string[] = [];
+  if (kanji.length > 0) {
+    const list = kanji.map((match) => `${match[1]}(line ${match[2]})`).join(", ");
+    notes.push(`次の漢字を、この1回の書き直しですべてひらがなに開くか、同じ意味の別語に置き換えてください（1文字でも残すと不合格。意味と歌いやすさは保つ）: ${list}`);
+  }
+  if (numbers.length > 0) {
+    const list = numbers.map((match) => `${match[1]}(line ${match[2]})`).join(", ");
+    notes.push(`次の数字を、この1回の書き直しですべてひらがなの読みで書いてください（例: 145 -> ひゃくよんじゅうご）: ${list}`);
+  }
+  return notes;
+}
+
+// Park a song that stays invalid after the bounded corrective re-drafts.
+// Instead of pausing the whole autopilot (head-of-line block), mark the song as a
+// terminal needs-operator state so the ticker advances to the next song, alert the
+// operator once, and preserve the song data for a manual retry. This is a
+// per-song fail-close; system-level hard stops (credential/captcha/payment) keep
+// pausing the whole pilot in their own stages.
+export async function parkSongForOperator(
+  root: string,
+  existing: AutopilotRunState,
+  baseState: AutopilotRunState,
+  songId: string,
+  degradedReason: string,
+  notifyProducer = true
+): Promise<AutopilotRunState> {
+  const parkedReason = `parked_needs_operator: ${degradedReason}`;
+  await updateSongState(root, songId, {
+    status: "failed",
+    degradedLyrics: true,
+    reason: parkedReason
+  });
+  if (notifyProducer) {
+    emitRuntimeEvent({
+      type: "lyrics_generation_degraded",
+      songId,
+      reason: parkedReason,
+      detail: `parked_needs_operator:${songId}`,
+      repairNotes: [degradedReason],
+      timestamp: Date.now()
+    });
+  }
+  return writeStageState(root, existing, {
+    ...baseState,
+    currentSongId: undefined,
+    stage: "planning",
+    blockedReason: undefined,
+    lastError: undefined,
+    suspendedAt: undefined,
+    cycleCount: existing.cycleCount + 1
+  });
+}
+
+function firstLyricsExcerpt(value: string): string {
+  const lines = value
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter((line) => line && !line.startsWith("#") && !/^```/.test(line))
+    .slice(0, 5);
+  return lines.join("\n") || "(歌詞 excerpt なし)";
+}
+
+async function promptPackReadySummary(root: string, song: SongState): Promise<{ lyricsExcerpt: string; mood: string; tempo: string; styleNotes: string }> {
+  const lyricsVersion = song.lyricsVersion ?? 1;
+  const [lyricsText, moodHint, styleText, briefText] = await Promise.all([
+    readFile(join(root, "songs", song.songId, "lyrics", `lyrics.v${lyricsVersion}.md`), "utf8").catch(() => ""),
+    readFile(join(root, "songs", song.songId, "mood-hint.txt"), "utf8").catch(() => ""),
+    readFile(join(root, "songs", song.songId, "suno", "style.md"), "utf8").catch(() => ""),
+    readFile(join(root, "songs", song.songId, "brief.md"), "utf8").catch(() => "")
+  ]);
+  const source = `${styleText}\n${briefText}`;
+  const tempo = source.match(/\b\d{2,3}\s*BPM\b/i)?.[0] ?? "unspecified";
+  const mood = moodHint.trim() || briefText.match(/^- Mood:\s*(.+)$/m)?.[1]?.trim() || "unspecified";
+  const styleNotes = styleText.replace(/\s+/g, " ").trim().slice(0, 180) || briefText.match(/^- Style notes:\s*(.+)$/m)?.[1]?.trim() || "unspecified";
+  return {
+    lyricsExcerpt: firstLyricsExcerpt(lyricsText),
+    mood,
+    tempo,
+    styleNotes
+  };
+}
+
+async function writeCompletedStage(
+  root: string,
+  existing: AutopilotRunState,
+  baseState: AutopilotRunState,
+  songId?: string,
+  blockedReason?: string | null
+): Promise<AutopilotRunState> {
+  try {
+    if (songId) {
+      await updateSongState(root, songId, { status: "published" });
+    }
+    return writeStageState(root, existing, {
+      ...baseState,
+      currentSongId: songId,
+      stage: "completed",
+      blockedReason,
+      lastError: undefined,
+      lastSuccessfulStage: "completed",
+      retryCount: 0,
+      cycleCount: existing.cycleCount + 1
+    });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    emitRuntimeEvent({ type: "error", source: "song_completion", reason: message, songId, timestamp: Date.now() });
+    return writeStageState(root, existing, {
+      ...baseState,
+      currentSongId: songId,
+      stage: "paused",
+      paused: true,
+      pausedReason: "song_completion_failed",
+      blockedReason: `song_completion_failed: ${message}`,
+      lastError: message,
+      retryCount: existing.retryCount + 1,
+      cycleCount: existing.cycleCount + 1
+    });
+  }
+}
+
+function planningStalled(existing: AutopilotRunState, timeoutDays: number): boolean {
+  const anchor = existing.lastRunAt ?? existing.updatedAt;
+  if (!anchor) {
+    return false;
+  }
+  return Date.now() - new Date(anchor).getTime() >= timeoutDays * 24 * 60 * 60 * 1000;
+}
+
+async function handlePlanningStage(
+  root: string,
+  song: SongState,
+  existing: AutopilotRunState,
+  baseState: AutopilotRunState,
+  config: ArtistRuntimeConfig
+): Promise<AutopilotRunState | undefined> {
+  if (planningStalled(existing, config.autopilot.planningTimeoutDays)) {
+    return writeStageState(root, existing, {
+      ...baseState,
+      currentSongId: song.songId,
+      stage: "paused",
+      paused: true,
+      pausedReason: `planning_stalled_${config.autopilot.planningTimeoutDays}days`,
+      blockedReason: `planning_stalled_${config.autopilot.planningTimeoutDays}days`,
+      lastError: undefined,
+      cycleCount: existing.cycleCount + 1
+    });
+  }
+  const validation = await validatePlanningFiles(root, song.songId, {
+    aiReviewProvider: config.aiReview.provider
+  });
+  if (validation.complete) {
+    if (existing.suspendedAt === "planning_skeleton_pending") {
+      return writeStageState(root, existing, {
+        ...baseState,
+        currentSongId: song.songId,
+        stage: existing.stage,
+        suspendedAt: null,
+        blockedReason: undefined,
+        lastError: undefined,
+        cycleCount: existing.cycleCount
+      });
+    }
+    return undefined;
+  }
+  if (validation.briefAbsent) {
+    return writeStageState(root, existing, {
+      ...baseState,
+      currentSongId: undefined,
+      stage: "planning",
+      suspendedAt: null,
+      blockedReason: undefined,
+      lastError: `song_dir_missing:${song.songId}`,
+      cycleCount: existing.cycleCount + 1
+    });
+  }
+  if (!validation.proposal) {
+    return undefined;
+  }
+  if (config.telegram.enabled && isPreGenerationApprovalEnabled()) {
+    if (existing.suspendedAt !== "planning_skeleton_pending") {
+      emitRuntimeEvent({
+        type: "planning_skeleton_incomplete",
+        songId: song.songId,
+        missing: validation.missing,
+        proposal: validation.proposal,
+        timestamp: Date.now()
+      });
+    }
+    return writeStageState(root, existing, {
+      ...baseState,
+      currentSongId: song.songId,
+      stage: "planning",
+      suspendedAt: "planning_skeleton_pending",
+      blockedReason: `planning_skeleton_incomplete:${validation.missing.join(",")}`,
+      lastError: undefined,
+      cycleCount: existing.cycleCount + 1
+    });
+  }
+  await applyChangeSet(root, validation.proposal);
+  return undefined;
+}
+
+export async function handleSunoGenerateFailure(
+  root: string,
+  existing: AutopilotRunState,
+  baseState: AutopilotRunState,
+  song: SongState,
+  reason: string
+): Promise<AutopilotRunState> {
+  const retryCount = existing.retryCount + 1;
+  const degraded = isDegradedLyricsBoxReason(reason);
+  emitRuntimeEvent({
+    type: "suno_create_failed",
+    songId: song.songId,
+    reason,
+    retryCount,
+    timestamp: Date.now()
+  });
+  if (isCliTerminalBlockReason(reason)) {
+    // Non-self-healing CLI block: hard-stop on the first failure instead of burning
+    // three retries that mislabel it as transient. Setting hardStopReason makes
+    // composeDraftBoxNextAction short-circuit to the actionable hard-stop line and
+    // the suno_hard_stop event routes login/captcha to the re-login/CAPTCHA copy.
+    emitRuntimeEvent({
+      type: "suno_hard_stop",
+      songId: song.songId,
+      reason,
+      timestamp: Date.now()
+    });
+    return writeStageState(root, existing, {
+      ...baseState,
+      currentSongId: song.songId,
+      stage: "failed_closed",
+      hardStopReason: reason,
+      blockedReason: reason,
+      lastError: reason,
+      retryCount
+    });
+  }
+  if (reason === HUMAN_ASSIST_TIMEOUT_REASON) {
+    // The producer did not press Create within the human-assist window. This is NOT a
+    // hard stop: the browser was already closed by the state machine, so return the song
+    // to the generation pipeline to re-attempt on a later cycle (throttled by the daily
+    // generation limit / min-interval gate). retryCount resets to 0 so the timeout never
+    // accumulates toward the 3-strike pause and the producer keeps getting one manual-Create
+    // alert per cycle (the alert fires once per attempt inside the connector).
+    emitRuntimeEvent({
+      type: "suno_generate_retry",
+      songId: song.songId,
+      reason,
+      retryCount: 0,
+      timestamp: Date.now()
+    });
+    return writeStageState(root, existing, {
+      ...baseState,
+      currentSongId: song.songId,
+      stage: "suno_generation",
+      paused: false,
+      blockedReason: `suno_generate_retry:${reason}`,
+      lastError: reason,
+      lastRunAt: new Date().toISOString(),
+      retryCount: 0,
+      cycleCount: existing.cycleCount + 1
+    });
+  }
+  if (reason === HUMAN_ASSIST_FEED_UNAVAILABLE_REASON) {
+    // The feed could never confirm whether the manual/machine submit produced real
+    // takes (expired/unreachable suno-cli session). Unlike HUMAN_ASSIST_TIMEOUT_REASON
+    // this must NOT re-enter suno_generation: a genuine take may already exist on
+    // Suno, so a blind re-create risks spending real credit for a duplicate
+    // generation of a song that is already done. Park on the FIRST occurrence (not
+    // the generic 3-strike below) using the shared parked_needs_operator: convention
+    // so retry-prompt-pack / attach-takes / abandon remain the operator's exits, and
+    // notify with take-specific guidance instead of the generic stopped-report text.
+    // Not a hard stop: this is an infra/network condition, not the login/captcha/
+    // payment class that composeDraftBoxNextAction and suno_hard_stop are reserved for.
+    const parkedReason = `parked_needs_operator: ${reason}`;
+    emitRuntimeEvent({
+      type: "suno_generate_failed",
+      songId: song.songId,
+      reason: parkedReason,
+      retryCount,
+      timestamp: Date.now()
+    });
+    await updateSongState(root, song.songId, {
+      status: "failed",
+      reason: parkedReason
+    });
+    return writeStageState(root, existing, {
+      ...baseState,
+      currentSongId: undefined,
+      stage: "planning",
+      paused: false,
+      pausedReason: undefined,
+      blockedReason: undefined,
+      lastError: undefined,
+      retryCount: 0,
+      suspendedAt: undefined,
+      cycleCount: existing.cycleCount + 1
+    });
+  }
+  if (degraded && retryCount < SUNO_LYRICS_BOX_DEGRADED_MAX_ATTEMPTS) {
+    // Transient Suno UI degradation: stay un-paused and self-heal on later ticks. The
+    // payload is valid for the real box; only Suno's momentary 1250 cap blocked it.
+    emitRuntimeEvent({
+      type: "suno_generate_retry",
+      songId: song.songId,
+      reason,
+      retryCount,
+      timestamp: Date.now()
+    });
+    return writeStageState(root, existing, {
+      ...baseState,
+      currentSongId: song.songId,
+      stage: "suno_generation",
+      paused: false,
+      blockedReason: `suno_generate_retry:${reason}`,
+      lastError: reason,
+      lastRunAt: new Date().toISOString(),
+      retryCount,
+      cycleCount: existing.cycleCount + 1
+    });
+  }
+  if (degraded) {
+    // Self-heal window exhausted: surface to the producer so the operator can intervene.
+    emitRuntimeEvent({
+      type: "suno_generate_failed",
+      songId: song.songId,
+      reason,
+      retryCount,
+      timestamp: Date.now()
+    });
+    return writeStageState(root, existing, {
+      ...baseState,
+      currentSongId: song.songId,
+      stage: "paused",
+      paused: true,
+      pausedReason: `suno_lyrics_box_degraded_unrecovered:${reason}`,
+      blockedReason: `suno_lyrics_box_degraded_unrecovered:${reason}`,
+      lastError: reason,
+      retryCount,
+      cycleCount: existing.cycleCount + 1
+    });
+  }
+  if (retryCount >= 3) {
+    const parkedReason = `parked_needs_operator: ${reason}`;
+    emitRuntimeEvent({
+      type: "suno_generate_failed",
+      songId: song.songId,
+      reason: parkedReason,
+      retryCount,
+      timestamp: Date.now()
+    });
+    // A transient Suno failure belongs to this song, not to the whole artist.
+    // Preserve the failed song for the existing operator retry route, then free the
+    // planning lane so fresh observations can produce the next work. Credential,
+    // captcha, and payment failures already returned through the terminal branch above.
+    await updateSongState(root, song.songId, {
+      status: "failed",
+      reason: parkedReason
+    });
+    return writeStageState(root, existing, {
+      ...baseState,
+      currentSongId: undefined,
+      stage: "planning",
+      paused: false,
+      pausedReason: undefined,
+      blockedReason: undefined,
+      lastError: undefined,
+      retryCount: 0,
+      suspendedAt: undefined,
+      cycleCount: existing.cycleCount + 1
+    });
+  }
+  emitRuntimeEvent({
+    type: "suno_generate_retry",
+    songId: song.songId,
+    reason,
+    retryCount,
+    timestamp: Date.now()
+  });
+  return writeStageState(root, existing, {
+    ...baseState,
+    currentSongId: song.songId,
+    stage: "suno_generation",
+    blockedReason: `suno_generate_retry:${reason}`,
+    lastError: reason,
+    retryCount,
+    cycleCount: existing.cycleCount + 1
+  });
+}
+
+async function choosePublishPlatform(config: ArtistRuntimeConfig): Promise<"x" | "instagram" | "tiktok"> {
+  if (config.distribution.platforms.x.enabled) {
+    return "x";
+  }
+  if (config.distribution.platforms.instagram.enabled) {
+    return "instagram";
+  }
+  if (config.distribution.platforms.tiktok.enabled) {
+    return "tiktok";
+  }
+  return "x";
+}
+
+export class ArtistAutopilotService {
+  planNextStage(input: AutopilotTickInput): AutopilotStage {
+    if (!input.enabled) {
+      return "idle";
+    }
+    if (input.paused) {
+      return "paused";
+    }
+    if (input.hardStop) {
+      return "failed_closed";
+    }
+    if (!input.promptPackReady) {
+      return "prompt_pack";
+    }
+    if (!input.takeSelected) {
+      return "take_selection";
+    }
+    if (!input.assetsReady) {
+      return "asset_generation";
+    }
+    return "publishing";
+  }
+
+  async runCycle(input: RunAutopilotCycleInput): Promise<AutopilotRunState> {
+    await cleanupExpiredCallbacks(input.workspaceRoot).catch((error) => {
+      const reason = error instanceof Error ? error.message : String(error);
+      console.warn(`[artist-runtime] callback ledger cleanup failed: ${reason}`);
+    });
+    const resolvedConfig = await resolveRuntimeConfig(input.config, input.workspaceRoot);
+    const config = input.manualSeed
+      ? { ...resolvedConfig, autopilot: { ...resolvedConfig.autopilot, enabled: true } }
+      : resolvedConfig;
+    const artistMind = await readArtistMind(input.workspaceRoot);
+    const newsObservation = await collectNewsObservations(input.workspaceRoot, {
+      personaText: `${artistMind.artist}\n${artistMind.socialVoice}`,
+      config,
+      forceRefresh: input.forceObservationRefresh
+    }).catch((error) => {
+      const reason = error instanceof Error ? error.message : String(error);
+      emitRuntimeEvent({ type: "error", source: "news_observation", reason, timestamp: Date.now() });
+      return { status: "skipped" as const, path: "", entries: [], reason };
+    });
+    const personaText = `${artistMind.artist}\n${artistMind.socialVoice}`;
+    const reactionQuery = input.manualSeed ? { queries: [] } : buildNewsReactionQueries(newsObservation.entries, { personaText });
+    const cycleObservation = await collectObservations(input.workspaceRoot, {
+      personaText,
+      queries: input.manualSeed?.hint ? undefined : reactionQuery.queries.length > 0 ? reactionQuery.queries : ["music OR society OR culture"],
+      reactionSeed: reactionQuery.seed,
+      manualSeed: input.manualSeed,
+      forceRefresh: input.forceObservationRefresh,
+      runner: input.observationRunner
+    }).catch((error) => {
+      const reason = error instanceof Error ? error.message : String(error);
+      emitRuntimeEvent({ type: "error", source: "x_observation", reason, timestamp: Date.now() });
+      return { status: "skipped" as const, path: join(input.workspaceRoot, "observations"), observations: "", reason };
+    });
+    if (cycleObservation.status === "cooldown") {
+      emitRuntimeEvent({
+        type: "bird_cooldown_triggered",
+        reason: cycleObservation.reason ?? "bird cool-down active",
+        cooldownUntil: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(),
+        timestamp: Date.now()
+      });
+    }
+    if (isArtistPulseConfigured(config)) {
+      await shouldPulse(input.workspaceRoot, { minIntervalHours: getArtistPulseIntervalHours(process.env, config) }).then(async (allowed) => {
+        if (!allowed) {
+          return;
+        }
+        const draft = await composeDailyVoice(input.workspaceRoot, { aiReviewProvider: config.aiReview.provider });
+        emitRuntimeEvent({
+          type: "artist_pulse_drafted",
+          ...draft,
+          timestamp: Date.now()
+        });
+        await markPulsed(input.workspaceRoot, new Date(draft.createdAt));
+      }).catch((error) => {
+        const reason = error instanceof Error ? error.message : String(error);
+        console.warn(`[artist-runtime] artist pulse failed: ${reason}`);
+      });
+    }
+    const existing = await readAutopilotRunState(input.workspaceRoot);
+    const currentLaneSong = await currentSong(input.workspaceRoot, existing.currentSongId);
+    if (
+      currentLaneSong
+      && (
+        existing.suspendedAt === PRODUCER_REVIEW_SUSPENDED_AT
+        || currentLaneSong.status === "take_selected"
+      )
+    ) {
+      return writeStageState(input.workspaceRoot, existing, {
+        ...releaseAfterTakeCompletion({
+          ...existing,
+          currentSongId: currentLaneSong.songId,
+          stage: "take_selection",
+          lastRunAt: nowIso()
+        }),
+        cycleCount: existing.cycleCount + 1
+      });
+    }
+    if (!input.manualSeed && isSongSpawnConfigured(config)) {
+      const pendingSong = currentLaneSong;
+      if (
+        pendingSong
+        && isPrePromptSongWithoutApprovalGate(pendingSong)
+        && !await hasProducerSpawnApproval(input.workspaceRoot, pendingSong.songId)
+        && isPreGenerationApprovalEnabled()
+      ) {
+        const pendingRunId = existing.runId ?? `auto_${Date.now().toString(36)}`;
+        return suspendForProducerSpawnApproval(input.workspaceRoot, existing, pendingSong, {
+          ...existing,
+          runId: pendingRunId,
+          currentSongId: pendingSong.songId,
+          stage: stageFromSong(pendingSong),
+          lastRunAt: nowIso()
+        });
+      }
+    }
+    if (isSongSpawnConfigured(config)) {
+      const producerReviewOnly = isProducerReviewOnlyLane(existing);
+      const ideaLane = await runIdeaQueueLane(input.workspaceRoot, existing, config, {
+        preserveCurrentSongLane: producerReviewOnly,
+        ignoreRecentCompletion: input.operatorRequestedSpawn === true,
+        operatorRequestedSpawn: input.operatorRequestedSpawn === true && !currentLaneSong
+      });
+      if (producerReviewOnly) {
+        return ideaLane.state ?? writeStageState(input.workspaceRoot, existing, {
+          ...existing,
+          stage: "paused",
+          blockedReason: existing.pausedReason ?? existing.blockedReason ?? PRODUCER_REVIEW_SUSPENDED_AT,
+          lastRunAt: nowIso()
+        });
+      }
+      const afterSpawn = await readAutopilotRunState(input.workspaceRoot);
+      if (!afterSpawn.currentSongId && afterSpawn.suspendedAt === "spawn_proposal_ready") {
+        return afterSpawn;
+      }
+      // The spawn lane held because there was no news/X material. Only surface the
+      // hold when no song lane is active (an active lane keeps running); mirror the
+      // waiting_for_proposal state so the next cycle re-drives once observation exists.
+      if (ideaLane.heldForObservation && !afterSpawn.currentSongId) {
+        return writeStageState(input.workspaceRoot, existing, {
+          ...existing,
+          currentSongId: undefined,
+          stage: "planning",
+          suspendedAt: null,
+          blockedReason: "observation_unavailable",
+          lastError: undefined,
+          lastRunAt: nowIso(),
+          cycleCount: existing.cycleCount + 1
+        });
+      }
+    }
+    if (!config.autopilot.enabled) {
+      return writeStageState(input.workspaceRoot, existing, {
+        ...existing,
+        stage: "idle",
+        blockedReason: "autopilot disabled by config",
+        lastRunAt: nowIso()
+      });
+    }
+    if (existing.paused) {
+      return writeStageState(input.workspaceRoot, existing, {
+        ...existing,
+        stage: "paused",
+        blockedReason: existing.pausedReason ?? "paused by operator",
+        lastRunAt: nowIso()
+      });
+    }
+    if (existing.hardStopReason) {
+      return writeStageState(input.workspaceRoot, existing, {
+        ...existing,
+        stage: "failed_closed",
+        blockedReason: existing.hardStopReason,
+        lastRunAt: nowIso()
+      });
+    }
+    await runStaleQueueMaintenance(input.workspaceRoot, {
+      ttlHours: getStaleQueueCleanupHours(process.env)
+    }).then((result) => {
+      for (const entry of result.cleaned) {
+        emitRuntimeEvent({
+          type: "error",
+          source: "stale_queue_cleanup",
+          reason: entry.reason,
+          songId: entry.songId,
+          timestamp: Date.now()
+        });
+      }
+      for (const issue of result.inconsistencies) {
+        const reason = `${issue.reason}:${issue.callbackId}:${issue.songId}`;
+        console.warn(`[artist-runtime] ${reason}`);
+        emitRuntimeEvent({
+          type: "error",
+          source: "callback_ledger_consistency",
+          reason,
+          songId: issue.songId,
+          timestamp: Date.now()
+        });
+      }
+    }).catch((error) => {
+      const reason = error instanceof Error ? error.message : String(error);
+      console.warn(`[artist-runtime] stale queue maintenance failed: ${reason}`);
+    });
+    await pollSongDistribution(input.workspaceRoot).catch((error) => {
+      emitRuntimeEvent({
+        type: "error",
+        source: "distribution_polling",
+        reason: error instanceof Error ? error.message : String(error),
+        timestamp: Date.now()
+      });
+    });
+    if (isSongbookAutoSyncEnabled()) {
+      await syncSongbookFromITunes(input.workspaceRoot).catch((error) => {
+        emitRuntimeEvent({
+          type: "error",
+          source: "songbook_sync",
+          reason: error instanceof Error ? error.message : String(error),
+          timestamp: Date.now()
+        });
+      });
+    }
+
+    await sweepPendingTakeImports(input.workspaceRoot, config);
+
+    const song = await currentSong(input.workspaceRoot, existing.currentSongId);
+    const suppressedRestartStaleError = await suppressRestartStaleError(
+      input.workspaceRoot,
+      existing.currentSongId,
+      song,
+      existing.blockedReason,
+      existing.lastError
+    );
+    const stateBeforeStage = suppressedRestartStaleError
+      ? { ...existing, blockedReason: undefined, lastError: undefined, retryCount: 0 }
+      : existing;
+    if (suppressedRestartStaleError) {
+      console.warn(`[artist-runtime] ${suppressedRestartStaleError}`);
+      emitRuntimeEvent({
+        type: "error",
+        source: "autopilot_restart_stale_error",
+        reason: suppressedRestartStaleError,
+        songId: existing.currentSongId,
+        timestamp: Date.now()
+      });
+    }
+    const stage = stageFromSong(song);
+    const runId = !song && existing.lastSuccessfulStage === "completed"
+      ? `auto_${Date.now().toString(36)}`
+      : stateBeforeStage.runId ?? `auto_${Date.now().toString(36)}`;
+    const baseState: AutopilotRunState = {
+      ...stateBeforeStage,
+      runId,
+      currentSongId: song?.songId,
+      stage,
+      suspendedAt: stateBeforeStage.suspendedAt === "prompt_pack_ready" && !isPreGenerationApprovalEnabled() ? undefined : stateBeforeStage.suspendedAt,
+      blockedReason: stateBeforeStage.suspendedAt === "prompt_pack_ready" && !isPreGenerationApprovalEnabled() ? undefined : stateBeforeStage.blockedReason,
+      lastRunAt: nowIso()
+    };
+
+    if (song && song.status === "take_selected") {
+      return writeStageState(input.workspaceRoot, existing, {
+        ...releaseAfterTakeCompletion(baseState),
+        cycleCount: existing.cycleCount + 1
+      });
+    }
+
+    if (
+      !input.manualSeed
+      && song
+      && isSongSpawnConfigured(config)
+      && isPrePromptSongWithoutApprovalGate(song)
+      && !await hasProducerSpawnApproval(input.workspaceRoot, song.songId)
+      && isPreGenerationApprovalEnabled()
+    ) {
+      return suspendForProducerSpawnApproval(input.workspaceRoot, existing, song, baseState);
+    }
+
+    if (
+      song
+      && (existing.suspendedAt === "prompt_pack_ready" || existing.suspendedAt === "user_paused")
+      && !(existing.suspendedAt === "prompt_pack_ready" && !isPreGenerationApprovalEnabled())
+      && !(existing.suspendedAt === "prompt_pack_ready" && await isBuildingDraftSong(input.workspaceRoot, song.songId))
+    ) {
+      return writeStageState(input.workspaceRoot, existing, {
+        ...baseState,
+        currentSongId: song.songId,
+        stage: "prompt_pack",
+        blockedReason: existing.suspendedAt,
+        lastError: undefined,
+        lastSuccessfulStage: existing.lastSuccessfulStage
+      });
+    }
+
+    if (song && existing.stage === "planning") {
+      const planningResult = await handlePlanningStage(input.workspaceRoot, song, existing, baseState, config);
+      if (planningResult) {
+        return planningResult;
+      }
+    }
+
+    if (
+      !song
+      && existing.lastSuccessfulStage === "publishing"
+      && config.autopilot.dryRun
+      && existing.blockedReason?.includes("dry-run")
+    ) {
+      return writeCompletedStage(input.workspaceRoot, existing, baseState, existing.currentSongId, existing.blockedReason);
+    }
+
+    if (
+      song
+      && stage === "publishing"
+      && existing.lastSuccessfulStage === "publishing"
+      && config.autopilot.dryRun
+      && existing.blockedReason?.includes("dry-run")
+    ) {
+      return writeCompletedStage(input.workspaceRoot, existing, baseState, song.songId, existing.blockedReason);
+    }
+
+    const hasUnresolvedBlock = Boolean(stateBeforeStage.blockedReason || stateBeforeStage.lastError);
+    // `suno_running` means a real create was accepted but its files or second URL may
+    // still be pending. It must revisit the import path even when the preceding tick
+    // recorded suno_generation as successful; otherwise the idempotency guard strands
+    // the current song and prevents every later proposal from taking the single lane.
+    const pendingSunoImport = song?.status === "suno_running" && stage === "suno_generation";
+    const guardWouldHold =
+      existing.runId === runId
+      && existing.lastSuccessfulStage === stage
+      && stage !== "planning"
+      && !hasUnresolvedBlock
+      && !pendingSunoImport;
+    if (guardWouldHold) {
+      // A song rolled back to suno_prompt_pack after a failed/superseded Suno create is
+      // genuinely pre-create again: stageFromSong maps it to suno_generation, which equals
+      // the stale lastSuccessfulStage, so the same-runId idempotency guard used to hold
+      // every tick and the create never fired (2026-07-28 spawn_cc1049 sat 26h emitting
+      // only ran/safe_recovery). A failed latest run is the signal that a create was
+      // attempted and did not land, so re-drive it. A lane with no run yet (or a non-failed
+      // latest run) keeps the idempotent hold — the downstream create path already protects
+      // credit for an accepted run. Either way, surface the hold instead of staying silent.
+      const latestRunForStall = song?.status === "suno_prompt_pack"
+        ? await readLatestSunoRun(input.workspaceRoot, song.songId).catch(() => undefined)
+        : undefined;
+      // A pre-prompt-pack song (idea/brief/lyrics -> stage prompt_pack) cannot legitimately own
+      // a lastSuccessfulStage="prompt_pack": that value is stale carryover from a previous song's
+      // run, because runId is reused across songs when a new song takes over as currentSong. The
+      // same-runId guard then held every tick and the pack was never built (2026-07-29 spawn_44e162
+      // sat 2h+ at status=brief emitting only idempotent_hold/safe_recovery). The prompt_pack stage
+      // is idempotent and spends no Suno credit, so re-drive it instead of holding.
+      const stalePromptPackCarryover =
+        stage === "prompt_pack" && song !== undefined && isPrePromptSongWithoutApprovalGate(song);
+      const retryableCreateCooldown =
+        latestRunForStall?.status === "blocked_authority"
+        && latestRunForStall.authorityDecision.hardStop !== true
+        && latestRunForStall.authorityDecision.policyDecision === "stop_create_cooldown";
+      const needsCreateRedrive =
+        latestRunForStall?.status === "failed"
+        || retryableCreateCooldown
+        || stalePromptPackCarryover;
+      if (!needsCreateRedrive) {
+        emitIdempotentHoldOncePerDay(song?.songId ?? existing.currentSongId, stage);
+        return writeStageState(input.workspaceRoot, existing, baseState);
+      }
+    }
+
+    try {
+      if (!song) {
+        if (!input.manualSeed) {
+          const weeklyLimit = await weeklySongLimitBlocked(input.workspaceRoot, config);
+          if (weeklyLimit) {
+            return writeStageState(input.workspaceRoot, existing, {
+              ...baseState,
+              currentSongId: undefined,
+              stage: "planning",
+              blockedReason: weeklyLimit,
+              lastError: undefined,
+              cycleCount: existing.cycleCount + 1
+            });
+          }
+        }
+        if (!input.manualSeed && isSongSpawnConfigured(config)) {
+          return writeStageState(input.workspaceRoot, existing, {
+            ...baseState,
+            currentSongId: undefined,
+            stage: "planning",
+            blockedReason: "song_spawn_waiting_for_proposal",
+            lastError: undefined,
+            cycleCount: existing.cycleCount + 1
+          });
+        }
+        // No news/X material this cycle: createSongIdea would set directorObservation
+        // to null (it does so iff observationText is empty), yielding a bank-only song
+        // whose decision carries observation_null. Producer default is no observation ->
+        // no song; hold and let the next cycle retry. A manual run may opt in with
+        // manualSeed.allowNoObservation for an intentionally bank-driven song. The hold
+        // is placed before proposeTheme so no AI theme call is burned for a discarded song.
+        if (!cycleObservation.observations.trim() && !input.manualSeed?.allowNoObservation) {
+          return writeStageState(input.workspaceRoot, existing, {
+            ...baseState,
+            currentSongId: undefined,
+            stage: "planning",
+            blockedReason: "observation_unavailable",
+            lastError: undefined,
+            cycleCount: existing.cycleCount + 1
+          });
+        }
+        const theme = await proposeTheme(input.workspaceRoot, {
+          observations: cycleObservation.observations,
+          aiReviewProvider: config.aiReview.provider
+        });
+        emitRuntimeEvent({
+          type: "theme_generated",
+          theme: theme.theme,
+          reason: theme.reason,
+          timestamp: Date.now()
+        });
+        const idea = await createSongIdea({
+          workspaceRoot: input.workspaceRoot,
+          config,
+          theme: theme.theme,
+          artistReason: input.manualSeed?.hint ? `${theme.reason}; producer hint: ${input.manualSeed.hint}` : theme.reason,
+          observationText: cycleObservation.observations,
+          observationPath: cycleObservation.path
+        });
+        return writeStageState(input.workspaceRoot, existing, {
+          ...baseState,
+          currentSongId: idea.songId,
+          stage: "planning",
+          blockedReason: undefined,
+          lastError: undefined,
+          lastSuccessfulStage: "planning",
+          cycleCount: existing.cycleCount + 1
+        });
+      }
+
+      switch (stage) {
+        case "prompt_pack": {
+          const maxCorrectiveRedrafts = 4;
+          let packedSong: SongState | undefined;
+          let correctionGuidance: string[] | undefined;
+          for (let attempt = 0; attempt <= maxCorrectiveRedrafts; attempt += 1) {
+            try {
+              packedSong = await createPromptPackForSong(
+                input.workspaceRoot,
+                song,
+                config,
+                input.manualSeed?.weirdness,
+                correctionGuidance
+              );
+              break;
+            } catch (error) {
+              const reason = error instanceof Error ? error.message : String(error);
+              if (!reason.includes("lyrics_generation_degraded")) {
+                throw error;
+              }
+              correctionGuidance = correctionGuidanceFromDegraded(reason);
+              if (!correctionGuidance || attempt === maxCorrectiveRedrafts) {
+                return parkSongForOperator(input.workspaceRoot, existing, baseState, song.songId, reason, false);
+              }
+            }
+          }
+          if (!packedSong) {
+            throw new Error("prompt_pack_corrective_redraft_exhausted");
+          }
+          const draftBoxOneShot = await isBuildingDraftSong(input.workspaceRoot, packedSong.songId);
+          const promptReadySuspension = config.telegram.enabled && isPreGenerationApprovalEnabled() && !draftBoxOneShot;
+          if (promptReadySuspension) {
+            const [summary, voiceTop] = await Promise.all([
+              promptPackReadySummary(input.workspaceRoot, packedSong),
+              composeVoiceTopOnly("propose", input.workspaceRoot, undefined, [], { runId: packedSong.songId }).catch(() => undefined)
+            ]);
+            emitRuntimeEvent({
+              type: "prompt_pack_ready",
+              songId: packedSong.songId,
+              title: packedSong.title,
+              lyricsExcerpt: summary.lyricsExcerpt,
+              mood: summary.mood,
+              tempo: summary.tempo,
+              styleNotes: summary.styleNotes,
+              voiceTop,
+              timestamp: Date.now()
+            });
+          }
+          return writeStageState(input.workspaceRoot, existing, {
+            ...baseState,
+            currentSongId: packedSong.songId,
+            stage: promptReadySuspension ? "prompt_pack" : "suno_generation",
+            blockedReason: undefined,
+            lastError: undefined,
+            lastSuccessfulStage: "prompt_pack",
+            suspendedAt: promptReadySuspension ? "prompt_pack_ready" : undefined,
+            cycleCount: existing.cycleCount + 1
+          });
+        }
+        case "suno_generation": {
+          const importBeforeUrlReadyRecovery = song.status === "suno_running";
+          if (importBeforeUrlReadyRecovery) {
+            const pendingImport = await importPendingSunoGeneration(input.workspaceRoot, song.songId, config, existing);
+            if (pendingImport?.imported) {
+              return writeStageState(input.workspaceRoot, existing, {
+                ...baseState,
+                currentSongId: song.songId,
+                stage: "take_selection",
+                blockedReason: undefined,
+                lastError: undefined,
+                lastSuccessfulStage: "suno_generation",
+                retryCount: 0,
+                cycleCount: existing.cycleCount + 1
+              });
+            }
+            if (pendingImport && !pendingImport.imported) {
+              // Respect the audio import guards (dry-run isolation, take-attribution
+              // collisions) before considering URL-ready delivery.
+              if (pendingImport.pause) {
+                return writeStageState(input.workspaceRoot, existing, {
+                  ...baseState,
+                  currentSongId: song.songId,
+                  paused: true,
+                  stage: "paused",
+                  blockedReason: pendingImport.reason,
+                  lastError: pendingImport.reason,
+                  lastSuccessfulStage: existing.lastSuccessfulStage,
+                  cycleCount: existing.cycleCount + 1
+                });
+              }
+              // Audio isn't ready yet. If the run captured only one of its two take URLs,
+              // hold (or bounded-fallback deliver) it instead of wedging on "waiting for
+              // Suno result import" so the single URL still reaches the producer.
+              const singleTakeUrlHold = await holdSingleSunoTakeUrl(input.workspaceRoot, existing, baseState, song);
+              if (singleTakeUrlHold) {
+                return singleTakeUrlHold;
+              }
+              return writeStageState(input.workspaceRoot, existing, {
+                ...baseState,
+                currentSongId: song.songId,
+                stage: "suno_generation",
+                blockedReason: pendingImport.reason,
+                lastError: pendingImport.reason,
+                lastSuccessfulStage: existing.lastSuccessfulStage,
+                cycleCount: existing.cycleCount + 1
+              });
+            }
+          } else {
+            // Non-suno_running lanes (e.g. a stale prompt-pack whose run already captured a
+            // single take URL) must hold instead of regenerating and burning a new credit.
+            const singleTakeUrlHold = await holdSingleSunoTakeUrl(input.workspaceRoot, existing, baseState, song);
+            if (singleTakeUrlHold) {
+              return singleTakeUrlHold;
+            }
+          }
+          const recoveredUrlReady = await recoverAcceptedRunUrlReady(input.workspaceRoot, existing, baseState, song);
+          if (recoveredUrlReady) {
+            return recoveredUrlReady;
+          }
+          const generationLimit = await evaluateSunoGenerationLimits(input.workspaceRoot, config);
+          if (generationLimit) {
+            return writeStageState(input.workspaceRoot, existing, {
+              ...baseState,
+              currentSongId: song.songId,
+              stage: "suno_generation",
+              blockedReason: generationLimit.reason,
+              lastError: generationLimit.reason,
+              lastSuccessfulStage: existing.lastSuccessfulStage,
+              cycleCount: existing.cycleCount + 1
+            });
+          }
+          if (isMockSunoGenerationBypass(config)) {
+            await importMockSunoGeneration(input.workspaceRoot, song.songId, existing, config);
+            return writeStageState(input.workspaceRoot, existing, {
+              ...baseState,
+              currentSongId: song.songId,
+              stage: "take_selection",
+              blockedReason: undefined,
+              lastError: undefined,
+              lastSuccessfulStage: "suno_generation",
+              retryCount: 0,
+              cycleCount: existing.cycleCount + 1
+            });
+          }
+          if (isDegradedLyricsBoxReason(existing.blockedReason)) {
+            // Transient degraded box: skip the generic exponential backoff and re-attempt
+            // the create this tick; only pause once the self-heal window is exhausted.
+            if (existing.retryCount >= SUNO_LYRICS_BOX_DEGRADED_MAX_ATTEMPTS) {
+              return handleSunoGenerateFailure(
+                input.workspaceRoot,
+                existing,
+                baseState,
+                song,
+                existing.lastError ?? `${SUNO_LYRICS_BOX_DEGRADED_MARKER}:cap_reached`
+              );
+            }
+          }
+          if (!isDegradedLyricsBoxReason(existing.blockedReason)) {
+            const retryDecision = nextSunoRetryDecision(existing);
+            if (retryDecision.action === "wait") {
+              if (shouldEmitOperationalEpisode(existing, retryDecision.reason)) {
+                emitRuntimeEvent({
+                  type: "suno_generate_retry",
+                  songId: song.songId,
+                  reason: retryDecision.reason,
+                  retryCount: existing.retryCount,
+                  nextRetryAt: retryDecision.nextRetryAt,
+                  timestamp: Date.now()
+                });
+              }
+              return writeStageState(input.workspaceRoot, existing, {
+                ...baseState,
+                currentSongId: song.songId,
+                stage: "suno_generation",
+                lastRunAt: existing.lastRunAt,
+                blockedReason: retryDecision.reason,
+                lastError: undefined,
+                lastSuccessfulStage: existing.lastSuccessfulStage,
+                cycleCount: existing.cycleCount + 1
+              });
+            }
+            if (retryDecision.action === "failed") {
+              return handleSunoGenerateFailure(input.workspaceRoot, existing, baseState, song, retryDecision.reason);
+            }
+          }
+          let generateError: unknown;
+          const run = await generateSunoRun({ workspaceRoot: input.workspaceRoot, songId: song.songId, config }).catch((error) => {
+            generateError = error;
+            return undefined;
+          });
+          if (!run) {
+            return handleSunoGenerateFailure(input.workspaceRoot, existing, baseState, song, classifySunoGenerateFailure(generateError));
+          }
+          if (run.status === "failed" || run.status === "blocked_authority") {
+            return handleSunoGenerateFailure(input.workspaceRoot, existing, baseState, song, run.error?.message ?? run.authorityDecision.reason);
+          }
+          if (run.status === "accepted") {
+            // Deliver only when BOTH take URLs are captured together. A single captured
+            // URL is held (kept in suno_running via sunoRuns) so the next cycle re-checks
+            // and fires once both are present, or falls back to the single URL after the
+            // bounded window.
+            const readiness = evaluateSunoTakeUrlReadiness(run.urls, Date.parse(run.createdAt), Date.now());
+            if (readiness.emit) {
+              const selectedTakeId = takeIdFromSunoUrl(readiness.urls[0]);
+              emitRuntimeEvent({
+                type: "suno_take_url_ready",
+                songId: song.songId,
+                runId: run.runId,
+                urls: readiness.urls,
+                selectedTakeId,
+                reason: readiness.fallback ? SINGLE_TAKE_URL_FALLBACK_REASON : undefined,
+                timestamp: Date.now()
+              });
+              await markBuildingDraftDone(input.workspaceRoot, song.songId);
+              return writeStageState(input.workspaceRoot, existing, {
+                ...releaseAfterSunoTakeUrlReady(baseState),
+                cycleCount: existing.cycleCount + 1
+              });
+            }
+            if (readiness.urls.length > 0) {
+              return writeStageState(input.workspaceRoot, existing, {
+                ...baseState,
+                currentSongId: song.songId,
+                stage: "suno_generation",
+                blockedReason: AWAITING_SECOND_SUNO_TAKE_URL_REASON,
+                lastError: undefined,
+                lastSuccessfulStage: "suno_generation",
+                cycleCount: existing.cycleCount + 1
+              });
+            }
+          }
+          return writeStageState(input.workspaceRoot, existing, {
+            ...baseState,
+            currentSongId: song.songId,
+            stage: "suno_generation",
+            blockedReason: run.status === "accepted" || run.status === "blocked_dry_run" ? "waiting for Suno result import" : run.authorityDecision.reason,
+            lastError: run.error?.message,
+            lastSuccessfulStage: "suno_generation",
+            retryCount: 0,
+            cycleCount: existing.cycleCount + 1
+          });
+        }
+        case "take_selection": {
+          const decision = await evaluateSunoTakeSelection(input.workspaceRoot, song.songId);
+          if (decision.status === "pending") {
+            if (shouldEmitOperationalEpisode(existing, decision.reason)) {
+              emitRuntimeEvent({
+                type: "take_select_pending",
+                songId: song.songId,
+                reason: decision.reason,
+                timestamp: Date.now()
+              });
+              emitRuntimeEvent({
+                type: "take_selection_stalled",
+                songId: song.songId,
+                reason: decision.reason,
+                timestamp: Date.now()
+              });
+            }
+            return writeStageState(input.workspaceRoot, existing, {
+              ...baseState,
+              currentSongId: song.songId,
+              stage: "take_selection",
+              blockedReason: decision.reason,
+              lastError: undefined,
+              cycleCount: existing.cycleCount + 1
+            });
+          }
+          const selection = await selectTake({ workspaceRoot: input.workspaceRoot, songId: song.songId });
+          emitRuntimeEvent({
+            type: "song_take_completed",
+            songId: song.songId,
+            selectedTakeId: selection.selectedTakeId,
+            urls: selection.sourceUrls,
+            timestamp: Date.now()
+          });
+          await markBuildingDraftDone(input.workspaceRoot, song.songId);
+          return writeStageState(input.workspaceRoot, existing, {
+            ...releaseAfterTakeCompletion(baseState),
+            cycleCount: existing.cycleCount + 1
+          });
+        }
+        case "asset_generation": {
+          try {
+            await prepareSocialAssets({ workspaceRoot: input.workspaceRoot, songId: song.songId, config });
+          } catch (error) {
+            const reason = error instanceof Error ? error.message : String(error);
+            const blockedReason = `asset_generation_stalled:${reason}`;
+            if (shouldEmitOperationalEpisode(existing, blockedReason)) {
+              emitRuntimeEvent({
+                type: "asset_generation_stalled",
+                songId: song.songId,
+                reason,
+                timestamp: Date.now()
+              });
+            }
+            return writeStageState(input.workspaceRoot, existing, {
+              ...baseState,
+              currentSongId: song.songId,
+              stage: "asset_generation",
+              blockedReason,
+              lastError: reason,
+              cycleCount: existing.cycleCount + 1
+            });
+          }
+          return writeStageState(input.workspaceRoot, existing, {
+            ...baseState,
+            currentSongId: song.songId,
+            stage: "asset_generation",
+            blockedReason: undefined,
+            lastError: undefined,
+            lastSuccessfulStage: "asset_generation",
+            cycleCount: existing.cycleCount + 1
+          });
+        }
+        case "publishing": {
+          const platform = await choosePublishPlatform(config);
+          const assetPath = join(
+            input.workspaceRoot,
+            "songs",
+            song.songId,
+            "social",
+            `${platform}-${platform === "x" ? "post" : "caption"}.md`
+          );
+          const text = await readFile(assetPath, "utf8").catch(() => song.title);
+          const published = await publishSocialAction({
+            workspaceRoot: input.workspaceRoot,
+            songId: song.songId,
+            platform,
+            postType: platform === "x" ? "observation" : platform === "instagram" ? "lyric_card" : "hook_clip",
+            text,
+            config,
+            action: "publish"
+          });
+          if (config.autopilot.dryRun && isPublishBlockedByDryRun(published.result, published.entry)) {
+            await updateSongState(input.workspaceRoot, song.songId, {
+              status: "published",
+              reason: `dry-run publish simulated: ${published.result.reason}`
+            });
+          }
+          return writeStageState(input.workspaceRoot, existing, {
+            ...baseState,
+            currentSongId: song.songId,
+            stage: "publishing",
+            blockedReason: published.result.accepted ? undefined : published.result.reason,
+            lastError: published.result.accepted ? undefined : published.result.reason,
+            lastSuccessfulStage: "publishing",
+            cycleCount: existing.cycleCount + 1
+          });
+        }
+        case "completed": {
+          return writeCompletedStage(input.workspaceRoot, existing, baseState, song.songId);
+        }
+        case "failed_closed": {
+          const reason = song.lastReason ?? "song marked failed";
+          emitRuntimeEvent({
+            type: "suno_hard_stop",
+            songId: song.songId,
+            reason,
+            timestamp: Date.now()
+          });
+          return writeStageState(input.workspaceRoot, existing, {
+            ...baseState,
+            currentSongId: song.songId,
+            stage: "failed_closed",
+            hardStopReason: reason,
+            blockedReason: reason
+          });
+        }
+        default:
+          return writeStageState(input.workspaceRoot, existing, {
+            ...baseState,
+            stage: "planning",
+            blockedReason: undefined,
+            lastError: undefined,
+            lastSuccessfulStage: "planning",
+            cycleCount: existing.cycleCount + 1
+          });
+      }
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      emitRuntimeEvent({
+        type: "error",
+        source: "autopilot",
+        reason: message,
+        songId: baseState.currentSongId,
+        timestamp: Date.now()
+      });
+      emitRuntimeEvent({
+        type: "suno_hard_stop",
+        songId: baseState.currentSongId,
+        reason: message,
+        timestamp: Date.now()
+      });
+      return writeStageState(input.workspaceRoot, existing, {
+        ...baseState,
+        stage: "failed_closed",
+        hardStopReason: message,
+        blockedReason: message,
+        lastError: message,
+        retryCount: existing.retryCount + 1
+      });
+    }
+  }
+
+  async tick(input: AutopilotTickInput): Promise<AutopilotStatus> {
+    return {
+      enabled: input.enabled,
+      dryRun: input.dryRun,
+      stage: this.planNextStage(input),
+      nextAction: nextActionForStage(this.planNextStage(input))
+    };
+  }
+
+  async status(enabled = false, dryRun = true, workspaceRoot?: string): Promise<AutopilotStatus> {
+    const state = workspaceRoot ? await readAutopilotRunState(workspaceRoot) : { ...defaultAutopilotRunState };
+    const stage = enabled ? (state.paused ? "paused" : state.stage) : "idle";
+    return {
+      enabled,
+      dryRun,
+      stage,
+      nextAction: enabled ? nextActionForState(state, stage) : nextActionForStage(stage),
+      currentRunId: state.runId,
+      currentSongId: state.currentSongId,
+      suspendedAt: state.suspendedAt,
+      lastSuccessfulStage: state.lastSuccessfulStage,
+      pausedReason: state.pausedReason,
+      hardStopReason: state.hardStopReason,
+      blockedReason: state.blockedReason,
+      lastError: state.lastError,
+      retryCount: state.retryCount
+    };
+  }
+}

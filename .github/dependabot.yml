@@ -1,0 +1,62 @@
+version: 2
+updates:
+  - package-ecosystem: npm
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+      time: "07:00"
+      timezone: Asia/Tokyo
+    open-pull-requests-limit: 5
+    labels:
+      - dependencies
+      - npm
+    commit-message:
+      prefix: "chore(deps)"
+      include: scope
+    groups:
+      typescript-stack:
+        patterns:
+          - "typescript"
+          - "@types/*"
+          - "@typescript-eslint/*"
+      vitest-stack:
+        patterns:
+          - "vitest"
+          - "@vitest/*"
+      playwright-stack:
+        patterns:
+          - "playwright"
+          - "playwright-extra"
+          - "puppeteer-extra-plugin-*"
+
+  - package-ecosystem: npm
+    directory: /ui
+    schedule:
+      interval: weekly
+      day: monday
+      time: "07:00"
+      timezone: Asia/Tokyo
+    open-pull-requests-limit: 3
+    labels:
+      - dependencies
+      - npm
+      - ui
+    commit-message:
+      prefix: "chore(ui-deps)"
+      include: scope
+
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+      time: "07:00"
+      timezone: Asia/Tokyo
+    open-pull-requests-limit: 3
+    labels:
+      - dependencies
+      - github-actions
+    commit-message:
+      prefix: "chore(actions)"
+      include: scope

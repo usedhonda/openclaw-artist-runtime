@@ -1,0 +1,34 @@
+node_modules/
+dist/
+ui/dist/
+# The vendored suno-cli dist is a committed distributable, not build output.
+!vendor/suno-cli/dist/
+!vendor/suno-cli/dist/**
+coverage/
+.env
+.DS_Store
+*.log
+package-lock.json
+.runtime/
+.openclaw-browser-profiles/
+/songs/
+/artist/
+.local/
+
+# workspace artifacts generated at repo root when workspaceRoot defaults to "."
+/ARTIST.md
+/HEARTBEAT.md
+/SOUL.md
+/runtime/
+/logs/
+/observations/
+
+# >>> project-bootstrap local-only >>>
+CLAUDE.local.md
+.codex/config.toml
+.local/
+.cc-status-bar.voice.json
+# <<< project-bootstrap local-only <<<
+
+# Loop-skill working notes: operator planning state, not public content.
+.loop/

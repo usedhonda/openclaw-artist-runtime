@@ -1,0 +1,207 @@
+import { mkdtempSync, readFileSync } from "node:fs";
+import { mkdir, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { describe, expect, it } from "vitest";
+import {
+  createSunoPromptPack,
+  sanitizeAcousticBassExclude,
+  sanitizeAcousticBassStyle
+} from "../src/suno-production/generatePromptPack";
+import { CANONICAL_STYLE_TARGET_MAX_CHARS } from "../src/suno-production/buildStyle";
+import { createAndPersistSunoPromptPack } from "../src/services/sunoPromptPackFiles";
+import { validateNoCommandLeak } from "../src/services/lyricsValidator";
+
+const lyrics = [
+  "[Intro - muted street image]",
+  "えきまえのとけいだけがすこしおくれる",
+  "",
+  "[Verse 1 - tight civic flow]",
+  "だれもみないまどにだけしんごうがのこる",
+  "きどくのまちでせきにんだけがおくれる",
+  "ひくいベースがなまえをけずっていく",
+  "あさのてまえでまだいきをかぞえる"
+].join("\n");
+
+describe("Suno V6 prompt pack orchestration", () => {
+  it("orchestrates lyrics through style, exclude, YAML, sliders, and payload contract", () => {
+    const pack = createSunoPromptPack({
+      songId: "song-010",
+      songTitle: "Civic Echo",
+      artistReason: "observation from city redevelopment",
+      lyricsText: lyrics,
+      moodHint: "civic dread pulse",
+      artistSnapshot: "# ARTIST\ntest::artist watches civic noise",
+      currentStateSnapshot: "# CURRENT\nobservational"
+    });
+
+    expect(pack.lyricsBundle?.lyricsText).toBe(lyrics);
+    expect(pack.style.length).toBeLessThanOrEqual(CANONICAL_STYLE_TARGET_MAX_CHARS);
+    expect(pack.style).toContain("civic dread pulse");
+    expect(pack.style).not.toContain("Knowledge Vocabulary");
+    expect(pack.exclude.length).toBeLessThanOrEqual(200);
+    expect(pack.yamlLyrics.length).toBeLessThanOrEqual(4000);
+    expect(pack.yamlLyrics).toContain("LYRICS START");
+    expect(String(pack.payload.lyrics)).toContain(lyrics);
+    expect(String(pack.payload.lyricsText)).toContain(lyrics);
+    expect(String(pack.payload.lyrics).length).toBeLessThan(1500);
+    expect(pack.payload.payloadYaml).toBe(pack.yamlLyrics);
+    expect(pack.payload.model).toBe("v6");
+    expect(pack.payload).toMatchObject({
+      maxMode: true,
+      duration: "3:30",
+      variety: 2,
+      personalize: false,
+      styleInfluence: 100
+    });
+    expect(pack.sliders.styleInfluence).toBe(100);
+    expect(pack.payload.sliders).toMatchObject({ styleInfluence: 100 });
+    expect(pack.sliders.weirdness).toBeGreaterThanOrEqual(15);
+    expect(pack.sliders.weirdness).toBeLessThanOrEqual(85);
+    expect(pack.validation.valid).toBe(true);
+  });
+
+  it("drops songwriting meta before writing Suno UI lyrics", () => {
+    const leakedLyrics = [
+      "[Verse 1 - tight civic flow, note: AABB and internal rhyme]",
+      "誰も見ない窓にだけ信号が残る",
+      "flow = リズム + phrasing + accent + rhyme",
+      "低いベースが名前を削っていく",
+      "AABBで韻を踏む",
+      "朝の手前でまだ息を数える",
+      "",
+      "[Hook - final anchor]",
+      "街が薄くなる",
+      "拍手だけ残る"
+    ].join("\n");
+
+    const pack = createSunoPromptPack({
+      songId: "song-leak",
+      songTitle: "Leak Guard",
+      artistReason: "observation from city redevelopment",
+      lyricsText: leakedLyrics,
+      moodHint: "civic dread pulse",
+      artistSnapshot: "# ARTIST\ntest::artist watches civic noise",
+      currentStateSnapshot: "# CURRENT\nobservational"
+    });
+
+    expect(String(pack.payload.lyrics)).not.toContain("flow =");
+    expect(String(pack.payload.lyrics)).not.toContain("AABB");
+    expect(String(pack.payload.lyrics)).not.toContain("internal rhyme");
+    expect(String(pack.payload.lyricsText)).not.toContain("flow =");
+    expect(String(pack.payload.lyricsText)).not.toContain("AABB");
+    expect(String(pack.yamlLyrics)).not.toContain("flow =");
+    expect(validateNoCommandLeak(String(pack.payload.lyrics))).toEqual([]);
+  });
+
+  it("keeps acoustic bass avoidance out of style and in exclude", () => {
+    const pack = createSunoPromptPack({
+      songId: "song-bass-guard",
+      songTitle: "Bass Guard",
+      artistReason: "Producer approved redo. Avoid upright bass and acoustic bass; use hard-pick electric bass.",
+      lyricsText: lyrics,
+      moodHint: "tense underground hip-hop",
+      artistSnapshot: "# ARTIST\nnu-jazz rap civic pressure",
+      currentStateSnapshot: "# CURRENT\nobservational"
+    });
+
+    expect(pack.style).toContain("thick electric bass");
+    expect(pack.style).not.toMatch(/\b(upright|acoustic|wood)\s+bass\b/i);
+    expect(pack.exclude).toContain("upright bass");
+    expect(pack.exclude).toContain("acoustic bass");
+  });
+
+  it("sanitizes acoustic bass terms returned by style synthesis", () => {
+    const style = sanitizeAcousticBassStyle([
+      "# Style",
+      "nu-jazz rap, BPM 126, upright bass, Rhodes",
+      "- Instruments: acoustic double bass, sax, live jazz drums.",
+      "- Rhythm & Bass: wood bass bloom."
+    ].join("\n"), ["upright bass", "acoustic bass"]);
+
+    expect(style).toContain("hard-pick solid-body electric bass");
+    expect(style).not.toMatch(/\b(upright|acoustic|wood)\s+bass\b/i);
+  });
+
+  it("keeps acoustic bass avoidance in AI-synthesized exclude text", () => {
+    const exclude = sanitizeAcousticBassExclude(
+      "generic EDM drop, fake crowd noise",
+      ["upright bass", "acoustic double bass", "wood bass", "walking acoustic jazz bass", "muddy round bass", "acoustic bass"]
+    );
+
+    expect(exclude).toContain("upright bass");
+    expect(exclude).toContain("acoustic bass");
+    expect(exclude).toContain("generic EDM drop");
+  });
+
+  it("persists style, exclude, yaml-suno, and lyrics-suno under the song Suno directory", async () => {
+    const workspaceRoot = mkdtempSync(join(tmpdir(), "artist-runtime-v55-pack-"));
+    await mkdir(join(workspaceRoot, "observations"), { recursive: true });
+    const observationPath = join(workspaceRoot, "observations", "2026-05-01.md");
+    await writeFile(observationPath, "- text: civic rooms moved into group chats\n", "utf8");
+
+    const result = await createAndPersistSunoPromptPack({
+      workspaceRoot,
+      songId: "song-010",
+      songTitle: "Civic Echo",
+      artistReason: "observation from city redevelopment",
+      lyricsText: lyrics,
+      moodHint: "civic dread pulse",
+      observationPath
+    });
+
+    const style = readFileSync(result.artifactPaths.styleLatest, "utf8");
+    const exclude = readFileSync(result.artifactPaths.excludeLatest, "utf8");
+    const yaml = readFileSync(result.artifactPaths.yamlLatest, "utf8");
+    const lyricsSuno = readFileSync(result.artifactPaths.lyricsSunoLatest, "utf8");
+    const lyricsHuman = readFileSync(result.artifactPaths.lyricsVersioned, "utf8");
+    const payload = JSON.parse(readFileSync(result.artifactPaths.payloadLatest, "utf8")) as Record<string, unknown>;
+    const ledger = readFileSync(result.artifactPaths.promptLedger, "utf8");
+
+    expect(result.artifactPaths.styleLatest.endsWith("songs/song-010/suno/style.md")).toBe(true);
+    expect(result.artifactPaths.excludeLatest.endsWith("songs/song-010/suno/exclude.md")).toBe(true);
+    expect(result.artifactPaths.yamlLatest.endsWith("songs/song-010/suno/yaml-suno.md")).toBe(true);
+    expect(result.artifactPaths.lyricsSunoLatest.endsWith("songs/song-010/suno/lyrics-suno.md")).toBe(true);
+    expect(style.length).toBeLessThanOrEqual(CANONICAL_STYLE_TARGET_MAX_CHARS + 1);
+    expect(style).toContain("civic dread pulse");
+    expect(style).not.toContain("Knowledge Vocabulary");
+    expect(exclude.length).toBeLessThanOrEqual(201);
+    expect(yaml).toContain("LYRICS START");
+    expect(lyricsSuno).toContain("[Verse 1 - tight civic flow]");
+    expect(lyricsHuman).toContain("[Verse 1 - tight civic flow]");
+    expect(String(payload.lyrics)).toContain(lyrics);
+    expect(String(payload.lyricsText)).toContain(lyrics);
+    expect(String(payload.lyrics).length).toBeLessThan(1500);
+    expect(payload.payloadYaml).toBe(result.pack.yamlLyrics);
+    expect(String(payload.lyrics)).not.toContain("LYRICS START");
+    expect(String(payload.lyrics)).not.toContain("# META");
+    expect(ledger).toContain("style.md");
+    expect(ledger).toContain("exclude.md");
+    expect(ledger).toContain("yaml-suno.md");
+    expect(ledger).toContain("lyrics-suno.md");
+    expect(ledger).toContain("observations/2026-05-01.md");
+  });
+
+  it("threads the manual weirdness override into prompt pack sliders", () => {
+    const baseInput = {
+      songId: "song-weird",
+      songTitle: "Weird Test",
+      artistReason: "rap observation from shibuya",
+      lyricsText: lyrics,
+      moodHint: "civic pulse",
+      artistSnapshot: "# ARTIST\ntest::artist watches civic noise",
+      currentStateSnapshot: "# CURRENT\nobservational"
+    };
+
+    const defaultPack = createSunoPromptPack(baseInput);
+    expect(defaultPack.sliders.weirdness).toBe(40);
+
+    const overriddenPack = createSunoPromptPack({ ...baseInput, weirdnessOverride: 80 });
+    expect(overriddenPack.sliders.weirdness).toBe(80);
+    expect(overriddenPack.sliders.styleInfluence).toBe(defaultPack.sliders.styleInfluence);
+    expect(overriddenPack.sliders.audioInfluence).toBe(defaultPack.sliders.audioInfluence);
+
+    const clampedPack = createSunoPromptPack({ ...baseInput, weirdnessOverride: 100 });
+    expect(clampedPack.sliders.weirdness).toBe(85);
+  });
+});

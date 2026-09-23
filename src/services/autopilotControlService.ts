@@ -1,0 +1,84 @@
+import type { AutopilotRunState } from "../types.js";
+import { emitRuntimeEvent } from "./runtimeEventBus.js";
+import {
+  backupAutopilotState,
+  buildResetAutopilotState,
+  readAutopilotState,
+  type AutopilotRecoveryClock,
+  writeAutopilotState
+} from "./autopilotRecovery.js";
+
+export interface AutopilotResumeOptions {
+  resetState?: boolean;
+  reason?: string;
+  source?: "operator" | "telegram" | "test";
+}
+
+export class AutopilotControlService {
+  constructor(private readonly clock?: AutopilotRecoveryClock) {}
+
+  async pause(root: string, reason = "paused by operator"): Promise<AutopilotRunState> {
+    const current = await readAutopilotState(root);
+    const next = await writeAutopilotState(root, {
+      ...current,
+      paused: true,
+      pausedReason: reason,
+      stage: "paused"
+    });
+    emitRuntimeEvent({
+      type: "autopilot_state_changed",
+      enabled: true,
+      paused: true,
+      reason,
+      timestamp: Date.now()
+    });
+    return next;
+  }
+
+  async resume(root: string, options: AutopilotResumeOptions = {}): Promise<AutopilotRunState> {
+    if (options.resetState) {
+      await this.backupState(root);
+      return writeAutopilotState(root, buildResetAutopilotState(this.clock));
+    }
+
+    const current = await readAutopilotState(root);
+    // Plan v10.56 Phase 2: resume clears the "stuck" reason (blockedReason) so the
+    // next cycle does not immediately re-stall. A user_paused suspension is also a
+    // manual pause, so clear it too — but GO-gate suspensions (spawn_proposal_ready /
+    // prompt_pack_ready / planning_skeleton_pending) are producer decisions and must
+    // survive resume (cleared only by the corresponding GO, not by /resume).
+    const clearsSuspension = current.suspendedAt === "user_paused";
+    const resumesSunoGeneration =
+      current.currentSongId !== undefined &&
+      current.lastSuccessfulStage === "prompt_pack" &&
+      ((typeof current.blockedReason === "string" && current.blockedReason.startsWith("suno_generate_")) ||
+        current.stage === "idle");
+    const next = await writeAutopilotState(root, {
+      ...current,
+      paused: false,
+      pausedReason: undefined,
+      hardStopReason: undefined,
+      blockedReason: undefined,
+      // A manual resume means the operator addressed whatever stalled the song, so
+      // grant a fresh Suno retry budget. Otherwise a song that exhausted its automatic
+      // retries (retryCount >= maxRetries) re-fails immediately on the next tick
+      // (nextSunoRetryDecision -> "failed") without ever re-attempting — which would
+      // make a Telegram /resume look like it did nothing.
+      retryCount: 0,
+      suspendedAt: clearsSuspension ? undefined : current.suspendedAt,
+      stage: resumesSunoGeneration ? "suno_generation" : "idle"
+    });
+    emitRuntimeEvent({
+      type: "autopilot_state_changed",
+      enabled: true,
+      paused: false,
+      reason: options.reason,
+      timestamp: Date.now()
+    });
+    return next;
+  }
+
+  async backupState(root: string): Promise<{ backupPath?: string }> {
+    return backupAutopilotState(root, this.clock);
+  }
+}

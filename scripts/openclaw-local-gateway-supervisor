@@ -1,0 +1,320 @@
+#!/usr/bin/env bash
+# Keep-alive supervisor for the local artist-runtime gateway.
+# Spawned by `openclaw-local-gateway start`. Loops `gateway run` so
+# unexpected exits/crashes are auto-restarted with backoff.
+
+script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=/dev/null
+source "${script_dir}/openclaw-local-env.sh"
+# env.sh enables `set -euo pipefail`; the supervisor must keep running after
+# the child gateway crashes (wait returns 137 etc.), so we relax those.
+set +e
+set +u
+set +o pipefail
+
+supervisor_log="${OPENCLAW_LOCAL_LOGS}/gateway.supervisor.log"
+watchdog_log="${OPENCLAW_LOCAL_LOGS}/telegram-watchdog.log"
+watchdog_flag="${OPENCLAW_LOCAL_WORKSPACE}/runtime/telegram-watchdog-fired-at.txt"
+ticker_watcher_log="${OPENCLAW_LOCAL_WORKSPACE}/runtime/ticker-watcher.log"
+# Singleton lock: prevents multiple independent supervisors from accumulating
+# (orphaned ppid=1 supervisors crash-looping on the same gateway port were the
+# source of restart-window races + log/CPU churn — Plan v10.65 Layer 0.5).
+supervisor_lock="${OPENCLAW_LOCAL_WORKSPACE}/runtime/gateway-supervisor.lock"
+mkdir -p "${OPENCLAW_LOCAL_LOGS}"
+mkdir -p "${OPENCLAW_LOCAL_WORKSPACE}/runtime"
+
+restart_delay_base_seconds="${OPENCLAW_LOCAL_GATEWAY_RESTART_DELAY:-3}"
+restart_delay_max_seconds="${OPENCLAW_LOCAL_GATEWAY_RESTART_MAX_DELAY:-60}"
+restart_delay_stable_reset_seconds="${OPENCLAW_LOCAL_GATEWAY_RESTART_STABLE_RESET_SECONDS:-300}"
+watchdog_enabled="${OPENCLAW_TELEGRAM_WATCHDOG_ENABLED:-0}"
+watchdog_interval="${OPENCLAW_TELEGRAM_WATCHDOG_INTERVAL:-30}"
+watchdog_tail_lines="${OPENCLAW_TELEGRAM_WATCHDOG_TAIL_LINES:-300}"
+watchdog_threshold="${OPENCLAW_TELEGRAM_WATCHDOG_THRESHOLD:-10}"
+watchdog_grace_seconds="${OPENCLAW_TELEGRAM_WATCHDOG_GRACE_SECONDS:-90}"
+watchdog_probe_timeout_seconds="${OPENCLAW_TELEGRAM_WATCHDOG_PROBE_TIMEOUT_SECONDS:-5}"
+watchdog_kill_limit="${OPENCLAW_TELEGRAM_WATCHDOG_KILL_LIMIT:-3}"
+watchdog_kill_window_seconds="${OPENCLAW_TELEGRAM_WATCHDOG_KILL_WINDOW_SECONDS:-900}"
+watchdog_kill_backoff_seconds="${OPENCLAW_TELEGRAM_WATCHDOG_KILL_BACKOFF_SECONDS:-300}"
+watchdog_kill_state="${OPENCLAW_LOCAL_WORKSPACE}/runtime/telegram-watchdog-kills.txt"
+ticker_watcher_enabled="${OPENCLAW_TICKER_WATCHER_ENABLED:-1}"
+ticker_watcher_interval_ms="${OPENCLAW_TICKER_WATCHER_INTERVAL_MS:-60000}"
+# Keep this above the normal autopilot tick interval (~6m). A shorter default
+# false-triggers safe recovery every cycle and floods Telegram through runtime events.
+ticker_watcher_stale_ms="${OPENCLAW_TICKER_WATCHER_STALE_MS:-1200000}"
+supervisor_heartbeat_interval="${OPENCLAW_SUPERVISOR_HEARTBEAT_INTERVAL:-15}"
+crash_tail_lines="${OPENCLAW_SUPERVISOR_CRASH_TAIL_LINES:-400}"
+supervisor_started_ms="$(node -e 'console.log(Date.now())' 2>/dev/null || date +%s000)"
+child=""
+watchdog_pid=""
+heartbeat_pid=""
+ticker_watcher_pid=""
+consecutive_crash_count=0
+
+log_line() {
+  printf '[supervisor %s] %s\n' "$(date '+%Y-%m-%dT%H:%M:%S')" "$1" >>"${supervisor_log}"
+}
+
+watchdog_log_line() {
+  printf '[watchdog %s] %s\n' "$(date '+%Y-%m-%dT%H:%M:%S')" "$1" >>"${watchdog_log}"
+}
+
+now_ms() {
+  node -e 'console.log(Date.now())' 2>/dev/null || date +%s000
+}
+
+# Enforce one supervisor per repo. FAIL-OPEN by design: only exit when we are
+# CONFIDENT another live supervisor holds the lock (its PID is alive AND its
+# argv actually names this supervisor script). Any uncertainty -> proceed and
+# (re)claim the lock, so a stale/unreadable lock never prevents startup.
+acquire_singleton_lock() {
+  local other_pid=""
+  if [[ -f "${supervisor_lock}" ]]; then
+    other_pid="$(tr -d '[:space:]' < "${supervisor_lock}" 2>/dev/null)"
+  fi
+  if [[ -n "${other_pid}" && "${other_pid}" != "$$" ]] && kill -0 "${other_pid}" 2>/dev/null; then
+    if ps -o args= -p "${other_pid}" 2>/dev/null | grep -q "openclaw-local-gateway-supervisor"; then
+      log_line "another supervisor already running (pid ${other_pid}); exiting to enforce singleton"
+      exit 0
+    fi
+  fi
+  echo "$$" > "${supervisor_lock}" 2>/dev/null || true
+}
+
+restart_delay_for_crashes() {
+  local crash_count="${1:-0}"
+  local delay="${restart_delay_base_seconds}"
+  if [[ "${crash_count}" -le 1 ]]; then
+    delay="${restart_delay_base_seconds}"
+  elif [[ "${crash_count}" -eq 2 ]]; then
+    delay=10
+  elif [[ "${crash_count}" -eq 3 ]]; then
+    delay=30
+  else
+    delay="${restart_delay_max_seconds}"
+  fi
+  if [[ "${delay}" -gt "${restart_delay_max_seconds}" ]]; then
+    delay="${restart_delay_max_seconds}"
+  fi
+  if [[ "${delay}" -lt "${restart_delay_base_seconds}" ]]; then
+    delay="${restart_delay_base_seconds}"
+  fi
+  printf '%s\n' "${delay}"
+}
+
+telegram_api_reachable_for_watchdog() {
+  curl -sS -I --max-time "${watchdog_probe_timeout_seconds}" "https://api.telegram.org" >/dev/null 2>&1
+}
+
+recent_watchdog_kill_count() {
+  local now_epoch cutoff
+  now_epoch="$(date +%s)"
+  cutoff=$((now_epoch - watchdog_kill_window_seconds))
+  if [[ ! -f "${watchdog_kill_state}" ]]; then
+    printf '0\n'
+    return
+  fi
+  awk -v cutoff="${cutoff}" '($1 ~ /^[0-9]+$/ && $1 >= cutoff) { count += 1 } END { print count + 0 }' "${watchdog_kill_state}" 2>/dev/null
+}
+
+record_watchdog_kill() {
+  local now_epoch cutoff tmp_path
+  now_epoch="$(date +%s)"
+  cutoff=$((now_epoch - watchdog_kill_window_seconds))
+  mkdir -p "$(dirname "${watchdog_kill_state}")"
+  tmp_path="${watchdog_kill_state}.$$"
+  if [[ -f "${watchdog_kill_state}" ]]; then
+    awk -v cutoff="${cutoff}" '($1 ~ /^[0-9]+$/ && $1 >= cutoff) { print $1 }' "${watchdog_kill_state}" >"${tmp_path}" 2>/dev/null
+  else
+    : >"${tmp_path}"
+  fi
+  printf '%s\n' "${now_epoch}" >>"${tmp_path}"
+  mv "${tmp_path}" "${watchdog_kill_state}" 2>/dev/null || true
+}
+
+write_supervisor_heartbeat() {
+  local -a heartbeat_args
+  heartbeat_args=(
+    heartbeat
+    --workspace "${OPENCLAW_LOCAL_WORKSPACE}"
+    --pid "$$"
+    --started-at-ms "${supervisor_started_ms}"
+  )
+  if [[ $# -gt 0 ]]; then
+    heartbeat_args+=(--child-pid "${1}" --child-state "${2:-stopped}")
+    if [[ -n "${3:-}" ]]; then
+      heartbeat_args+=(--child-started-at-ms "${3}")
+    fi
+  fi
+  node "${script_dir}/openclaw-supervisor-health.mjs" "${heartbeat_args[@]}" >/dev/null 2>&1 \
+    || log_line "supervisor heartbeat write failed"
+}
+
+supervisor_heartbeat_loop() {
+  while true; do
+    write_supervisor_heartbeat
+    sleep "${supervisor_heartbeat_interval}"
+  done
+}
+
+start_ticker_watcher() {
+  if [[ "${ticker_watcher_enabled}" == "0" || "${ticker_watcher_enabled}" == "off" || "${ticker_watcher_enabled}" == "false" ]]; then
+    log_line "ticker watcher disabled; OPENCLAW_TICKER_WATCHER_ENABLED=${ticker_watcher_enabled}"
+    return
+  fi
+  local ticker_token="${OPENCLAW_SAFE_TICK_TRIGGER_TOKEN:-${OPENCLAW_TICKER_WATCHER_TOKEN:-}}"
+  if [[ -z "${ticker_token}" ]]; then
+    log_line "ticker watcher disabled; safe tick token missing"
+    return
+  fi
+  # Hand the token over through the environment, never on the command line:
+  # process arguments are world-readable through ps, so --token would publish the
+  # secret to every local process. The watcher already reads this variable.
+  OPENCLAW_SAFE_TICK_TRIGGER_TOKEN="${ticker_token}" \
+  node "${script_dir}/openclaw-ticker-watcher" \
+    --workspace "${OPENCLAW_LOCAL_WORKSPACE}" \
+    --gateway-url "${OPENCLAW_LOCAL_GATEWAY_HTTP_URL}" \
+    --supervisor "${script_dir}/openclaw-local-gateway-supervisor" \
+    --log "${ticker_watcher_log}" \
+    --stale-ms "${ticker_watcher_stale_ms}" \
+    --interval-ms "${ticker_watcher_interval_ms}" >/dev/null 2>&1 &
+  ticker_watcher_pid=$!
+  log_line "ticker watcher started pid=${ticker_watcher_pid} staleMs=${ticker_watcher_stale_ms} intervalMs=${ticker_watcher_interval_ms}"
+}
+
+capture_gateway_exit_evidence() {
+  local target_pid="$1"
+  local target_rc="$2"
+  local target_started_ms="$3"
+  local target_exited_ms="$4"
+  node "${script_dir}/openclaw-supervisor-health.mjs" crash-evidence \
+    --workspace "${OPENCLAW_LOCAL_WORKSPACE}" \
+    --pid "${target_pid}" \
+    --rc "${target_rc}" \
+    --started-at-ms "${target_started_ms}" \
+    --exited-at-ms "${target_exited_ms}" \
+    --log "${OPENCLAW_LOCAL_GATEWAY_LOG}" \
+    --tail-lines "${crash_tail_lines}" >>"${supervisor_log}" 2>&1 \
+    || log_line "gateway crash evidence capture failed pid=${target_pid} rc=${target_rc}"
+}
+
+watchdog_loop() {
+  local target_pid="$1"
+  if [[ "${watchdog_enabled}" != "1" && "${watchdog_enabled}" != "on" && "${watchdog_enabled}" != "true" ]]; then
+    watchdog_log_line "disabled for target_pid=${target_pid}; OPENCLAW_TELEGRAM_WATCHDOG_ENABLED=${watchdog_enabled}"
+    return
+  fi
+
+  watchdog_log_line "started target_pid=${target_pid} interval=${watchdog_interval}s tail=${watchdog_tail_lines} threshold=${watchdog_threshold} grace=${watchdog_grace_seconds}s"
+
+  sleep "${watchdog_grace_seconds}"
+
+  while kill -0 "${target_pid}" 2>/dev/null; do
+    sleep "${watchdog_interval}"
+    if [[ ! -f "${OPENCLAW_LOCAL_GATEWAY_LOG}" ]]; then
+      continue
+    fi
+    local recent_count
+    # v10.26.2: match the log format actually emitted by the gateway. The
+    # Telegram polling client logs prefixed lines like `[telegram] fetch
+    # fallback ... codes=ENETUNREACH` and bare `Error: connect ENETUNREACH ...`
+    # rows. The previous `telegram/network` prefix never matched, so the
+    # watchdog stayed silent while polling died.
+    recent_count=$(tail -"${watchdog_tail_lines}" "${OPENCLAW_LOCAL_GATEWAY_LOG}" 2>/dev/null \
+      | grep -cE '(\[telegram\].*(ENETUNREACH|UND_ERR_CONNECT_TIMEOUT)|Error: connect ENETUNREACH|Error: connect UND_ERR_CONNECT_TIMEOUT)' 2>/dev/null)
+    recent_count="${recent_count:-0}"
+    if [[ "${recent_count}" -ge "${watchdog_threshold}" ]]; then
+      if ! telegram_api_reachable_for_watchdog; then
+        watchdog_log_line "telegram polling errors=${recent_count} but api.telegram.org unreachable; suppressing kill for pid=${target_pid}"
+        continue
+      fi
+      local recent_kills
+      recent_kills="$(recent_watchdog_kill_count)"
+      if [[ "${recent_kills}" -ge "${watchdog_kill_limit}" ]]; then
+        watchdog_log_line "telegram polling stuck but watchdog kill limit reached (kills=${recent_kills}/${watchdog_kill_limit} window=${watchdog_kill_window_seconds}s); backing off ${watchdog_kill_backoff_seconds}s for pid=${target_pid}"
+        sleep "${watchdog_kill_backoff_seconds}"
+        continue
+      fi
+      watchdog_log_line "telegram polling stuck (errors=${recent_count} in last ${watchdog_tail_lines} lines; api reachable; kills=${recent_kills}/${watchdog_kill_limit}), killing child pid=${target_pid}"
+      record_watchdog_kill
+      mkdir -p "$(dirname "${watchdog_flag}")"
+      date +%s >"${watchdog_flag}"
+      kill -TERM "${target_pid}" 2>/dev/null
+      return
+    fi
+  done
+  watchdog_log_line "target_pid=${target_pid} exited; watchdog stopping"
+}
+
+handle_term() {
+  log_line "received signal; shutting down"
+  write_supervisor_heartbeat 0 stopped
+  # Release the singleton lock only if we still own it (avoid clobbering a
+  # successor supervisor that may have reclaimed a stale lock).
+  if [[ -f "${supervisor_lock}" ]] && [[ "$(tr -d '[:space:]' < "${supervisor_lock}" 2>/dev/null)" == "$$" ]]; then
+    rm -f "${supervisor_lock}" 2>/dev/null
+  fi
+  if [[ -n "${watchdog_pid}" ]]; then
+    kill "${watchdog_pid}" 2>/dev/null
+  fi
+  if [[ -n "${heartbeat_pid}" ]]; then
+    kill "${heartbeat_pid}" 2>/dev/null
+  fi
+  if [[ -n "${ticker_watcher_pid}" ]]; then
+    kill "${ticker_watcher_pid}" 2>/dev/null
+  fi
+  if [[ -n "${child}" ]]; then
+    kill "${child}" 2>/dev/null
+  fi
+  exit 0
+}
+trap handle_term TERM INT QUIT
+trap 'log_line "received SIGHUP; ignoring"' HUP
+
+log_line "started (pid $$)"
+acquire_singleton_lock
+write_supervisor_heartbeat 0 starting
+supervisor_heartbeat_loop &
+heartbeat_pid=$!
+start_ticker_watcher
+
+while true; do
+  child_started_ms="$(now_ms)"
+  (
+    trap '' HUP
+    exec "${script_dir}/openclaw-local" gateway run \
+      --allow-unconfigured \
+      --bind "${OPENCLAW_LOCAL_GATEWAY_BIND}" \
+      --auth "${OPENCLAW_LOCAL_GATEWAY_AUTH}" \
+      --port "${OPENCLAW_LOCAL_GATEWAY_PORT}" \
+      "$@"
+  ) >>"${OPENCLAW_LOCAL_GATEWAY_LOG}" 2>&1 &
+  child=$!
+  log_line "spawned gateway pid=${child}"
+  write_supervisor_heartbeat "${child}" running "${child_started_ms}"
+
+  watchdog_loop "${child}" &
+  watchdog_pid=$!
+
+  wait "${child}"
+  rc=$?
+  child_exited_ms="$(now_ms)"
+  write_supervisor_heartbeat 0 restarting
+
+  if [[ -n "${watchdog_pid}" ]]; then
+    kill "${watchdog_pid}" 2>/dev/null
+    wait "${watchdog_pid}" 2>/dev/null
+    watchdog_pid=""
+  fi
+
+  capture_gateway_exit_evidence "${child}" "${rc}" "${child_started_ms}" "${child_exited_ms}"
+  child_uptime_seconds=$(( (child_exited_ms - child_started_ms) / 1000 ))
+  if [[ "${rc}" -eq 0 || "${child_uptime_seconds}" -ge "${restart_delay_stable_reset_seconds}" ]]; then
+    consecutive_crash_count=0
+  else
+    consecutive_crash_count=$((consecutive_crash_count + 1))
+  fi
+  restart_delay_seconds="$(restart_delay_for_crashes "${consecutive_crash_count}")"
+  log_line "gateway exited pid=${child} rc=${rc} uptime=${child_uptime_seconds}s crash_count=${consecutive_crash_count}; restart in ${restart_delay_seconds}s"
+  child=""
+  sleep "${restart_delay_seconds}"
+done

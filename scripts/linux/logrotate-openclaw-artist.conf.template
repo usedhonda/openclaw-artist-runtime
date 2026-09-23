@@ -1,0 +1,33 @@
+# logrotate template for an artist-runtime gateway log file.
+#
+# Not needed when the gateway is run under the systemd --user unit in this
+# directory with `StandardOutput=journal` / `StandardError=journal` (the
+# default in openclaw-artist-gateway.service.template) — journald manages its
+# own rotation via journald.conf's SystemMaxUse. Use this template only if a
+# launcher script redirects gateway stdout/stderr to a plain log file instead.
+#
+# Placeholder:
+#   __LOG_PATH__   absolute path to the gateway log file to rotate.
+#
+# Install (system-wide, requires root):
+#   sudo cp scripts/linux/logrotate-openclaw-artist.conf.template \
+#     /etc/logrotate.d/openclaw-artist
+#   sudo $EDITOR /etc/logrotate.d/openclaw-artist
+#
+# Install (user-level, no root, run via a user systemd timer or cron):
+#   mkdir -p ~/.config/openclaw-artist
+#   cp scripts/linux/logrotate-openclaw-artist.conf.template \
+#     ~/.config/openclaw-artist/logrotate.conf
+#   $EDITOR ~/.config/openclaw-artist/logrotate.conf
+#   logrotate --state ~/.local/state/openclaw-artist/logrotate.state \
+#     ~/.config/openclaw-artist/logrotate.conf
+
+__LOG_PATH__ {
+    daily
+    rotate 14
+    compress
+    delaycompress
+    copytruncate
+    missingok
+    notifempty
+}

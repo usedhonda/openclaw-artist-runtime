@@ -1,0 +1,67 @@
+#!/usr/bin/env bash
+# Layer 2 of the publication guard: what is about to leave this machine.
+#
+# Pushing is the first irreversible step, so this layer checks three things:
+#
+#   1. Where the push is going. A push to a repository that anyone can read is a
+#      publication, and it is refused unless the person pushing says so for this
+#      one push (OPENCLAW_PUBLIC_PUSH=1). This is what was missing when operator
+#      identity reached a public remote: every other check assumed the remote was
+#      private.
+#   2. The distribution surface (the packed tarball plus the public source tree).
+#   3. The tracked surface, through the hygiene guard.
+#
+# Install with scripts/install-git-hooks.sh. Do not bypass it with
+# `git push --no-verify`; if it is wrong, fix the guard.
+set -euo pipefail
+
+remote_name="${1:-}"
+remote_url="${2:-}"
+
+repo_root="$(git rev-parse --show-toplevel)"
+cd "${repo_root}"
+
+failed=0
+
+# --- 1. destination visibility -------------------------------------------------
+# Anonymous HTTP is the ground truth for "can anyone read this": no credentials,
+# no gh CLI dependency. 200 = public. 404 = private or missing. Anything else is
+# unknown and treated as public (fail closed).
+github_slug=""
+case "${remote_url}" in
+  git@github.com:*) github_slug="${remote_url#git@github.com:}" ;;
+  https://github.com/*) github_slug="${remote_url#https://github.com/}" ;;
+  ssh://git@github.com/*) github_slug="${remote_url#ssh://git@github.com/}" ;;
+esac
+github_slug="${github_slug%.git}"
+
+if [ -n "${github_slug}" ]; then
+  status="$(curl -s -o /dev/null -w '%{http_code}' --max-time 10 "https://github.com/${github_slug}" || echo "000")"
+  if [ "${status}" != "404" ]; then
+    if [ "${OPENCLAW_PUBLIC_PUSH:-}" != "1" ]; then
+      echo "pre-push: ${remote_name:-remote} (${github_slug}) is readable without login (HTTP ${status})." >&2
+      echo "pre-push: pushing there publishes this history. Refused." >&2
+      echo "pre-push: if publishing is intended for this one push, re-run with OPENCLAW_PUBLIC_PUSH=1." >&2
+      failed=1
+    else
+      echo "pre-push: publishing to public ${github_slug} (OPENCLAW_PUBLIC_PUSH=1)." >&2
+    fi
+  fi
+else
+  echo "pre-push: remote ${remote_url:-<unknown>} is not a GitHub URL; visibility not checked." >&2
+fi
+
+# --- 2. distribution surface --------------------------------------------------
+if ! npm run --silent leak-scan; then
+  failed=1
+fi
+
+# --- 3. tracked surface -------------------------------------------------------
+if ! npx vitest run tests/tracked-file-hygiene.test.ts --reporter=dot; then
+  failed=1
+fi
+
+if [ "${failed}" -ne 0 ]; then
+  echo "pre-push: publication guard failed. Nothing was pushed." >&2
+  exit 1
+fi

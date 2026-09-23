@@ -1,0 +1,243 @@
+import { mkdtempSync } from "node:fs";
+import { mkdir, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+
+const {
+  playwrightChromiumMock,
+  playwrightExtraChromiumMock,
+  connectOverCDPMock,
+  launchPersistentContextMock,
+  stealthPluginMock,
+  binaryHealthMock,
+  reinstallChromiumMock,
+  launchFailureMock,
+  fetchMock
+} = vi.hoisted(() => ({
+  playwrightChromiumMock: { connectOverCDP: vi.fn() },
+  playwrightExtraChromiumMock: { use: vi.fn(), launchPersistentContext: vi.fn() },
+  connectOverCDPMock: vi.fn(),
+  launchPersistentContextMock: vi.fn(),
+  stealthPluginMock: vi.fn(),
+  binaryHealthMock: vi.fn(),
+  reinstallChromiumMock: vi.fn(),
+  launchFailureMock: vi.fn(),
+  fetchMock: vi.fn()
+}));
+
+playwrightChromiumMock.connectOverCDP = connectOverCDPMock;
+playwrightExtraChromiumMock.launchPersistentContext = launchPersistentContextMock;
+
+vi.mock("playwright", () => ({ chromium: playwrightChromiumMock }));
+vi.mock("playwright-extra", () => ({ chromium: playwrightExtraChromiumMock }));
+vi.mock("puppeteer-extra-plugin-stealth", () => ({ default: stealthPluginMock }));
+vi.mock("../src/services/sunoBinaryHealthCheck", () => ({
+  checkSunoBrowserBinaryHealth: binaryHealthMock,
+  reinstallPlaywrightChromium: reinstallChromiumMock,
+  isSunoBrowserLaunchFailure: launchFailureMock
+}));
+
+import { SunoBrowserService } from "../src/services/sunoBrowserService";
+
+const envKeys = ["OPENCLAW_SUNO_USE_CDP", "OPENCLAW_SUNO_CDP_ENDPOINT", "OPENCLAW_SUNO_CHROME_PROFILE_DEST"] as const;
+const originalEnv = Object.fromEntries(envKeys.map((key) => [key, process.env[key]]));
+
+function makeContext() {
+  return { close: vi.fn(async () => undefined), pages: vi.fn(() => []), newPage: vi.fn(async () => ({})) };
+}
+
+let tempProfiles: string[] = [];
+
+async function profileWithPort(port: string | undefined): Promise<string> {
+  const dir = mkdtempSync(join(tmpdir(), "artist-runtime-suno-svc-"));
+  tempProfiles.push(dir);
+  if (port !== undefined) {
+    await mkdir(dir, { recursive: true });
+    await writeFile(join(dir, "DevToolsActivePort"), `${port}\n/devtools/browser/abc\n`, "utf8");
+  }
+  return dir;
+}
+
+describe("SunoBrowserService", () => {
+  beforeEach(() => {
+    connectOverCDPMock.mockReset();
+    launchPersistentContextMock.mockReset();
+    binaryHealthMock.mockReset();
+    reinstallChromiumMock.mockReset();
+    launchFailureMock.mockReset();
+    fetchMock.mockReset().mockResolvedValue({ ok: true, status: 200 });
+    vi.stubGlobal("fetch", fetchMock);
+    playwrightExtraChromiumMock.use.mockReset();
+    stealthPluginMock.mockReset().mockReturnValue({ name: "stealth" });
+    binaryHealthMock.mockResolvedValue({ ok: true, checkedAt: "2026-07-18T00:00:00.000Z" });
+    reinstallChromiumMock.mockResolvedValue(undefined);
+    launchFailureMock.mockReturnValue(false);
+    tempProfiles = [];
+    for (const key of envKeys) delete process.env[key];
+  });
+
+  afterEach(async () => {
+    vi.useRealTimers();
+    for (const key of envKeys) {
+      const value = originalEnv[key];
+      if (value === undefined) delete process.env[key];
+      else process.env[key] = value;
+    }
+    vi.unstubAllGlobals();
+    await Promise.all(tempProfiles.map((dir) => rm(dir, { recursive: true, force: true })));
+  });
+
+  it("launches a persistent context and probes the reserved fixed CDP endpoint", async () => {
+    const profile = await profileWithPort("54321");
+    process.env.OPENCLAW_SUNO_CHROME_PROFILE_DEST = profile;
+    const context = makeContext();
+    launchPersistentContextMock.mockResolvedValue(context);
+    const service = new SunoBrowserService();
+
+    const handle = await service.ensureRunning();
+
+    expect(handle.context).toBe(context);
+    expect(connectOverCDPMock).not.toHaveBeenCalled();
+    const [launchedPath, launchOptions] = launchPersistentContextMock.mock.calls[0];
+    expect(launchedPath).toBe(profile);
+    // A fixed non-zero debug port is required (port 0 sets navigator.webdriver=true and
+    // trips Cloudflare Turnstile). The exact port is reserved at launch, so assert the
+    // shape rather than a literal value.
+    const debugPortArg = (launchOptions.args as string[]).find((arg) => arg.startsWith("--remote-debugging-port="));
+    expect(debugPortArg).toMatch(/^--remote-debugging-port=\d+$/);
+    expect(debugPortArg).not.toBe("--remote-debugging-port=0");
+    const debugPort = debugPortArg?.split("=")[1];
+    expect(handle.cdpEndpoint).toBe(`http://127.0.0.1:${debugPort}`);
+    expect(fetchMock).toHaveBeenCalledWith(
+      `${handle.cdpEndpoint}/json/version`,
+      expect.objectContaining({ signal: expect.any(AbortSignal) })
+    );
+  });
+
+  it("only launches once under concurrent ensureRunning (single in-flight)", async () => {
+    const profile = await profileWithPort("40000");
+    process.env.OPENCLAW_SUNO_CHROME_PROFILE_DEST = profile;
+    const context = makeContext();
+    launchPersistentContextMock.mockResolvedValue(context);
+    const service = new SunoBrowserService();
+
+    const [a, b] = await Promise.all([service.ensureRunning(), service.ensureRunning()]);
+
+    expect(a.cdpEndpoint).toBe(b.cdpEndpoint);
+    expect(a.cdpEndpoint).toMatch(/^http:\/\/127\.0\.0\.1:\d+$/);
+    expect(launchPersistentContextMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("keeps the persistent browser running after the last holder releases", async () => {
+    const profile = await profileWithPort("40001");
+    process.env.OPENCLAW_SUNO_CHROME_PROFILE_DEST = profile;
+    const context = makeContext();
+    launchPersistentContextMock.mockResolvedValue(context);
+    const service = new SunoBrowserService();
+
+    await service.ensureRunning();
+    await service.ensureRunning();
+    await service.release();
+    expect(context.close).not.toHaveBeenCalled();
+    await service.release();
+    expect(context.close).not.toHaveBeenCalled();
+  });
+
+  it("exposes the running endpoint to getCdpEndpoint without a separate launch", async () => {
+    const profile = await profileWithPort("40002");
+    process.env.OPENCLAW_SUNO_CHROME_PROFILE_DEST = profile;
+    const context = makeContext();
+    launchPersistentContextMock.mockResolvedValue(context);
+    const service = new SunoBrowserService();
+
+    expect(service.getCdpEndpoint()).toBeUndefined();
+    const handle = await service.ensureRunning();
+    expect(service.getCdpEndpoint()).toBe(handle.cdpEndpoint);
+    await service.release();
+    expect(service.getCdpEndpoint()).toBe(handle.cdpEndpoint);
+    expect(launchPersistentContextMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("fails closed and closes the context when the reserved CDP endpoint never responds", async () => {
+    const profile = await profileWithPort(undefined);
+    process.env.OPENCLAW_SUNO_CHROME_PROFILE_DEST = profile;
+    const context = makeContext();
+    launchPersistentContextMock.mockResolvedValue(context);
+    fetchMock.mockRejectedValue(new Error("connect refused"));
+    const service = new SunoBrowserService({
+      fetcher: fetchMock,
+      cdpPollTimeoutMs: 10,
+      cdpPollIntervalMs: 1
+    });
+
+    await expect(service.ensureRunning()).rejects.toThrow(/suno_browser_cdp_unavailable/);
+    expect(context.close).toHaveBeenCalledTimes(1);
+  });
+
+  it("holds one operator session idempotently and releases it without closing Chrome", async () => {
+    const profile = await profileWithPort("40020");
+    process.env.OPENCLAW_SUNO_CHROME_PROFILE_DEST = profile;
+    const context = makeContext();
+    launchPersistentContextMock.mockResolvedValue(context);
+    const service = new SunoBrowserService();
+
+    await service.openOperatorSession();
+    await service.openOperatorSession();
+    expect(launchPersistentContextMock).toHaveBeenCalledTimes(1);
+    expect(context.close).not.toHaveBeenCalled();
+
+    await service.closeOperatorSession();
+    expect(context.close).not.toHaveBeenCalled();
+    // A second close is a no-op (already released).
+    await service.closeOperatorSession();
+    expect(context.close).not.toHaveBeenCalled();
+  });
+
+  it("attaches over CDP when config sets music.suno.browser.cdpEndpoint (no legacy env)", async () => {
+    const context = makeContext();
+    connectOverCDPMock.mockResolvedValue({ contexts: () => [context], newContext: vi.fn(async () => context) });
+    const service = new SunoBrowserService();
+    const config = { music: { suno: { browser: { cdpEndpoint: "http://127.0.0.1:7777" } } } };
+
+    const handle = await service.ensureRunning(config);
+
+    expect(handle.cdpEndpoint).toBe("http://127.0.0.1:7777");
+    expect(connectOverCDPMock).toHaveBeenCalledWith("http://127.0.0.1:7777");
+    expect(launchPersistentContextMock).not.toHaveBeenCalled();
+    expect(service.getCdpEndpoint(config)).toBe("http://127.0.0.1:7777");
+    await service.release();
+    expect(context.close).not.toHaveBeenCalled();
+  });
+
+  it("launches on the config profileDir over the env profile dir", async () => {
+    const envProfile = await profileWithPort("40010");
+    const configProfile = await profileWithPort("40011");
+    process.env.OPENCLAW_SUNO_CHROME_PROFILE_DEST = envProfile;
+    const context = makeContext();
+    launchPersistentContextMock.mockResolvedValue(context);
+    const service = new SunoBrowserService();
+
+    const handle = await service.ensureRunning({ music: { suno: { browser: { profileDir: configProfile } } } });
+
+    expect(launchPersistentContextMock.mock.calls[0][0]).toBe(configProfile);
+    expect(handle.cdpEndpoint).toMatch(/^http:\/\/127\.0\.0\.1:\d+$/);
+  });
+
+  it("attaches over CDP and never launches or closes under the legacy env override", async () => {
+    process.env.OPENCLAW_SUNO_USE_CDP = "on";
+    process.env.OPENCLAW_SUNO_CDP_ENDPOINT = "http://127.0.0.1:9333";
+    const context = makeContext();
+    connectOverCDPMock.mockResolvedValue({ contexts: () => [context], newContext: vi.fn(async () => context) });
+    const service = new SunoBrowserService();
+
+    const handle = await service.ensureRunning();
+
+    expect(handle.cdpEndpoint).toBe("http://127.0.0.1:9333");
+    expect(connectOverCDPMock).toHaveBeenCalledWith("http://127.0.0.1:9333");
+    expect(launchPersistentContextMock).not.toHaveBeenCalled();
+    expect(service.getCdpEndpoint()).toBe("http://127.0.0.1:9333");
+    await service.release();
+    expect(context.close).not.toHaveBeenCalled();
+  });
+});

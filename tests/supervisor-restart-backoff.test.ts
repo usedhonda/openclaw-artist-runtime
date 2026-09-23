@@ -1,0 +1,47 @@
+import { execFileSync } from "node:child_process";
+import { readFileSync } from "node:fs";
+import { describe, expect, it } from "vitest";
+
+describe("local gateway supervisor restart backoff", () => {
+  it("keeps the supervisor script parseable and documents bounded crash-loop backoff", () => {
+    execFileSync("bash", ["-n", "scripts/openclaw-local-gateway-supervisor"], {
+      cwd: process.cwd(),
+      stdio: "pipe"
+    });
+
+    const script = readFileSync("scripts/openclaw-local-gateway-supervisor", "utf8");
+    const envScript = readFileSync("scripts/openclaw-local-env.sh", "utf8");
+    const installer = readFileSync("scripts/openclaw-local-install.sh", "utf8");
+    const telegramPatch = readFileSync("scripts/openclaw-local-telegram-pollfatal-patch.sh", "utf8");
+
+    expect(script).toContain("restart_delay_for_crashes()");
+    expect(script).toContain("OPENCLAW_LOCAL_GATEWAY_RESTART_MAX_DELAY");
+    expect(script).toContain("OPENCLAW_LOCAL_GATEWAY_RESTART_STABLE_RESET_SECONDS");
+    expect(script).toContain("consecutive_crash_count=$((consecutive_crash_count + 1))");
+    expect(script).toContain("delay=30");
+    expect(script).toContain('delay="${restart_delay_max_seconds}"');
+    expect(script).toContain("crash_count=${consecutive_crash_count}; restart in ${restart_delay_seconds}s");
+    expect(script).toContain("start_ticker_watcher()");
+    expect(script).toContain("openclaw-ticker-watcher");
+    expect(script).toContain("OPENCLAW_TICKER_WATCHER_STALE_MS");
+    expect(script).toContain("OPENCLAW_TICKER_WATCHER_STALE_MS:-1200000");
+    expect(script).toContain("normal autopilot tick interval");
+    expect(script).toContain("OPENCLAW_TICKER_WATCHER_TOKEN");
+    expect(script).toContain("telegram_api_reachable_for_watchdog()");
+    expect(script).toContain("https://api.telegram.org");
+    expect(script).toContain("api.telegram.org unreachable; suppressing kill");
+    expect(script).toContain("OPENCLAW_TELEGRAM_WATCHDOG_KILL_LIMIT");
+    expect(script).toContain("OPENCLAW_TELEGRAM_WATCHDOG_KILL_BACKOFF_SECONDS");
+    expect(script).toContain("watchdog kill limit reached");
+    expect(envScript).toContain('OPENCLAW_TELEGRAM_WATCHDOG_ENABLED:-0');
+    expect(installer).toContain('openclaw-local-telegram-ingress-patch.sh');
+    expect(installer).toContain('openclaw-local-telegram-pollfatal-patch.sh');
+    expect(telegramPatch).toContain('const TELEGRAM_FALLBACK_IPS = ["149.154.167.220"];');
+    expect(telegramPatch).toContain("local stability: disable unreachable pinned Telegram fallback");
+    // OpenClaw 2026.9 ships ES modules and the runtime can live outside the repo:
+    // the patch must still find the fallback seam there, or the crash fix is lost
+    // silently on upgrade.
+    expect(telegramPatch).toContain('"${dist}"/fetch-*.mjs');
+    expect(telegramPatch).toContain("OPENCLAW_LOCAL_PREFIX");
+  });
+});

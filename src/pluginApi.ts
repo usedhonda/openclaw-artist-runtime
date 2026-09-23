@@ -1,0 +1,328 @@
+import { Buffer } from "node:buffer";
+import type { IncomingMessage, ServerResponse } from "node:http";
+
+type UnknownHandler = (payload?: unknown) => unknown | Promise<unknown>;
+type HttpMethod = "GET" | "POST" | "PATCH";
+
+export interface ToolRegistration {
+  name: string;
+  description?: string;
+  parameters?: Record<string, unknown>;
+  handler: (payload?: unknown, context?: ArtistToolContext) => unknown | Promise<unknown>;
+}
+
+export interface ArtistToolContext {
+  workspaceDir?: string;
+  sessionKey?: string;
+  sessionId?: string;
+  messageChannel?: string;
+  requesterSenderId?: string;
+  senderIsOwner?: boolean;
+  deliveryContext?: { channel?: string; to?: string; accountId?: string; threadId?: string | number };
+  toolCallId?: string;
+}
+
+interface PluginToolContextLike extends ArtistToolContext {}
+
+interface AgentToolLike {
+  name: string;
+  label: string;
+  description: string;
+  parameters: Record<string, unknown>;
+  execute: (toolCallId: string, params: unknown) => Promise<{
+    content: Array<{ type: "text"; text: string }>;
+    details: unknown;
+  }>;
+}
+
+export interface HookRegistration {
+  event: string;
+  handler: UnknownHandler;
+}
+
+export interface ServiceRegistration {
+  name: string;
+  create: () => unknown;
+}
+
+export interface CommandRegistration {
+  name: string;
+  description: string;
+  acceptsArgs?: boolean;
+  requireAuth?: boolean;
+  nativeNames?: Partial<Record<string, string>> & { default?: string };
+  nativeProgressMessages?: Partial<Record<string, string>> & { default?: string };
+  handler: UnknownHandler;
+}
+
+export interface RouteRegistration {
+  method: HttpMethod | HttpMethod[];
+  path: string;
+  handler: UnknownHandler;
+  auth?: "plugin" | "gateway";
+  match?: "exact" | "prefix";
+  contentType?: string;
+}
+
+export interface InteractiveHandlerRegistration {
+  channel: string;
+  namespace: string;
+  handler: UnknownHandler;
+}
+
+export interface PluginApiLike {
+  // The typed PluginHookName lifecycle hooks (before_prompt_build, agent_turn_prepare,
+  // ...) register through `on`, not `registerHook`. `registerHook` is a separate,
+  // untyped internal type:action event bus (InternalHookEvent: type in "command" |
+  // "session" | "agent" | "gateway" | "message", matched by exact type or
+  // "type:action"); a PluginHookName like "agent_turn_prepare" has no colon and
+  // matches nothing on that bus, so it would silently never fire there.
+  on?: (event: "before_prompt_build" | "agent_turn_prepare", handler: (event: unknown, context: { sessionKey?: string; workspaceDir?: string; messageProvider?: string; trigger?: string; channelId?: string }) => unknown | Promise<unknown>) => void;
+  registerTool?: (
+    tool: AgentToolLike | ((context: PluginToolContextLike) => AgentToolLike),
+    opts?: { name?: string; names?: string[]; optional?: boolean }
+  ) => void;
+  registerHook?: (events: string | string[], handler: UnknownHandler, opts?: { name?: string; description?: string; register?: boolean }) => void;
+  registerService?: (service: { id?: string; name?: string; start?: UnknownHandler; stop?: UnknownHandler }) => void;
+  registerCommand?: (command: CommandRegistration) => void;
+  registerInteractiveHandler?: (registration: InteractiveHandlerRegistration) => void;
+  getPluginCommandSpecs?: (provider?: string) => Array<{ name: string; description?: string; acceptsArgs?: boolean }>;
+  registerHttpRoute?: (route: {
+    path: string;
+    handler: (req: IncomingMessage, res: ServerResponse) => Promise<boolean | void> | boolean | void;
+    // Required in the SDK's OpenClawPluginHttpRouteParams (no fallback on the host
+    // side); safeRegisterRoute always resolves a concrete value before calling this,
+    // so tightening the type here does not change call-site behavior.
+    auth: "plugin" | "gateway";
+    match?: "exact" | "prefix";
+  }) => void;
+}
+
+function asPluginApi(api: unknown): PluginApiLike {
+  return typeof api === "object" && api !== null ? (api as PluginApiLike) : {};
+}
+
+function normalizePath(path: string): string {
+  if (path === "/") {
+    return path;
+  }
+  const trimmed = path.replace(/\/+$/, "");
+  return trimmed.length > 0 ? trimmed : "/";
+}
+
+function extractPathParams(routePath: string, requestPath: string): Record<string, string> {
+  const routeSegments = normalizePath(routePath).split("/").filter(Boolean);
+  const requestSegments = normalizePath(requestPath).split("/").filter(Boolean);
+  if (routeSegments.length !== requestSegments.length) {
+    return {};
+  }
+
+  const params: Record<string, string> = {};
+  for (const [index, routeSegment] of routeSegments.entries()) {
+    if (!routeSegment.startsWith(":")) {
+      continue;
+    }
+    const rawValue = requestSegments[index] ?? "";
+    params[routeSegment.slice(1)] = decodeURIComponent(rawValue);
+  }
+  return params;
+}
+
+function readQueryParams(url: URL): Record<string, string | string[]> {
+  const params: Record<string, string | string[]> = {};
+  for (const [key, value] of url.searchParams.entries()) {
+    const existing = params[key];
+    if (existing === undefined) {
+      params[key] = value;
+      continue;
+    }
+    params[key] = Array.isArray(existing) ? [...existing, value] : [existing, value];
+  }
+  return params;
+}
+
+async function readRequestBody(req: IncomingMessage): Promise<string> {
+  const chunks: Buffer[] = [];
+  for await (const chunk of req) {
+    chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
+  }
+  return Buffer.concat(chunks).toString("utf8");
+}
+
+function parseBodyPayload(bodyText: string, contentType: string | undefined): unknown {
+  if (!bodyText.trim()) {
+    return undefined;
+  }
+  if (contentType?.includes("application/json")) {
+    return JSON.parse(bodyText) as unknown;
+  }
+  return bodyText;
+}
+
+function mergeRoutePayload(base: Record<string, unknown>, bodyPayload: unknown): Record<string, unknown> {
+  if (bodyPayload === undefined) {
+    return base;
+  }
+  if (typeof bodyPayload === "object" && bodyPayload !== null && !Array.isArray(bodyPayload)) {
+    return { ...base, ...(bodyPayload as Record<string, unknown>) };
+  }
+  return { ...base, body: bodyPayload };
+}
+
+function inferContentType(route: RouteRegistration, result: unknown): string {
+  if (route.contentType) {
+    return route.contentType;
+  }
+  if (typeof result === "string") {
+    return route.path.includes("/api/") ? "text/plain; charset=utf-8" : "text/html; charset=utf-8";
+  }
+  return "application/json; charset=utf-8";
+}
+
+function writeRouteResponse(res: ServerResponse, route: RouteRegistration, result: unknown): void {
+  if (res.headersSent) {
+    return;
+  }
+
+  const contentType = inferContentType(route, result);
+  res.statusCode = 200;
+  res.setHeader("Content-Type", contentType);
+  if (result === undefined) {
+    res.end(contentType.includes("application/json") ? "{}" : "");
+    return;
+  }
+  if (typeof result === "string") {
+    res.end(result);
+    return;
+  }
+  res.end(JSON.stringify(result));
+}
+
+function createHttpRouteHandler(route: RouteRegistration) {
+  return async (req: IncomingMessage, res: ServerResponse): Promise<boolean> => {
+    const method = (req.method ?? "GET").toUpperCase();
+    const allowedMethods = Array.isArray(route.method) ? route.method : [route.method];
+    if (!allowedMethods.includes(method as HttpMethod)) {
+      res.statusCode = 405;
+      res.setHeader("Allow", allowedMethods.join(", "));
+      res.setHeader("Content-Type", "text/plain; charset=utf-8");
+      res.end(`Method ${method} Not Allowed`);
+      return true;
+    }
+
+    const url = new URL(req.url ?? route.path, "http://127.0.0.1");
+    const payloadBase: Record<string, unknown> = {
+      requestMethod: method,
+      requestPath: url.pathname,
+      ...readQueryParams(url),
+      ...extractPathParams(route.path, url.pathname)
+    };
+    const bodyText = await readRequestBody(req);
+    const bodyPayload = parseBodyPayload(bodyText, typeof req.headers["content-type"] === "string" ? req.headers["content-type"] : undefined);
+    const mergedPayload = mergeRoutePayload(payloadBase, bodyPayload);
+    const payload = route.path.endsWith("/api/telegram/callback-dispatch")
+      ? { ...mergedPayload, remoteAddress: req.socket?.remoteAddress }
+      : mergedPayload;
+    const result = await route.handler(payload);
+    writeRouteResponse(res, route, result);
+    return true;
+  };
+}
+
+export function safeRegisterTool(api: unknown, tool: ToolRegistration): void {
+  asPluginApi(api).registerTool?.((context) => ({
+    name: tool.name,
+    label: tool.name,
+    description: tool.description ?? `Artist Runtime tool: ${tool.name}`,
+    parameters: tool.parameters ?? { type: "object", additionalProperties: true },
+    execute: async (toolCallId, params) => {
+      const payload = typeof params === "object" && params !== null && !Array.isArray(params)
+        ? { ...(params as Record<string, unknown>) }
+        : {};
+      if (context.workspaceDir) {
+        payload.workspaceRoot = context.workspaceDir;
+      }
+      const details = await tool.handler(payload, {
+        workspaceDir: context.workspaceDir,
+        sessionKey: context.sessionKey,
+        sessionId: context.sessionId,
+        messageChannel: context.messageChannel,
+        requesterSenderId: context.requesterSenderId,
+        senderIsOwner: context.senderIsOwner,
+        deliveryContext: context.deliveryContext,
+        toolCallId
+      });
+      const text = typeof details === "string" ? details : JSON.stringify(details, null, 2) ?? "null";
+      return {
+        content: [{ type: "text", text }],
+        details
+      };
+    }
+  }), { name: tool.name });
+}
+
+export function safeRegisterProductionPromptHook(api: unknown, handler: Parameters<NonNullable<PluginApiLike["on"]>>[1]): void {
+  asPluginApi(api).on?.("before_prompt_build", handler);
+}
+
+export function safeRegisterAgentTurnPrepareHook(api: unknown, handler: Parameters<NonNullable<PluginApiLike["on"]>>[1]): void {
+  asPluginApi(api).on?.("agent_turn_prepare", handler);
+}
+
+export function safeRegisterHook(api: unknown, hook: HookRegistration): void {
+  const registerHook = asPluginApi(api).registerHook;
+  if (!registerHook) {
+    return;
+  }
+  registerHook(hook.event, hook.handler, { name: hook.event });
+}
+
+export function safeRegisterService(api: unknown, service: ServiceRegistration): void {
+  // Retain the exact instance start() built so stop() tears down the running
+  // instance instead of building and discarding a second, never-started one.
+  let startedInstance: unknown;
+  asPluginApi(api).registerService?.({
+    id: service.name,
+    start: async () => {
+      const instance = service.create();
+      startedInstance = instance;
+      if (typeof instance === "object" && instance !== null && "start" in instance && typeof (instance as { start?: UnknownHandler }).start === "function") {
+        return (instance as { start: UnknownHandler }).start();
+      }
+      return instance;
+    },
+    stop: async () => {
+      const instance = startedInstance;
+      if (typeof instance === "object" && instance !== null && "stop" in instance && typeof (instance as { stop?: UnknownHandler }).stop === "function") {
+        return (instance as { stop: UnknownHandler }).stop();
+      }
+      return undefined;
+    }
+  });
+}
+
+export function safeRegisterCommand(
+  api: unknown,
+  command: CommandRegistration,
+  onResult?: (ok: boolean, name: string) => void
+): void {
+  const registerCommand = asPluginApi(api).registerCommand;
+  const ok = typeof registerCommand === "function";
+  if (ok) {
+    registerCommand(command);
+  }
+  onResult?.(ok, command.name);
+}
+
+export function safeRegisterInteractiveHandler(api: unknown, registration: InteractiveHandlerRegistration): void {
+  asPluginApi(api).registerInteractiveHandler?.(registration);
+}
+
+export function safeRegisterRoute(api: unknown, route: RouteRegistration): void {
+  asPluginApi(api).registerHttpRoute?.({
+    path: route.path,
+    handler: createHttpRouteHandler(route),
+    auth: route.auth ?? "plugin",
+    match: route.match
+  });
+}

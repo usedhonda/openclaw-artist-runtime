@@ -1,0 +1,17 @@
+import { mkdtempSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+
+// Isolate env-based workspace resolution so a test run can never write to the
+// operator's live `.local/openclaw/workspace`. Some code paths resolve the
+// workspace from `OPENCLAW_LOCAL_WORKSPACE` / `resolveDefaultWorkspaceRoot()`
+// rather than from an explicit root — e.g. the notify-review debug handler
+// starts the runtime-event ledger and Telegram notifier from env
+// (`startRuntimeEventLedgerFromEnv` / `startTelegramNotifierFromEnv`). Without
+// this, running `npm test` from the repo appended song_take_completed events to
+// the live runtime-events.jsonl (the observed "song-018 zombie" re-fire on every
+// suite run). Always replace inherited values: a shell sourced from the local
+// runtime exports the production workspace before Vitest starts.
+const testWorkspaceRoot = mkdtempSync(join(tmpdir(), "artist-runtime-test-ws-"));
+process.env.OPENCLAW_TEST_WORKSPACE_ROOT = testWorkspaceRoot;
+process.env.OPENCLAW_LOCAL_WORKSPACE = testWorkspaceRoot;

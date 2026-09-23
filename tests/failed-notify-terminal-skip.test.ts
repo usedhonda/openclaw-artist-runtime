@@ -1,0 +1,250 @@
+import { mkdtemp } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import { ensureArtistWorkspace } from "../src/services/artistWorkspace.js";
+import { ensureSongState, updateSongState } from "../src/services/artistState.js";
+import {
+  appendFailedNotification,
+  isCriticalNotificationEvent,
+  latestFailedNotifyEntry,
+  listUnreplayedFailedNotifications,
+  terminalReplaySongStatus
+} from "../src/services/failedNotifyLedger.js";
+import { replayFailedNotificationsOnce } from "../src/services/failedNotifyReplayWorker.js";
+import { getRuntimeEventBus, type RuntimeEvent } from "../src/services/runtimeEventBus.js";
+
+// Synthetic placeholder take (non-UUID id) — the shape song-018 zombie carried.
+function takeCompletedEvent(songId: string): Extract<RuntimeEvent, { type: "song_take_completed" }> {
+  return {
+    type: "song_take_completed",
+    songId,
+    selectedTakeId: "take-1",
+    urls: ["https://suno.com/song/take-1"],
+    actor: "manual_notify_retrigger",
+    timestamp: 1785000000000
+  };
+}
+
+// A real Suno take (UUID id + UUID urls), which the synthetic-skip guard leaves alone.
+function realTakeCompletedEvent(songId: string): Extract<RuntimeEvent, { type: "song_take_completed" }> {
+  return {
+    type: "song_take_completed",
+    songId,
+    selectedTakeId: "1b831ed6-4f80-4ffa-afb7-b4559b2f66b7",
+    urls: ["https://suno.com/song/1b831ed6-4f80-4ffa-afb7-b4559b2f66b7"],
+    timestamp: 1785000000000
+  };
+}
+
+// Critical event that the notifier intentionally does not send (non-signal).
+function generateRetryEvent(songId: string): Extract<RuntimeEvent, { type: "suno_generate_retry" }> {
+  return { type: "suno_generate_retry", songId, reason: "transient", retryCount: 1, timestamp: 1785000000000 };
+}
+
+function timeoutError(): Error {
+  const error = new Error("fetch failed");
+  (error as { cause?: unknown }).cause = { code: "ETIMEDOUT", message: "timeout" };
+  return error;
+}
+
+function telegramOk(): Response {
+  return {
+    ok: true,
+    status: 200,
+    json: async () => ({ ok: true, result: { message_id: 7, chat: { id: 123 }, text: "ok" } })
+  } as Response;
+}
+
+afterEach(() => {
+  getRuntimeEventBus().clearForTest();
+  vi.unstubAllGlobals();
+});
+
+describe("failed-notify replay terminal-song skip", () => {
+  it("retires (never re-delivers) a failed notification once its song is terminal", async () => {
+    const root = await mkdtemp(join(tmpdir(), "artist-runtime-terminal-skip-"));
+    await ensureArtistWorkspace(root);
+    await ensureSongState(root, "song-018", "Route 145");
+    await updateSongState(root, "song-018", { status: "archived" });
+
+    const failed = await appendFailedNotification(root, {
+      event: realTakeCompletedEvent("song-018"),
+      chatId: 123,
+      error: new Error("fetch failed"),
+      attempts: 3
+    });
+    if (!failed) throw new Error("failed entry not created");
+
+    const fetchImpl = vi.fn().mockResolvedValue(telegramOk());
+    await expect(replayFailedNotificationsOnce({ root, token: "token", fetchImpl })).resolves.toMatchObject({
+      attempted: 0,
+      replayed: 0,
+      failed: 0,
+      terminalSkipped: 1,
+      deliveryIds: [failed.deliveryId]
+    });
+    // No Telegram call, and the entry is retired so future ticks never re-surface it.
+    expect(fetchImpl).not.toHaveBeenCalled();
+    expect(await latestFailedNotifyEntry(root, failed.notifyId)).toMatchObject({
+      status: "aged_out",
+      replayError: "failed_notify_replay_terminal_song:archived"
+    });
+    await expect(listUnreplayedFailedNotifications(root)).resolves.toHaveLength(0);
+
+    // A second tick is a no-op: the retired entry is no longer a candidate.
+    await expect(replayFailedNotificationsOnce({ root, token: "token", fetchImpl })).resolves.toMatchObject({
+      attempted: 0,
+      terminalSkipped: 0
+    });
+    expect(fetchImpl).not.toHaveBeenCalled();
+  });
+
+  it("still replays a failed notification while its song is non-terminal", async () => {
+    const root = await mkdtemp(join(tmpdir(), "artist-runtime-nonterminal-replay-"));
+    await ensureArtistWorkspace(root);
+    await ensureSongState(root, "song-live", "Live Song");
+    await updateSongState(root, "song-live", { status: "take_selected" });
+
+    const failed = await appendFailedNotification(root, {
+      event: realTakeCompletedEvent("song-live"),
+      chatId: 123,
+      error: new Error("fetch failed"),
+      attempts: 1
+    });
+    if (!failed) throw new Error("failed entry not created");
+
+    const fetchImpl = vi.fn().mockResolvedValue(telegramOk());
+    await expect(replayFailedNotificationsOnce({ root, token: "token", fetchImpl })).resolves.toMatchObject({
+      attempted: 1,
+      replayed: 1,
+      terminalSkipped: 0,
+      syntheticSkipped: 0
+    });
+    expect(fetchImpl).toHaveBeenCalled();
+    expect(await latestFailedNotifyEntry(root, failed.notifyId)).toMatchObject({ status: "replayed" });
+  });
+
+  it("retires a synthetic placeholder take (take-1) even while its song is non-terminal", async () => {
+    const root = await mkdtemp(join(tmpdir(), "artist-runtime-synthetic-skip-"));
+    await ensureArtistWorkspace(root);
+    await ensureSongState(root, "song-018", "Route 145");
+    await updateSongState(root, "song-018", { status: "take_selected" });
+
+    const failed = await appendFailedNotification(root, {
+      event: takeCompletedEvent("song-018"),
+      chatId: 123,
+      error: new Error("fetch failed"),
+      attempts: 3
+    });
+    if (!failed) throw new Error("failed entry not created");
+
+    const fetchImpl = vi.fn().mockResolvedValue(telegramOk());
+    // Non-terminal song, but the synthetic take-1 event must be retired without a
+    // Telegram re-delivery so it stops resurfacing every replay tick.
+    await expect(replayFailedNotificationsOnce({ root, token: "token", fetchImpl })).resolves.toMatchObject({
+      attempted: 0,
+      replayed: 0,
+      terminalSkipped: 0,
+      syntheticSkipped: 1,
+      deliveryIds: [failed.deliveryId]
+    });
+    expect(fetchImpl).not.toHaveBeenCalled();
+    expect(await latestFailedNotifyEntry(root, failed.notifyId)).toMatchObject({
+      status: "aged_out",
+      replayError: "failed_notify_replay_synthetic_take:take-1"
+    });
+    await expect(listUnreplayedFailedNotifications(root)).resolves.toHaveLength(0);
+  });
+
+  it("treats a captcha human-assist alert as replay-critical so a boot-race failure survives", () => {
+    expect(isCriticalNotificationEvent({
+      type: "suno_human_assist_requested",
+      songId: "song-live",
+      title: "Route 145",
+      timeoutMinutes: 60,
+      timestamp: 1785000000000
+    })).toBe(true);
+  });
+
+  it("retires a critical-but-non-signal event as not-deliverable, never a false replayed", async () => {
+    const root = await mkdtemp(join(tmpdir(), "artist-runtime-not-deliverable-"));
+    await ensureArtistWorkspace(root);
+    await ensureSongState(root, "song-live", "Live Song");
+    await updateSongState(root, "song-live", { status: "take_selected" });
+
+    const failed = await appendFailedNotification(root, {
+      event: generateRetryEvent("song-live"),
+      chatId: 123,
+      error: new Error("fetch failed"),
+      attempts: 1
+    });
+    if (!failed) throw new Error("failed entry not created");
+
+    const fetchImpl = vi.fn().mockResolvedValue(telegramOk());
+    // The notifier skips this event (non-signal) so nothing is sent; it must be
+    // retired honestly rather than marked as a confirmed delivery.
+    await expect(replayFailedNotificationsOnce({ root, token: "token", fetchImpl })).resolves.toMatchObject({
+      attempted: 1,
+      replayed: 0,
+      notDeliverable: 1
+    });
+    expect(fetchImpl).not.toHaveBeenCalled();
+    expect(await latestFailedNotifyEntry(root, failed.notifyId)).toMatchObject({
+      status: "aged_out",
+      replayError: "failed_notify_replay_not_deliverable"
+    });
+    await expect(listUnreplayedFailedNotifications(root)).resolves.toHaveLength(0);
+  });
+
+  it("retires after the retry cap when delivery keeps failing", async () => {
+    process.env.OPENCLAW_TELEGRAM_RETRY_MAX = "1";
+    process.env.OPENCLAW_TELEGRAM_RETRY_BASE_MS = "1";
+    const root = await mkdtemp(join(tmpdir(), "artist-runtime-replay-exhausted-"));
+    await ensureArtistWorkspace(root);
+    await ensureSongState(root, "song-live", "Live Song");
+    await updateSongState(root, "song-live", { status: "take_selected" });
+
+    const failed = await appendFailedNotification(root, {
+      event: realTakeCompletedEvent("song-live"),
+      chatId: 123,
+      error: new Error("fetch failed"),
+      attempts: 1
+    });
+    if (!failed) throw new Error("failed entry not created");
+
+    const fetchImpl = vi.fn().mockRejectedValue(timeoutError());
+    // The first four failing ticks keep it retryable as replay_failed.
+    for (let tick = 0; tick < 4; tick += 1) {
+      await replayFailedNotificationsOnce({ root, token: "token", fetchImpl });
+    }
+    expect(await latestFailedNotifyEntry(root, failed.notifyId)).toMatchObject({ status: "replay_failed" });
+    await expect(listUnreplayedFailedNotifications(root)).resolves.toHaveLength(1);
+
+    // The fifth failure hits the cap and retires it (never a false replayed).
+    await expect(replayFailedNotificationsOnce({ root, token: "token", fetchImpl })).resolves.toMatchObject({
+      exhausted: 1,
+      replayed: 0
+    });
+    const retired = await latestFailedNotifyEntry(root, failed.notifyId);
+    expect(retired?.status).toBe("aged_out");
+    expect(retired?.replayError).toContain("failed_notify_replay_exhausted");
+    await expect(listUnreplayedFailedNotifications(root)).resolves.toHaveLength(0);
+    delete process.env.OPENCLAW_TELEGRAM_RETRY_MAX;
+    delete process.env.OPENCLAW_TELEGRAM_RETRY_BASE_MS;
+  });
+
+  it("terminalReplaySongStatus resolves terminal status and ignores active/missing songs", async () => {
+    const root = await mkdtemp(join(tmpdir(), "artist-runtime-terminal-helper-"));
+    await ensureArtistWorkspace(root);
+    await ensureSongState(root, "song-arch", "Archived");
+    await updateSongState(root, "song-arch", { status: "published" });
+    await ensureSongState(root, "song-act", "Active");
+    await updateSongState(root, "song-act", { status: "suno_prompt_pack" });
+
+    expect(await terminalReplaySongStatus(root, "song-arch")).toBe("published");
+    expect(await terminalReplaySongStatus(root, "song-act")).toBeUndefined();
+    expect(await terminalReplaySongStatus(root, "song-missing")).toBeUndefined();
+    expect(await terminalReplaySongStatus(root, undefined)).toBeUndefined();
+  });
+});

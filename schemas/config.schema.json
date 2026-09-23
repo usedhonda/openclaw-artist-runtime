@@ -1,0 +1,677 @@
+{
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "schemaVersion": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 1,
+      "default": 1
+    },
+    "artist": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "mode": {
+          "type": "string",
+          "const": "public_artist",
+          "default": "public_artist"
+        },
+        "artistId": {
+          "type": "string",
+          "default": "artist"
+        },
+        "profilePath": {
+          "type": "string",
+          "default": "ARTIST.md"
+        },
+        "workspaceRoot": {
+          "type": "string",
+          "default": ".local/openclaw/workspace"
+        },
+        "identity": {
+          "type": "object",
+          "additionalProperties": false,
+          "default": {},
+          "properties": {
+            "displayName": {
+              "type": "string",
+              "default": ""
+            },
+            "producerCallname": {
+              "type": "string",
+              "default": ""
+            }
+          }
+        }
+      },
+      "required": [
+        "mode"
+      ]
+    },
+    "autopilot": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "enabled": {
+          "type": "boolean",
+          "default": true
+        },
+        "dryRun": {
+          "type": "boolean",
+          "default": true
+        },
+        "songsPerWeek": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 100,
+          "default": 3
+        },
+        "cycleIntervalMinutes": {
+          "type": "integer",
+          "minimum": 15,
+          "maximum": 1440,
+          "default": 180
+        },
+        "planningTimeoutDays": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 30,
+          "default": 7
+        },
+        "producerDigest": {
+          "type": "string",
+          "enum": [
+            "off",
+            "daily",
+            "important_events",
+            "high_touch"
+          ],
+          "default": "daily"
+        }
+      }
+    },
+    "dashboard": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "baseUrl": {
+          "type": "string",
+          "default": "",
+          "description": "Reachable Producer Console base URL used in Telegram Dashboard links. Config value takes precedence over OPENCLAW_DASHBOARD_BASE_URL."
+        }
+      }
+    },
+    "music": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "engine": {
+          "type": "string",
+          "enum": [
+            "suno"
+          ],
+          "default": "suno"
+        },
+        "suno": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "enabled": {
+              "type": "boolean",
+              "default": true
+            },
+            "connectionMode": {
+              "type": "string",
+              "enum": [
+                "manual_copy",
+                "background_browser_worker",
+                "api_provider"
+              ],
+              "default": "background_browser_worker"
+            },
+            "driver": {
+              "type": "string",
+              "enum": [
+                "mock",
+                "playwright",
+                "suno_cli"
+              ],
+              "default": "mock",
+              "description": "Suno browser driver selection. 'mock' keeps dry-run-safe skeleton behavior. 'playwright' is reserved for operator machines that install playwright separately."
+            },
+            "submitMode": {
+              "type": "string",
+              "enum": [
+                "skip",
+                "manual",
+                "live"
+              ],
+              "default": "skip",
+              "description": "Suno create submit mode. 'skip' fills the create form for validation and closes without submitting. 'manual' opens and fills the visible form, lets the producer adjust remaining parameters, and waits for their Create click. 'live' clicks Create automatically when dry-run is off and budget gates allow it."
+            },
+            "captchaFallback": {
+              "type": "string",
+              "enum": [
+                "off",
+                "human_click"
+              ],
+              "default": "off",
+              "description": "What to do when a live create is blocked by a captcha challenge. 'off' keeps the fail-closed hard stop. 'human_click' opens the CDP browser, auto-fills the form, tries a machine submit, and on a captcha challenge closes the challenge (never solves it) and asks the producer to press Create manually. Opt-in; does not weaken stopOnCaptcha."
+            },
+            "humanAssistTimeoutMinutes": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 240,
+              "default": 0,
+              "description": "Minutes to keep the human-assist browser window open awaiting a manual Create click before giving up and returning the song to the pipeline for a later retry. 0 = no time limit (wait indefinitely for the manual Create click)."
+            },
+            "authority": {
+              "type": "string",
+              "enum": [
+                "prepare_only",
+                "autofill_only",
+                "auto_create_with_budget",
+                "auto_create_and_select_take"
+              ],
+              "default": "auto_create_and_select_take"
+            },
+            "dailyCreditLimit": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 1000,
+              "default": 60
+            },
+            "monthlyCreditLimit": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 50000,
+              "default": 0
+            },
+            "monthlyGenerationBudget": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 1000,
+              "default": 50
+            },
+            "maxGenerationsPerDay": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 100,
+              "default": 6
+            },
+            "minMinutesBetweenCreates": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 1440,
+              "default": 20
+            },
+            "stopOnLoginChallenge": {
+              "type": "boolean",
+              "default": true
+            },
+            "stopOnCaptcha": {
+              "type": "boolean",
+              "default": true
+            },
+            "stopOnPaymentPrompt": {
+              "type": "boolean",
+              "default": true
+            },
+            "promptLogging": {
+              "type": "string",
+              "enum": [
+                "full"
+              ],
+              "default": "full"
+            },
+            "audioImport": {
+              "type": "string",
+              "enum": [
+                "download",
+                "skip"
+              ],
+              "default": "download",
+              "description": "download = fetch accepted take audio into the workspace; skip = record take URLs only and never download audio (for limited Suno download quotas)."
+            },
+            "cliEntry": {
+              "type": "string",
+              "description": "Optional absolute path to a suno-cli entry (dist/src/cli.js). Overrides OPENCLAW_SUNO_CLI_ENTRY; blank auto-resolves the bundled vendor/suno-cli copy."
+            },
+            "browser": {
+              "type": "object",
+              "additionalProperties": false,
+              "description": "Optional operator overrides for the plugin-owned Suno browser. Each field wins over its legacy env var, which stays as a backward-compatible fallback.",
+              "properties": {
+                "profileDir": {
+                  "type": "string",
+                  "description": "Persistent Chromium profile directory for the logged-in Suno session. Overrides OPENCLAW_SUNO_CHROME_PROFILE_DEST; blank falls back to the env var or the default .openclaw-browser-profiles/suno."
+                },
+                "executablePath": {
+                  "type": "string",
+                  "description": "Absolute path to a Chrome/Chromium binary to launch instead of the bundled Playwright Chromium. Overrides OPENCLAW_SUNO_CHROME_EXECUTABLE."
+                },
+                "channel": {
+                  "type": "string",
+                  "enum": [
+                    "chrome"
+                  ],
+                  "description": "Launch the installed Chrome channel instead of the bundled Chromium. Overrides OPENCLAW_SUNO_BROWSER_CHANNEL."
+                },
+                "cdpEndpoint": {
+                  "type": "string",
+                  "description": "Attach to an already-running Chrome over CDP at this endpoint instead of launching a browser (advanced/emergency). Overrides OPENCLAW_SUNO_CDP_ENDPOINT and, when set, enables CDP attach."
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "distribution": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "enabled": {
+          "type": "boolean",
+          "default": false
+        },
+        "liveGoArmed": {
+          "type": "boolean",
+          "default": false
+        },
+        "dailySharing": {
+          "type": "string",
+          "enum": [
+            "off",
+            "draft_only",
+            "auto"
+          ],
+          "default": "auto"
+        },
+        "officialRelease": {
+          "type": "string",
+          "enum": [
+            "manual_approval",
+            "auto_with_release_policy"
+          ],
+          "default": "manual_approval"
+        },
+        "platforms": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "x": {
+              "$ref": "#/$defs/xPlatform"
+            },
+            "instagram": {
+              "$ref": "#/$defs/visualPlatform"
+            },
+            "tiktok": {
+              "$ref": "#/$defs/videoPlatform"
+            }
+          }
+        }
+      }
+    },
+    "telegram": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "enabled": {
+          "type": "boolean",
+          "default": false
+        },
+        "pollIntervalMs": {
+          "type": "integer",
+          "minimum": 500,
+          "maximum": 60000,
+          "default": 2000
+        },
+        "notifyStages": {
+          "type": "boolean",
+          "default": true
+        },
+        "acceptFreeText": {
+          "type": "boolean",
+          "default": true
+        }
+      }
+    },
+    "artistPulse": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "enabled": {
+          "type": "boolean",
+          "default": false
+        },
+        "minIntervalHours": {
+          "type": "integer",
+          "minimum": 6,
+          "maximum": 168,
+          "default": 12
+        }
+      }
+    },
+    "aiReview": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "provider": {
+          "type": "string",
+          "enum": [
+            "mock",
+            "openclaw",
+            "openai-codex"
+          ],
+          "default": "mock",
+          "description": "AI provider used for artist setup proposals, lyrics drafts, style synthesis, and production review. 'mock' stays local and deterministic; 'openclaw' uses the configured OpenClaw provider when available; 'openai-codex' uses a local OpenClaw auth profile."
+        }
+      }
+    },
+    "ui": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "locale": {
+          "type": "string",
+          "enum": [
+            "auto",
+            "ja",
+            "en"
+          ],
+          "default": "auto"
+        }
+      },
+      "default": {
+        "locale": "auto"
+      }
+    },
+    "safety": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "auditLog": {
+          "type": "boolean",
+          "default": true
+        },
+        "failClosed": {
+          "type": "boolean",
+          "default": true
+        },
+        "forbiddenTopics": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "default": [
+            "politics",
+            "medical",
+            "financial",
+            "religion",
+            "private_individuals",
+            "legal_claims"
+          ]
+        },
+        "forbidCaptchaBypass": {
+          "type": "boolean",
+          "default": true
+        },
+        "forbidCredentialLogging": {
+          "type": "boolean",
+          "default": true
+        },
+        "requireApprovalForHighRisk": {
+          "type": "boolean",
+          "default": true
+        }
+      }
+    },
+    "commission": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "enabled": {
+          "type": "boolean",
+          "default": false
+        }
+      },
+      "default": {
+        "enabled": false
+      }
+    },
+    "songSpawn": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "enabled": {
+          "type": "boolean",
+          "default": false
+        },
+        "minIntervalHours": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 168,
+          "default": 24
+        }
+      },
+      "default": {
+        "enabled": false,
+        "minIntervalHours": 24
+      }
+    },
+    "observation": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "newsRssUrls": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "default": []
+        },
+        "xTcoFetchEnabled": {
+          "type": "boolean",
+          "default": false
+        }
+      },
+      "default": {
+        "newsRssUrls": []
+      }
+    }
+  },
+  "$defs": {
+    "xPlatform": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "enabled": {
+          "type": "boolean",
+          "default": false
+        },
+        "liveGoArmed": {
+          "type": "boolean",
+          "default": false
+        },
+        "authStatus": {
+          "type": "string",
+          "enum": [
+            "unconfigured",
+            "configured",
+            "tested",
+            "failed"
+          ],
+          "default": "unconfigured"
+        },
+        "lastTestedAt": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "connector": {
+          "type": "string",
+          "const": "bird",
+          "default": "bird"
+        },
+        "authority": {
+          "type": "string",
+          "enum": [
+            "draft_only",
+            "auto_publish",
+            "auto_publish_and_low_risk_replies"
+          ],
+          "default": "auto_publish"
+        },
+        "maxPostsPerDay": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 50,
+          "default": 3
+        },
+        "maxRepliesPerDay": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 200,
+          "default": 0
+        },
+        "autoPostTypes": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "default": [
+            "observation",
+            "studio_note",
+            "lyric_fragment",
+            "demo_teaser",
+            "new_song_link"
+          ]
+        }
+      }
+    },
+    "visualPlatform": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "enabled": {
+          "type": "boolean",
+          "default": false
+        },
+        "liveGoArmed": {
+          "type": "boolean",
+          "default": false
+        },
+        "authStatus": {
+          "type": "string",
+          "enum": [
+            "unconfigured",
+            "configured",
+            "tested",
+            "failed"
+          ],
+          "default": "unconfigured"
+        },
+        "lastTestedAt": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "liveRehearsalArmed": {
+          "type": "boolean",
+          "default": false
+        },
+        "accessTokenExpiresAt": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "connector": {
+          "type": "string",
+          "const": "instagram_content_publishing",
+          "default": "instagram_content_publishing"
+        },
+        "authority": {
+          "type": "string",
+          "enum": [
+            "draft_only",
+            "auto_publish_visuals"
+          ],
+          "default": "auto_publish_visuals"
+        },
+        "maxPostsPerDay": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 20,
+          "default": 1
+        },
+        "autoPostTypes": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "default": [
+            "lyric_card",
+            "reel_teaser",
+            "cover_visual"
+          ]
+        }
+      }
+    },
+    "videoPlatform": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "enabled": {
+          "type": "boolean",
+          "default": false
+        },
+        "liveGoArmed": {
+          "type": "boolean",
+          "default": false
+        },
+        "authStatus": {
+          "type": "string",
+          "enum": [
+            "unconfigured",
+            "configured",
+            "tested",
+            "failed"
+          ],
+          "default": "unconfigured"
+        },
+        "lastTestedAt": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "connector": {
+          "type": "string",
+          "const": "tiktok_content_posting",
+          "default": "tiktok_content_posting"
+        },
+        "authority": {
+          "type": "string",
+          "enum": [
+            "draft_only",
+            "auto_publish_clips"
+          ],
+          "default": "auto_publish_clips"
+        },
+        "maxPostsPerDay": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 20,
+          "default": 1
+        },
+        "autoPostTypes": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "default": [
+            "hook_clip",
+            "demo_teaser"
+          ]
+        }
+      }
+    }
+  }
+}

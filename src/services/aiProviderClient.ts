@@ -1,0 +1,500 @@
+import { readFile } from "node:fs/promises";
+import { homedir } from "node:os";
+import { dirname, join, resolve } from "node:path";
+import type { AiReviewProvider } from "../types.js";
+import { getOpenClawAuthProfilesPath, getOpenClawConfigPath } from "./runtimeConfig.js";
+import { callOpenClawAiRuntime, getOpenClawAiRuntime, NativeRuntimeError, type NativeRuntimeFailureReason, type OpenClawAiRuntime } from "./openClawAiRuntime.js";
+
+export interface AiProviderCallOptions {
+  provider: AiReviewProvider;
+  fetchImpl?: typeof fetch;
+  timeoutMs?: number;
+  authProfilesPath?: string;
+  configPath?: string;
+  reasoningEffort?: ReasoningEffort;
+  runtime?: OpenClawAiRuntime;
+}
+
+export type ReasoningEffort = "low" | "medium" | "high" | "xhigh";
+
+interface OpenClawConfigShape {
+  agents?: {
+    defaults?: {
+      model?: {
+        primary?: unknown;
+      };
+      thinkingDefault?: unknown;
+    };
+  };
+  auth?: {
+    profiles?: Record<string, unknown>;
+  };
+}
+
+interface AuthProfilesShape {
+  profiles?: Record<string, {
+    type?: unknown;
+    provider?: unknown;
+    access?: unknown;
+    expires?: unknown;
+    email?: unknown;
+  }>;
+}
+
+interface ResolvedCodexProfile {
+  accessToken: string;
+  profileId: string;
+  expires?: number;
+}
+
+interface CodexCliAuthShape {
+  auth_mode?: unknown;
+  tokens?: {
+    access_token?: unknown;
+  };
+}
+
+const openAiCodexResponsesUrl = "https://chatgpt.com/backend-api/codex/responses";
+const providerPromptSecretPattern = /(bot\d+:[A-Za-z0-9_-]{30,}|(?:API[_ -]?KEY|COOKIE|CREDENTIAL|PASSWORD|SECRET)\s*[=:]\s*\S+)/i;
+
+function truncate(value: string, maxLength: number): string {
+  return value.length <= maxLength ? value : value.slice(0, maxLength);
+}
+
+export const AI_PROVIDER_MOCK_FALLBACK_PREFIXES = [
+  "Mock provider fallback",
+  "Mock provider:",
+  "AI provider '"
+] as const;
+
+export type AiProviderFailureReason =
+  | "ai_provider_timeout"
+  | "ai_provider_empty_response"
+  | "ai_provider_request_failed"
+  | `ai_provider_http_status: ${number}`
+  | NativeRuntimeFailureReason
+  | "ai_provider_fallback";
+
+export function isAiProviderMockFallbackResponse(value: string): boolean {
+  return AI_PROVIDER_MOCK_FALLBACK_PREFIXES.some((prefix) => value.startsWith(prefix));
+}
+
+export function getAiProviderFailureReason(value: string): AiProviderFailureReason {
+  if (value.startsWith("Mock provider fallback (timeout)")) {
+    return "ai_provider_timeout";
+  }
+  if (value.startsWith("Mock provider fallback (empty response)")) {
+    return "ai_provider_empty_response";
+  }
+  if (value.startsWith("Mock provider fallback (request failed)")) {
+    return "ai_provider_request_failed";
+  }
+  const status = value.match(/^Mock provider fallback \((\d{3})\)/)?.[1];
+  if (status) {
+    return `ai_provider_http_status: ${Number(status)}`;
+  }
+  const nativeReason = value.match(/^Mock provider fallback \((native_runtime_[a-z_]+)\)/)?.[1];
+  if (nativeReason === "native_runtime_unavailable" || nativeReason === "native_runtime_unauthorized"
+    || nativeReason === "native_runtime_timeout" || nativeReason === "native_runtime_empty_response"
+    || nativeReason === "native_runtime_request_failed") return nativeReason;
+  return "ai_provider_fallback";
+}
+
+function nativeFailureResponse(prompt: string, reason: NativeRuntimeFailureReason): string {
+  console.warn(`[artist-runtime] native AI runtime failure: ${reason}`);
+  return mockResponse(prompt, `Mock provider fallback (${reason})`);
+}
+
+export function isAiNotConfiguredResponse(raw: string): boolean {
+  return /AI provider '[^']+' is not configured\./.test(raw);
+}
+
+/**
+ * True when the text is a synthetic placeholder (mock provider, provider fallback,
+ * provider not configured) rather than a real model response. Public-facing copy
+ * must never be built from such a response.
+ */
+export function isPlaceholderAiResponse(raw: string): boolean {
+  return raw.startsWith("Mock provider") || isAiNotConfiguredResponse(raw);
+}
+
+function mockResponse(prompt: string, prefix = "Mock provider"): string {
+  return `${prefix}: ${truncate(prompt, 200)}`;
+}
+
+function notConfigured(provider: AiReviewProvider): string {
+  return `AI provider '${provider}' is not configured. No external model call was made.`;
+}
+
+function isCodexProvider(provider: AiReviewProvider): boolean {
+  return provider === "openai-codex";
+}
+
+function isCodexCliAuthDisabled(): boolean {
+  const value = process.env.OPENCLAW_CODEX_AUTH_FROM_CLI?.trim().toLowerCase();
+  return value === "off" || value === "0" || value === "false";
+}
+
+function base64UrlDecode(value: string): string | undefined {
+  try {
+    const normalized = value.replace(/-/g, "+").replace(/_/g, "/");
+    const padded = normalized.padEnd(normalized.length + ((4 - normalized.length % 4) % 4), "=");
+    return Buffer.from(padded, "base64").toString("utf8");
+  } catch {
+    return undefined;
+  }
+}
+
+export function decodeJwtExpMs(token: string): number | undefined {
+  const payload = token.split(".")[1];
+  if (!payload) {
+    return undefined;
+  }
+  const decoded = base64UrlDecode(payload);
+  if (!decoded) {
+    return undefined;
+  }
+  const parsed = parseJson(decoded);
+  if (!isRecord(parsed) || typeof parsed.exp !== "number" || !Number.isFinite(parsed.exp)) {
+    return undefined;
+  }
+  return parsed.exp * 1000;
+}
+
+function parseJson(value: string): unknown {
+  try {
+    return JSON.parse(value);
+  } catch {
+    return undefined;
+  }
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function candidateConfigPaths(explicit?: string): string[] {
+  const cwd = process.cwd();
+  const candidates = [
+    explicit,
+    getOpenClawConfigPath(),
+    join(cwd, ".local", "openclaw", "config", "openclaw.json"),
+    join(cwd, "..", "config", "openclaw.json"),
+    join(cwd, "config", "openclaw.json")
+  ].filter(Boolean) as string[];
+  return [...new Set(candidates.map((path) => resolve(path)))];
+}
+
+function candidateAuthProfilePaths(explicit?: string, configPath?: string): string[] {
+  const cwd = process.cwd();
+  const configRoot = configPath ? dirname(dirname(resolve(configPath))) : undefined;
+  const candidates = [
+    explicit,
+    getOpenClawAuthProfilesPath(),
+    configRoot ? join(configRoot, "state", "agents", "main", "agent", "auth-profiles.json") : undefined,
+    join(cwd, ".local", "openclaw", "state", "agents", "main", "agent", "auth-profiles.json"),
+    join(cwd, "..", "state", "agents", "main", "agent", "auth-profiles.json"),
+    join(cwd, "state", "agents", "main", "agent", "auth-profiles.json")
+  ].filter(Boolean) as string[];
+  return [...new Set(candidates.map((path) => resolve(path)))];
+}
+
+async function readFirstJson<T>(paths: string[]): Promise<{ path: string; value: T } | undefined> {
+  for (const path of paths) {
+    const raw = await readFile(path, "utf8").catch(() => undefined);
+    if (!raw) {
+      continue;
+    }
+    const value = parseJson(raw);
+    if (value !== undefined) {
+      return { path, value: value as T };
+    }
+  }
+  return undefined;
+}
+
+export async function readCodexCliAccess(): Promise<ResolvedCodexProfile | undefined> {
+  if (isCodexCliAuthDisabled()) {
+    return undefined;
+  }
+  const codexHome = process.env.CODEX_HOME?.trim() || join(homedir(), ".codex");
+  const raw = await readFile(join(codexHome, "auth.json"), "utf8").catch(() => undefined);
+  if (!raw) {
+    return undefined;
+  }
+  const parsed = parseJson(raw);
+  if (!isRecord(parsed)) {
+    return undefined;
+  }
+  const auth = parsed as CodexCliAuthShape;
+  const accessToken = auth.tokens?.access_token;
+  if (auth.auth_mode !== "chatgpt" || typeof accessToken !== "string" || !accessToken.trim()) {
+    return undefined;
+  }
+  return {
+    profileId: "codex-cli:live",
+    accessToken,
+    expires: decodeJwtExpMs(accessToken)
+  };
+}
+
+function resolveModel(config: OpenClawConfigShape | undefined): string | undefined {
+  const primary = config?.agents?.defaults?.model?.primary;
+  if (typeof primary === "string" && primary.trim()) {
+    return primary.includes("/") ? primary.split("/").pop() : primary;
+  }
+  return undefined;
+}
+
+function resolveReasoningEffort(
+  config: OpenClawConfigShape | undefined,
+  override?: ReasoningEffort
+): ReasoningEffort | undefined {
+  if (override) return override;
+  const configured = config?.agents?.defaults?.thinkingDefault;
+  return configured === "low" || configured === "medium" || configured === "high" || configured === "xhigh"
+    ? configured
+    : undefined;
+}
+
+// Preferred Codex auth profiles, most specific first. An operator can name one
+// explicitly through OPENCLAW_CODEX_AUTH_PROFILE (with or without the
+// "openai-codex:" prefix); otherwise every Codex profile in the config is
+// preferred, and `selectCodexProfile` still falls back to any Codex profile in
+// the auth store. No account is hardcoded here: an account id is operator
+// identity and this file ships in the package.
+function profileKeysFromConfig(
+  config: OpenClawConfigShape | undefined,
+  env: NodeJS.ProcessEnv = process.env
+): string[] {
+  const keys = config?.auth?.profiles && isRecord(config.auth.profiles)
+    ? Object.keys(config.auth.profiles)
+    : [];
+  const configured = env.OPENCLAW_CODEX_AUTH_PROFILE?.trim();
+  const explicit = configured
+    ? [configured.startsWith("openai-codex:") ? configured : `openai-codex:${configured}`]
+    : [];
+  return [...explicit, ...keys.filter((key) => key.startsWith("openai-codex:"))];
+}
+
+function selectCodexProfile(
+  profiles: AuthProfilesShape | undefined,
+  config: OpenClawConfigShape | undefined
+): ResolvedCodexProfile | undefined {
+  const profileMap = profiles?.profiles;
+  if (!profileMap || !isRecord(profileMap)) {
+    return undefined;
+  }
+  const preferred = profileKeysFromConfig(config);
+  const fallback = Object.keys(profileMap).filter((key) => {
+    const profile = profileMap[key];
+    return profile?.provider === "openai-codex";
+  });
+  for (const profileId of [...preferred, ...fallback]) {
+    const profile = profileMap[profileId];
+    if (!profile || profile.provider !== "openai-codex" || typeof profile.access !== "string") {
+      continue;
+    }
+    return {
+      profileId,
+      accessToken: profile.access,
+      expires: typeof profile.expires === "number" ? profile.expires : undefined
+    };
+  }
+  return undefined;
+}
+
+async function resolveCodexAuth(options: AiProviderCallOptions): Promise<{
+  model?: string;
+  reasoningEffort?: ReasoningEffort;
+  profile?: ResolvedCodexProfile;
+}> {
+  const configRead = await readFirstJson<OpenClawConfigShape>(candidateConfigPaths(options.configPath));
+  const cliProfile = await readCodexCliAccess();
+  if (cliProfile && (!cliProfile.expires || cliProfile.expires > Date.now())) {
+    return {
+      model: resolveModel(configRead?.value),
+      reasoningEffort: resolveReasoningEffort(configRead?.value, options.reasoningEffort),
+      profile: cliProfile
+    };
+  }
+  const authRead = await readFirstJson<AuthProfilesShape>(
+    candidateAuthProfilePaths(options.authProfilesPath, configRead?.path)
+  );
+  return {
+    model: resolveModel(configRead?.value),
+    reasoningEffort: resolveReasoningEffort(configRead?.value, options.reasoningEffort),
+    profile: selectCodexProfile(authRead?.value, configRead?.value)
+  };
+}
+
+function extractResponseText(payload: unknown): string | undefined {
+  if (!isRecord(payload)) {
+    return undefined;
+  }
+  if (typeof payload.output_text === "string") {
+    return payload.output_text;
+  }
+  const output = Array.isArray(payload.output) ? payload.output : [];
+  const parts: string[] = [];
+  for (const item of output) {
+    if (!isRecord(item)) {
+      continue;
+    }
+    const content = Array.isArray(item.content) ? item.content : [];
+    for (const contentItem of content) {
+      if (isRecord(contentItem) && typeof contentItem.text === "string") {
+        parts.push(contentItem.text);
+      }
+    }
+  }
+  return parts.length > 0 ? parts.join("\n").trim() : undefined;
+}
+
+function extractSseResponseText(streamText: string): string | undefined {
+  const deltas: string[] = [];
+  let completed: string | undefined;
+  for (const line of streamText.split(/\r?\n/)) {
+    if (!line.startsWith("data:")) {
+      continue;
+    }
+    const raw = line.slice("data:".length).trim();
+    if (!raw || raw === "[DONE]") {
+      continue;
+    }
+    const event = parseJson(raw);
+    if (!isRecord(event)) {
+      continue;
+    }
+    if (event.type === "response.output_text.delta" && typeof event.delta === "string") {
+      deltas.push(event.delta);
+      continue;
+    }
+    if (event.type === "response.output_item.done" && isRecord(event.item)) {
+      const content = Array.isArray(event.item.content) ? event.item.content : [];
+      for (const contentItem of content) {
+        if (isRecord(contentItem) && contentItem.type === "output_text" && typeof contentItem.text === "string") {
+          completed = contentItem.text;
+        }
+      }
+    }
+  }
+  const parts = completed ? [completed] : deltas;
+  return parts.join("").trim() || undefined;
+}
+
+async function callOpenAiResponses(
+  prompt: string,
+  auth: ResolvedCodexProfile,
+  model: string,
+  reasoningEffort: ReasoningEffort | undefined,
+  fetchImpl: typeof fetch,
+  timeoutMs: number
+): Promise<string> {
+  const controller = new AbortController();
+  let timeout: ReturnType<typeof setTimeout> | undefined;
+  let timedOut = false;
+  try {
+    const request = fetchImpl(openAiCodexResponsesUrl, {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        authorization: `Bearer ${auth.accessToken}`
+      },
+      body: JSON.stringify({
+        model,
+        ...(reasoningEffort ? { reasoning: { effort: reasoningEffort } } : {}),
+        instructions: "Return concise, field-oriented persona draft text. Do not include secrets.",
+        input: [{
+          role: "user",
+          content: [{
+            type: "input_text",
+            text: prompt
+          }]
+        }],
+        stream: true,
+        store: false
+      }),
+      signal: controller.signal
+    });
+    const response = await Promise.race([
+      request,
+      new Promise<Response>((_, reject) => {
+        timeout = setTimeout(() => {
+          timedOut = true;
+          controller.abort();
+          reject(new Error("ai_provider_timeout"));
+        }, timeoutMs);
+      })
+    ]);
+    if (!response.ok) {
+      return mockResponse(prompt, `Mock provider fallback (${response.status})`);
+    }
+    const contentType = response.headers.get("content-type") ?? "";
+    if (contentType.includes("application/json")) {
+      const payload = await response.json().catch(() => undefined);
+      return timedOut
+        ? mockResponse(prompt, "Mock provider fallback (timeout)")
+        : extractResponseText(payload) ?? mockResponse(prompt, "Mock provider fallback (empty response)");
+    }
+    const streamText = await response.text().catch(() => "");
+    return timedOut
+      ? mockResponse(prompt, "Mock provider fallback (timeout)")
+      : extractSseResponseText(streamText) ?? mockResponse(prompt, "Mock provider fallback (empty response)");
+  } catch (error) {
+    // The timeout rejection is created above, so classify it before the
+    // generic transport failure. Never include the error, request, or body in
+    // the fallback text: downstream consumers may persist it.
+    return mockResponse(
+      prompt,
+      timedOut || (error instanceof Error && error.message === "ai_provider_timeout")
+        ? "Mock provider fallback (timeout)"
+        : "Mock provider fallback (request failed)"
+    );
+  } finally {
+    if (timeout) {
+      clearTimeout(timeout);
+    }
+  }
+}
+
+export async function callAiProvider(prompt: string, options: AiProviderCallOptions): Promise<string> {
+  if (options.provider === "mock") {
+    return mockResponse(prompt);
+  }
+  if (!isCodexProvider(options.provider)) {
+    return notConfigured(options.provider);
+  }
+  if (providerPromptSecretPattern.test(prompt)) {
+    return mockResponse(prompt, "Mock provider fallback (secret-like prompt blocked)");
+  }
+  const runtime = options.runtime ?? getOpenClawAiRuntime();
+  if (runtime) {
+    try {
+      const result = await callOpenClawAiRuntime(runtime, prompt, options.timeoutMs ?? 120000, options.reasoningEffort);
+      return result ?? nativeFailureResponse(prompt, "native_runtime_empty_response");
+    } catch (error) {
+      // Native runtime failures are fail-closed. Never fall back to legacy auth
+      // files after the host has offered its public runtime.
+      return nativeFailureResponse(
+        prompt,
+        error instanceof NativeRuntimeError ? error.reason : "native_runtime_request_failed"
+      );
+    }
+  }
+  const auth = await resolveCodexAuth(options);
+  if (!auth.profile || !auth.model) {
+    return notConfigured(options.provider);
+  }
+  if (auth.profile.expires && auth.profile.expires <= Date.now()) {
+    return notConfigured(options.provider);
+  }
+  return callOpenAiResponses(
+    prompt,
+    auth.profile,
+    auth.model,
+    auth.reasoningEffort,
+    options.fetchImpl ?? fetch,
+    options.timeoutMs ?? 120000
+  );
+}

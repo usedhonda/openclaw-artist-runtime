@@ -1,0 +1,496 @@
+import { readFile } from "node:fs/promises";
+import type { BrowserContext, Locator, Page } from "playwright";
+import type { SunoCreatePayload } from "../types.js";
+import { SunoBrowserService, sunoBrowserService } from "./sunoBrowserService.js";
+import type { SunoBrowserConfigView } from "./runtimeConfig.js";
+import { SUNO_CREATE_URL } from "./sunoPlaywrightDriver.js";
+import {
+  SUNO_CREATE_FALLBACKS,
+  SUNO_EXPECTED_TAKE_COUNT,
+  filterFreshTakeUrls,
+  readSunoCreateCardSongUrls,
+  resolveFirstVisibleLocator,
+  waitForSunoCreateFormReady
+} from "./sunoCreateForm.js";
+import { fetchSunoFeedClips, reconcileFeedTakes, type FeedReconcileResult } from "./sunoFeedHarvest.js";
+import { checkSunoCliSessionStatus } from "./sunoCliSessionStatus.js";
+import { emitRuntimeEvent } from "./runtimeEventBus.js";
+import { prepareSunoForm, readSunoControls } from "./sunoPreparation.js";
+import { observeSunoSubmission, writeSunoPreparationEvidence, type SunoEvidenceBinding } from "./sunoSubmissionEvidence.js";
+import type {
+  HumanAssistBrowserDriver,
+  HumanAssistSubmitOutcome,
+  HumanAssistWaitOutcome
+} from "./sunoHumanAssist.js";
+
+/**
+ * Best-effort implementation of HumanAssistBrowserDriver for the captcha human-assist
+ * fallback on the operator machine.
+ *
+ * It obtains the logged-in Suno browser from the plugin-owned SunoBrowserService (which
+ * launches the persistent `suno` profile, or attaches to a legacy CDP Chrome), auto-fills
+ * the create form, and tries a machine Create click. If a captcha challenge appears, it
+ * closes the challenge overlay
+ * (Escape only -- it never solves or bypasses it) and polls for the producer's manual
+ * Create click. Suno is contacted only here; this module is deliberately NOT unit
+ * tested against a live DOM (selectors are validated on the real machine at the next
+ * live create). The tested contract lives in the state machine (sunoHumanAssist.ts)
+ * and the connector decorator, which both drive this class through the injectable
+ * HumanAssistBrowserDriver interface.
+ */
+
+// Distinct wait failure: the tab/browser the producer was to press Create on is gone.
+export const HUMAN_ASSIST_BROWSER_GONE_REASON = "human_assist_browser_gone";
+
+/**
+ * Throw the browser-gone failure when the create page is missing or closed. A closed
+ * Playwright page also reports isClosed()=true when its context/browser disconnects, so
+ * this covers both a manually closed tab and a browser exit. Called each wait iteration
+ * so a dead target ends the wait instead of polling forever.
+ */
+export function assertBrowserAlive(page: Pick<Page, "isClosed"> | undefined): void {
+  if (!page || page.isClosed()) {
+    throw new Error(HUMAN_ASSIST_BROWSER_GONE_REASON);
+  }
+}
+
+const CAPTCHA_MARKERS = 'iframe[src*="hcaptcha"], iframe[title*="hCaptcha"], iframe[src*="turnstile"], [id*="hcaptcha"]';
+
+// A freshly launched browser has to finish the Clerk handshake and hydrate the
+// create workspace before any field exists. 25s was short enough that a cold
+// launch failed on a skeleton page and burned a retry.
+const FORM_READY_TIMEOUT_MS = 60_000;
+const CLICK_TIMEOUT_MS = 25_000;
+const POST_CLICK_SETTLE_MS = 6_000;
+const POLL_INTERVAL_MS = 3_000;
+const INFORMATIONAL_DIALOG_CLOSE_TIMEOUT_MS = 5_000;
+const DIALOG_SELECTOR = '[role="dialog"]';
+const DIALOG_CLOSE_SELECTOR = 'button[aria-label="Close"]';
+const SENSITIVE_DIALOG_CONTROL_SELECTOR = "input, textarea, select, iframe";
+const SENSITIVE_DIALOG_TEXT =
+  /\b(?:captcha|turnstile|verify you are human|sign\s*in|log\s*in|password|payment|billing|checkout|credit card|debit card|card number|cvv|purchase|pay now|accept|agree|consent)\b/i;
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function readText(value: unknown): string | undefined {
+  return typeof value === "string" && value.trim() ? value : undefined;
+}
+
+/**
+ * Close a non-transactional Suno notice or upsell through its explicit Close
+ * control. Dialogs with form/challenge controls or sensitive login, payment,
+ * consent, and captcha language remain visible and fail closed.
+ */
+export async function dismissSafeSunoBlockingDialog(page: Page): Promise<boolean> {
+  const dialogs = page.locator(DIALOG_SELECTOR);
+  const dialogCount = await dialogs.count();
+  for (let index = 0; index < dialogCount; index += 1) {
+    const dialog = dialogs.nth(index);
+    if (!(await dialog.isVisible().catch(() => false))) continue;
+    const text = await dialog.innerText().catch(() => "");
+    if (SENSITIVE_DIALOG_TEXT.test(text)) continue;
+    if ((await dialog.locator(SENSITIVE_DIALOG_CONTROL_SELECTOR).count()) > 0) continue;
+    const closeButton = dialog.locator(DIALOG_CLOSE_SELECTOR).first();
+    if (!(await closeButton.isVisible().catch(() => false))) continue;
+    await closeButton.click({ timeout: INFORMATIONAL_DIALOG_CLOSE_TIMEOUT_MS });
+    return true;
+  }
+  return false;
+}
+
+export interface CdpHumanAssistDriverInput {
+  payload: SunoCreatePayload;
+  songId?: string;
+  runId?: string;
+  service?: SunoBrowserService;
+  config?: SunoBrowserConfigView;
+  // Path to the suno-cli session.json used to mint the Clerk JWT for the network-primary
+  // feed harvest. When omitted (tests, or no workspace root), harvest stays DOM-only.
+  sessionFile?: string;
+  // Workspace root, used only to persist the cli-session validity precheck for
+  // /api/status diagnostics. Omitted (tests, no workspace) skips the precheck.
+  workspaceRoot?: string;
+}
+
+export interface SunoSessionCookie {
+  name: string;
+  value: string;
+  url?: "https://suno.com" | "https://auth.suno.com";
+  domain?: ".suno.com";
+  path?: "/";
+  secure?: true;
+}
+
+export function parseSunoSessionCookieHeader(cookieHeader: string): SunoSessionCookie[] {
+  const cookies: SunoSessionCookie[] = [];
+  let plainSessionCount = 0;
+  for (const segment of cookieHeader.split(/;\s*/)) {
+    const separator = segment.indexOf("=");
+    if (separator <= 0) continue;
+    const name = segment.slice(0, separator).trim();
+    const value = segment.slice(separator + 1);
+    if (!name || !value) continue;
+    if (name === "__session") {
+      cookies.push(plainSessionCount++ === 0
+        ? { name, value, domain: ".suno.com", path: "/", secure: true }
+        : { name, value, url: "https://suno.com" });
+      continue;
+    }
+    if (name.startsWith("__session_") || name === "clerk_active_context") {
+      cookies.push({ name, value, url: "https://suno.com" });
+      continue;
+    }
+    if (name === "__client" || (name.startsWith("__client_") && !name.startsWith("__client_uat"))) {
+      cookies.push({ name, value, url: "https://auth.suno.com" });
+      continue;
+    }
+    if (name.startsWith("__client_uat")) {
+      cookies.push({ name, value, domain: ".suno.com", path: "/", secure: true });
+    }
+  }
+  return cookies;
+}
+
+export async function hydrateSunoBrowserSession(
+  context: Pick<BrowserContext, "addCookies">,
+  sessionFile: string | undefined
+): Promise<boolean> {
+  if (!sessionFile) return false;
+  const contents = await readFile(sessionFile, "utf8").catch(() => "");
+  if (!contents) return false;
+  const parsed = (() => {
+    try {
+      return JSON.parse(contents) as { cookie?: unknown };
+    } catch {
+      return {};
+    }
+  })();
+  if (typeof parsed.cookie !== "string") return false;
+  const cookies = parseSunoSessionCookieHeader(parsed.cookie);
+  if (!cookies.some((cookie) => cookie.name === "__session")) return false;
+  await context.addCookies(cookies);
+  return true;
+}
+
+export class CdpHumanAssistDriver implements HumanAssistBrowserDriver {
+  private page: Page | undefined;
+  private ownsPage = false;
+  private preservePageOnClose = false;
+  private shutdownBrowserOnClose = false;
+  private baselineSongUrls = new Set<string>();
+  // Feed clip ids present before submit, so only genuinely new clips count as this
+  // create's takes during network-primary reconciliation.
+  private baselineFeedIds = new Set<string>();
+  private submitAtMs = 0;
+  private readonly service: SunoBrowserService;
+  private submissionObserver: ReturnType<typeof observeSunoSubmission> | undefined;
+
+  constructor(private readonly input: CdpHumanAssistDriverInput) {
+    this.service = input.service ?? sunoBrowserService;
+  }
+
+  async openAndFill(): Promise<void> {
+    // Best-effort precheck: record whether the suno-cli session can still reach Suno's
+    // feed BEFORE opening the create form. This only feeds diagnostics (/api/status
+    // `suno.cliSession`) and the once-per-hour operator notice -- it never blocks or
+    // alters the create attempt itself. The actual accept/reject gate is the live feed
+    // check inside reconcileTakesFromFeed below, which is independent of this cache.
+    if (this.input.sessionFile && this.input.workspaceRoot) {
+      await checkSunoCliSessionStatus(this.input.workspaceRoot, this.input.sessionFile).catch(() => undefined);
+    }
+    const { context } = await this.service.ensureRunning(this.input.config);
+    const existing = context.pages().find((page) => {
+      try {
+        return page.url().includes("suno.com");
+      } catch {
+        return false;
+      }
+    });
+    // The persistent browser profile is the operator's authentication authority.
+    // Never overwrite it with the CLI session file: that file can lag a fresh manual
+    // login and cause a newly opened tab to render a different, partial Create surface.
+    const page = existing ?? (await context.newPage());
+    this.ownsPage = !existing;
+    await page.goto(SUNO_CREATE_URL, { waitUntil: "domcontentloaded", timeout: FORM_READY_TIMEOUT_MS });
+    // Wait for the form to render past the Clerk handshake using any-of form-ready
+    // selectors (not just the Create button) so a single relabel does not defeat the gate.
+    await waitForSunoCreateFormReady(page, FORM_READY_TIMEOUT_MS);
+    this.page = page;
+    // Baseline is title-scoped so pre-existing takes of the SAME title (earlier
+    // attempts today) are excluded and only genuinely new takes count as fresh.
+    this.baselineSongUrls = new Set(await this.readTakeUrls());
+    // Feed baseline (best-effort): every clip id that already exists in the account, so
+    // the network-primary reconciliation never adopts a pre-existing clip as this take.
+    this.baselineFeedIds = await this.readFeedClipIds();
+
+    // Leave the producer a usable form in manual-submit mode. Only safe
+    // informational/upsell overlays are closed; sensitive surfaces stay visible.
+    await dismissSafeSunoBlockingDialog(page);
+    const prepared = await prepareSunoForm(page, this.input.payload, FORM_READY_TIMEOUT_MS);
+    const binding: SunoEvidenceBinding | undefined = this.input.workspaceRoot && this.input.songId && this.input.runId
+      ? { workspaceRoot: this.input.workspaceRoot, songId: this.input.songId, runId: this.input.runId } : undefined;
+    if (binding) await writeSunoPreparationEvidence(binding, this.input.payload, prepared);
+    this.submissionObserver = observeSunoSubmission(page, binding, () => readSunoControls(page));
+    // Manual submit has no click callback. Use the end of preparation as the
+    // non-zero freshness floor; feed-created timestamps and baseline ids must
+    // still prove that a take appeared after this form was handed to the producer.
+    this.submitAtMs = Date.now();
+  }
+
+  async attemptMachineSubmit(): Promise<HumanAssistSubmitOutcome> {
+    const page = this.requirePage();
+    // Suno can place site-news or upsell dialogs over an otherwise complete
+    // create form. Dismiss only a safe explicit-Close surface before resolving
+    // Create so Playwright does not burn repeated 25-second pointer retries.
+    await dismissSafeSunoBlockingDialog(page);
+    const createButton = await resolveFirstVisibleLocator(
+      page,
+      SUNO_CREATE_FALLBACKS.createButton,
+      CLICK_TIMEOUT_MS,
+      "Create song button"
+    );
+    // Record the submit instant BEFORE the click so feed reconciliation can filter clips
+    // to those created at/after this create fired.
+    this.submitAtMs = Date.now();
+    await createButton.click({ timeout: CLICK_TIMEOUT_MS });
+    await sleep(POST_CLICK_SETTLE_MS);
+    // Captcha is checked FIRST and, when present, the flow hands off to the human
+    // WITHOUT harvesting URLs — a captcha means the submit did not go through, so any
+    // song links on the page belong to the existing workspace, not to a new take.
+    if (await this.hasCaptchaChallenge()) {
+      return { kind: "captcha_challenge" };
+    }
+    const fresh = await this.freshTakeUrls();
+    if (fresh.length > 0) {
+      return this.submitOutcomeFromReconcile(fresh);
+    }
+    // No captcha visible and no new take yet: give Suno a brief settle window before
+    // deciding, then treat a lingering captcha as a challenge, otherwise fall back to
+    // the human path (safer than declaring an error and hard-stopping).
+    await sleep(POST_CLICK_SETTLE_MS);
+    if (await this.hasCaptchaChallenge()) {
+      return { kind: "captcha_challenge" };
+    }
+    const settled = await this.freshTakeUrls();
+    if (settled.length > 0) {
+      return this.submitOutcomeFromReconcile(settled);
+    }
+    return { kind: "captcha_challenge" };
+  }
+
+  /**
+   * Turn a DOM-fresh take detection into a submit outcome via feed reconciliation.
+   * "unavailable" (the feed was never reached) must NOT become an accepted result --
+   * see reconcileFeedTakes / HUMAN_ASSIST_FEED_UNAVAILABLE_REASON.
+   */
+  private async submitOutcomeFromReconcile(freshDomUrls: string[]): Promise<HumanAssistSubmitOutcome> {
+    const reconciled = await this.reconcileTakesFromFeed(freshDomUrls);
+    if (reconciled.status === "unavailable") {
+      return { kind: "feed_unavailable" };
+    }
+    await this.submissionObserver?.flush();
+    return { kind: "accepted", urls: reconciled.urls };
+  }
+
+  async closeChallengeOverlay(): Promise<void> {
+    const page = this.requirePage();
+    // Close only -- never interact with the captcha to solve it. Escape dismisses the
+    // Suno challenge modal while leaving the filled form intact for the manual click.
+    await page.keyboard.press("Escape").catch(() => undefined);
+  }
+
+  async bringToFront(): Promise<void> {
+    await this.page?.bringToFront?.().catch(() => undefined);
+  }
+
+  async waitForHumanSubmit(timeoutMs: number): Promise<HumanAssistWaitOutcome> {
+    assertBrowserAlive(this.page);
+    if (this.submitAtMs <= 0) return { kind: "feed_unavailable" };
+    const deadline = Date.now() + timeoutMs;
+    while (Date.now() < deadline) {
+      // If the producer closed the tab (or the browser disconnected) there is no live
+      // target left to submit on. Reject with a distinct reason instead of polling a
+      // dead page forever: freshTakeUrls swallows the closed-target error to [], so
+      // without this the wait would never resolve and the single-flight marker would
+      // block every future attempt. Rejecting lets the flow's finally clear the marker
+      // and the autopilot start a fresh attempt.
+      assertBrowserAlive(this.page);
+      this.submissionObserver?.assertSaved();
+      const observed = this.submissionObserver?.accepted();
+      if (observed) {
+        // The response belongs to this page's exact generate request. This also
+        // handles a producer-edited title without borrowing neighbouring cards.
+        return { kind: "accepted", urls: observed.urls };
+      }
+      // Only a NEW title-scoped take (the producer's manual Create actually starting a
+      // generation) counts as success. Workspace bleed / over-count is rejected inside
+      // freshTakeUrls, so this never accepts unrelated existing songs.
+      const fresh = await this.freshTakeUrls().catch(() => [] as string[]);
+      if (fresh.length > 0) {
+        const reconciled = await this.reconcileTakesFromFeed(fresh, false);
+        // A late/old DOM signal is not terminal: the feed may be temporarily
+        // unavailable or still lagging behind the producer's click. Keep the
+        // bounded wait alive and let the next poll retry reconciliation. The
+        // only immediate failure is assertBrowserAlive above, when the target
+        // page is genuinely gone.
+        if (reconciled.status !== "unavailable" && reconciled.urls.length > 0) {
+          await this.submissionObserver?.flush();
+          return { kind: "accepted", urls: reconciled.urls };
+        }
+      }
+      await sleep(POLL_INTERVAL_MS);
+    }
+    return { kind: "timeout" };
+  }
+
+  async retireCreateSurface(): Promise<void> {
+    // The producer reads a surviving Create window as an unfinished run, so a completed
+    // generation takes its window down. The takes reach the producer as URLs in the
+    // Telegram report, not as a tab left on the box's screen.
+    this.preservePageOnClose = false;
+    this.shutdownBrowserOnClose = true;
+  }
+
+  async close(): Promise<void> {
+    // Drop our page reference and release the SunoBrowserService hold. Successful
+    // result tabs stay visible; unsuccessful plugin-created input tabs are cleaned up.
+    const page = this.page;
+    this.page = undefined;
+    try {
+      await this.submissionObserver?.close();
+    } finally {
+      if (this.ownsPage && !this.preservePageOnClose) {
+        await page?.close().catch(() => undefined);
+      }
+      this.ownsPage = false;
+      this.preservePageOnClose = false;
+      await this.service.release();
+      if (this.shutdownBrowserOnClose) {
+        this.shutdownBrowserOnClose = false;
+        await this.service.shutdownIfLaunched().catch(() => undefined);
+      }
+    }
+  }
+
+  private requirePage(): Page {
+    if (!this.page) {
+      throw new Error("human_assist_page_not_open: call openAndFill first");
+    }
+    return this.page;
+  }
+
+  private async fillCandidates(
+    candidates: readonly string[],
+    fieldName: string,
+    value: string
+  ): Promise<void> {
+    const field: Locator = await resolveFirstVisibleLocator(
+      this.requirePage(),
+      candidates,
+      FORM_READY_TIMEOUT_MS,
+      fieldName
+    );
+    await field.fill(value, { timeout: FORM_READY_TIMEOUT_MS });
+  }
+
+  private async hasCaptchaChallenge(): Promise<boolean> {
+    const page = this.page;
+    if (!page) return false;
+    const count = await page.locator(CAPTCHA_MARKERS).count().catch(() => 0);
+    return count > 0;
+  }
+
+  private expectedTitle(): string {
+    return readText(this.input.payload.songName) ?? "";
+  }
+
+  private async readTakeUrls(): Promise<string[]> {
+    const page = this.page;
+    if (!page) return [];
+    // Title-scoped create-card detection (shared with the Playwright lane). An empty
+    // title yields [] so an untitled create never mis-attributes workspace songs.
+    return readSunoCreateCardSongUrls(page, this.expectedTitle());
+  }
+
+  /**
+   * New title-scoped takes since baseline, capped at the expected take count. When more
+   * than the expected number appear (scope leak / workspace bleed), the batch is
+   * rejected and a warning event is emitted — never returned as a fake success.
+   */
+  private async freshTakeUrls(): Promise<string[]> {
+    const current = await this.readTakeUrls();
+    const { urls, overCount } = filterFreshTakeUrls(current, this.baselineSongUrls, SUNO_EXPECTED_TAKE_COUNT);
+    if (overCount) {
+      emitRuntimeEvent({
+        type: "error",
+        source: "suno_human_assist",
+        reason: `take_urls_over_expected: ${current.length} title-scoped urls for "${this.expectedTitle()}" exceed expected ${SUNO_EXPECTED_TAKE_COUNT}; rejecting as scope leak`,
+        timestamp: Date.now()
+      });
+    }
+    return urls;
+  }
+
+  /**
+   * Every clip id already in the account feed, captured before submit. Best-effort: an
+   * empty set (no sessionFile, or the feed is unavailable) simply means the network
+   * reconciliation relies on the created-at floor and title scope alone, then the DOM
+   * fallback.
+   */
+  private async readFeedClipIds(): Promise<Set<string>> {
+    const sessionFile = this.input.sessionFile;
+    if (!sessionFile) {
+      return new Set();
+    }
+    const clips = await fetchSunoFeedClips({ sessionFile }).catch(() => []);
+    const ids = new Set<string>();
+    for (const clip of clips) {
+      const id = typeof clip.id === "string" && clip.id.trim() ? clip.id.trim() : undefined;
+      if (id) {
+        ids.add(id);
+      }
+    }
+    return ids;
+  }
+
+  /**
+   * Network-primary take reconciliation. Once the DOM signals a fresh take appeared (fast
+   * "generation started" signal), poll the authenticated feed for the clips this create
+   * actually produced — exact title, created at/after submit, not in the pre-submit
+   * baseline. Feed URLs are authoritative and immune to the create-page cross-card bleed.
+   * The DOM-harvested URLs are used ONLY when the feed was reachable but genuinely found
+   * no match (pre-existing behaviour); when the feed could never be reached at all, the
+   * caller must treat this as "unavailable", not as a silent DOM-trusting success --
+   * see reconcileFeedTakes.
+   */
+  private async reconcileTakesFromFeed(domUrls: string[], allowDomFallback = true): Promise<FeedReconcileResult> {
+    const title = this.expectedTitle();
+    const result = await reconcileFeedTakes({
+      domUrls,
+      sessionFile: this.input.sessionFile,
+      title,
+      sinceMs: this.submitAtMs,
+      baselineIds: this.baselineFeedIds,
+      expectedCount: SUNO_EXPECTED_TAKE_COUNT,
+      allowDomFallback,
+      onOverCount: () => {
+        emitRuntimeEvent({
+          type: "error",
+          source: "suno_human_assist",
+          reason: `feed_take_over_expected: fresh feed clips for "${title}" exceed expected ${SUNO_EXPECTED_TAKE_COUNT}; falling back to DOM harvest`,
+          timestamp: Date.now()
+        });
+      }
+    });
+    if (result.status === "matched") {
+      console.log(`[suno-feed] harvest_used song="${title}" takes=${result.urls.length}`);
+    } else if (result.status === "unavailable") {
+      console.log(`[suno-feed] harvest_unavailable song="${title}"`);
+    } else {
+      console.log(`[suno-feed] harvest_fallback_dom song="${title}" domTakes=${result.urls.length}`);
+    }
+    return result;
+  }
+}

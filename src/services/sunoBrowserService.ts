@@ -1,0 +1,207 @@
+import { createServer } from "node:net";
+import type { BrowserContext } from "playwright";
+import { launchSunoPersistentContext } from "./sunoBrowserLaunch.js";
+import { isSunoCdpEnabled, sunoCdpEndpoint, sunoChromeProfileDest, type SunoBrowserConfigView } from "./runtimeConfig.js";
+
+const DEVTOOLS_PORT_POLL_INTERVAL_MS = 200;
+const DEVTOOLS_PORT_POLL_TIMEOUT_MS = 5_000;
+
+export interface SunoBrowserHandle {
+  cdpEndpoint: string;
+  context: BrowserContext;
+}
+
+export interface SunoBrowserServiceOptions {
+  fetcher?: typeof fetch;
+  cdpPollTimeoutMs?: number;
+  cdpPollIntervalMs?: number;
+}
+
+interface RunningBrowser {
+  cdpEndpoint: string;
+  context: BrowserContext;
+  // Legacy CDP attach: the browser is owned by an external process, so release must
+  // never close it. A plugin-launched browser is ours to close when the last holder
+  // releases.
+  attached: boolean;
+}
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+/**
+ * Reserve a free loopback TCP port and return its number. We bind ephemeral (:0),
+ * read the assigned port, then release it so Chromium can bind that exact port.
+ *
+ * Chromium must be launched with a FIXED, non-zero --remote-debugging-port:
+ * `--remote-debugging-port=0` makes Chromium set navigator.webdriver=true (documented
+ * behavior), which trips Cloudflare Turnstile so the invisible captcha never
+ * auto-passes. Any fixed non-zero port keeps navigator.webdriver=false (no
+ * --enable-automation is passed). Reserving avoids a hard-coded port colliding with an
+ * unrelated local process; the brief bind/close window before Chromium binds is
+ * tolerated by the fail-closed loopback readiness probe after launch.
+ */
+function reserveFreePort(): Promise<number> {
+  return new Promise((resolve, reject) => {
+    const server = createServer();
+    server.on("error", reject);
+    server.listen(0, "127.0.0.1", () => {
+      const address = server.address();
+      const port = typeof address === "object" && address ? address.port : 0;
+      server.close(() => (port > 0 ? resolve(port) : reject(new Error("suno_browser_no_free_port"))));
+    });
+  });
+}
+
+/**
+ * Plugin-owned lifecycle for the single Suno browser.
+ *
+ * One headful persistent context (the operator's logged-in `suno` profile) is
+ * launched with a fixed, reserved non-zero --remote-debugging-port (see reserveFreePort;
+ * port 0 would set navigator.webdriver=true and trip Cloudflare Turnstile). Chromium
+ * is probed on that exact loopback port to gate on browser readiness. That one launch serves both the human-assist
+ * Playwright driver (via `context`) and the suno-cli captcha mint (via `cdpEndpoint`),
+ * with no manual start-chrome-cdp.sh and no second profile.
+ *
+ * Reference-counted: every ensureRunning() holder must call release() exactly once. The
+ * persistent operator browser remains running after the last holder releases so a completed
+ * generation stays visible; a single in-flight launch promise prevents a double launch.
+ * If the loopback CDP endpoint
+ * never becomes reachable, the launch fails closed with a clear reason rather than silently succeeding.
+ *
+ * A legacy env override (OPENCLAW_SUNO_USE_CDP + OPENCLAW_SUNO_CDP_ENDPOINT) attaches to
+ * an already-running Chrome instead of launching, and is never closed on release — the
+ * advanced/emergency escape hatch that keeps the current attach lane working.
+ */
+export class SunoBrowserService {
+  private running: RunningBrowser | undefined;
+  private startInFlight: Promise<RunningBrowser> | undefined;
+  private refCount = 0;
+  private operatorHeld = false;
+
+  constructor(private readonly options: SunoBrowserServiceOptions = {}) {}
+
+  async ensureRunning(config?: SunoBrowserConfigView, env: NodeJS.ProcessEnv = process.env): Promise<SunoBrowserHandle> {
+    if (!this.running && !this.startInFlight) {
+      this.startInFlight = this.launch(config, env).finally(() => {
+        this.startInFlight = undefined;
+      });
+    }
+    const running = this.running ?? (await this.startInFlight!);
+    this.running = running;
+    this.refCount += 1;
+    return { cdpEndpoint: running.cdpEndpoint, context: running.context };
+  }
+
+  /**
+   * Open (or reuse) the single headful browser for an operator login/connect session and
+   * hold it open across HTTP requests until closeOperatorSession(). Idempotent: repeated
+   * connect clicks reuse the one operator hold instead of stacking references, so the
+   * browser cannot leak from a double-connect. The Producer Console connect flow uses this
+   * so the operator logs in in the opened window; closeOperatorSession() (on handoff
+   * complete or a confirmed connected probe) closes it.
+   */
+  async openOperatorSession(config?: SunoBrowserConfigView, env: NodeJS.ProcessEnv = process.env): Promise<SunoBrowserHandle> {
+    const handle = await this.ensureRunning(config, env);
+    if (this.operatorHeld) {
+      // A session is already held; drop the extra reference this call took.
+      await this.release();
+    } else {
+      this.operatorHeld = true;
+    }
+    return handle;
+  }
+
+  async closeOperatorSession(): Promise<void> {
+    if (!this.operatorHeld) {
+      return;
+    }
+    this.operatorHeld = false;
+    await this.release();
+  }
+
+  /**
+   * Return a CDP endpoint IF one is available WITHOUT launching a browser: a legacy env
+   * override, or a browser already running from ensureRunning. Used by the suno-cli mint
+   * bridge, which must never spawn a window on boot or on a status query — only reuse a
+   * browser the human-assist/create flow already brought up (or the legacy attach).
+   */
+  getCdpEndpoint(config?: SunoBrowserConfigView, env: NodeJS.ProcessEnv = process.env): string | undefined {
+    if (isSunoCdpEnabled(config, env)) {
+      return sunoCdpEndpoint(config, env);
+    }
+    return this.running?.cdpEndpoint;
+  }
+
+  async release(): Promise<void> {
+    if (this.refCount > 0) {
+      this.refCount -= 1;
+    }
+  }
+
+  /**
+   * Close a browser this service launched, once nothing holds it. The producer reads an
+   * open Create window as "the run is still waiting", so a finished human-assist run
+   * retires its own window instead of leaving it on the operator's screen. An attached
+   * browser (legacy CDP escape hatch) is never closed: we did not open it.
+   */
+  async shutdownIfLaunched(): Promise<void> {
+    const running = this.running;
+    if (!running || running.attached || this.operatorHeld || this.refCount > 0) {
+      return;
+    }
+    this.running = undefined;
+    await running.context.close().catch(() => undefined);
+  }
+
+  private async launch(config: SunoBrowserConfigView | undefined, env: NodeJS.ProcessEnv): Promise<RunningBrowser> {
+    if (isSunoCdpEnabled(config, env)) {
+      const endpoint = sunoCdpEndpoint(config, env);
+      const { chromium } = await import("playwright");
+      const browser = await chromium.connectOverCDP(endpoint);
+      const context = browser.contexts()[0] ?? (await browser.newContext());
+      return { cdpEndpoint: endpoint, context, attached: true };
+    }
+    const profilePath = sunoChromeProfileDest(config, env);
+    // Fixed non-zero port keeps navigator.webdriver=false (see reserveFreePort); port 0
+    // would set it true and defeat the invisible-captcha auto-pass on suno.com/create.
+    const debugPort = await reserveFreePort();
+    const context = await launchSunoPersistentContext(profilePath, {
+      extraArgs: [`--remote-debugging-port=${debugPort}`],
+      config
+    });
+    const cdpEndpoint = await this.resolveCdpEndpoint(debugPort, context);
+    return { cdpEndpoint, context, attached: false };
+  }
+
+  private async resolveCdpEndpoint(debugPort: number, context: BrowserContext): Promise<string> {
+    const endpoint = `http://127.0.0.1:${debugPort}`;
+    const timeoutMs = this.options.cdpPollTimeoutMs ?? DEVTOOLS_PORT_POLL_TIMEOUT_MS;
+    const intervalMs = this.options.cdpPollIntervalMs ?? DEVTOOLS_PORT_POLL_INTERVAL_MS;
+    const fetcher = this.options.fetcher ?? fetch;
+    const deadline = Date.now() + timeoutMs;
+    let lastDetail = "not_ready";
+    while (Date.now() < deadline) {
+      const ready = await fetcher(`${endpoint}/json/version`, { signal: AbortSignal.timeout(1_000) }).then((response) => {
+        lastDetail = `HTTP ${response.status}`;
+        return response.ok;
+      }).catch((error) => {
+        lastDetail = error instanceof Error ? error.message : String(error);
+        return false;
+      });
+      if (ready) {
+        return endpoint;
+      }
+      await sleep(intervalMs);
+    }
+    // Fail closed: close the just-launched context so we do not leak a browser the
+    // caller can never reach, and surface a clear, non-silent reason.
+    await context.close().catch(() => undefined);
+    throw new Error(
+      `suno_browser_cdp_unavailable: ${endpoint}/json/version not reachable within ${timeoutMs}ms (${lastDetail})`
+    );
+  }
+}
+
+export const sunoBrowserService = new SunoBrowserService();

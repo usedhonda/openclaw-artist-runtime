@@ -1,0 +1,743 @@
+import React, { useEffect, useMemo, useState } from "react";
+import { Breadcrumb } from "./Breadcrumb";
+
+const apiBase = "/plugins/artist-runtime/api";
+const defaultEventStreamUrl = `${apiBase}/events/stream`;
+const detailPageSize = 8;
+
+type SongState = {
+  songId: string;
+  title?: string;
+  status?: string;
+  briefPath?: string;
+  lyricsVersion?: number | string;
+  runCount?: number;
+  selectedTake?: string;
+  publicLinks?: string[];
+  lastReason?: string;
+  lastImportOutcome?: string;
+  degradedLyrics?: boolean;
+  observationSummary?: string;
+  updatedAt?: string;
+  createdAt?: string;
+};
+
+type PromptLedgerEntry = {
+  promptPackVersion?: number | string;
+  stage?: string;
+  createdAt?: string;
+  timestamp?: string;
+  source?: string;
+  songId?: string;
+  runId?: string;
+  metadata?: Record<string, unknown>;
+};
+
+type SunoTake = {
+  takeId?: string;
+  durationSec?: number | string;
+  urlPublic?: string;
+  urlPrivate?: string;
+  status?: string;
+  title?: string;
+};
+
+type SunoRun = {
+  runId?: string;
+  startedAt?: string;
+  status?: string;
+  takeIds?: string[];
+  takes?: SunoTake[];
+};
+
+type SelectedTake = {
+  selectedTakeId?: string;
+  runId?: string;
+  reason?: string;
+  timestamp?: string;
+  url?: string;
+};
+
+type TakeHistoryEntry = {
+  selectedTakeId?: string;
+  runId?: string;
+  reason?: string;
+  timestamp?: string;
+};
+
+type SocialAsset = {
+  platform?: string;
+  postType?: string;
+  status?: string;
+  path?: string;
+};
+
+type SocialAction = {
+  platform?: string;
+  action?: string;
+  status?: string;
+  url?: string;
+  postedAt?: string;
+  accepted?: boolean;
+};
+
+type SongDetailResponse = {
+  song?: SongState | null;
+  brief?: string;
+  cascadeTrace?: CascadeTrace | null;
+  lyrics?: string;
+  songMarkdown?: string;
+  promptLedger?: PromptLedgerEntry[];
+  sunoRuns?: SunoRun[];
+  selectedTake?: SelectedTake | unknown;
+  takeSelections?: PromptLedgerEntry[];
+  takeHistory?: TakeHistoryEntry[];
+  socialAssets?: SocialAsset[];
+  lastSocialAction?: SocialAction | null;
+  latestPromptPack?: { version?: number | string; metadata?: { charCounts?: { style?: number; lyrics?: number; title?: number } } } | null;
+};
+
+type SongReviewActionResponse = {
+  status?: string;
+  message?: string;
+  song?: SongState;
+};
+
+type RuntimeEvent = {
+  type: string;
+  songId?: string;
+  selectedTakeId?: string;
+  timestamp?: number;
+  reason?: string;
+  takeUrl?: string;
+  url?: string;
+  draftHash?: string;
+};
+
+type SongEventsResponse = {
+  events?: RuntimeEvent[];
+};
+
+async function fetchJson<T>(path: string): Promise<T> {
+  const response = await fetch(`${apiBase}${path}`);
+  if (!response.ok) {
+    throw new Error(`${path} -> ${response.status}`);
+  }
+  return response.json() as Promise<T>;
+}
+
+async function postJson<T>(path: string, body?: unknown): Promise<T> {
+  const response = await fetch(`${apiBase}${path}`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body ?? {})
+  });
+  if (!response.ok) {
+    throw new Error(`${path} -> ${response.status}`);
+  }
+  return response.json() as Promise<T>;
+}
+
+function parseRuntimeEvent(data: string): RuntimeEvent | undefined {
+  try {
+    const parsed = JSON.parse(data) as RuntimeEvent;
+    return typeof parsed.type === "string" ? parsed : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+function eventKey(event: RuntimeEvent): string {
+  return `${event.type}:${event.songId ?? ""}:${event.selectedTakeId ?? ""}:${event.timestamp ?? 0}`;
+}
+
+function mergeEvents(current: RuntimeEvent[], next: RuntimeEvent[]): RuntimeEvent[] {
+  const seen = new Set<string>();
+  return [...current, ...next]
+    .filter((event) => {
+      const key = eventKey(event);
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    })
+    .sort((a, b) => (b.timestamp ?? 0) - (a.timestamp ?? 0));
+}
+
+function formatTimestamp(value?: string | number): string {
+  if (!value) return "-";
+  try {
+    const date = typeof value === "number" ? new Date(value) : new Date(value);
+    if (Number.isNaN(date.getTime())) return String(value);
+    return date.toLocaleString("ja-JP", { hour12: false });
+  } catch {
+    return String(value);
+  }
+}
+
+function statusDisplayLabel(status?: string): string {
+  switch (status) {
+    case "take_selected":
+      return "採用待ち";
+    case "suno_take_url_ready":
+      return "試聴URLあり";
+    case "archived":
+      return "採用済み";
+    case "discarded":
+      return "破棄済み";
+    case "published":
+      return "公開済み";
+    case "completed":
+      return "完了";
+    case "failed_closed":
+      return "要対応";
+    case "building":
+      return "制作中";
+    case "draft":
+      return "草稿";
+    default:
+      return status ? status.replace(/_/g, " ") : "-";
+  }
+}
+
+export function producerReasonLabel(reason?: string): string | undefined {
+  if (!reason) return undefined;
+  if (/selected best scored take/i.test(reason)) {
+    return "試聴用テイクを自動選択しました。";
+  }
+  return reason;
+}
+
+function relativePath(absolute: string | undefined, songId: string): string {
+  if (!absolute) return "";
+  const idx = absolute.indexOf(`/songs/${songId}/`);
+  if (idx >= 0) return absolute.slice(idx + 1);
+  const fallback = absolute.split("/").slice(-3).join("/");
+  return fallback;
+}
+
+function asSelectedTake(value: unknown): SelectedTake | null {
+  if (!value || typeof value !== "object") return null;
+  return value as SelectedTake;
+}
+
+type CascadeTrace = {
+  observationSources: Array<{
+    label: string;
+    author?: string;
+    quote?: string;
+    url?: string;
+  }>;
+  artistVoice: string;
+  title: string;
+  lyricsTheme: string;
+  styleLayer: string;
+};
+
+function pickBriefField(brief: string | undefined, label: string): string | undefined {
+  if (!brief) return undefined;
+  const escaped = label.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  return brief.match(new RegExp(`^-\\s*${escaped}:\\s*(.+)$`, "im"))?.[1]?.trim();
+}
+
+function compactTrace(value: string | undefined, fallback: string, limit = 120): string {
+  const text = (value ?? "").replace(/\s+/g, " ").trim();
+  if (!text) return fallback;
+  return text.length > limit ? `${text.slice(0, limit)}…` : text;
+}
+
+export function producerObservationLabel(source?: CascadeTrace["observationSources"][number]): string {
+  const value = source?.quote ?? source?.label;
+  if (!value || value === "brief source") return "記録済みの観察";
+  return value;
+}
+
+export function producerStyleLabel(value?: string): string {
+  const text = (value ?? "").trim();
+  if (!text || text === "未記録") return "未記録";
+  if (/[A-Za-z]{4,}/.test(text)) return "プロンプト台帳に記録";
+  return text;
+}
+
+function pageSlice<T>(items: T[], page: number): T[] {
+  return items.slice(page * detailPageSize, page * detailPageSize + detailPageSize);
+}
+
+function totalPages(count: number): number {
+  return Math.max(1, Math.ceil(count / detailPageSize));
+}
+
+export function DetailPager(props: {
+  page: number;
+  total: number;
+  onPage: (page: number) => void;
+}) {
+  const pages = totalPages(props.total);
+  if (props.total <= detailPageSize) return null;
+  const start = props.page * detailPageSize + 1;
+  const end = Math.min(props.total, props.page * detailPageSize + detailPageSize);
+  return (
+    <div className="song-detail-pager">
+      <span className="muted">{start}-{end} / {props.total}</span>
+      <div className="inline-actions">
+        <button type="button" disabled={props.page === 0} onClick={() => props.onPage(Math.max(0, props.page - 1))}>前へ</button>
+        <button type="button" disabled={props.page >= pages - 1} onClick={() => props.onPage(Math.min(pages - 1, props.page + 1))}>次へ</button>
+      </div>
+    </div>
+  );
+}
+
+export function buildSongCascadeTrace(detail: SongDetailResponse | null, songId: string): CascadeTrace | null {
+  if (detail?.cascadeTrace) return detail.cascadeTrace;
+  const song = detail?.song;
+  if (!song && !detail?.brief) return null;
+  const brief = detail?.brief ?? "";
+  const url = brief.match(/https?:\/\/\S+/)?.[0]?.replace(/[)）\]、。,]+$/g, "");
+  const quote = brief.match(/^- Quote:\s*(.+)$/im)?.[1]?.trim()
+    ?? brief.match(/^- Source quote:\s*(.+)$/im)?.[1]?.trim()
+    ?? song?.observationSummary;
+  const artistVoice = producerReasonLabel(song?.lastReason ?? detail?.takeHistory?.[0]?.reason) ?? "(未記録)";
+  return {
+    observationSources: [{
+      label: "brief source",
+      quote: compactTrace(quote, "未記録", 140),
+      url
+    }],
+    artistVoice: compactTrace(artistVoice, "未記録", 110),
+    title: compactTrace(song?.title, songId, 80),
+    lyricsTheme: compactTrace(pickBriefField(brief, "Lyrics theme") ?? pickBriefField(brief, "Core theme"), "未記録"),
+    styleLayer: compactTrace(pickBriefField(brief, "Style notes"), "未記録")
+  };
+}
+
+export interface SongDetailCardProps {
+  songId: string;
+  onBack: () => void;
+  eventStreamUrl?: string;
+  showBreadcrumb?: boolean;
+}
+
+export function ProducerReviewButtons(props: {
+  disabled?: boolean;
+  onArchive: () => void;
+  onDiscard: () => void;
+}) {
+  return (
+    <div className="inline-actions song-detail-review-actions">
+      <button
+        type="button"
+        disabled={props.disabled}
+        onClick={props.onArchive}
+      >
+        採用
+      </button>
+      <button
+        type="button"
+        disabled={props.disabled}
+        onClick={props.onDiscard}
+      >
+        破棄
+      </button>
+    </div>
+  );
+}
+
+export function SongDetailCard(props: SongDetailCardProps) {
+  const { songId, onBack, showBreadcrumb = true } = props;
+  const [detail, setDetail] = useState<SongDetailResponse | null>(null);
+  const [events, setEvents] = useState<RuntimeEvent[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [reviewBusy, setReviewBusy] = useState<"archive" | "discard" | null>(null);
+  const [reviewResult, setReviewResult] = useState<string | null>(null);
+  const [reviewError, setReviewError] = useState<string | null>(null);
+  const [runsPage, setRunsPage] = useState(0);
+  const [takeHistoryPage, setTakeHistoryPage] = useState(0);
+  const [promptLedgerPage, setPromptLedgerPage] = useState(0);
+  const [eventsPage, setEventsPage] = useState(0);
+
+  const reloadDetail = async () => {
+    const [detailRes, eventsRes] = await Promise.all([
+      fetchJson<SongDetailResponse>(`/songs/${encodeURIComponent(songId)}`),
+      fetchJson<SongEventsResponse>(`/songs/${encodeURIComponent(songId)}/events?limit=200`).catch(() => ({ events: [] }))
+    ]);
+    setDetail(detailRes);
+    setEvents([...(eventsRes.events ?? [])].sort((a, b) => (b.timestamp ?? 0) - (a.timestamp ?? 0)));
+  };
+
+  const runProducerReviewAction = async (action: "archive" | "discard") => {
+    setReviewBusy(action);
+    setReviewError(null);
+    setReviewResult(null);
+    try {
+      const res = await postJson<SongReviewActionResponse>(`/songs/${encodeURIComponent(songId)}/${action}`);
+      setReviewResult(res.message ?? `status=${res.song?.status ?? res.status ?? "-"}`);
+      await reloadDetail();
+    } catch (err) {
+      setReviewError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setReviewBusy(null);
+    }
+  };
+
+  useEffect(() => {
+    let cancelled = false;
+    setLoading(true);
+    setError(null);
+    setDetail(null);
+    setEvents([]);
+
+    async function load() {
+      try {
+        const [detailRes, eventsRes] = await Promise.all([
+          fetchJson<SongDetailResponse>(`/songs/${encodeURIComponent(songId)}`),
+          fetchJson<SongEventsResponse>(`/songs/${encodeURIComponent(songId)}/events?limit=200`).catch(() => ({ events: [] }))
+        ]);
+        if (cancelled) return;
+        setDetail(detailRes);
+        setEvents([...(eventsRes.events ?? [])].sort((a, b) => (b.timestamp ?? 0) - (a.timestamp ?? 0)));
+      } catch (err) {
+        if (cancelled) return;
+        setError(err instanceof Error ? err.message : String(err));
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    }
+    void load();
+    return () => {
+      cancelled = true;
+    };
+  }, [songId]);
+
+  useEffect(() => {
+    setRunsPage(0);
+    setTakeHistoryPage(0);
+    setPromptLedgerPage(0);
+    setEventsPage(0);
+  }, [songId]);
+
+  useEffect(() => {
+    if (typeof window === "undefined" || typeof window.EventSource !== "function") {
+      return undefined;
+    }
+    const source = new window.EventSource(props.eventStreamUrl ?? defaultEventStreamUrl);
+    source.onmessage = (message) => {
+      const event = parseRuntimeEvent(message.data);
+      if (!event || event.songId !== songId) return;
+      setEvents((current) => mergeEvents(current, [event]));
+    };
+    source.onerror = () => {
+      source.close();
+    };
+    return () => {
+      source.close();
+    };
+  }, [props.eventStreamUrl, songId]);
+
+  const song = detail?.song ?? undefined;
+  const title = song?.title || songId;
+  const briefPath = relativePath(song?.briefPath, songId);
+  const lyricsPath = `songs/${songId}/suno/lyrics-suno.md`;
+  const songPath = `songs/${songId}/song.md`;
+  const publicLinks = useMemo(() => song?.publicLinks?.filter((link) => link && link !== "(none)") ?? [], [song?.publicLinks]);
+  const selectedTake = useMemo(() => asSelectedTake(detail?.selectedTake), [detail?.selectedTake]);
+  const sunoRuns = detail?.sunoRuns ?? [];
+  const takeHistory = detail?.takeHistory ?? [];
+  const promptLedger = detail?.promptLedger ?? [];
+  const socialAssets = detail?.socialAssets ?? [];
+  const lastSocialAction = detail?.lastSocialAction ?? null;
+  const visibleRuns = pageSlice(sunoRuns, runsPage);
+  const visibleTakeHistory = pageSlice(takeHistory, takeHistoryPage);
+  const visiblePromptLedger = pageSlice(promptLedger, promptLedgerPage);
+  const visibleEvents = pageSlice(events, eventsPage);
+  const canReviewSelectedTake = song?.status === "take_selected";
+  const cascadeTrace = useMemo(() => buildSongCascadeTrace(detail, songId), [detail, songId]);
+  const cascadeSource = cascadeTrace?.observationSources[0];
+
+  return (
+    <article className="panel song-detail-card">
+      <div className="song-detail-header">
+        {showBreadcrumb ? (
+          <Breadcrumb
+            segments={[
+              { label: "作品", onClick: onBack },
+              { label: title }
+            ]}
+          />
+        ) : null}
+        <div className="song-detail-title-row">
+          <strong>{title}</strong>
+          <span className="muted">{statusDisplayLabel(song?.status)}</span>
+        </div>
+      </div>
+
+      {loading ? (
+        <div className="item muted">曲の詳細を読み込み中。</div>
+      ) : error ? (
+        <div className="item muted">読み込めませんでした: {error}</div>
+      ) : !song ? (
+        <div className="item muted">曲が見つかりません。</div>
+      ) : (
+        <>
+          <div className="song-detail-meta" aria-label="曲の状態">
+            <span>歌詞 v{song.lyricsVersion ?? "-"}</span>
+            <span>制作 {song.runCount ?? 0} 回</span>
+            <span>テイク {song.selectedTake ? "あり" : "-"}</span>
+            <span>更新 {formatTimestamp(song.updatedAt)}</span>
+            <span>歌詞エラー {song.degradedLyrics ? "あり" : "なし"}</span>
+          </div>
+
+          {song.lastReason ? (
+            <div className="item song-detail-reason">
+              <div className="muted">現在の判断理由</div>
+              <div>{producerReasonLabel(song.lastReason)}</div>
+            </div>
+          ) : null}
+
+          {song.observationSummary ? (
+            <div className="item song-detail-reason">
+              <div className="muted">観察の要約</div>
+              <div>{song.observationSummary}</div>
+            </div>
+          ) : null}
+
+          {cascadeTrace ? (
+            <div className="item song-detail-reason">
+              <div className="muted">制作の流れ</div>
+              <dl className="song-detail-status">
+                <div><dt>観察元</dt><dd>{cascadeSource?.url ? <a href={cascadeSource.url} target="_blank" rel="noreferrer">{producerObservationLabel(cascadeSource)}</a> : producerObservationLabel(cascadeSource)}</dd></div>
+                <div><dt>アーティストの声</dt><dd>{producerReasonLabel(cascadeTrace.artistVoice) ?? cascadeTrace.artistVoice}</dd></div>
+                <div><dt>曲名</dt><dd>{cascadeTrace.title}</dd></div>
+                <div><dt>歌詞テーマ</dt><dd>{cascadeTrace.lyricsTheme}</dd></div>
+                <div><dt>音の方向</dt><dd>{producerStyleLabel(cascadeTrace.styleLayer)}</dd></div>
+              </dl>
+            </div>
+          ) : null}
+
+          <details className="song-detail-section" open>
+            <summary><strong>選ばれたテイク</strong></summary>
+            {selectedTake ? (
+              <>
+                <dl className="song-detail-status">
+                  <div><dt>テイク</dt><dd>{selectedTake.selectedTakeId ? "あり" : "-"}</dd></div>
+                  <div><dt>制作記録</dt><dd>{selectedTake.runId ? "あり" : "-"}</dd></div>
+                  <div><dt>理由</dt><dd>{producerReasonLabel(selectedTake.reason) ?? "-"}</dd></div>
+                  <div><dt>選択日時</dt><dd>{formatTimestamp(selectedTake.timestamp)}</dd></div>
+                  {selectedTake.url ? <div><dt>URL</dt><dd><a href={selectedTake.url} target="_blank" rel="noreferrer">{selectedTake.url}</a></dd></div> : null}
+                </dl>
+                {canReviewSelectedTake ? (
+                  <>
+                    <div className="muted">Telegram の採用/破棄と同じ判断です。</div>
+                    <ProducerReviewButtons
+                      disabled={reviewBusy !== null}
+                      onArchive={() => void runProducerReviewAction("archive")}
+                      onDiscard={() => void runProducerReviewAction("discard")}
+                    />
+                  </>
+                ) : null}
+                {reviewResult ? <div className="muted">{reviewResult}</div> : null}
+                {reviewError ? <div className="muted">error: {reviewError}</div> : null}
+              </>
+            ) : (
+              <div className="item muted">まだ take は選ばれていません。</div>
+            )}
+          </details>
+
+          {lastSocialAction ? (
+            <div className="song-detail-resources">
+              <div className="muted">最後の外部公開操作</div>
+              <ul>
+                <li>
+                  <strong>{lastSocialAction.platform ?? "social"}</strong>
+                  <span className="muted"> · {lastSocialAction.action ?? "-"} · {lastSocialAction.status ?? "-"}</span>
+                  {lastSocialAction.postedAt ? <span className="muted"> · {formatTimestamp(lastSocialAction.postedAt)}</span> : null}
+                  {lastSocialAction.url ? (
+                    <> · <a href={lastSocialAction.url} target="_blank" rel="noreferrer">{lastSocialAction.url}</a></>
+                  ) : null}
+                </li>
+              </ul>
+            </div>
+          ) : null}
+
+          {publicLinks.length > 0 ? (
+            <div className="song-detail-resources">
+              <div className="muted">公開リンク</div>
+              <ul>
+                {publicLinks.map((link) => (
+                  <li key={link}><a href={link} target="_blank" rel="noreferrer">{link}</a></li>
+                ))}
+              </ul>
+            </div>
+          ) : null}
+
+          <details className="song-detail-section song-detail-diagnostics">
+            <summary><strong>診断用の記録</strong> <span className="muted">制作ログ・台帳・イベント履歴</span></summary>
+
+          <details className="song-detail-section">
+            <summary><strong>曲の設計</strong> <span className="muted">({(detail?.brief ?? "").length} 字)</span></summary>
+            <pre className="song-detail-pre">{detail?.brief || "(no brief)"}</pre>
+          </details>
+
+          <details className="song-detail-section">
+            <summary><strong>歌詞</strong> <span className="muted">({(detail?.lyrics ?? "").length} 字)</span></summary>
+            <pre className="song-detail-pre">{detail?.lyrics || "(no lyrics)"}</pre>
+          </details>
+
+          <details className="song-detail-section">
+            <summary><strong>技術情報: song.md</strong> <span className="muted">({(detail?.songMarkdown ?? "").length} 字)</span></summary>
+            <pre className="song-detail-pre">{detail?.songMarkdown || "(no song.md)"}</pre>
+          </details>
+
+          <details className="song-detail-section">
+            <summary><strong>Suno 制作</strong> <span className="muted">({sunoRuns.length})</span></summary>
+            {sunoRuns.length === 0 ? (
+              <div className="item muted">まだ制作記録はありません。</div>
+            ) : (
+              <>
+                <DetailPager page={runsPage} total={sunoRuns.length} onPage={setRunsPage} />
+                <ul className="song-detail-runs">
+                {visibleRuns.map((run, idx) => (
+                  <li key={run.runId ?? idx} className="song-detail-run">
+                    <div>
+                      <strong>{run.runId ?? `run#${idx}`}</strong>
+                      <span className="muted"> · {formatTimestamp(run.startedAt)} · {run.status ?? "-"}</span>
+                    </div>
+                    {(run.takes && run.takes.length > 0) ? (
+                      <ul className="song-detail-takes">
+                        {run.takes.map((take, takeIdx) => (
+                          <li key={take.takeId ?? takeIdx}>
+                            <span className="song-detail-take-id">{take.takeId ?? `take#${takeIdx}`}</span>
+                            {take.title ? <span className="muted"> · {take.title}</span> : null}
+                            {take.durationSec ? <span className="muted"> · {take.durationSec}s</span> : null}
+                            {take.status ? <span className="muted"> · {take.status}</span> : null}
+                            {take.urlPublic ? <> · <a href={take.urlPublic} target="_blank" rel="noreferrer">public</a></> : null}
+                            {take.urlPrivate ? <> · <a href={take.urlPrivate} target="_blank" rel="noreferrer">private</a></> : null}
+                          </li>
+                        ))}
+                      </ul>
+                    ) : (run.takeIds && run.takeIds.length > 0) ? (
+                      <div className="muted song-detail-take-ids">takeIds: {run.takeIds.join(", ")}</div>
+                    ) : null}
+                  </li>
+                ))}
+                </ul>
+              </>
+            )}
+          </details>
+
+          <details className="song-detail-section">
+            <summary><strong>テイクの履歴</strong> <span className="muted">({takeHistory.length})</span></summary>
+            {takeHistory.length === 0 ? (
+              <div className="item muted">過去の選択はありません。</div>
+            ) : (
+              <>
+                <DetailPager page={takeHistoryPage} total={takeHistory.length} onPage={setTakeHistoryPage} />
+                <ul className="song-detail-take-history">
+                {visibleTakeHistory.map((entry, idx) => (
+                  <li key={`${entry.selectedTakeId ?? idx}:${entry.timestamp ?? idx}`}>
+                    <span className="song-detail-event-time">{formatTimestamp(entry.timestamp)}</span>
+                    <span className="song-detail-take-id"> · {entry.selectedTakeId ?? "-"}</span>
+                    {entry.runId ? <span className="muted"> · {entry.runId}</span> : null}
+                    {entry.reason ? <span className="muted"> · {producerReasonLabel(entry.reason)}</span> : null}
+                  </li>
+                ))}
+                </ul>
+              </>
+            )}
+          </details>
+
+          <details className="song-detail-section">
+            <summary><strong>プロンプト台帳</strong> <span className="muted">({promptLedger.length})</span></summary>
+            {detail?.latestPromptPack ? (
+              <div className="item song-detail-reason">
+                <div className="muted">最新プロンプト</div>
+                <div>v{detail.latestPromptPack.version ?? "-"} · テイク選択 {detail.takeSelections?.length ?? 0} 件</div>
+                {detail.latestPromptPack.metadata?.charCounts ? (
+                  <div className="muted">
+                    スタイル {detail.latestPromptPack.metadata.charCounts.style ?? "-"}字 / 歌詞 {detail.latestPromptPack.metadata.charCounts.lyrics ?? "-"}字 / 曲名 {detail.latestPromptPack.metadata.charCounts.title ?? "-"}字
+                  </div>
+                ) : null}
+              </div>
+            ) : null}
+            {promptLedger.length === 0 ? (
+              <div className="item muted">プロンプト記録はまだありません。</div>
+            ) : (
+              <>
+                <DetailPager page={promptLedgerPage} total={promptLedger.length} onPage={setPromptLedgerPage} />
+                <ul className="song-detail-ledger">
+                {visiblePromptLedger.map((entry, idx) => (
+                  <li key={`${entry.timestamp ?? entry.createdAt ?? idx}-${idx}`}>
+                    <div>
+                      <strong>{entry.stage ?? "unknown_stage"}</strong>
+                      <span className="muted"> · {formatTimestamp(entry.timestamp ?? entry.createdAt)}</span>
+                      {entry.promptPackVersion ? <span className="muted"> · v{entry.promptPackVersion}</span> : null}
+                      {entry.source ? <span className="muted"> · {entry.source}</span> : null}
+                      {entry.runId ? <span className="muted"> · {entry.runId}</span> : null}
+                    </div>
+                  </li>
+                ))}
+                </ul>
+              </>
+            )}
+          </details>
+
+          <details className="song-detail-section">
+            <summary><strong>投稿素材</strong> <span className="muted">({socialAssets.length})</span></summary>
+            {socialAssets.length === 0 ? (
+              <div className="item muted">投稿素材はまだありません。</div>
+            ) : (
+              <ul>
+                {socialAssets.map((asset, idx) => (
+                  <li key={`${asset.platform ?? "unknown"}:${asset.postType ?? "type"}:${idx}`}>
+                    <strong>{asset.platform ?? "?"}</strong>
+                    <span className="muted"> · {asset.postType ?? "-"}</span>
+                    {asset.status ? <span className="muted"> · {asset.status}</span> : null}
+                    {asset.path ? <span className="muted"> · {asset.path}</span> : null}
+                  </li>
+                ))}
+              </ul>
+            )}
+          </details>
+
+          <details className="song-detail-section">
+            <summary><strong>技術情報: ローカルファイル</strong></summary>
+            <div className="song-detail-resources">
+              <ul>
+                {briefPath ? <li><code>{briefPath}</code></li> : null}
+                <li><code>{lyricsPath}</code></li>
+                <li><code>{songPath}</code></li>
+              </ul>
+            </div>
+          </details>
+
+          <details className="song-detail-section">
+            <summary><strong>イベント履歴</strong> <span className="muted">({events.length})</span></summary>
+            {events.length === 0 ? (
+              <div className="item muted">イベントはまだありません。</div>
+            ) : (
+              <>
+                <DetailPager page={eventsPage} total={events.length} onPage={setEventsPage} />
+                <ul className="song-detail-events-list">
+                {visibleEvents.map((event) => (
+                  <li key={eventKey(event)}>
+                    <span className="song-detail-event-time">{formatTimestamp(event.timestamp)}</span>
+                    <span className="song-detail-event-type"> · {event.type}</span>
+                    {event.reason ? <span className="muted"> · {event.reason}</span> : null}
+                    {event.selectedTakeId ? <span className="muted"> · {event.selectedTakeId}</span> : null}
+                    {event.takeUrl || event.url ? (
+                      <>
+                        {" · "}
+                        <a href={event.takeUrl ?? event.url} target="_blank" rel="noreferrer">link</a>
+                      </>
+                    ) : null}
+                  </li>
+                ))}
+                </ul>
+              </>
+            )}
+          </details>
+          </details>
+        </>
+      )}
+    </article>
+  );
+}

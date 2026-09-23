@@ -1,0 +1,25 @@
+node_modules
+coverage
+.env
+.runtime
+.openclaw-browser-profiles
+.local
+.openclaw
+songs
+artist
+tests
+src
+ui/src
+ui/dist/assets
+ui/vite.config.ts
+ui/README.md
+scripts
+*.zip
+*.tgz
+
+# Internal docs that must not ship to the marketplace tarball
+AGENTS.md
+docs/log
+docs/ask
+docs/THREAT_MODEL.md
+docs/README.md

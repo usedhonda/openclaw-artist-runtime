@@ -1,0 +1,295 @@
+# Creative Logic
+
+This file records the runtime-facing creative policy that drives autonomous song
+generation. The whole pipeline turns on one idea: **every creative axis for a song
+is decided once, by one module, recorded in one structured record, and read by
+every downstream stage.** Before this redesign the decisions were scattered — some
+axes nobody chose, some computed independently in four places, some decided and
+then thrown away — and they travelled between stages as a lossy `brief.md` string
+that two writers filled with divergent schemas. That structure produced the whole
+family of bugs (a lens stuck on one bank, fallback boilerplate, a fixed intro, the
+"same face four songs running", the anger draining out of the lyrics). The record
+below is the cure.
+
+## The CreativeDecision spine
+
+One song, one decision. `src/services/creativeDirector.ts` (`decideCreative`) is a
+pure function: given the song id, the JST date, the verbatim persona text, the
+observation, and the recent decision history, it returns a `CreativeDecision`
+(`src/types.ts`). No `Date.now()`, no `Math.random` — the same input yields the
+same decision, so a re-run never silently re-decides a song mid-flight.
+
+The decision is persisted **once** as `songs/<id>/song-plan.json`
+(`src/services/songPlan.ts`, write-once: an existing plan is returned unchanged).
+Downstream stages **read the plan** instead of re-hashing each axis on their own.
+`brief.md` remains as a human-readable summary, but the machine source of truth is
+the plan.
+
+## Source, observation, and artistic response
+
+A source is not yet an artistic observation. For a new proposal, a resolved news
+article is preferred over a surrounding X reaction. The proposal must keep one
+source as its factual anchor, record the artist's own `artistObservation` about
+that fact, then derive the lyric and musical choice from that response. Persona
+material controls the critical voice and sound; it cannot introduce an unrelated
+second subject. If the connection cannot be stated plainly, the runtime declines
+to force a proposal.
+
+When a real provider returns a coherent, safe field, the runtime preserves that
+source-grounded wording even if the observation is short. Honest-thin marker
+templates are reserved for mock or otherwise invalid field output.
+
+### Decision axes
+
+| Axis | Field | Decided by | Notes |
+|---|---|---|---|
+| Critique lens | `lens` | material-bank rotation, no 3-in-a-row | a persona-declared lens id from `### Critique Lens` (`[lens_id] Label: description`); no fixed lens set in code |
+| Lens material | `lensMaterial` | the chosen lens's bank only | other banks are never carried into the directives |
+| Attack stance | `attackStance` | per-lens rotation, exclude previous | breaks one-note repeated-attack monotony; empty when the persona declares no stances for the chosen lens |
+| Emotional mode | `emotionalMode` | Dis-default rule (below) | `{ label, spec }`; spec is the mood |
+| Aggression | `aggression` | Dis-default rule | `dis` \| `changeup` |
+| Tempo | `tempo` | weighted band pool, band + bpm from one sub-seed | `{ band, bpm }` |
+| Dopagaki | `dopagaki` | **single** density computation | `{ active, threshold, variationSeed }` |
+| Intro | `intro` | artist-authored opening contract for lyrics AND style | `{ archetype, modifier, lyricInstruction, styleMove }`; the writer chooses the opening from the song rather than rotating stock forms; empty/filler vocal openings are prohibited, while deliberate scat remains available when it serves the song |
+| Hook shape | `hookShape` | rotation, exclude previous | question / number / list / call_response / reversal / one_line |
+| Tag technique | `tagTechnique` | rotation, exclude previous | technique id from the persona's `### Tag Techniques` |
+| Place naming | lyric prompt rule | observation + persona material | render the city through a fresh metaphor family and concrete traces first; literal `渋谷` / `Shibuya` is never a recurring hook and is limited to one reveal or turn in the lyric body; Suno-facing `渋谷109` is normalized to `しぶや いちまるきゅう` |
+| Japanese rhyme | lyric prompt rule | genre + meaning | rap verses preselect one or two 2-4 mora vowel chains, then place compound rhyme, internal echoes, carried line endings, cadence changes, and wordplay in four-bar units without distorting natural Japanese |
+| Signature | `signature` | 1 of N declared, exclude previous | values parsed from a `- Signature: v1, v2, ...` bullet anywhere in the persona; no code-level list |
+| Observation | `observation` | from the collector | `{ url, author, motifScore }` or null |
+| Degraded inputs | `degradedInputs` | recorded, never hidden | e.g. `observation_null`, `lens_missing`, `material_banks_empty`, `tag_techniques_missing`, `attack_stances_missing`, `signature_missing`, `catchphrases_missing` |
+| Vocal gender | `vocalGender` | persona | mirrors the pack's own default |
+
+### Who decides / consumes / records
+
+- **Decides:** `creativeDirector.decideCreative`, called at materialization —
+  `songSpawnProposer.proposeSpawn` (commission path) and
+  `songIdeation.createSongIdea` (autonomous path). Both persist the plan.
+- **Consumes (plan-first):** the lyric prompt
+  (`lyricsDraftingPrompt.buildLyricsDraftingPrompt` — selective injection, mood),
+  lyric drafting (`lyricsDrafting` — intro, tempo band, emotional mode, dopagaki),
+  the prompt pack / style (`sunoPromptPackFiles` + `generatePromptPack` — bpm,
+  vocal gender, intro styleMove, emotional-mode style hint, style notes), retry
+  (`retryPromptPackService`), and run telemetry (`sunoRuns` — tempo-band target).
+  Each reads the plan when it exists and falls back to the legacy brief string only
+  for songs created before the spine shipped.
+- **Records:** `creativeQualityLedger` appends the decision plus the result
+  (hook text, diss-bank hits, bare-lyric size, degraded flags). `/api/status`
+  exposes the lens/mode/tempo/intro/stance distributions and the recent list.
+
+### The Dis-default aggression rule
+
+Per producer direction the artist attacks in almost every song. The rule lives in
+code (the canon carries vocabulary and posture; the code carries probability and
+history):
+
+- Base: `aggression = "dis"`, `emotionalMode = 本気 Dis`.
+- A changeup is allowed **only** when the previous song was Dis **and** the seed
+  hash lands in the top 20% band. So the Dis rate is ~80%+, and two changeups can
+  never run back to back.
+- The lyric prompt enforces the teeth on every mode: at least two punchlines per
+  verse, slang welcome, and an **免罪句 (absolution-phrase) ban** — the draft may
+  not write "個人攻撃ではない" / "no villain here" style disclaimers. A repair pass
+  lints for them; if one survives, the song still ships but the ledger records
+  `softened: true`.
+- The safety line is unchanged and unconditional: never attack a named private
+  individual or a protected trait. The diss target is systems, incentives, styles,
+  cultures, industries, and public structures.
+
+## Selective prompt injection
+
+## Producer-directed remake loop
+
+The Telegram producer-musician loop keeps the adopted material stable while a
+new arrangement is explored. “Same lyrics, faster” is a new Suno arrangement
+trial, never an in-place tempo edit to existing audio. Title, BPM, direction,
+and exclude-only changes use `artist_song_production_revise`, preserving the
+exact adopted lyrics and every unspecified condition; lyric revision tools are
+reserved for actual lyric edits.
+
+Tentative wording in a mixed request does not erase a clear remake instruction.
+The artist resolves the durable conversation subject, request, keep-set, and
+decision plus exact song material/history before acting. A historical take stays
+selected until the producer explicitly adopts its exact run/take. Reports state
+the musical intent, delta, retained material, actual audio or URLs, prior-run
+comparison, and listening focus without inventing an audition.
+
+### Telegram completion message contract
+
+When music production succeeds, Telegram emits one new-song message written in
+the artist's voice. It is not a completion/status card or a prompt dump. The
+message follows this order: source link; factual source summary; the artist's
+reaction; the lyric transformation; technical lyric highlights; and the
+musical intent/listening points. The technical and musical details must come
+from the bound lyrics/style material, and listening points describe what to
+listen for rather than claiming that the audio was auditioned. Production
+errors and stalls remain operational notices with the actionable state and
+reason; they do not masquerade as a successful artist message.
+
+The lyric prompt no longer dumps every bank and asks the model to rotate. When a
+decision is present, `buildLyricsDraftingPrompt` injects a bounded directive block
+(`SELECTIVE_BLOCK_START` … `SELECTIVE_BLOCK_END`) carrying **only** what the
+decision chose: the chosen lens's material, the chosen tag-technique bullet, the
+signature, the hook shape, the attack stance, and the aggression directives. The
+full persona is still appended as ground, but the *directives* point at one lens.
+Legacy songs with no plan keep the previous critique-lens prose.
+
+For city and advertising critique, the writer must expose the target through its
+effects before naming it: transformed geography, speaking walls, repeated faces,
+stolen attention, altered routes, or growing rent. Example metaphors are invention
+patterns rather than a reusable phrase bank. The lyric must not explain the image
+after it lands or substitute repeated target labels for scenes.
+
+## style / pack alignment
+
+`generatePromptPack` / `buildStyle` read the plan, not independent hashes:
+
+- The style `Opening` direction is derived from the plan's `intro.styleMove`, so
+  the lyric opening and the fallback Style field cannot contradict. The normal AI
+  style writer receives the same direction plus the observation and does not select
+  from a fixed arrangement profile.
+- `bpm` and `vocalGender` come from the plan.
+- `emotionalMode.spec` (感情) and `moodHint` (音色) are role-separated: the mode
+  is the emotional stance, the moodHint is the sonic colour, and both reach the
+  style through the plan / pack input.
+- The brief's `- Style notes:` line is now actually threaded into `buildStyle` as
+  an extra hint (it used to be written and then dropped) — but only for songs that
+  have a plan; the legacy path stays byte-identical.
+
+## brief.md: one renderer, one schema
+
+`src/services/briefRenderer.ts` is the single brief writer. Both the commission
+path (`songStateInjector`) and the ideation path (`songIdeation`) build a
+`BriefModel` and route through `renderBrief`. The model is the superset of every
+field either path needs; the renderer emits a Direction line only for the fields
+that are set, in one fixed order, so the two briefs still differ in which lines
+appear but share one schema and one formatter.
+
+Two properties this fixes:
+
+- **bpm no longer vanishes on the ideation path.** The ideation brief now carries
+  a `- Tempo: NNN BPM` line, so `readBriefTempo` (which matches only `- Tempo:`)
+  parses it instead of falling back to the mid default.
+- **band and bpm agree inside one brief.** The `- Tempo band:` line and the
+  `- Tempo:` line derive from a single tempo source per brief (an explicit bpm →
+  its band via `bandForBpm`; otherwise the plan's band + bpm), so the two can no
+  longer disagree.
+
+### Heading parsing shares one contract
+
+The parsers that slice the live persona used to match headings on an exact line,
+so a heading that gained a trailing space, changed case, or picked up a full-width
+space silently returned `[]` and the pipeline degraded with no error. All of them
+now compare through `src/services/personaHeadings.ts`: canonical heading constants
+plus `normalizeHeading` (trim, drop markdown `#` markers, fold case, collapse
+whitespace, treat full-width spaces as ASCII). The **persona contract doctor reads
+the same constants**, so the doctor and the parsers cannot drift apart.
+
+Canon sections the parsers read, with their exact headings (all from
+`personaHeadings.ts`):
+
+| Heading | Parser | Purpose |
+|---|---|---|
+| `### Emotional Modes` | `emotionalModesFromArtist` | the 7 modes incl. 本気 Dis |
+| `### Critique Lens` | `critiqueLensLines` / doctor | legacy critique prose |
+| `### Critique Lens` | `parseCritiqueLenses` / `critiqueLensLines` / doctor | persona-declared lens roster (`[lens_id] Label: description` bullets); non-bracketed bullets are read as prose |
+| `### Tag Techniques` | `parseTagTechniques` | tag technique pool |
+| `### Attack Stances` | `parseAttackStances` | per-lens attack pool (`[lens_id]: stance / stance / ...` bullets) |
+| `### Material Bank: <lens_id>` | `materialBankGroups` / `extractDissBankItems` | one bank per declared lens id; `extractDissBankItems` pools noun phrases across every declared lens's bank for quality telemetry, not scoped to one lens |
+| `### Catchphrases` | `parseCatchphrases` | persona-declared catchphrase specs (`- id: form1, form2, ...`), plus the code-level `same_same` shape catchphrase |
+| a `- Signature: v1, v2, ...` bullet (any heading) | `parseSignatures` | the artist's recurring "癖"; no code-level list |
+| `## Current Obsessions` | `chooseTheme` | ideation theme seed |
+| `## Current Artist Core` | `chooseTheme` | ideation theme fallback |
+
+## The persona contract doctor
+
+`src/services/personaContractDoctor.ts` runs the **real** parsers over the live
+`ARTIST.md` and reports every contract that no longer holds: at least one
+declared lens with a non-empty material bank for every declared lens, a
+Critique Lens section, 7 Emotional Modes with a Dis mode, ≥2 Attack Stances per
+declared lens, ≥2 tag techniques, and ≥1 declared signature. Results are always
+visible in `/api/status` diagnostics; a failing set emits
+`persona_contract_degraded` once per distinct failure set (the end of silent
+degradation).
+
+## Monotony watchdog
+
+`creativeQualityLedger` aggregates the recent decisions and detects streaks — same
+lens 3 in a row, consecutive changeups, a repeated title word, a repeated attack
+stance. A streak emits a runtime event and one tombstoned Telegram notice (no
+spam). This is what would have caught "same face four songs running" automatically.
+
+## Dopagaki variation
+
+Dopagaki is an autonomous anti-template density variation, not a genre. Target rate
+~40%. It is computed **once**, inside the director, and stored on the plan
+(`dopagaki`). Every consumer — lyric prompt, style seed, retry, ledger — reads that
+one value, so the recorded `dopagakiActive` can no longer contradict the style
+block. Active mode is overt (clipped fragments, instant hook pressure,
+fast-development contrast), high-speed delivery is limited to 2-4 bar bursts, and
+the nu-jazz low-bass core with the dry intelligible lead stays intact. Source of
+truth: `src/services/creativeVariationPolicy.ts`.
+
+## Opening contract
+
+The runtime does not rotate a catalogue of intro archetypes. Each lyric writer must
+make the opening from the current observation, emotional turn, and musical plan.
+There are two renderable forms only: an `[Instrumental Intro]` with a concrete sound
+gesture and no lyric lines, or an `[Intro]` carrying exactly one complete,
+intelligible lyric line. Empty intro sections, count-ins, phonetic filler, scat,
+vocal chops, and ad-libs before the first written lyric are prohibited. Fast flow is
+scoped to Verse sections, so a global rap direction cannot turn a sparse opening
+into an invented vocalise.
+
+## Rap lyrics density
+
+The default 80-bar nu-jazz rap DurationPlan is dense by default. Verse 1 and Verse
+2 carry 14-16 lines each, roughly one lyric line per bar, with internal rhymes and
+controlled syllable density. Bare lyrics must clear a dual floor before a draft is
+accepted: at least 1200 bare-lyric characters (80 bars × 15) **and** at least 52
+non-marker lyric lines. Fast bands target a shorter runtime; the band comes from
+the plan. Source of truth: `src/suno-production/durationPlan.ts`.
+
+### Meaningful repetition only
+
+Section-level Hook repeats remain part of the song form. Within a lyric line,
+however, a repeated mora or short filler (`だ、だ、だ`, `よよよ`, `da-da-da`) is
+regenerated once rather than used to fill the opening or a verse. The sole narrow
+exception is one intentional response tag in a call-and-response hook; it never
+permits an intro stutter. This keeps repetition as a deliberate hook device,
+not the default vocal gesture.
+
+## Suno registration readings
+
+The registration copy of the lyrics is normalised so Suno pronounces it: ASCII
+numbers become their reading, and a curated kanji map turns known kanji into
+kana; unknown kanji stay residual and fail closed. A number that belongs to a
+proper name (a building, a line, a model number) must not be read as a quantity,
+and which names those are is the artist's vocabulary, so the persona declares
+them:
+
+    ### Suno Number Readings
+    - 109 after 名前, なまえ, Name: いちまるきゅう
+
+The number takes the listed reading only when one of the prefixes precedes it
+(whitespace allowed, case-insensitive); every other occurrence keeps the ordinary
+reading. With no such section, no number gets a proper-name reading. Source of
+truth: `parseNumberReadingOverrides` in `src/services/lyricsLanguageLint.ts`.
+
+## Contract → test map
+
+Each protected contract and the test file that pins it:
+
+| Contract | Source | Test |
+|---|---|---|
+| Decision determinism, all-axis anti-repeat, Dis-rate rule | `creativeDirector.ts` | `tests/creative-director.test.ts` |
+| Plan write-once + downstream thread-through | `songPlan.ts`, `generatePromptPack.ts` | `tests/prompt-pack-v55-plan-thread-through.test.ts` |
+| bpm resolution (brief vs plan) | `sunoPromptPackFiles.ts` | `tests/prompt-pack-v55-bpm.test.ts` |
+| Selective directive injection + 免罪句 lint | `lyricsDraftingPrompt.ts`, `lyricsDrafting.ts` | `tests/lyrics-drafting-prompt.test.ts`, `tests/lyrics-drafting-repair.test.ts` |
+| Title anti-repeat, seeded motif | `songSpawnProposer.ts` | `tests/title-anti-repeat.test.ts` |
+| Tempo band templates | `durationPlan.ts` | `tests/duration-plan-tempo-bands.test.ts` |
+| Artist-authored opening contract | `creativeVariationPolicy.ts`, `lyricsDraftingPrompt.ts` | `tests/intro-variant-rotation.test.ts`, `tests/lyrics-drafting-prompt.test.ts` |
+| Persona contract doctor | `personaContractDoctor.ts` | `tests/persona-contract-doctor.test.ts` |
+| Monotony streak detection + one notice | `creativeQualityLedger.ts` | `tests/creative-monotony-watchdog.test.ts` |
+| Ledger records decision + result | `creativeQualityLedger.ts` | `tests/creative-quality-ledger.test.ts` |
+| Unified brief renderer, heading normalization, plan-first readers | `briefRenderer.ts`, `personaHeadings.ts` | `tests/brief-string-bus-f6.test.ts` |

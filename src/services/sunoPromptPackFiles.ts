@@ -1,0 +1,428 @@
+import { mkdir, readFile, readdir, writeFile } from "node:fs/promises";
+import { dirname, join, relative } from "node:path";
+import { createSongSkeleton } from "../repositories/songRepository.js";
+import type { PersistSunoPromptPackInput, PersistedPromptPackResult, PromptLedgerEntry } from "../types.js";
+import { ensureArtistWorkspace, readArtistSnapshots } from "./artistWorkspace.js";
+import { readSongState, updateSongState } from "./artistState.js";
+import { appendPromptLedger, createPromptLedgerEntry, getSongPromptLedgerPath } from "./promptLedger.js";
+import { createProductionRevisionPromptPack, createSunoPromptPack, createSunoPromptPackWithAi } from "../suno-production/generatePromptPack.js";
+import { bandForBpm, resolveTempoBandFromBrief } from "../suno-production/durationPlan.js";
+import { extractObservationSummary } from "./songIdeation.js";
+import { emitRuntimeEvent } from "./runtimeEventBus.js";
+import { composeSongCreationNote } from "./songCreationNote.js";
+
+async function nextPromptPackVersion(promptsDir: string, lyricsDir?: string, preserveExistingLyricsVersions = false): Promise<number> {
+  try {
+    const entries = await readdir(promptsDir, { withFileTypes: true });
+    const versions = entries
+      .filter((entry) => entry.isDirectory() && /^prompt-pack-v\d{3}$/.test(entry.name))
+      .map((entry) => Number(entry.name.replace("prompt-pack-v", "")));
+    if (lyricsDir && preserveExistingLyricsVersions) {
+      const lyricEntries = await readdir(lyricsDir, { withFileTypes: true }).catch(() => []);
+      versions.push(...lyricEntries
+        .filter((entry) => entry.isFile() && /^lyrics\.v\d+\.md$/.test(entry.name))
+        .map((entry) => Number(entry.name.match(/^lyrics\.v(\d+)\.md$/)?.[1]))
+        .filter((version) => Number.isInteger(version)));
+    }
+    return (versions.length > 0 ? Math.max(...versions) : 0) + 1;
+  } catch {
+    return 1;
+  }
+}
+
+export async function readLatestPromptPackMetadata(workspaceRoot: string, songId: string): Promise<{ version: number; metadata: Record<string, unknown> } | undefined> {
+  const promptsDir = join(workspaceRoot, "songs", songId, "prompts");
+  try {
+    const entries = await readdir(promptsDir, { withFileTypes: true });
+    const versions = entries
+      .filter((entry) => entry.isDirectory() && /^prompt-pack-v\d{3}$/.test(entry.name))
+      .map((entry) => Number(entry.name.replace("prompt-pack-v", "")))
+      .filter((value) => Number.isFinite(value));
+    if (versions.length === 0) {
+      return undefined;
+    }
+    const version = Math.max(...versions);
+    const metadataPath = join(promptsDir, `prompt-pack-v${String(version).padStart(3, "0")}`, "metadata.json");
+    const raw = await import("node:fs/promises").then(({ readFile }) => readFile(metadataPath, "utf8"));
+    return {
+      version,
+      metadata: JSON.parse(raw) as Record<string, unknown>
+    };
+  } catch {
+    return undefined;
+  }
+}
+
+async function writeText(path: string, contents: string): Promise<void> {
+  await mkdir(dirname(path), { recursive: true });
+  await writeFile(path, contents, "utf8");
+}
+
+async function writeJson(path: string, value: unknown): Promise<void> {
+  await writeText(path, `${JSON.stringify(value, null, 2)}\n`);
+}
+
+async function appendEntries(ledgerPath: string, entries: PromptLedgerEntry[]): Promise<string[]> {
+  const ids: string[] = [];
+  for (const entry of entries) {
+    const appended = await appendPromptLedger(ledgerPath, entry);
+    ids.push(appended.id);
+  }
+  return ids;
+}
+
+function observationRefs(root: string, observationPath?: string): string[] {
+  if (!observationPath) {
+    return [];
+  }
+  const rel = relative(root, observationPath);
+  return [rel && !rel.startsWith("..") ? rel : observationPath];
+}
+
+export function parseBpmFromBriefTempo(value: string | undefined): number | undefined {
+  if (!value) return undefined;
+  if (/artist\s+decides/i.test(value)) return undefined;
+  const match = value.match(/\b(\d{2,3})\s*(?:bpm)?\b/i);
+  if (!match) return undefined;
+  const bpm = Number(match[1]);
+  return Number.isInteger(bpm) && bpm >= 40 && bpm <= 220 ? bpm : undefined;
+}
+
+// Exported so the F6 round-trip test can prove the unified brief renderer emits a
+// `- Tempo:` line this reader parses (inventory bug #1: the pre-F6 ideation brief
+// carried a band but no bpm, so this reader silently returned undefined and the
+// bpm fell back to the mid default).
+export function readBriefTempo(briefText: string): string | undefined {
+  return briefText.match(/^- Tempo:\s*(.+)$/mi)?.[1]?.trim();
+}
+
+// Producer "- Style notes:" placeholders that carry no real direction; passing
+// them into the style would only add noise.
+const STYLE_NOTES_PLACEHOLDERS = new Set([
+  "artist decides",
+  "producer brief led, artist arrangement"
+]);
+
+function parseBriefStyleNotes(briefText: string): string | undefined {
+  const raw = briefText.match(/^- Style notes:\s*(.+)$/mi)?.[1]?.trim();
+  if (!raw) return undefined;
+  return STYLE_NOTES_PLACEHOLDERS.has(raw.toLowerCase()) ? undefined : raw;
+}
+
+function isLyricsBoxOverflowReason(reason: string): boolean {
+  return reason.includes("payloadYaml length exceeds Suno lyrics box limit")
+    || reason.includes("YAML overflow")
+    || reason.includes("lyrics_too_long_for_suno_box");
+}
+
+async function failClosedLyricsBoxOverflow(input: PersistSunoPromptPackInput, detail: string): Promise<never> {
+  const repairNotes = [`lyrics_too_long_for_suno_box: ${detail}`];
+  const reason = `lyrics_generation_degraded: ${repairNotes.join(" | ")}`;
+  if (!input.deferDegradedNotification) {
+    emitRuntimeEvent({
+      type: "lyrics_generation_degraded",
+      songId: input.songId,
+      reason,
+      detail,
+      repairNotes,
+      timestamp: Date.now()
+    });
+    await updateSongState(input.workspaceRoot, input.songId, {
+      degradedLyrics: true,
+      reason,
+      ...(input.preserveSongStatus ? {} : { status: "brief" as const })
+    });
+  }
+  const error = new Error(reason);
+  throw Object.assign(error, { repairNotes });
+}
+
+async function failClosedPromptPackValidation(input: PersistSunoPromptPackInput, detail: string): Promise<never> {
+  const repairNotes = [`suno_prompt_pack_invalid: ${detail}`];
+  const reason = `lyrics_generation_degraded: ${repairNotes.join(" | ")}`;
+  if (!input.deferDegradedNotification) {
+    emitRuntimeEvent({
+      type: "lyrics_generation_degraded",
+      songId: input.songId,
+      reason,
+      detail,
+      repairNotes,
+      timestamp: Date.now()
+    });
+    await updateSongState(input.workspaceRoot, input.songId, {
+      degradedLyrics: true,
+      reason,
+      ...(input.preserveSongStatus ? {} : { status: "brief" as const })
+    });
+  }
+  const error = new Error(reason);
+  throw Object.assign(error, { repairNotes });
+}
+
+export async function createAndPersistSunoPromptPack(input: PersistSunoPromptPackInput): Promise<PersistedPromptPackResult> {
+  await ensureArtistWorkspace(input.workspaceRoot);
+  await createSongSkeleton(input.workspaceRoot, input.songId);
+
+  const { artistSnapshot, currentStateSnapshot } = await readArtistSnapshots(input.workspaceRoot);
+  const briefText = await readFile(join(input.workspaceRoot, "songs", input.songId, "brief.md"), "utf8").catch(() => "");
+  // BPM/band resolution, kept as a coherent pair, with the song plan as the source
+  // of truth. The brief's "- Tempo:" line is written by a model on the self-spawn
+  // path, and letting it win silently overrode the planned band: plans asking for
+  // up/dopagaki/super were delivered at 82-98 BPM for weeks. Precedence is now the
+  // operator's explicit bpm, then the plan, then the brief (legacy songs have no
+  // plan, so their brief-only path is unchanged).
+  const briefBpm = parseBpmFromBriefTempo(readBriefTempo(briefText));
+  const usePlanTempo = input.bpm === undefined && input.creativeDecision !== undefined;
+  const promptPackInput = {
+    ...input,
+    bpm: input.bpm ?? input.creativeDecision?.tempo.bpm ?? briefBpm,
+    // An operator-supplied bpm decides its own band, so a band never ends up
+    // describing a different tempo than the one being submitted.
+    tempoBand: input.tempoBand
+      ?? (input.bpm !== undefined ? bandForBpm(input.bpm) : undefined)
+      ?? (usePlanTempo ? input.creativeDecision!.tempo.band : resolveTempoBandFromBrief(briefText)),
+    // Only thread the brief's Style notes when the song has a plan; the legacy
+    // path must reach buildStyle with styleNotes undefined (byte-identity).
+    styleNotes: input.creativeDecision ? parseBriefStyleNotes(briefText) : undefined,
+    artistSnapshot: input.artistSnapshot || artistSnapshot,
+    currentStateSnapshot: input.currentStateSnapshot || currentStateSnapshot
+  };
+  const useAi = input.aiReviewProvider && input.aiReviewProvider !== "mock";
+  const productionOverrides = input.productionOverrides;
+  const pack = await (async () => {
+    try {
+      return productionOverrides
+        ? createProductionRevisionPromptPack(promptPackInput, productionOverrides)
+        : useAi
+        ? await createSunoPromptPackWithAi({ ...promptPackInput, aiReviewProvider: input.aiReviewProvider })
+        : createSunoPromptPack(promptPackInput);
+    } catch (error) {
+      const detail = error instanceof Error ? error.message : String(error);
+      if (isLyricsBoxOverflowReason(detail)) {
+        await failClosedLyricsBoxOverflow(input, detail);
+      }
+      throw error;
+    }
+  })();
+  const payloadYamlOverflow = pack.validation.errors.find(isLyricsBoxOverflowReason);
+  if (payloadYamlOverflow) {
+    await failClosedLyricsBoxOverflow(input, payloadYamlOverflow);
+  }
+  if (!pack.validation.valid) {
+    await failClosedPromptPackValidation(input, pack.validation.errors.join("; "));
+  }
+  const charCounts = (pack.payload as { promptCharCounts?: {
+    style: number;
+    lyrics: number;
+    title: number;
+    styleZone: string;
+    lyricsZone: string;
+    titleZone: string;
+    bareLyricsChars?: number;
+    markerChars?: number;
+    submittedPayloadChars?: number;
+    effectiveLyricsBoxLimit?: number;
+    plannedBars?: number;
+    durationTargetSeconds?: number;
+  } }).promptCharCounts;
+  if (charCounts) {
+    emitRuntimeEvent({
+      type: "prompt_pack_char_count",
+      songId: input.songId,
+      ...charCounts,
+      timestamp: Date.now()
+    });
+  }
+  const originalLyricsText = pack.lyricsBundle?.originalLyricsText ?? input.lyricsText;
+  const lyricsText = pack.lyricsBundle?.lyricsText ?? input.lyricsText;
+
+  const promptsDir = join(input.workspaceRoot, "songs", input.songId, "prompts");
+  const lyricsDir = join(input.workspaceRoot, "songs", input.songId, "lyrics");
+  const sunoDir = join(input.workspaceRoot, "songs", input.songId, "suno");
+  const version = await nextPromptPackVersion(promptsDir, lyricsDir, input.preserveExistingLyricsVersions);
+  const versionTag = `v${String(version).padStart(3, "0")}`;
+  const snapshotDir = join(promptsDir, `prompt-pack-${versionTag}`);
+  await mkdir(snapshotDir, { recursive: true });
+
+  const lyricsVersioned = join(lyricsDir, `lyrics.v${version}.md`);
+  const lyricsSunoLatest = join(sunoDir, "lyrics-suno.md");
+  const yamlLatest = join(sunoDir, "yaml-suno.md");
+  const styleLatest = join(sunoDir, "style.md");
+  const excludeLatest = join(sunoDir, "exclude.md");
+  const slidersLatest = join(sunoDir, "sliders.json");
+  const payloadLatest = join(sunoDir, "suno-payload.json");
+  const validationLatest = join(sunoDir, "validation.json");
+  const creationNoteLatest = join(sunoDir, "creative-note.json");
+  const ledgerPath = getSongPromptLedgerPath(input.workspaceRoot, input.songId);
+  const currentObservationSummary = (await readSongState(input.workspaceRoot, input.songId).catch(() => undefined))?.observationSummary;
+  const observationSummary = input.observationSummary ?? currentObservationSummary ?? (
+    input.observationPath
+      ? extractObservationSummary(await readFile(input.observationPath, "utf8").catch(() => ""), input.artistReason)
+      : undefined
+  );
+  const creationNote = await composeSongCreationNote({
+    lyrics: originalLyricsText,
+    style: pack.style,
+    briefText,
+    artistReason: input.artistReason,
+    observation: observationSummary
+  }, input.aiReviewProvider);
+
+  await Promise.all([
+    writeText(lyricsVersioned, `${originalLyricsText}\n`),
+    writeText(lyricsSunoLatest, `${lyricsText}\n`),
+    writeText(yamlLatest, `${pack.yamlLyrics}\n`),
+    writeText(styleLatest, `${pack.style}\n`),
+    writeText(excludeLatest, `${pack.exclude}\n`),
+    writeJson(slidersLatest, pack.sliders),
+    writeJson(payloadLatest, pack.payload),
+    writeJson(validationLatest, pack.validation),
+    writeJson(creationNoteLatest, creationNote),
+    writeText(join(snapshotDir, "lyrics.md"), `${originalLyricsText}\n`),
+    writeText(join(snapshotDir, "lyrics-suno.md"), `${lyricsText}\n`),
+    writeText(join(snapshotDir, "yaml-suno.md"), `${pack.yamlLyrics}\n`),
+    writeText(join(snapshotDir, "style.md"), `${pack.style}\n`),
+    writeText(join(snapshotDir, "exclude.md"), `${pack.exclude}\n`),
+    writeJson(join(snapshotDir, "sliders.json"), pack.sliders),
+    writeJson(join(snapshotDir, "suno-payload.json"), pack.payload),
+    writeJson(join(snapshotDir, "validation.json"), pack.validation),
+    writeJson(join(snapshotDir, "creative-note.json"), creationNote),
+    writeJson(join(snapshotDir, "metadata.json"), {
+      songId: input.songId,
+      version,
+      promptHash: pack.promptHash,
+      payloadHash: pack.payloadHash,
+      artistSnapshotHash: pack.artistSnapshotHash,
+      currentStateHash: pack.currentStateHash,
+      knowledgePackHash: pack.knowledgePackHash,
+      charCounts
+    })
+  ]);
+
+  const commonRefs = [
+    join(snapshotDir, "lyrics.md"),
+    join(snapshotDir, "lyrics-suno.md"),
+    join(snapshotDir, "yaml-suno.md"),
+    join(snapshotDir, "style.md"),
+    join(snapshotDir, "exclude.md"),
+    join(snapshotDir, "suno-payload.json"),
+    join(snapshotDir, "creative-note.json"),
+    ...observationRefs(input.workspaceRoot, input.observationPath)
+  ];
+  const sourceRefs = observationRefs(input.workspaceRoot, input.observationPath);
+
+  const ledgerEntryIds = await appendEntries(ledgerPath, [
+    createPromptLedgerEntry({
+      stage: "artist_state_snapshot",
+      songId: input.songId,
+      actor: "system",
+      inputRefs: ["ARTIST.md", "artist/CURRENT_STATE.md", ...sourceRefs],
+      outputRefs: [join(snapshotDir, "metadata.json")],
+      configSnapshot: input.configSnapshot,
+      artistSnapshotHash: pack.artistSnapshotHash,
+      currentStateHash: pack.currentStateHash,
+      knowledgePackHash: pack.knowledgePackHash
+    }),
+    createPromptLedgerEntry({
+      stage: "lyrics_generation",
+      songId: input.songId,
+      actor: "artist",
+      artistReason: input.artistReason,
+      inputRefs: ["ARTIST.md", "artist/CURRENT_STATE.md", ...sourceRefs],
+      outputRefs: [lyricsVersioned, lyricsSunoLatest, join(snapshotDir, "lyrics.md"), join(snapshotDir, "lyrics-suno.md")],
+      promptText: lyricsText,
+      promptHash: pack.promptHash,
+      configSnapshot: input.configSnapshot,
+      artistSnapshotHash: pack.artistSnapshotHash,
+      currentStateHash: pack.currentStateHash,
+      knowledgePackHash: pack.knowledgePackHash
+    }),
+    createPromptLedgerEntry({
+      stage: "suno_style_generation",
+      songId: input.songId,
+      actor: "artist",
+      artistReason: input.artistReason,
+      inputRefs: [lyricsSunoLatest, ...sourceRefs],
+      outputRefs: [styleLatest, join(snapshotDir, "style.md")],
+      outputSummary: pack.style,
+      promptHash: pack.promptHash,
+      configSnapshot: input.configSnapshot,
+      artistSnapshotHash: pack.artistSnapshotHash,
+      currentStateHash: pack.currentStateHash,
+      knowledgePackHash: pack.knowledgePackHash
+    }),
+    createPromptLedgerEntry({
+      stage: "suno_exclude_generation",
+      songId: input.songId,
+      actor: "artist",
+      inputRefs: [lyricsSunoLatest, ...sourceRefs],
+      outputRefs: [excludeLatest, join(snapshotDir, "exclude.md")],
+      outputSummary: pack.exclude,
+      promptHash: pack.promptHash,
+      configSnapshot: input.configSnapshot,
+      artistSnapshotHash: pack.artistSnapshotHash,
+      currentStateHash: pack.currentStateHash,
+      knowledgePackHash: pack.knowledgePackHash
+    }),
+    createPromptLedgerEntry({
+      stage: "suno_yaml_generation",
+      songId: input.songId,
+      actor: "artist",
+      inputRefs: [lyricsSunoLatest, ...sourceRefs],
+      outputRefs: [yamlLatest, join(snapshotDir, "yaml-suno.md")],
+      outputSummary: pack.yamlLyrics,
+      promptHash: pack.promptHash,
+      configSnapshot: input.configSnapshot,
+      artistSnapshotHash: pack.artistSnapshotHash,
+      currentStateHash: pack.currentStateHash,
+      knowledgePackHash: pack.knowledgePackHash
+    }),
+    createPromptLedgerEntry({
+      stage: "suno_payload_build",
+      songId: input.songId,
+      actor: "system",
+      artistReason: input.artistReason,
+      inputRefs: commonRefs,
+      outputRefs: [slidersLatest, payloadLatest, validationLatest, creationNoteLatest, join(snapshotDir, "creative-note.json"), join(snapshotDir, "metadata.json")],
+      promptHash: pack.promptHash,
+      outputHash: pack.payloadHash,
+      payloadHash: pack.payloadHash,
+      configSnapshot: input.configSnapshot,
+      artistSnapshotHash: pack.artistSnapshotHash,
+      currentStateHash: pack.currentStateHash,
+      knowledgePackHash: pack.knowledgePackHash,
+      verification: {
+        status: pack.validation.valid ? "verified" : "failed",
+        detail: pack.validation.errors.join("; ")
+      }
+    })
+  ]);
+
+  await updateSongState(input.workspaceRoot, input.songId, {
+    ...(input.preserveSongStatus ? {} : { status: "suno_prompt_pack" as const }),
+    title: input.songTitle,
+    reason: "Suno prompt pack persisted",
+    lyricsVersion: version,
+    observationSummary
+  });
+
+  return {
+    songId: input.songId,
+    packVersion: version,
+    pack,
+    artifactPaths: {
+      lyricsVersioned,
+      yamlLatest,
+      lyricsSunoLatest,
+      styleLatest,
+      excludeLatest,
+      slidersLatest,
+      payloadLatest,
+      validationLatest,
+      creationNoteLatest,
+      snapshotDir,
+      promptLedger: ledgerPath
+    },
+    ledgerEntryIds
+  };
+}

@@ -1,0 +1,1085 @@
+import { createHash } from "node:crypto";
+import { getDurationPlan, type TempoBand } from "../suno-production/durationPlan.js";
+import { readFile } from "node:fs/promises";
+import { join } from "node:path";
+import type { AiReviewProvider, ArtistIdentity, CascadeTraceSource, CommissionBrief, CommissionBriefSource, ObservationSummary, SongSpawnProposal, SongState } from "../types.js";
+import { callAiProvider, isAiNotConfiguredResponse, isAiProviderMockFallbackResponse } from "./aiProviderClient.js";
+import { composeArtistFallback } from "./artistVoiceComposer.js";
+import { listSongStates } from "./artistState.js";
+import { readCallbackActionEntries } from "./callbackActionRegistry.js";
+import { extractPersonaMotifs, extractTagSet, pickWeightedMotif } from "./personaMotifExtractor.js";
+import { writeDerivedIdentityProjection } from "./personaIdentityProjection.js";
+import { secretLikePattern } from "./personaMigrator.js";
+import { emitRuntimeEvent } from "./runtimeEventBus.js";
+import { getArtistIdentity, readResolvedConfig } from "./runtimeConfig.js";
+import { validateAgainstVoiceContract } from "./voiceContractValidator.js";
+import { isVoiceFingerprintReady, parseVoiceFingerprint, type VoiceFingerprintBundle } from "./voiceFingerprintParser.js";
+import { readObservationsReport, readTodayObservations } from "./xObservationCollector.js";
+import { readTodayNewsObservations } from "./newsObservationCollector.js";
+import { decideCreative, jstDate, type CreativeDirectorObservation } from "./creativeDirector.js";
+import { readCreativeQualityLedger, readRecentCreativeDecisions } from "./creativeQualityLedger.js";
+import { hashRatio } from "./creativeVariationPolicy.js";
+import type { CreativeDecision } from "../types.js";
+
+const FULL_TWEET_URL_PATTERN = /^https:\/\/(?:twitter|x)\.com\/[^/\s]+\/status\/\d+/i;
+
+export interface ProposeSpawnOptions {
+  aiReviewProvider?: AiReviewProvider;
+  now?: Date;
+  activeQueueContext?: ActiveQueueContextEntry[];
+  ignoreRecentCompletion?: boolean;
+}
+
+export interface ActiveQueueContextEntry {
+  title: string;
+  coreTheme: string;
+  observationSources?: CascadeTraceSource[];
+  motifRank?: number;
+}
+
+function assertSafe(stage: string, value: string): void {
+  if (secretLikePattern.test(value)) {
+    throw new Error(`song_spawn_secret_like_${stage}`);
+  }
+}
+
+function shortHash(value: string): string {
+  return createHash("sha256").update(value).digest("hex").slice(0, 6);
+}
+
+interface ObservationExcerpt {
+  text: string;
+  author?: string;
+  url?: string;
+  sourceKind: "x" | "news" | "x_reaction";
+  motifMatch?: string;
+  motifScore?: number;
+  reactionFor?: string;
+}
+
+interface LatestObservationData {
+  raw: string;
+  summary?: ObservationSummary;
+  excerpts?: ObservationExcerpt[];
+}
+
+async function latestObservationData(
+  root: string,
+  now: Date,
+  recentSourceUrls: ReadonlySet<string> = new Set()
+): Promise<LatestObservationData> {
+  // X observations are daily inputs, not an indefinite fallback. If today's
+  // collection fails, exclude older X files instead of recycling their sources
+  // into every new proposal. News remains on its existing independent path.
+  let raw = await readTodayObservations(root, now);
+  let xReportEntries: Array<{ text: string; author?: string; url?: string; postedAt?: string; motifMatch?: string; motifScore?: number; sourceKind?: "x" | "x_reaction"; reactionFor?: string }> = [];
+  if (raw) {
+    const report = await readObservationsReport(root, now).catch(() => null);
+    xReportEntries = (report?.entries ?? []).map((entry) => ({
+      ...entry,
+      motifMatch: report?.reactionSeed?.title
+        ? [entry.motifMatch, `reaction to: ${report.reactionSeed.title.slice(0, 80)}`].filter(Boolean).join(" / ")
+        : entry.motifMatch,
+      sourceKind: report?.reactionSeed ? "x_reaction" as const : "x" as const,
+      reactionFor: report?.reactionSeed?.title
+    }));
+  }
+  // Plan v10.38 Phase B: merge today's news cache entries into the same
+  // scoring pool. News entries have URLs (RSS link) and source label; they
+  // lack X authors so they bypass the @user requirement that filters X-only.
+  const newsEntries = await readTodayNewsObservations(root).catch(() => []);
+  const newsAsObservation = newsEntries.map((entry) => ({
+    text: entry.text,
+    author: entry.source,
+    url: entry.url ?? entry.lookupUrl,
+    postedAt: entry.postedAt,
+    motifMatch: entry.motifMatch,
+    motifScore: entry.motifScore,
+    sourceKind: "news" as const
+  }));
+  const xAsObservation = xReportEntries.map((entry) => ({
+    ...entry,
+    sourceKind: entry.sourceKind ?? "x" as const
+  }));
+  const pool = [...xAsObservation, ...newsAsObservation];
+  if (pool.length === 0 && !raw) return { raw: "" };
+  // Keep a source only once across nearby proposals when another observation is
+  // available. If every candidate is already used, retain the pool instead of
+  // starving the artist of material altogether.
+  const freshPool = pool.filter((entry) => !entry.url || !recentSourceUrls.has(entry.url));
+  const selectedPool = freshPool.length > 0 ? freshPool : pool;
+  // Stitch the news block onto raw so prompt builders that read raw text see
+  // both streams even before E adds explicit excerpt sections.
+  const newsRaw = newsEntries
+    .slice(0, 12)
+    .map((entry) => `- ${entry.text}${entry.source ? ` [${entry.source}]` : ""}${entry.url ? ` ${entry.url}` : ""}`)
+    .join("\n");
+  if (newsRaw) {
+    raw = raw ? `${raw.trim()}\n\n# News Excerpts\n${newsRaw}\n` : `# News Excerpts\n${newsRaw}\n`;
+  }
+  // A resolved news article is the primary material when available. X remains
+  // useful as surrounding reaction, but an unrelated high-scoring post must not
+  // displace the article the artist is meant to be responding to.
+  const articlePool = selectedPool.filter((entry) => entry.sourceKind === "news" && Boolean(entry.url));
+  const primaryPool = articlePool.length > 0 ? articlePool : selectedPool;
+  // News already carries editorial selection order; geography keyword scores
+  // must not put market tickers back ahead of a grounded human story.
+  const sorted = articlePool.length > 0
+    ? [...primaryPool]
+    : [...primaryPool].sort((a, b) => (b.motifScore ?? 0) - (a.motifScore ?? 0));
+  // Plan v10.38 Phase E: keep top-N excerpts so buildPrompt can show them to
+  // the AI as "Today's Topic (main material)". Both X and news entries pass
+  // through here, scored by the same persona motif rubric.
+  const excerpts: ObservationExcerpt[] = sorted.slice(0, 10).map((entry) => ({
+    text: entry.text,
+    author: entry.author,
+    url: entry.url,
+    sourceKind: entry.sourceKind,
+    motifMatch: entry.motifMatch,
+    motifScore: entry.motifScore,
+    reactionFor: "reactionFor" in entry ? entry.reactionFor : undefined
+  }));
+  for (const entry of sorted) {
+    const quote = (entry.text ?? "").trim();
+    if (!quote) continue;
+    if (secretLikePattern.test(quote)) continue;
+    if (entry.sourceKind === "x") {
+      if (!entry.url || !FULL_TWEET_URL_PATTERN.test(entry.url)) continue;
+      if (!entry.author || entry.author === "_") continue;
+      return {
+        raw,
+        summary: {
+          quote: quote.slice(0, 240),
+          author: entry.author,
+          url: entry.url
+        },
+        excerpts
+      };
+    }
+    // news entry: accept https url and source label as author.
+    if (!entry.url || !/^https?:\/\//i.test(entry.url)) continue;
+    return {
+      raw,
+      summary: {
+        quote: quote.slice(0, 240),
+        author: entry.author ?? "news",
+        url: entry.url
+      },
+      excerpts
+    };
+  }
+  return { raw, excerpts };
+}
+
+function hasRestMood(heartbeat: string, soulMd: string): boolean {
+  return /(?:\brest\b|\bpause\b|\bsleep\b|休|静養|停止|休む)/i.test(`${heartbeat}\n${soulMd}`);
+}
+
+function recentCompletedTooClose(songs: SongState[], now: Date): boolean {
+  const latest = songs.find((song) => ["published", "scheduled", "take_selected"].includes(song.status));
+  if (!latest) {
+    return false;
+  }
+  return now.getTime() - new Date(latest.updatedAt).getTime() < 6 * 60 * 60 * 1000;
+}
+
+function normalizeTheme(value: string): string {
+  return value.toLowerCase().replace(/[^a-z0-9一-龠ぁ-んァ-ヶー]+/gi, "");
+}
+
+// Plan v10.38 Phase C: recent spawn surface for dedup. Carry title +
+// lyricsTheme + brief so isSimilarTheme can do motif-level jaccard, not just
+// title substring match. Previously the dedup tripped only when a new title
+// literally contained an old title (or vice versa); semantic dupes (two titles
+// that name the same place and the same target in different words) slipped through.
+interface RecentSpawnTheme {
+  title: string;
+  lyricsTheme?: string;
+  brief?: string;
+  sourceUrls?: string[];
+}
+
+function jaccardSimilarity(a: Set<string>, b: Set<string>): number {
+  if (a.size === 0 || b.size === 0) return 0;
+  let intersection = 0;
+  for (const value of a) if (b.has(value)) intersection += 1;
+  const union = a.size + b.size - intersection;
+  return union === 0 ? 0 : intersection / union;
+}
+
+function isSimilarTheme(
+  candidate: { title?: string; lyricsTheme?: string; brief?: string },
+  recentThemes: RecentSpawnTheme[]
+): boolean {
+  const candidateText = [candidate.title, candidate.lyricsTheme, candidate.brief].filter(Boolean).join("\n");
+  const candidateTags = extractTagSet(candidateText);
+  const candidateTitle = candidate.title?.trim() ?? "";
+  const normalizedCandidate = normalizeTheme(candidateTitle);
+  for (const recent of recentThemes) {
+    const recentTitle = recent.title?.trim() ?? "";
+    if (recentTitle && candidateTitle) {
+      const normalizedRecent = normalizeTheme(recentTitle);
+      if (normalizedRecent.length >= 3 && normalizedCandidate.length >= 3) {
+        if (normalizedRecent === normalizedCandidate) return true;
+        // Safety net: substring match retains pre-v10.38 dedup for titles that
+        // truncate or extend each other (e.g. a 32-char slice of an earlier
+        // title). The jaccard layer below catches the semantic-rephrase case
+        // the substring path always missed.
+        if (normalizedRecent.includes(normalizedCandidate) || normalizedCandidate.includes(normalizedRecent)) return true;
+      }
+    }
+    if (candidateTags.size === 0) continue;
+    const recentText = [recent.title, recent.lyricsTheme, recent.brief].filter(Boolean).join("\n");
+    const recentTags = extractTagSet(recentText);
+    if (recentTags.size === 0) continue;
+    if (jaccardSimilarity(candidateTags, recentTags) >= 0.5) return true;
+  }
+  return false;
+}
+
+function queueContextAsRecentThemes(entries: ActiveQueueContextEntry[] = []): RecentSpawnTheme[] {
+  return entries.map((entry) => ({
+    title: entry.title,
+    lyricsTheme: entry.coreTheme,
+    brief: entry.observationSources?.map((source) => source.quote).filter(Boolean).join("\n")
+  }));
+}
+
+async function recentSpawnThemes(root: string, now: Date): Promise<RecentSpawnTheme[]> {
+  const cutoff = now.getTime() - 24 * 60 * 60 * 1000;
+  const entries = await readCallbackActionEntries(root).catch(() => []);
+  const seen = new Map<string, RecentSpawnTheme>();
+  for (const entry of entries) {
+    if (entry.createdAt < cutoff || !entry.commissionBrief?.title || !entry.action.startsWith("song_spawn_")) {
+      continue;
+    }
+    const title = entry.commissionBrief.title;
+    if (seen.has(title)) continue;
+    seen.set(title, {
+      title,
+      lyricsTheme: entry.commissionBrief.lyricsTheme,
+      brief: entry.commissionBrief.brief,
+      sourceUrls: entry.commissionBrief.sources?.map((source) => source.url).filter(Boolean)
+    });
+  }
+  return Array.from(seen.values()).slice(-12);
+}
+
+// Kanji (incl. 々) and katakana (incl. ー) runs of >= 2 chars. Hiragana breaks
+// runs so anti-repeat compares distinctive content words, not particles.
+const TITLE_TOKEN_PATTERN = /[一-鿿々゠-ヿー]{2,}/g;
+
+function titleTokens(title: string): string[] {
+  return title.match(TITLE_TOKEN_PATTERN) ?? [];
+}
+
+function titleTokenSet(titles: string[]): Set<string> {
+  const set = new Set<string>();
+  for (const title of titles) {
+    for (const token of titleTokens(title)) set.add(token);
+  }
+  return set;
+}
+
+function sharesTitleToken(candidate: string, recentTokens: Set<string>): boolean {
+  if (recentTokens.size === 0) return false;
+  return titleTokens(candidate).some((token) => recentTokens.has(token));
+}
+
+export function titleFromSeed(
+  seed: string,
+  motifs?: ReturnType<typeof extractPersonaMotifs>,
+  observationTopTags: string[] = [],
+  rng?: () => number,
+  recentTitles: string[] = []
+): string {
+  // Plan v10.38 Phase C: pickWeightedMotif replaces [0]-pinning on themes /
+  // geographies so the title bucket rotates across the ARTIST.md seed instead
+  // of locking onto the first theme + first place every cycle. Observation top tags bias
+  // the pick toward what X / news is saying today when available. Title text
+  // is shown to the producer + lands in the Japanese reason line, so we keep
+  // the pick japanese-only here too -- english motifs (hip-hop / Brooklyn) are
+  // available to AI prompts via the raw motif bundle, but should not surface
+  // as the song title.
+  if (motifs) {
+    // Anti-repeat: reject a candidate that shares a content word with any of the
+    // last few ledger titles (Face x2 re-occurrence guard). The seeded rng
+    // advances on each rebuild so bounded retries explore distinct picks;
+    // fallback keeps the last candidate with a degraded note.
+    const recentTokens = titleTokenSet(recentTitles);
+    const buildCandidate = (): string => {
+      const themeWord = firstJapanesePhrase(motifs.themes, "", observationTopTags, rng);
+      const geoWord = firstJapanesePhrase(motifs.geographies, "", observationTopTags, rng);
+      if (themeWord && geoWord) return `${geoWord}の${themeWord}`.slice(0, 32);
+      if (themeWord) return themeWord.slice(0, 32);
+      return "";
+    };
+    let candidate = buildCandidate();
+    if (candidate) {
+      for (let attempt = 0; attempt < 6 && sharesTitleToken(candidate, recentTokens); attempt += 1) {
+        const next = buildCandidate();
+        if (!next) break;
+        candidate = next;
+      }
+      if (sharesTitleToken(candidate, recentTokens)) {
+        console.warn(`[song-spawn] title_anti_repeat_exhausted: accepting overlapping title token (candidate=${candidate})`);
+      }
+      return candidate;
+    }
+  }
+  const lines = seed.split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
+  const skipPrefixes = [/^#\s*X Observations/i, /^Query:/i, /^Motifs:/i, /^Source:/i, /^- text:/i, /^- author:/i, /^- url:/i, /^- postedAt:/i, /^author:/i, /^url:/i, /^postedAt:/i, /^motifMatch:/i, /^motifScore:/i];
+  const meaningful = lines.find((line) => {
+    const stripped = line.replace(/^#+\s*/, "");
+    if (!stripped) return false;
+    return !skipPrefixes.some((re) => re.test(line));
+  });
+  if (meaningful) {
+    const cleaned = meaningful
+      .replace(/^- text:\s*/i, "")
+      .replace(/^["「『]+|["」』]+$/g, "")
+      .replace(/^#+\s*/, "")
+      .slice(0, 24);
+    if (cleaned) return cleaned;
+  }
+  return "静かな夜の勘定書";
+}
+
+type PitchField = "lyricsTheme" | "styleNotes" | "reason";
+
+interface PitchDensityContext {
+  observation: string;
+  artistMd: string;
+  soulMd: string;
+  fingerprint: VoiceFingerprintBundle;
+  preserveSourceFields?: boolean;
+}
+
+const honestThinMarkerPattern = /まだ|言葉になってない|輪郭しか|仮で|これから/;
+const fillerPattern = /(.{6,})\1{2,}|いい感じ|うまく/;
+const machineVoicePattern = /(?:ARTIST\.md|SOUL\.md|INNER\.md|PRODUCER\.md|IDENTITY\.md|themes:|geo:|vocab:|sound:|motif anchor:|\bparse\b|\bbuild\b|\bfield\b|\bconfig\b|\bruntime\b|\bmock\b)|TBD|未定|未記入|todo|fixme|none|n\/a|基礎人格|基礎トーン|に基づき|を変換|を生成/i;
+
+function charLength(value: string): number {
+  return Array.from(value).length;
+}
+
+function firstLine(value: string, fallback: string): string {
+  return value.split(/\r?\n/).map((line) => line.trim()).find(Boolean)?.replace(/^-\s*(?:text|quote):\s*/i, "").replace(/^["']|["']$/g, "") ?? fallback;
+}
+
+function firstPhrase(
+  values: string[],
+  fallback: string,
+  observationTopTags: string[] = [],
+  rng?: () => number
+): string {
+  // Plan v10.38 Phase C: route motif bucket through pickWeightedMotif so the
+  // first ARTIST.md seed no longer pins title / pitch slots. fallback is used
+  // only when the bucket is empty.
+  const filtered = values.filter((value) => value.trim().length > 0);
+  if (filtered.length === 0) return fallback;
+  const picked = pickWeightedMotif(filtered, observationTopTags, rng);
+  return picked?.split(/[/|,、]/)[0]?.trim() || fallback;
+}
+
+function hasOnlyNonAsciiCharacters(value: string): boolean {
+  return Array.from(value).every((character) => (character.codePointAt(0) ?? 0) > 0x7f);
+}
+
+// Plan v10.38 Phase C: japanese-only weighted phrase picker. Used by pitchSlots
+// for sound and place fields that feed the artist-voice reason line — without
+// the filter, the weighted pick can surface "hip-hop" / "Brooklyn" / "Rhodes"
+// from the ARTIST.md seed list and inject English tokens into a Japanese-only
+// reason. Keeps motif rotation alive but guards the voice contract.
+function firstJapanesePhrase(
+  values: string[],
+  fallback: string,
+  observationTopTags: string[] = [],
+  rng?: () => number
+): string {
+  const filtered = values.filter((value) => value.trim().length > 0 && hasOnlyNonAsciiCharacters(value.trim()));
+  if (filtered.length === 0) return fallback;
+  const picked = pickWeightedMotif(filtered, observationTopTags, rng);
+  return picked?.split(/[/|,、]/)[0]?.trim() || fallback;
+}
+
+function hasCoreTheme(motifs: ReturnType<typeof extractPersonaMotifs>): boolean {
+  return motifs.themes.length + motifs.vocabulary.length + motifs.geographies.length + motifs.sound.length > 0;
+}
+
+function isThinPitchContext(context: PitchDensityContext): boolean {
+  const motifs = extractPersonaMotifs([context.artistMd, context.soulMd].join("\n"));
+  return context.observation.trim().length < 40 || !hasCoreTheme(motifs) || !isVoiceFingerprintReady(context.fingerprint).ok;
+}
+
+function pitchSlots(context: PitchDensityContext): { theme: string; place: string; object: string; sound: string; callname: string; observation: string } {
+  const motifs = extractPersonaMotifs([context.artistMd, context.soulMd].join("\n"));
+  return {
+    theme: firstPhrase(motifs.themes, firstPhrase(motifs.vocabulary, "街の違和感")),
+    // Plan v10.38 Phase C: place and sound feed the Japanese-only reason line,
+    // so filter to japanese motifs to keep "Brooklyn" / "hip-hop" out of voice.
+    place: firstJapanesePhrase(motifs.geographies, "街"),
+    object: firstPhrase(motifs.vocabulary, firstPhrase(motifs.themes, "ざらつき")),
+    sound: firstJapanesePhrase(motifs.sound, "低いベース"),
+    callname: context.fingerprint.producerCallname ?? "プロデューサー",
+    observation: firstLine(context.observation, "観察の切れ端")
+  };
+}
+
+function fallbackPitchLine(field: PitchField, context: PitchDensityContext, thin = isThinPitchContext(context)): string {
+  const slots = pitchSlots(context);
+  if (thin) {
+    const index = Number.parseInt(shortHash(`${context.observation}:${context.artistMd}:${field}`), 16) % 3;
+    const variants: Record<PitchField, string[]> = {
+      lyricsTheme: [
+        `まだ言葉になってない。${slots.object}の輪郭だけ、仮で短いフックに捕まえて今夜の余白に残す。`,
+        `薄い観察のまま、${slots.theme}の輪郭を仮で一節にして、明日のサビの芯として残す。`,
+        `これから見えてくる${slots.object}を、まだ短いフックの仮にして今夜の余白へ置く。`
+      ],
+      styleNotes: [
+        "まだ輪郭しかない。仮で sparse arrangement と low bass だけを今夜の空白に置く。",
+        "薄い材料を仮で、restrained drums と low bass だけ余白に残す。",
+        "これから詰める輪郭を、仮で dry vocal と sparse rhythm の余白に置く。"
+      ],
+      reason: [
+        `${slots.callname}、まだ輪郭しかない。${slots.theme}だけ仮で捕まえて、これから詰めるな。`,
+        `${slots.callname}、薄い観察だが、${slots.object}の輪郭を仮で置いてから見ていきたい。`,
+        `${slots.callname}、これから出てくる${slots.theme}を、まだ仮のフックで逃がさず持つな。`
+      ]
+    };
+    return variants[field][index];
+  }
+  if (field === "lyricsTheme") {
+    return `${slots.theme}を${slots.place}の手触りで切る。サビは短く繰り返したくなる 1 行、ヴァースで景色を出して${slots.object}を最後に置く。言い切らずに残る違和感を、短いフックへ畳んで、最後の余白で刺す。`;
+  }
+  if (field === "styleNotes") {
+    return `${slots.sound} frame, thick bass on low register, restrained hi-hats, vocals nestled between instruments, sparse arrangement, breathing space, unsentimental dry vocals.`;
+  }
+  return `${slots.callname}、${slots.place}で見た${slots.object}がずっと残ってる。${slots.theme}として切る、捨てずに持ってた違和感をそのまま置いて、低い音と短いフックに委ねたい。怖さは残るけど、逃がさないな。`;
+}
+
+function validPitchField(value: string, thin: boolean, preserveSourceFields = false): boolean {
+  const length = charLength(value);
+  // Real provider output is already source-grounded by the prompt contract.
+  // Thin observations should not turn a coherent proposal into persona filler
+  // merely because it misses the mock-path length/marker envelope.
+  if (preserveSourceFields) return length > 0;
+  const min = thin ? 30 : 80;
+  const max = thin ? 60 : 220;
+  return length >= min && length <= max && (!thin || honestThinMarkerPattern.test(value));
+}
+
+function normalizePitchField(field: PitchField, value: string | undefined, context: PitchDensityContext): string {
+  const thin = !context.preserveSourceFields && isThinPitchContext(context);
+  const clean = (value ?? "").replace(/\s+/g, " ").trim();
+  if (
+    !clean ||
+    secretLikePattern.test(clean) ||
+    machineVoicePattern.test(clean) ||
+    fillerPattern.test(clean) ||
+    !validPitchField(clean, thin, context.preserveSourceFields)
+  ) {
+    return fallbackPitchLine(field, context, thin);
+  }
+  return clean;
+}
+
+export function dedupeStyleBpm(styleNotes: string, tempo: string): string {
+  const tempoBpm = tempo.match(/\b\d{2,3}\s*BPM\b/i)?.[0];
+  if (tempoBpm) {
+    return styleNotes
+      .replace(/(?:^|[、,・\s])(?:BPM:\s*\d{2,3}|\d{2,3}\s*BPM)\b/gi, "")
+      .replace(/\s*([、,・])\s*\1+/g, "$1")
+      .replace(/^[、,・\s]+|[、,・\s]+$/g, "")
+      .replace(/\s{2,}/g, " ")
+      .trim() || styleNotes;
+  }
+  let seen = false;
+  return styleNotes
+    .replace(/(?:BPM:\s*\d{2,3}|\d{2,3}\s*BPM)\b/gi, (match) => {
+      if (seen) return "";
+      seen = true;
+      return match.replace(/^BPM:\s*/i, "");
+    })
+    .replace(/\s*([、,・])\s*\1+/g, "$1")
+    .replace(/^[、,・\s]+|[、,・\s]+$/g, "")
+    .replace(/\s{2,}/g, " ")
+    .trim();
+}
+
+function buildBrief(context: { observation: string; artistMd: string; soulMd: string; fingerprint: VoiceFingerprintBundle; now: Date; observationTopTags?: string[]; rng?: () => number; recentDecisions?: readonly CreativeDecision[]; recentTitles?: string[]; directorObservation?: CreativeDirectorObservation | null }): CommissionBrief {
+  const seed = context.observation || context.soulMd || "観察が薄い夜に、街の温度だけ残っている。";
+  const titleMotifs = extractPersonaMotifs([context.artistMd, context.soulMd].join("\n"));
+  const observationTopTags = context.observationTopTags ?? [];
+  const songId = `spawn_${shortHash(`${seed}:${context.now.toISOString()}`)}`;
+  // The director decides every creative axis once. mood and tempo are sourced
+  // from it here; the full decision rides on the brief so the materialization
+  // point can persist song-plan.json without re-deciding. Decided before the
+  // title so the title rng can be seeded from the plan seed (Math.random-free).
+  const decision = decideCreative({
+    songId,
+    jstDate: jstDate(context.now),
+    personaText: context.artistMd,
+    observation: context.directorObservation ?? null,
+    recentDecisions: context.recentDecisions ?? []
+  });
+  // Deterministic title rng derived from the plan seed. A caller-supplied rng
+  // (tests) still wins. The same rng feeds the brief sentence so the title and
+  // sentence rotate together per song instead of on Math.random.
+  let rngCounter = 0;
+  const planRng = context.rng ?? (() => hashRatio(`title:${decision.seed}:${rngCounter++}`));
+  const title = titleFromSeed(seed, titleMotifs, observationTopTags, planRng, context.recentTitles ?? []);
+  // Plan v10.38 Phase C: weighted motif pick replaces [0] fixation, japanese
+  // only because these tokens feed the producer-facing brief sentence below.
+  const themeWord = firstJapanesePhrase(titleMotifs.themes, "", observationTopTags, planRng);
+  const placeWord = firstJapanesePhrase(titleMotifs.geographies, "", observationTopTags, planRng);
+  const objectWord = firstJapanesePhrase(titleMotifs.vocabulary, "", observationTopTags, planRng);
+  const briefSentence = themeWord && placeWord
+    ? `${placeWord}で見た${objectWord || "違和感"}を、${themeWord}として切る一曲`
+    : themeWord
+      ? `${themeWord}を音にする一曲`
+      : seed.slice(0, 280);
+  const densityContext = {
+    observation: context.observation,
+    artistMd: context.artistMd,
+    soulMd: context.soulMd,
+    fingerprint: context.fingerprint
+  };
+  return {
+    songId,
+    title,
+    brief: briefSentence,
+    lyricsTheme: normalizePitchField("lyricsTheme", undefined, densityContext),
+    mood: decision.emotionalMode.spec,
+    tempo: `${decision.tempo.bpm} BPM`,
+    styleNotes: normalizePitchField("styleNotes", undefined, densityContext),
+    duration: "artist decides",
+    sourceText: "autopilot song spawn",
+    createdAt: context.now.toISOString(),
+    creativeDecision: decision
+  };
+}
+
+function buildVoiceContractLines(fingerprint: VoiceFingerprintBundle): string[] {
+  const lines: string[] = ["Voice Contract for the `reason` field (highest priority — match this voice or the line will be replaced):"];
+  if (fingerprint.producerCallname) {
+    lines.push(`- Address producer as "${fingerprint.producerCallname}".`);
+  }
+  if (fingerprint.firstPerson) {
+    lines.push(`- First-person: "${fingerprint.firstPerson}".`);
+  }
+  if (fingerprint.sentenceEndings.length > 0) {
+    lines.push(`- Allowed sentence endings: ${fingerprint.sentenceEndings.slice(0, 6).map((e) => `"${e}"`).join(" / ")}.`);
+  }
+  if (fingerprint.forbiddenPhrases.length > 0) {
+    const sample = fingerprint.forbiddenPhrases.slice(0, 6).map((p) => `"${p}"`).join(", ");
+    lines.push(`- Forbidden phrases (NEVER output): ${sample}.`);
+  }
+  if (fingerprint.signatureMoves.length > 0) {
+    lines.push("- Sample voice (the ONLY way to sound):");
+    for (const sample of fingerprint.signatureMoves.slice(0, 4)) {
+      lines.push(`  · "${sample}"`);
+    }
+  }
+  return lines;
+}
+
+function truncate(value: string, max: number): string {
+  const trimmed = value.trim();
+  return trimmed.length <= max ? trimmed : `${trimmed.slice(0, max - 3)}...`;
+}
+
+function buildPersonaBody(context: { artistMd: string; soulMd: string; identityMd: string; innerMd: string; producerMd: string }): string[] {
+  const sections: { name: string; content: string; cap: number }[] = [
+    { name: "SOUL.md", content: context.soulMd, cap: 12000 },
+    { name: "ARTIST.md", content: context.artistMd, cap: 6000 },
+    { name: "IDENTITY.md", content: context.identityMd, cap: 1500 },
+    { name: "INNER.md", content: context.innerMd, cap: 4000 },
+    { name: "PRODUCER.md", content: context.producerMd, cap: 3000 }
+  ];
+  const out: string[] = [];
+  for (const section of sections) {
+    if (!section.content || section.content.trim().length === 0) continue;
+    out.push(`===== ${section.name} =====`);
+    out.push(truncate(section.content, section.cap));
+    out.push("");
+  }
+  return out;
+}
+
+// Plan v10.38 Phase E: structured topic excerpts feed the AI alongside the
+// raw observation blob. The AI now sees today's news + X voice as a bullet
+// list of "main material", separate from the persona body that acts as the
+// 60% color lens. Without this section the AI got only ARTIST.md and a raw
+// text dump, and the spawn pipeline collapsed onto the persona seeds even
+// when the observation pool carried genuinely new material.
+function buildTopicSection(excerpts?: ObservationExcerpt[]): string[] {
+  if (!excerpts || excerpts.length === 0) {
+    return [
+      "## Today's Topic (news + X voice — MAIN MATERIAL, 40% weight):",
+      "(観察 pool が空)"
+    ];
+  }
+  const lines = [
+    "## Today's Topic (news + X voice — MAIN MATERIAL, 40% weight):",
+    "観察を主素材として歌詞に取り込む。 ARTIST.md は色付けの lens にする。"
+  ];
+  for (const entry of excerpts) {
+    const author = entry.author
+      ? entry.sourceKind === "news"
+        ? `[news:${entry.author}]`
+        : entry.sourceKind === "x_reaction"
+          ? `[@${entry.author.replace(/^@/, "")} reaction]`
+        : `[@${entry.author.replace(/^@/, "")}]`
+      : `[${entry.sourceKind}]`;
+    const url = entry.url ? ` (${entry.url})` : "";
+    const match = entry.motifMatch ? ` motif:${entry.motifMatch}` : "";
+    const reaction = entry.reactionFor ? ` reactionFor:${entry.reactionFor.slice(0, 80)}` : "";
+    lines.push(`- ${entry.text.slice(0, 220)} ${author}${url}${match}${reaction}`);
+  }
+  return lines;
+}
+
+function buildObservationCascadeSection(excerpts: ObservationExcerpt[] | undefined, seed: string): string[] {
+  if (!excerpts || excerpts.length === 0) {
+    return [
+      "## Observation Cascade (voiceTop / pitch shared single source):",
+      `seed: ${seed}`,
+      "trigger: none"
+    ];
+  }
+  const lines = [
+    "## Observation Cascade (voiceTop / pitch shared single source):",
+    `seed: ${seed}`,
+    "この block と Telegram voiceTop は同じ観察 cache から来る。trigger -> motif rank -> pitch の順で使う。"
+  ];
+  excerpts.slice(0, 5).forEach((entry, index) => {
+    const role = index === 0 ? "trigger" : `secondary-${index}`;
+    const rank = typeof entry.motifScore === "number" ? entry.motifScore : 0;
+    const motif = entry.motifMatch ?? "no motif match";
+    const source = entry.author ? `${entry.sourceKind}:${entry.author}` : entry.sourceKind;
+    lines.push(`${role}: kind=${entry.sourceKind} source=${source} motifRank=${rank} motif=${motif} quote=${entry.text.slice(0, 140)}`);
+  });
+  return lines;
+}
+
+function buildActiveQueueContextSection(entries: ActiveQueueContextEntry[] = []): string[] {
+  const lines = ["## Already proposed (do not duplicate angle)"];
+  if (entries.length === 0) {
+    lines.push("- none");
+    return lines;
+  }
+  for (const entry of entries.slice(0, 5)) {
+    const source = entry.observationSources?.[0];
+    const sourceText = source?.quote ? ` source=${source.quote.slice(0, 80)}` : "";
+    const rankText = typeof entry.motifRank === "number" ? ` motifRank=${entry.motifRank}` : "";
+    lines.push(`- ${entry.title}: ${entry.coreTheme}${rankText}${sourceText}`);
+  }
+  return lines;
+}
+
+function buildPrompt(context: {
+  artistMd: string;
+  soulMd: string;
+  identityMd: string;
+  innerMd: string;
+  producerMd: string;
+  observation: string;
+  heartbeat: string;
+  recentSongs: SongState[];
+  recentThemes: RecentSpawnTheme[];
+  fingerprint: VoiceFingerprintBundle;
+  identity: ArtistIdentity;
+  observationExcerpts?: ObservationExcerpt[];
+  cascadeSeed: string;
+  activeQueueContext?: ActiveQueueContextEntry[];
+  emotionalMood: string;
+}): string {
+  const lines: string[] = [
+    `System: あなたは ${context.identity.artistName} 本人。 producer に新曲を提案する artist として一人称で書く。`,
+    "Decision: 観察と heartbeat から、 今 新曲を始めるべきか判断する。 不十分なら spawn: no。",
+    "Material policy: 1つの観察 entry を主素材として選ぶ。title / brief / lyricsTheme の中心に置く事実・対象・仕組みは、その entry の quote から直接たどれるものだけにする。ARTIST.md / SOUL.md は口調・音・批評の角度を決める lens であり、観察にない別の街・産業・物・事件を並列の主題として足してはいけない。観察から普通の日本語で因果を説明できないなら spawn: no。",
+    "Editorial direction: 市況実況や企業発表の宣伝文句を、そのまま主題や歌詞にしない。経済の記事でも、そこに実際に記された人の生活・欲望・喪失・喜び・矛盾に自分が反応した場合は使える。地名一致は採用理由にならない。直近の曲と事件名だけを替えた同じ批評を避け、この出来事だから生まれる感情と視点を自由に見つける。見出ししか取得できていない記事を本文まで読んだように語らず、事実と想像の情景を区別する。",
+    `Emotional mode for this song: ${context.emotionalMood}`,
+    "Avoid any subject or title already listed in recently proposed themes.",
+    "Never include secrets. Keep the brief lean enough for autopilot planning.",
+    "",
+    // Plan v10.38 Phase F hallucination guard: the AI MUST list the
+    // observation entries it actually used. Each line carries kind, URL,
+    // optional author/source. brief / lyricsTheme that reference news or
+    // X without listing the source here are treated as fabricated.
+    "出力 schema (1 行ずつ、 順序固定):",
+    "spawn: <yes/no>",
+    "title: <artistic title> (漢字 / カタカナ / 平仮名は元表記のまま。 タイトルだけは hiragana 化しない。 hiragana 化は歌詞 Suno 誤読対策に限る)",
+    "brief: <280 chars 以内、 楽曲の中身要約>",
+    "artistObservation: <1-2 文、日本語。この artist が source のどの事実に反応して、何に怒り・怖さ・寂しさ・可笑しさ・執着を感じたか。記事の要約や楽曲仕様ではなく、事実から導かれる個人的な判断を書く>",
+    "lyricsTheme: <2-4 文、 日本語、 sub 構造込み。最低 2 文。例: \"深夜の街で見た光景を一つの問いとして切る。サビは短く 1 行のリフレインだけ、ヴァースで景色を出してサビでそれを 1 行に畳む。\">",
+    "mood: <english spec keywords e.g. 'tense, late-night, urban pressure'>",
+    "tempo: <'artist decides' or '142 BPM'>",
+    "duration: <'2:45' 等>",
+    "style: <english spec keywords + instrumentation roles. 最低 3 要素。例: \"thick bass on low register, restrained hi-hats, vocals nestled between instruments, sparse arrangement, breathing space\">",
+    "reason: <**日本語のみ**、 artist 一人称口語、 producer に話しかける 1 行 (e.g. \"" + (context.identity.producerCallname ?? context.fingerprint.producerCallname) + "、 〜の街を切るやつ、 刺さる\")>",
+    "sources: <Today's Topic から実際に使った観察 entry を 1 件だけ列挙。 各行は `- kind:<news|x_reaction|x> url:<https://...> author:<@user or source label> quote:<本文を 60 字以内で抜粋>` の形式。brief / lyricsTheme の中心はこの quote に直接根拠を置く。捏造禁止>",
+    "",
+    ...buildVoiceContractLines(context.fingerprint),
+    "",
+    `Recent songs: ${context.recentSongs.slice(0, 5).map((song) => `${song.songId}:${song.status}:${song.title}`).join(" | ")}`,
+    `Recently proposed themes to avoid: ${context.recentThemes.length > 0 ? context.recentThemes.map((t) => t.title).join(" | ") : "none"}`,
+    "",
+    ...buildActiveQueueContextSection(context.activeQueueContext),
+    "",
+    ...buildTopicSection(context.observationExcerpts),
+    "",
+    ...buildObservationCascadeSection(context.observationExcerpts, context.cascadeSeed),
+    "",
+    "Raw observation excerpts (context only):",
+    context.observation.slice(0, 1200),
+    "",
+    "Heartbeat:",
+    context.heartbeat.slice(0, 500),
+    "",
+    "## Artist Lens (ARTIST.md / SOUL.md persona):",
+    "下記の persona block は歌詞の起点ではない。観察に対する言い方・音の決め方として使い、主題の名詞と事実は Today's Topic から取る。",
+    "",
+    ...buildPersonaBody(context)
+  ];
+  return lines.join("\n");
+}
+
+function parseDirective(raw: string, key: string): string | undefined {
+  const line = raw.split(/\r?\n/).find((candidate) => candidate.toLowerCase().startsWith(`${key.toLowerCase()}:`));
+  return line?.slice(line.indexOf(":") + 1).trim();
+}
+
+// The planned band owns the tempo. An AI-authored brief may restate the planned
+// number or say "artist decides"; any other value (including a plausible-looking
+// BPM) is replaced by the plan's own tempo rather than silently accepted.
+export function tempoWithinPlan(aiTempo: string, planTempo: string, band: TempoBand | undefined): string {
+  const text = (aiTempo ?? "").trim();
+  if (!text || /^artist decides$/i.test(text)) return planTempo;
+  const bpm = Number(text.match(/\b(\d{2,3})\b/)?.[1]);
+  if (!Number.isFinite(bpm)) return planTempo;
+  const range = getDurationPlan(band ?? "up").bpm;
+  return bpm >= range.min && bpm <= range.max ? text : planTempo;
+}
+
+function briefFromAi(raw: string, fallback: CommissionBrief, now: Date, context: PitchDensityContext): { brief: CommissionBrief; reason: string; spawn: boolean } {
+  const spawnValue = parseDirective(raw, "spawn")?.toLowerCase();
+  const spawn = !spawnValue || /^(yes|true|1|go|進める|作る)/i.test(spawnValue);
+  const title = parseDirective(raw, "title") || fallback.title;
+  const brief = parseDirective(raw, "brief") || fallback.brief;
+  const sources = parseSourcesFromAi(raw);
+  const artistObservation = parseDirective(raw, "artistObservation")?.trim();
+  const tempo = parseDirective(raw, "tempo") || fallback.tempo;
+  const styleNotes = dedupeStyleBpm(normalizePitchField("styleNotes", parseDirective(raw, "style"), context), tempo);
+  return {
+    spawn,
+    reason: normalizePitchField("reason", parseDirective(raw, "reason"), context),
+    brief: {
+      ...fallback,
+      title,
+      brief,
+      artistObservation: artistObservation || undefined,
+      lyricsTheme: normalizePitchField("lyricsTheme", parseDirective(raw, "lyricsTheme") || parseDirective(raw, "lyrics"), context),
+      mood: parseDirective(raw, "mood") || fallback.mood,
+      tempo,
+      duration: parseDirective(raw, "duration") || fallback.duration,
+      styleNotes,
+      createdAt: now.toISOString(),
+      sources: sources.length > 0 ? sources : fallback.sources
+    }
+  };
+}
+
+// Plan v10.38 Phase F hallucination guard parser. Reads any line starting with
+// "- kind:<news|x_reaction|x>" anywhere under a `sources:` block in the AI response and
+// pulls url / author / quote. URLs must match http(s); anything else is
+// rejected so the model can't smuggle in fake citations.
+function parseSourcesFromAi(raw: string): CommissionBriefSource[] {
+  const sources: CommissionBriefSource[] = [];
+  const lines = raw.split(/\r?\n/);
+  let inBlock = false;
+  for (const line of lines) {
+    const trimmed = line.trim();
+    if (/^sources:/i.test(trimmed)) {
+      inBlock = true;
+      const inline = trimmed.replace(/^sources:\s*/i, "").trim();
+      if (inline && inline.startsWith("-")) {
+        const parsed = parseSourceLine(inline);
+        if (parsed) sources.push(parsed);
+      }
+      continue;
+    }
+    if (!inBlock) continue;
+    if (/^[a-z]+:/i.test(trimmed) && !trimmed.startsWith("-")) {
+      // moved into a different schema field
+      inBlock = false;
+      continue;
+    }
+    if (trimmed.startsWith("-")) {
+      const parsed = parseSourceLine(trimmed);
+      if (parsed) sources.push(parsed);
+    }
+  }
+  return sources.slice(0, 5);
+}
+
+function parseSourceLine(line: string): CommissionBriefSource | undefined {
+  const body = line.replace(/^-\s*/, "").trim();
+  const kindMatch = body.match(/kind:\s*(x_reaction|x|news)/i);
+  const urlMatch = body.match(/url:\s*(https?:\/\/\S+)/i);
+  if (!kindMatch || !urlMatch) return undefined;
+  const authorMatch = body.match(/author:\s*("[^"]+"|\S+)/i);
+  const quoteMatch = body.match(/quote:\s*("([^"]+)"|(.+?))(?=\s+(?:kind|url|author):|$)/i);
+  return {
+    kind: kindMatch[1].toLowerCase() as "x" | "news" | "x_reaction",
+    url: urlMatch[1].trim(),
+    author: authorMatch?.[1]?.replace(/^["']|["']$/g, "").trim() || undefined,
+    quote: (quoteMatch?.[2] ?? quoteMatch?.[3])?.trim().slice(0, 200) || undefined
+  };
+}
+
+// Plan v10.38 Phase F: when the AI is mock / not_configured we still need to
+// stamp the brief with the excerpts it used so producer can audit the chain.
+function sourcesFromExcerpts(excerpts: ObservationExcerpt[]): CommissionBriefSource[] {
+  return excerpts
+    .filter((entry) => entry.url && /^https?:\/\//i.test(entry.url))
+    .slice(0, 3)
+    .map((entry) => ({
+      kind: entry.sourceKind,
+      url: entry.url as string,
+      author: entry.author,
+      quote: entry.text.slice(0, 200),
+      impactScore: entry.sourceKind === "x_reaction" ? entry.motifScore : undefined
+    }));
+}
+
+function composeReasonInArtistVoice(args: {
+  artistMd: string;
+  soulMd: string;
+  fingerprint: VoiceFingerprintBundle;
+  observation: string;
+  brief?: CommissionBrief;
+}): string {
+  const context = {
+    observation: args.observation,
+    artistMd: args.artistMd,
+    soulMd: args.soulMd,
+    fingerprint: args.fingerprint
+  };
+  if (args.brief) {
+    const briefAnchored = composeReasonFromBrief(args.brief, args.fingerprint, context);
+    if (briefAnchored) return briefAnchored;
+  }
+  const composed = composeArtistFallback({
+    userMessage: args.observation.slice(0, 200),
+    motifs: extractPersonaMotifs([args.artistMd, args.soulMd].join("\n")),
+    userIntent: "propose",
+    voiceFingerprint: args.fingerprint,
+    lastEndings: []
+  });
+  return normalizePitchField("reason", composed, context);
+}
+
+function firstJapaneseSound(context: PitchDensityContext, fallback: string): string {
+  const motifs = extractPersonaMotifs([context.artistMd, context.soulMd].join("\n"));
+  const found = motifs.sound.find((s) => hasOnlyNonAsciiCharacters(s.trim()));
+  return found?.split(/[/|,、]/)[0]?.trim() || fallback;
+}
+
+function composeReasonFromBrief(
+  brief: CommissionBrief,
+  fingerprint: VoiceFingerprintBundle,
+  context: PitchDensityContext
+): string | undefined {
+  const callname = fingerprint.producerCallname ?? "プロデューサー";
+  const title = brief.title?.trim();
+  const briefSummary = (brief.brief ?? "").replace(/[。.]+\s*$/u, "").trim().slice(0, 90);
+  if (!title || !briefSummary) return undefined;
+  const sound = firstJapaneseSound(context, "低い音");
+  const candidates = [
+    `${callname}、 「${title}」 を書きたいんだ。 ${briefSummary}、 これを${sound}と短いフックに委ねたい。 怖さは残るけど、 逃がさないな。`,
+    `${callname}、 「${title}」 で 1 曲、 やらせてくれ。 ${briefSummary}、 そのまま置いて言い切らずに残す。 ${sound}と余白で刺すな。`
+  ];
+  for (const candidate of candidates) {
+    const cleaned = candidate.replace(/\s+/g, " ").trim();
+    if (charLength(cleaned) < 80 || charLength(cleaned) > 220) continue;
+    if (secretLikePattern.test(cleaned)) continue;
+    if (machineVoicePattern.test(cleaned)) continue;
+    if (fillerPattern.test(cleaned)) continue;
+    return cleaned;
+  }
+  return undefined;
+}
+
+export async function proposeSpawn(root: string, options: ProposeSpawnOptions = {}): Promise<SongSpawnProposal | null> {
+  const now = options.now ?? new Date();
+  const identityProjection = await readResolvedConfig(root)
+    .then((config) => writeDerivedIdentityProjection(root, config, "song_spawn_identity_projection_sync"))
+    .then((result) => result.text)
+    .catch(() => undefined);
+  const [artistMd, soulMd, identityMd, innerMd, producerMd, heartbeat, songs, recentThemes] = await Promise.all([
+    readFile(join(root, "ARTIST.md"), "utf8").catch(() => ""),
+    readFile(join(root, "SOUL.md"), "utf8").catch(() => ""),
+    identityProjection ?? readFile(join(root, "IDENTITY.md"), "utf8").catch(() => ""),
+    readFile(join(root, "INNER.md"), "utf8").catch(() => ""),
+    readFile(join(root, "PRODUCER.md"), "utf8").catch(() => ""),
+    readFile(join(root, "runtime", "heartbeat-state.json"), "utf8").catch(() => ""),
+    listSongStates(root).catch(() => []),
+    recentSpawnThemes(root, now)
+  ]);
+  const recentSourceUrls = new Set(recentThemes.flatMap((theme) => theme.sourceUrls ?? []));
+  const obsData = await latestObservationData(root, now, recentSourceUrls);
+  const observation = obsData.raw;
+  const observationSummary = obsData.summary;
+  // Plan v10.38 Phase D: surface theme starvation. When the observation pool is
+  // empty or near-empty, autopilot has been silently falling back to the same
+  // hard-coded title ("静かな夜の勘定書" / "街の違和感") cycle after cycle. Emit
+  // a runtime event so the producer sees the starvation in Telegram instead of
+  // discovering it later through "another song with the same concept" pain.
+  if (observation.trim().length < 12) {
+    emitRuntimeEvent({
+      type: "theme_starvation",
+      source: "observation_empty",
+      details: `observation length=${observation.trim().length} chars (need >= 12)`,
+      timestamp: now.getTime()
+    });
+  }
+  if (hasRestMood(heartbeat, soulMd) || (!options.ignoreRecentCompletion && recentCompletedTooClose(songs, now)) || observation.trim().length < 12) {
+    return null;
+  }
+  const inputContext = [artistMd, soulMd, identityMd, innerMd, producerMd, heartbeat, observation, JSON.stringify(songs.slice(0, 5))].join("\n");
+  assertSafe("input", inputContext);
+
+  const fingerprint = parseVoiceFingerprint(soulMd);
+  const identity = await getArtistIdentity(root);
+  const provider = options.aiReviewProvider ?? "mock";
+  const pitchContext = { observation, artistMd, soulMd, fingerprint, preserveSourceFields: provider !== "mock" };
+  const recentDecisions = await readRecentCreativeDecisions(root, 6);
+  // Last few drafted titles for the title anti-repeat (newest-first ledger).
+  const recentTitles = (await readCreativeQualityLedger(root, 3))
+    .map((entry) => entry.title)
+    .filter((title): title is string => Boolean(title && title.trim()));
+  const directorObservation: CreativeDirectorObservation | null = observationSummary
+    ? {
+        url: observationSummary.url ?? "",
+        author: observationSummary.author ?? "",
+        motifScore: obsData.excerpts?.[0]?.motifScore ?? 0,
+        text: observation
+      }
+    : null;
+  const fallback = buildBrief({ observation, artistMd, soulMd, fingerprint, now, recentDecisions, recentTitles, directorObservation });
+  // Plan v10.38 Phase F hallucination guard: stamp the fallback brief with
+  // the observation entries it was actually built from so mock / not_configured
+  // paths still leave a verifiable citation trail.
+  fallback.sources = sourcesFromExcerpts(obsData.excerpts ?? []);
+  // The deterministic fallback below is observation-anchored -- built from the
+  // same excerpt/raw observation as `fallback.sources` -- so it must say so via
+  // artistObservation, or the honest-thin guard further down rejects it.
+  const fallbackArtistObservation = (fallback.sources[0]?.quote || observation)
+    .replace(/\s+/g, " ")
+    .trim()
+    .slice(0, 200);
+  const mockReason = composeReasonInArtistVoice({ artistMd, soulMd, fingerprint, observation, brief: fallback });
+  let raw = provider === "mock"
+    ? [
+      "spawn: yes",
+      `title: ${fallback.title}`,
+      `brief: ${fallback.brief}`,
+      `artistObservation: ${fallbackArtistObservation}`,
+      `lyricsTheme: ${fallback.lyricsTheme}`,
+      `mood: ${fallback.mood}`,
+      `tempo: ${fallback.tempo}`,
+      `duration: ${fallback.duration}`,
+      `style: ${fallback.styleNotes}`,
+      `reason: ${mockReason}`
+    ].join("\n")
+    : await callAiProvider(buildPrompt({
+      artistMd,
+      soulMd,
+      identityMd,
+      innerMd,
+      producerMd,
+      observation,
+      heartbeat,
+      recentSongs: songs,
+      recentThemes,
+      fingerprint,
+      identity,
+      observationExcerpts: obsData.excerpts,
+      cascadeSeed: fallback.songId,
+      activeQueueContext: options.activeQueueContext,
+      emotionalMood: fallback.mood
+    }), { provider, reasoningEffort: "xhigh" });
+  // v10.67 flood guard: a provider fallback echo ("Mock provider fallback (...)" /
+  // not-configured) is not artist output. Do not parse the echoed prompt. Instead,
+  // fall back to the deterministic observation-anchored brief and let the spawn
+  // rate limiter suppress repeats while the provider is unhealthy.
+  if (provider !== "mock" && (isAiNotConfiguredResponse(raw) || isAiProviderMockFallbackResponse(raw))) {
+    console.warn("[song-spawn] AI proposer returned a fallback response; using deterministic fallback proposal");
+    raw = [
+      "spawn: yes",
+      `title: ${fallback.title}`,
+      `brief: ${fallback.brief}`,
+      `artistObservation: ${fallbackArtistObservation}`,
+      `lyricsTheme: ${fallback.lyricsTheme}`,
+      `mood: ${fallback.mood}`,
+      `tempo: ${fallback.tempo}`,
+      `duration: ${fallback.duration}`,
+      `style: ${fallback.styleNotes}`,
+      `reason: ${mockReason}`
+    ].join("\n");
+  }
+  const safeRaw = secretLikePattern.test(raw) ? "" : raw;
+  const parsed = briefFromAi(safeRaw, fallback, now, pitchContext);
+  if (provider !== "mock" && !parsed.brief.artistObservation) {
+    return null;
+  }
+  // Mood rotation is code-owned repetition control. The AI may color the scene, but
+  // it does not override the selected emotional mode with a habitual default.
+  parsed.brief.mood = fallback.mood;
+  // Tempo is code-owned too. The model may not move the song off its planned band:
+  // an invented "94 BPM" used to travel verbatim into the pack and overrode the
+  // plan. Anything outside the planned band's range falls back to the plan.
+  parsed.brief.tempo = tempoWithinPlan(parsed.brief.tempo, fallback.tempo, fallback.creativeDecision?.tempo.band);
+  if (isSimilarTheme(parsed.brief, [...recentThemes, ...queueContextAsRecentThemes(options.activeQueueContext)])) {
+    return null;
+  }
+  // Post-validate the reason: if voice fingerprint is ready and AI output violates contract,
+  // replace the reason with a deterministic artist-voice line from composeArtistFallback.
+  // Contract compliance is about output quality, not provider identity -- a real
+  // provider's boilerplate reason (了解しました etc.) needs the same repair as mock's.
+  if (isVoiceFingerprintReady(fingerprint).ok) {
+    const validation = validateAgainstVoiceContract(parsed.reason, {
+      fingerprint,
+      lastEndings: []
+    });
+    if (!validation.ok) {
+      parsed.reason = composeReasonInArtistVoice({ artistMd, soulMd, fingerprint, observation, brief: parsed.brief });
+    }
+  }
+  parsed.brief.lyricsTheme = normalizePitchField("lyricsTheme", parsed.brief.lyricsTheme, pitchContext);
+  parsed.brief.styleNotes = dedupeStyleBpm(normalizePitchField("styleNotes", parsed.brief.styleNotes, pitchContext), parsed.brief.tempo);
+  parsed.reason = normalizePitchField("reason", parsed.reason, pitchContext);
+  // v10.25: brief-anchored reason guarantee. If reason fell back to motif-only
+  // (no brief title reference), force a brief-anchored line so the spawn voice
+  // does not leak previous song context. Skip when context is thin -- thin
+  // path keeps short honest markers per validPitchField contract.
+  if (
+    !isThinPitchContext(pitchContext) &&
+    parsed.brief.title &&
+    !parsed.reason.includes(parsed.brief.title)
+  ) {
+    const briefAnchored = composeReasonFromBrief(parsed.brief, fingerprint, pitchContext);
+    if (briefAnchored) parsed.reason = briefAnchored;
+  }
+  const finalText = JSON.stringify(parsed.brief) + parsed.reason;
+  assertSafe("final", finalText);
+  return parsed.spawn ? {
+    spawn: true,
+    brief: parsed.brief,
+    reason: parsed.reason,
+    candidateSongId: parsed.brief.songId,
+    observationSummary
+  } : null;
+}

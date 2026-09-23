@@ -1,0 +1,298 @@
+export interface LyricsLanguageWarning {
+  token: string;
+  line: number;
+  kind?: "english_fragment" | "residual_kanji" | "ascii_number";
+}
+
+export function lintJapaneseLyricsEnglishFragments(lyrics: string): LyricsLanguageWarning[] {
+  const warnings: LyricsLanguageWarning[] = [];
+  const lines = lyrics.split(/\r?\n/);
+  lines.forEach((line, index) => {
+    if (/^\s*\[[^\]]+\]\s*$/.test(line)) return;
+    const matches = line.matchAll(/\b[A-Za-z]{4,}\b/g);
+    for (const match of matches) {
+      warnings.push({ token: match[0], line: index + 1 });
+    }
+  });
+  return warnings;
+}
+
+const DIGIT_WORDS = ["ぜろ", "いち", "に", "さん", "よん", "ご", "ろく", "なな", "はち", "きゅう"] as const;
+
+// Positional Japanese readings with the standard sound changes (rendaku /
+// gemination) so numbers are sung the way a Japanese listener expects.
+const HUNDREDS_WORDS = ["", "ひゃく", "にひゃく", "さんびゃく", "よんひゃく", "ごひゃく", "ろっぴゃく", "ななひゃく", "はっぴゃく", "きゅうひゃく"] as const;
+const THOUSANDS_WORDS = ["", "せん", "にせん", "さんぜん", "よんせん", "ごせん", "ろくせん", "ななせん", "はっせん", "きゅうせん"] as const;
+
+function tensReading(tens: number): string {
+  if (tens === 0) return "";
+  const prefix = tens === 1 ? "" : DIGIT_WORDS[tens];
+  return `${prefix}じゅう`;
+}
+
+// Deterministic positional reading for 0-9999 (145 -> ひゃくよんじゅうご). The
+// range covers years and measurements that show up in lyrics; numbers >= 10000
+// have no compact singable reading, so callers fall back to digit-by-digit.
+export function asciiNumberToHiragana(value: number): string {
+  if (!Number.isInteger(value) || value < 0 || value > 9999) {
+    throw new Error(`unsupported_ascii_number:${value}`);
+  }
+  if (value === 0) return DIGIT_WORDS[0];
+  const thousands = Math.floor(value / 1000);
+  const hundreds = Math.floor((value % 1000) / 100);
+  const tens = Math.floor((value % 100) / 10);
+  const ones = value % 10;
+  const parts = [
+    THOUSANDS_WORDS[thousands],
+    HUNDREDS_WORDS[hundreds],
+    tensReading(tens),
+    ones === 0 ? "" : DIGIT_WORDS[ones]
+  ];
+  return parts.join("");
+}
+
+// Numbers >= 10000 stay rare in lyrics and have no compact singable reading, so
+// we read them digit by digit (12345 -> いちにさんよんご) rather than throw.
+function digitsToHiragana(token: string): string {
+  return token
+    .split("")
+    .map((digit) => DIGIT_WORDS[Number.parseInt(digit, 10)] ?? "")
+    .join("");
+}
+
+const ENGLISH_ONES = [
+  "zero", "one", "two", "three", "four", "five", "six", "seven", "eight", "nine",
+  "ten", "eleven", "twelve", "thirteen", "fourteen", "fifteen", "sixteen", "seventeen", "eighteen", "nineteen"
+] as const;
+const ENGLISH_TENS = ["", "", "twenty", "thirty", "forty", "fifty", "sixty", "seventy", "eighty", "ninety"] as const;
+
+function asciiNumberToEnglish(value: number): string {
+  if (value < 20) return ENGLISH_ONES[value] ?? String(value);
+  if (value < 100) {
+    const tens = ENGLISH_TENS[Math.floor(value / 10)] ?? "";
+    const ones = value % 10;
+    return ones === 0 ? tens : `${tens}-${ENGLISH_ONES[ones]}`;
+  }
+  if (value < 1000) {
+    const hundreds = `${ENGLISH_ONES[Math.floor(value / 100)]} hundred`;
+    const remainder = value % 100;
+    return remainder === 0 ? hundreds : `${hundreds} ${asciiNumberToEnglish(remainder)}`;
+  }
+  if (value <= 9999) {
+    const thousands = `${ENGLISH_ONES[Math.floor(value / 1000)]} thousand`;
+    const remainder = value % 1000;
+    return remainder === 0 ? thousands : `${thousands} ${asciiNumberToEnglish(remainder)}`;
+  }
+  return value.toString().split("").map((digit) => ENGLISH_ONES[Number.parseInt(digit, 10)]).join(" ");
+}
+
+// A number that is part of a proper name and has its own reading (a building,
+// a line, a model number) must not be read as a quantity. Which names those are
+// is the artist's vocabulary, not the plugin's, so they come from the persona:
+//
+//   ### Suno Number Readings
+//   - 109 after 名前, なまえ, Name: いちまるきゅう
+//
+// reads "109" as いちまるきゅう only when one of the listed prefixes precedes it
+// (optionally separated by whitespace, case-insensitive), and leaves every other
+// 109 to the ordinary number reading.
+export interface NumberReadingOverride {
+  number: string;
+  prefixes: string[];
+  reading: string;
+}
+
+const NUMBER_READINGS_HEADING = "### suno number readings";
+
+function escapeRegExp(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+export function parseNumberReadingOverrides(artistMd: string | undefined): NumberReadingOverride[] {
+  if (!artistMd) return [];
+  const overrides: NumberReadingOverride[] = [];
+  let inSection = false;
+  for (const raw of artistMd.split(/\r?\n/)) {
+    const line = raw.trim();
+    if (/^#{1,6}\s/.test(line)) {
+      inSection = line.toLowerCase() === NUMBER_READINGS_HEADING;
+      continue;
+    }
+    if (!inSection) continue;
+    const match = /^-\s*(\d+)\s+after\s+(.+?)\s*:\s*(\S.*)$/i.exec(line);
+    if (!match) continue;
+    const prefixes = match[2].split(/[,、]/).map((prefix) => prefix.trim()).filter((prefix) => prefix.length > 0);
+    if (prefixes.length === 0) continue;
+    overrides.push({ number: match[1], prefixes, reading: match[3].trim() });
+  }
+  return overrides;
+}
+
+function applyNumberReadingOverrides(line: string, overrides: readonly NumberReadingOverride[]): string {
+  return overrides.reduce((current, override) => {
+    const prefixes = override.prefixes.map(escapeRegExp).join("|");
+    const pattern = new RegExp(`((?:${prefixes})\\s*)${override.number}(?!\\d)`, "gi");
+    return current.replace(pattern, `$1${override.reading}`);
+  }, line);
+}
+
+export function normalizeAsciiNumbersToHiragana(
+  lyrics: string,
+  overrides: readonly NumberReadingOverride[] = []
+): string {
+  return lyrics
+    .split(/\r?\n/)
+    .map((line) => {
+      if (/^\s*\[[^\]]+\]\s*$/.test(line)) return line;
+      const properNameNumbersExpanded = applyNumberReadingOverrides(line, overrides);
+      // Keep a number that opens an English phrase inside that language's
+      // pronunciation domain: `72 hours` becomes `seventy-two hours`, never
+      // the mixed reading `ななじゅうに hours`.
+      const englishNumbersExpanded = properNameNumbersExpanded.replace(/\b(\d+)\b(?=\s+[A-Za-z])/g, (token) =>
+        asciiNumberToEnglish(Number.parseInt(token, 10))
+      );
+      return englishNumbersExpanded.replace(/\d+/g, (token) => {
+        const value = Number.parseInt(token, 10);
+        return value <= 9999 ? asciiNumberToHiragana(value) : digitsToHiragana(token);
+      });
+    })
+    .join("\n");
+}
+
+// Curated kanji -> hiragana readings for the Suno registration copy only. The
+// original lyrics keep their kanji; this map normalizes the singable registration
+// text so Suno pronounces it correctly. Entries MUST stay ordered longest-source
+// first so compounds are replaced before their component kanji (e.g. 街角 before
+// 街, 利上げ before 利上). Kanji outside this map remain residual and fail-closed
+// on purpose (a public artist must not ship a guessed reading). A complete
+// arbitrary-kanji solution needs a morphological reader (kuromoji); that heavy
+// dependency is deliberately not added here.
+const SUNO_KANJI_REPAIRS: Array<[string, string]> = [
+  // 3+ char compounds
+  ["免罪句", "めんざいく"],
+  ["安全圏", "あんぜんけん"],
+  ["再開発", "さいかいはつ"],
+  ["路地裏", "ろじうら"],
+  ["スポンサー席", "すぽんさーせき"],
+  ["職業病", "しょくぎょうびょう"],
+  ["住民票", "じゅうみんひょう"],
+  ["売る側", "うるがわ"],
+  ["買う側", "かうがわ"],
+  ["見つもり", "みつもり"],
+  ["利上げ", "りあげ"],
+  ["鳴り響", "なりひび"],
+  ["鳴らす", "ならす"],
+  ["売れる", "うれる"],
+  // 2 char compounds
+  ["伝票", "でんぴょう"],
+  ["査定", "さてい"],
+  ["点呼", "てんこ"],
+  ["啖呵", "たんか"],
+  ["挑発", "ちょうはつ"],
+  ["実況", "じっきょう"],
+  ["中継", "ちゅうけい"],
+  ["独白", "どくはく"],
+  ["説教", "せっきょう"],
+  ["亡霊", "ぼうれい"],
+  ["施術", "せじゅつ"],
+  ["業界", "ぎょうかい"],
+  ["診断", "しんだん"],
+  ["処方", "しょほう"],
+  ["数字", "すうじ"],
+  ["整形", "せいけい"],
+  ["量産", "りょうさん"],
+  ["在庫", "ざいこ"],
+  ["拍手", "はくしゅ"],
+  ["信号", "しんごう"],
+  ["皮肉", "ひにく"],
+  ["広告", "こうこく"],
+  ["利上", "りあげ"],
+  ["偶然", "ぐうぜん"],
+  ["実感", "じっかん"],
+  ["家賃", "やちん"],
+  ["群衆", "ぐんしゅう"],
+  ["現実", "げんじつ"],
+  ["収益", "しゅうえき"],
+  ["綺麗", "きれい"],
+  ["商品", "しょうひん"],
+  ["説明", "せつめい"],
+  ["文化", "ぶんか"],
+  ["残骸", "ざんがい"],
+  ["常設", "じょうせつ"],
+  ["導線", "どうせん"],
+  ["街角", "まちかど"],
+  ["灯り", "あかり"],
+  ["鳴り", "なり"],
+  ["鳴る", "なる"],
+  ["売買", "ばいばい"],
+  ["売る", "うる"],
+  ["売り", "うり"],
+  // vocabulary expansion (2026-09)
+  ["暖簾", "のれん"],
+  ["二毛作", "にもうさく"],
+  ["儀式化", "ぎしきか"],
+  ["相槌", "あいづち"],
+  ["更衣室", "こういしつ"],
+  ["仮囲い", "かりがこい"],
+  ["跡地", "あとち"],
+  ["三面張り", "さんめんばり"],
+  ["完済", "かんさい"],
+  ["転売", "てんばい"],
+  ["殴り合う", "なぐりあう"],
+  ["占拠", "せんきょ"],
+  ["継続率", "けいぞくりつ"],
+  ["維持率", "いじりつ"],
+  ["均一", "きんいつ"],
+  ["温度差", "おんどさ"],
+  ["上層階", "じょうそうかい"],
+  ["案内板", "あんないばん"],
+  ["駐車枠", "ちゅうしゃわく"],
+  ["遠征費", "えんせいひ"],
+  ["誘導", "ゆうどう"],
+  ["審査", "しんさ"],
+  ["既読", "きどく"],
+  ["縮む", "ちぢむ"],
+  // inflected / single kanji
+  ["遅れる", "おくれる"],
+  ["消える", "きえる"],
+  ["白い", "しろい"],
+  ["刺す", "さす"],
+  ["読む", "よむ"],
+  ["払い", "ばらい"],
+  ["消え", "きえ"],
+  ["街", "まち"],
+  ["芝", "しば"],
+  ["窓", "まど"],
+  ["名", "めい"],
+  ["消", "き"],
+  ["鳴", "なる"],
+  ["売", "うり"]
+];
+
+export function normalizeSunoRegistrationJapanese(
+  lyrics: string,
+  numberReadings: readonly NumberReadingOverride[] = []
+): string {
+  return normalizeAsciiNumbersToHiragana(lyrics, numberReadings)
+    .split(/\r?\n/)
+    .map((line) => {
+      if (/^\s*\[[^\]]+\]\s*$/.test(line)) return line;
+      return SUNO_KANJI_REPAIRS.reduce((current, [source, replacement]) => current.split(source).join(replacement), line);
+    })
+    .join("\n");
+}
+
+export function lintResidualKanji(lyrics: string): LyricsLanguageWarning[] {
+  const warnings: LyricsLanguageWarning[] = [];
+  const lines = lyrics.split(/\r?\n/);
+  lines.forEach((line, index) => {
+    if (/^\s*\[[^\]]+\]\s*$/.test(line)) return;
+    for (const match of line.matchAll(/[\u3400-\u9FFF\u3005]+/g)) {
+      warnings.push({ token: match[0], line: index + 1, kind: "residual_kanji" });
+    }
+    for (const match of line.matchAll(/\b\d+\b/g)) {
+      warnings.push({ token: match[0], line: index + 1, kind: "ascii_number" });
+    }
+  });
+  return warnings;
+}

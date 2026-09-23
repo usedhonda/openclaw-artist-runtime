@@ -1,0 +1,225 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+repo_root="$(cd "${script_dir}/.." && pwd)"
+
+openclaw_local_root="${repo_root}/.local/openclaw"
+openclaw_local_prefix="${openclaw_local_root}"
+openclaw_local_home="${openclaw_local_root}/home"
+openclaw_local_state="${openclaw_local_root}/state"
+openclaw_local_config_dir="${openclaw_local_root}/config"
+openclaw_local_config_path="${openclaw_local_config_dir}/openclaw.json"
+openclaw_local_workspace="${openclaw_local_root}/workspace"
+openclaw_local_logs="${openclaw_local_root}/logs"
+openclaw_local_gateway_pid="${openclaw_local_logs}/gateway.pid"
+openclaw_local_gateway_log="${openclaw_local_logs}/gateway.log"
+openclaw_local_gateway_port="${OPENCLAW_LOCAL_GATEWAY_PORT:-43134}"
+social_credentials_path="${repo_root}/.local/social-credentials.env"
+
+detect_tailscale_ipv4() {
+  local value=""
+  if command -v tailscale >/dev/null 2>&1; then
+    value="$(tailscale ip -4 2>/dev/null | head -n 1 || true)"
+  fi
+  if [[ -z "${value}" && -x "/Applications/Tailscale.app/Contents/MacOS/Tailscale" ]]; then
+    value="$(/Applications/Tailscale.app/Contents/MacOS/Tailscale ip -4 2>/dev/null | head -n 1 || true)"
+  fi
+  if [[ -z "${value}" ]]; then
+    value="$(ifconfig 2>/dev/null | awk '/^[a-z0-9]+:/{iface=$1; sub(":", "", iface)} /inet 100\\./{print $2; exit}' || true)"
+  fi
+  printf '%s' "${value}"
+}
+
+if [[ -f "${social_credentials_path}" ]]; then
+  # shellcheck source=/dev/null
+  source "${social_credentials_path}"
+fi
+
+# Plan v10.38 Phase F: news RSS feeds for the news observation collector.
+# Lives in .local/ so the URL list is operator-editable without repo churn.
+news_feeds_path="${repo_root}/.local/news-feeds.env"
+if [[ -f "${news_feeds_path}" ]]; then
+  # shellcheck source=/dev/null
+  source "${news_feeds_path}"
+fi
+
+# Machine-specific overlay: any value unique to THIS Mac (Bird/X Firefox profile
+# id, a local suno-cli checkout path, legacy CDP-attach opt-in, etc.) lives in
+# .local/ so this tracked script stays generic and never goes dirty. The overlay
+# sets raw env seeds that the generic "${VAR:-default}" fallbacks below respect.
+# See docs/LOCAL_RUNTIME_OPS.md for the two-layer contract.
+local_env_overlay_path="${repo_root}/.local/openclaw-local-env.local.sh"
+if [[ -f "${local_env_overlay_path}" ]]; then
+  # shellcheck source=/dev/null
+  source "${local_env_overlay_path}"
+fi
+
+openclaw_tailscale_ip="${OPENCLAW_TAILSCALE_IP:-$(detect_tailscale_ipv4)}"
+openclaw_gateway_public_host="${OPENCLAW_GATEWAY_PUBLIC_HOST:-${openclaw_tailscale_ip:-127.0.0.1}}"
+if [[ -n "${openclaw_tailscale_ip}" ]]; then
+  openclaw_local_gateway_bind="${OPENCLAW_LOCAL_GATEWAY_BIND:-tailnet}"
+else
+  openclaw_local_gateway_bind="${OPENCLAW_LOCAL_GATEWAY_BIND:-loopback}"
+fi
+if [[ "${openclaw_local_gateway_bind}" == "loopback" ]]; then
+  openclaw_local_gateway_auth="${OPENCLAW_LOCAL_GATEWAY_AUTH:-none}"
+else
+  openclaw_local_gateway_auth="${OPENCLAW_LOCAL_GATEWAY_AUTH:-token}"
+fi
+# A loopback-bound gateway is only reachable on 127.0.0.1: deriving the local
+# URLs from the tailnet host there sends every in-box probe (ticker watcher safe
+# tick, status connectivity probe, smoke scripts) to a closed port.
+if [[ "${openclaw_local_gateway_bind}" == "loopback" ]]; then
+  openclaw_gateway_local_host="127.0.0.1"
+else
+  openclaw_gateway_local_host="${openclaw_gateway_public_host}"
+fi
+openclaw_local_gateway_http_url="${OPENCLAW_LOCAL_GATEWAY_HTTP_URL:-http://${openclaw_gateway_local_host}:${openclaw_local_gateway_port}}"
+openclaw_local_gateway_ws_url="${OPENCLAW_LOCAL_GATEWAY_WS_URL:-ws://${openclaw_gateway_local_host}:${openclaw_local_gateway_port}}"
+
+export OPENCLAW_LOCAL_ROOT="${openclaw_local_root}"
+export OPENCLAW_LOCAL_PREFIX="${openclaw_local_prefix}"
+export OPENCLAW_HOME="${openclaw_local_home}"
+export OPENCLAW_STATE_DIR="${openclaw_local_state}"
+export OPENCLAW_CONFIG_PATH="${openclaw_local_config_path}"
+export OPENCLAW_LOCAL_WORKSPACE="${openclaw_local_workspace}"
+export OPENCLAW_LOCAL_LOGS="${openclaw_local_logs}"
+export OPENCLAW_LOCAL_GATEWAY_PID="${openclaw_local_gateway_pid}"
+export OPENCLAW_LOCAL_GATEWAY_LOG="${openclaw_local_gateway_log}"
+export OPENCLAW_LOCAL_GATEWAY_PORT="${openclaw_local_gateway_port}"
+export OPENCLAW_LOCAL_GATEWAY_BIND="${openclaw_local_gateway_bind}"
+export OPENCLAW_LOCAL_GATEWAY_AUTH="${openclaw_local_gateway_auth}"
+export OPENCLAW_TAILSCALE_IP="${openclaw_tailscale_ip}"
+export OPENCLAW_GATEWAY_PUBLIC_HOST="${openclaw_gateway_public_host}"
+export OPENCLAW_GATEWAY_PORT="${openclaw_local_gateway_port}"
+export OPENCLAW_LOCAL_GATEWAY_HTTP_URL="${openclaw_local_gateway_http_url}"
+export OPENCLAW_LOCAL_GATEWAY_WS_URL="${openclaw_local_gateway_ws_url}"
+export PATH="${OPENCLAW_LOCAL_PREFIX}/bin:${PATH}"
+
+# Network resilience (2026-06-12): this machine can sit on networks that
+# advertise IPv6 (AAAA resolves) without real IPv6 connectivity. Node fetch
+# then dials the unreachable v6 address first and times out, which surfaces
+# as random "fetch failed" across Telegram / iTunes / AI-provider calls
+# (root cause of the recurring "transient" outages). Prefer IPv4 lookup
+# results so outbound HTTPS stays deterministic.
+case "${NODE_OPTIONS:-}" in
+  *dns-result-order*) ;;
+  *) export NODE_OPTIONS="${NODE_OPTIONS:+${NODE_OPTIONS} }--dns-result-order=ipv4first" ;;
+esac
+
+# Local incident guard: the repo-local gateway uses a machine-specific artist
+# Firefox profile for Bird/X. The profile id is set by the .local overlay
+# (openclaw-local-env.local.sh) so this tracked script carries no machine id.
+if [[ -n "${BIRD_FIREFOX_PROFILE:-}" ]]; then
+  export BIRD_FIREFOX_PROFILE
+  export OPENCLAW_X_FIREFOX_PROFILE="${BIRD_FIREFOX_PROFILE}"
+fi
+
+if [[ -n "${TELEGRAM_BOT_TOKEN:-}" ]]; then
+  export TELEGRAM_BOT_TOKEN
+fi
+
+if [[ -n "${TELEGRAM_OWNER_USER_IDS:-}" ]]; then
+  export TELEGRAM_OWNER_USER_IDS
+fi
+
+if [[ -z "${OPENCLAW_SAFE_TICK_TRIGGER_TOKEN:-}" && -z "${OPENCLAW_TICKER_WATCHER_TOKEN:-}" ]]; then
+  OPENCLAW_TICKER_WATCHER_TOKEN="$(node -e 'console.log(require("crypto").randomBytes(24).toString("hex"))')"
+fi
+if [[ -n "${OPENCLAW_TICKER_WATCHER_TOKEN:-}" ]]; then
+  export OPENCLAW_TICKER_WATCHER_TOKEN
+fi
+if [[ -n "${OPENCLAW_SAFE_TICK_TRIGGER_TOKEN:-}" ]]; then
+  export OPENCLAW_SAFE_TICK_TRIGGER_TOKEN
+fi
+
+# v10.34 Layer 1 live lane. Standard live driver = headless suno-cli
+# (trusted-session path, vendored under vendor/suno-cli and auto-resolved by the
+# connector). OPENCLAW_SUNO_DRIVER is REQUIRED: without it the OPENCLAW_SUNO_LIVE=on
+# branch in applyRuntimeEnvOverrides clobbers the driver back to the browser
+# worker ("playwright"). Machine-specific Suno overrides (a local suno-cli
+# checkout via OPENCLAW_SUNO_CLI_ENTRY, cookie/session dirs, or the legacy
+# CDP-attach via OPENCLAW_SUNO_USE_CDP / OPENCLAW_SUNO_CDP_ENDPOINT) belong in the
+# .local overlay, not here.
+export OPENCLAW_SUNO_LIVE=on
+export OPENCLAW_SUNO_DRIVER="${OPENCLAW_SUNO_DRIVER:-suno_cli}"
+export OPENCLAW_AUTOPILOT_DRYRUN_OVERRIDE=off
+
+# v10.28-C: dashboard base URL for Telegram body Resources section. Prefer
+# the tailnet URL because producer notifications are usually opened from a
+# phone, where 127.0.0.1 points at the phone instead of this Mac.
+export OPENCLAW_DASHBOARD_BASE_URL="${OPENCLAW_DASHBOARD_BASE_URL:-${openclaw_local_gateway_http_url}}"
+
+# v10.30 polling watchdog after forward-fix (commits c8a8fbd + 5989af1).
+# Watchdog now scoped to expire + 1 reprompt + audit-only, redispatch removed,
+# watchdog actor blocked from external publish at registry + routing layers.
+# Default off after real Telegram noise: reprompt-only still surfaced stale
+# button choices as chat spam. Set a positive value only during supervised
+# recovery drills.
+export OPENCLAW_POLLING_WATCHDOG_MINUTES="${OPENCLAW_POLLING_WATCHDOG_MINUTES:-0}"
+export OPENCLAW_POLLING_WATCHDOG_REPROMPT_ONCE=on
+
+# v10.37 producer-review recovery: allow local debug endpoint to re-send the
+# take_selected review notification without changing song state.
+export OPENCLAW_DEBUG_NOTIFY_REVIEW="${OPENCLAW_DEBUG_NOTIFY_REVIEW:-on}"
+
+# Internal callback-dispatch endpoint (local-only, R10 allowlist downstream).
+# Needed so producer decisions can be executed via the established
+# internal_recovery path when Telegram inbound is blocked by the network
+# (2026-06-12: venue Wi-Fi throttles Telegram's IP range; producer decisions
+# relayed through the operator).
+export OPENCLAW_DEBUG_CALLBACK_DISPATCH="${OPENCLAW_DEBUG_CALLBACK_DISPATCH:-on}"
+
+# v10.45 体感 verify enablement: spawn path 発火条件 (プロデューサー GO 2026-05-25)。
+# planning_skeleton 路を素通りさせず、 spawn_proposed event 経由で
+# spawn_proposal_ready gate に到達させるための必須 enable。
+export OPENCLAW_SONG_SPAWN_ENABLED="${OPENCLAW_SONG_SPAWN_ENABLED:-on}"
+
+# Cadence rebalance (プロデューサー 2026-06-19「X 投稿ばかりで曲が来ない」): song spawn was
+# 24h vs X pulse 12h, so X arrived 2x as often AND songs were skipped on AI-proposer
+# fallback. Make songs dominant: spawn every 12h (floor), pulse every 24h.
+export OPENCLAW_SONG_SPAWN_HOURS="${OPENCLAW_SONG_SPAWN_HOURS:-12}"
+export OPENCLAW_ARTIST_PULSE_HOURS="${OPENCLAW_ARTIST_PULSE_HOURS:-24}"
+
+# Ticker watcher stale threshold (プロデューサー 2026-06-19 flood): default 300s (5min) was
+# SHORTER than the autopilot's ~6min tick interval, so the watcher false-fired a
+# "safe tick" every cycle and spammed Telegram with recovery notices. Raise to 20min
+# so it only fires on a genuine multi-cycle stall, not the normal inter-tick gap.
+export OPENCLAW_TICKER_WATCHER_STALE_MS="${OPENCLAW_TICKER_WATCHER_STALE_MS:-1200000}"
+
+# Gateway supervisor Telegram-network watchdog. Keep whole-process killing
+# opt-in: OpenClaw's main-thread polling and fatal-error recovery rebuild the
+# Telegram transport locally, while killing the Gateway can drop active producer
+# replies. Enable only for a supervised incident drill.
+export OPENCLAW_TELEGRAM_WATCHDOG_ENABLED="${OPENCLAW_TELEGRAM_WATCHDOG_ENABLED:-0}"
+
+if [[ "${1:-}" == "print" ]]; then
+  telegram_token_status=""
+  if [[ -n "${TELEGRAM_BOT_TOKEN:-}" ]]; then
+    telegram_token_status="<set>"
+  fi
+  cat <<EOF
+OPENCLAW_LOCAL_ROOT=${OPENCLAW_LOCAL_ROOT}
+OPENCLAW_LOCAL_PREFIX=${OPENCLAW_LOCAL_PREFIX}
+OPENCLAW_HOME=${OPENCLAW_HOME}
+OPENCLAW_STATE_DIR=${OPENCLAW_STATE_DIR}
+OPENCLAW_CONFIG_PATH=${OPENCLAW_CONFIG_PATH}
+OPENCLAW_LOCAL_WORKSPACE=${OPENCLAW_LOCAL_WORKSPACE}
+OPENCLAW_LOCAL_LOGS=${OPENCLAW_LOCAL_LOGS}
+OPENCLAW_LOCAL_GATEWAY_PID=${OPENCLAW_LOCAL_GATEWAY_PID}
+OPENCLAW_LOCAL_GATEWAY_LOG=${OPENCLAW_LOCAL_GATEWAY_LOG}
+OPENCLAW_LOCAL_GATEWAY_PORT=${OPENCLAW_LOCAL_GATEWAY_PORT}
+OPENCLAW_LOCAL_GATEWAY_BIND=${OPENCLAW_LOCAL_GATEWAY_BIND}
+OPENCLAW_LOCAL_GATEWAY_AUTH=${OPENCLAW_LOCAL_GATEWAY_AUTH}
+OPENCLAW_TAILSCALE_IP=${OPENCLAW_TAILSCALE_IP}
+OPENCLAW_GATEWAY_PUBLIC_HOST=${OPENCLAW_GATEWAY_PUBLIC_HOST}
+OPENCLAW_GATEWAY_PORT=${OPENCLAW_GATEWAY_PORT}
+OPENCLAW_LOCAL_GATEWAY_HTTP_URL=${OPENCLAW_LOCAL_GATEWAY_HTTP_URL}
+OPENCLAW_LOCAL_GATEWAY_WS_URL=${OPENCLAW_LOCAL_GATEWAY_WS_URL}
+OPENCLAW_DASHBOARD_BASE_URL=${OPENCLAW_DASHBOARD_BASE_URL}
+OPENCLAW_X_FIREFOX_PROFILE=${OPENCLAW_X_FIREFOX_PROFILE:-}
+TELEGRAM_OWNER_USER_IDS=${TELEGRAM_OWNER_USER_IDS:-}
+EOF
+  printf '%s=%s\n' 'TELEGRAM_BOT_TOKEN' "${telegram_token_status}"
+fi

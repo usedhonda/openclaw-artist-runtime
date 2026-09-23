@@ -1,0 +1,45 @@
+import { describe, expect, it } from "vitest";
+import { summarizeStopReason } from "../src/services/producerStopReason";
+
+describe("summarizeStopReason", () => {
+  it("maps known internal Suno tokens to plain JA", () => {
+    expect(summarizeStopReason("playwright_live_timeout")).toContain("時間切れ");
+    expect(summarizeStopReason("suno_worker_not_ready")).toContain("接続できていない");
+    expect(summarizeStopReason("schema_drift detected")).toContain("画面が想定と変わっている");
+    expect(summarizeStopReason("suno_human_assist_error:open_fill_failed:browserContext.newPage: Target page, context or browser has been closed"))
+      .toBe("Suno のブラウザ画面が閉じていた");
+    expect(summarizeStopReason("suno_human_assist_error:open_fill_failed:suno_prepare_readback_mismatch: variety"))
+      .toBe("Suno の入力欄を設定し切れなかった");
+    expect(summarizeStopReason("suno_generate_retry_wait_until_2026-09-16T14:58:42.347Z"))
+      .toBe("少し置いてから作り直す");
+    expect(summarizeStopReason("cdp_endpoint_unreachable")).toBe("Suno の操作用ブラウザに繋がらない");
+    // Any unmapped ASCII-only identifier is internal noise for the producer.
+    expect(summarizeStopReason("take_score_tie")).toBe("take の優劣が決めきれない");
+    expect(summarizeStopReason("some_unknown_internal_token")).toBe("詳しい原因は記録に残した");
+    expect(summarizeStopReason("歌詞が短すぎる")).toBe("歌詞が短すぎる");
+    expect(summarizeStopReason("suno_human_assist_error:open_fill_failed:locator.click: Timeout 30000ms exceeded.\nCall log:\n  - waiting for locator('xpath=(//*[self::label"))
+      .toBe("Suno の入力欄を設定し切れなかった");
+    expect(summarizeStopReason("session_expired")).toContain("ログインが切れた");
+    expect(summarizeStopReason("captcha_required")).toContain("captcha");
+    expect(summarizeStopReason("no imported takes")).toContain("take");
+    expect(summarizeStopReason("asset render failed")).toContain("素材");
+  });
+
+  it("never leaks internal identifiers for unknown reasons", () => {
+    const summary = summarizeStopReason("weird_edge residual_kanji:逃:line_20 /srv/secret/path deadbeefdeadbeef00");
+    expect(summary).not.toMatch(/residual_kanji/);
+    expect(summary).not.toMatch(/line_\d+/);
+    expect(summary).not.toMatch(/\/srv\//);
+    expect(summary).not.toMatch(/deadbeefdeadbeef/);
+  });
+
+  it("caps long unknown reasons", () => {
+    const summary = summarizeStopReason("x".repeat(400));
+    expect(Array.from(summary).length).toBeLessThanOrEqual(100);
+  });
+
+  it("falls back to a neutral phrase for empty input", () => {
+    expect(summarizeStopReason(undefined)).toContain("記録に残した");
+    expect(summarizeStopReason("")).toContain("記録に残した");
+  });
+});

@@ -1,0 +1,266 @@
+import { mkdtempSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { describe, expect, it } from "vitest";
+import { ensureArtistWorkspace } from "../src/services/artistWorkspace";
+import { ensureSongState, readSongState, updateSongState, writeSongBrief } from "../src/services/artistState";
+import { ArtistAutopilotService, writeAutopilotRunState, isDegradedLyricsBoxReason, handleSunoGenerateFailure } from "../src/services/autopilotService";
+import type { AutopilotRunState } from "../src/types";
+import { getRuntimeEventBus, type RuntimeEvent } from "../src/services/runtimeEventBus";
+import { importSunoResults, readLatestSunoRun } from "../src/services/sunoRuns";
+import { HUMAN_ASSIST_FEED_UNAVAILABLE_REASON } from "../src/services/sunoHumanAssist";
+
+const completeBrief = [
+  "# Brief",
+  "- Mood: cold",
+  "- Tempo: 128 BPM",
+  "- Duration: 4 min",
+  "- Style notes: thick bass",
+  "- Lyrics theme: city ruins"
+].join("\n");
+
+async function seedPlanningSong(root: string): Promise<void> {
+  await ensureArtistWorkspace(root);
+  await ensureSongState(root, "suno-stage", "Suno Stage");
+  await writeSongBrief(root, "suno-stage", completeBrief);
+  await writeAutopilotRunState(root, {
+    runId: "suno-stage",
+    currentSongId: "suno-stage",
+    stage: "planning",
+    paused: false,
+    retryCount: 0,
+    cycleCount: 0,
+    updatedAt: new Date().toISOString(),
+    lastRunAt: new Date().toISOString(),
+    lastSuccessfulStage: "planning"
+  });
+}
+
+describe("autopilot Suno generate stage", () => {
+  it("bridges planning through Suno generation into take selection", async () => {
+    const root = mkdtempSync(join(tmpdir(), "artist-runtime-autopilot-suno-stage-"));
+    await seedPlanningSong(root);
+    const service = new ArtistAutopilotService();
+    const config = { artist: { workspaceRoot: root }, autopilot: { enabled: true, dryRun: true }, music: { suno: { driver: "playwright" as const } }, telegram: { enabled: false } };
+    const events: RuntimeEvent[] = [];
+    const unsubscribe = getRuntimeEventBus().subscribe((event) => events.push(event));
+
+    const promptPack = await service.runCycle({ workspaceRoot: root, config });
+    const suno = await service.runCycle({ workspaceRoot: root, config });
+    const run = await readLatestSunoRun(root, "suno-stage");
+    await importSunoResults({
+      workspaceRoot: root,
+      songId: "suno-stage",
+      runId: run?.runId ?? "dry-run",
+      urls: ["https://suno.example/take-1"]
+    });
+    const take = await service.runCycle({ workspaceRoot: root, config });
+
+    unsubscribe();
+    expect(promptPack.stage).toBe("suno_generation");
+    expect(suno.stage).toBe("suno_generation");
+    expect(run?.status).toBe("blocked_dry_run");
+    expect(take).toMatchObject({
+      stage: "completed",
+      currentSongId: undefined,
+      lastSuccessfulStage: "completed"
+    });
+    expect(await readSongState(root, "suno-stage")).toMatchObject({ status: "take_selected" });
+    expect(events.some((event) => event.type === "song_take_completed")).toBe(true);
+  });
+
+  it("keeps generation in retry state instead of failed_closed when Suno payload is missing", async () => {
+    const root = mkdtempSync(join(tmpdir(), "artist-runtime-autopilot-suno-retry-"));
+    await ensureArtistWorkspace(root);
+    await ensureSongState(root, "retry-song", "Retry Song");
+    await updateSongState(root, "retry-song", { status: "suno_prompt_pack" });
+    const events: RuntimeEvent[] = [];
+    const unsubscribe = getRuntimeEventBus().subscribe((event) => events.push(event));
+
+    const state = await new ArtistAutopilotService().runCycle({
+      workspaceRoot: root,
+      config: { artist: { workspaceRoot: root }, autopilot: { enabled: true, dryRun: true }, music: { suno: { driver: "playwright" as const } } }
+    });
+
+    unsubscribe();
+    expect(state.stage).toBe("suno_generation");
+    expect(state.retryCount).toBe(1);
+    expect(state.blockedReason).toContain("suno_generate_retry");
+    expect(events.some((event) => event.type === "suno_generate_retry")).toBe(true);
+  });
+
+  it("parks only the failed song after repeated Suno generation failures", async () => {
+    const root = mkdtempSync(join(tmpdir(), "artist-runtime-autopilot-suno-failed-"));
+    await ensureArtistWorkspace(root);
+    await ensureSongState(root, "failed-song", "Failed Song");
+    await updateSongState(root, "failed-song", { status: "suno_prompt_pack" });
+    await writeAutopilotRunState(root, {
+      runId: "failed-song",
+      currentSongId: "failed-song",
+      stage: "suno_generation",
+      paused: false,
+      retryCount: 2,
+      cycleCount: 0,
+      updatedAt: new Date().toISOString(),
+      lastRunAt: new Date(Date.now() - 60 * 60 * 1000).toISOString()
+    });
+    const events: RuntimeEvent[] = [];
+    const unsubscribe = getRuntimeEventBus().subscribe((event) => events.push(event));
+
+    const state = await new ArtistAutopilotService().runCycle({
+      workspaceRoot: root,
+      config: { artist: { workspaceRoot: root }, autopilot: { enabled: true, dryRun: true }, music: { suno: { driver: "playwright" as const } } }
+    });
+
+    unsubscribe();
+    expect(state).toMatchObject({
+      stage: "planning",
+      paused: false,
+      currentSongId: undefined,
+      retryCount: 0,
+      blockedReason: undefined
+    });
+    expect(await readSongState(root, "failed-song")).toMatchObject({
+      status: "failed",
+      lastReason: expect.stringContaining("parked_needs_operator:")
+    });
+    expect(events.some((event) => event.type === "suno_generate_failed")).toBe(true);
+  });
+
+  it.each([
+    "suno_cli_blocked_login",
+    "suno_cli_blocked_captcha"
+  ])("hard-stops on the first failure for CLI terminal block %s instead of retrying", async (reason) => {
+    const root = mkdtempSync(join(tmpdir(), "artist-runtime-autopilot-cli-block-"));
+    await ensureArtistWorkspace(root);
+    const song = await ensureSongState(root, "cli-block-song", "CLI Block Song");
+    const base: AutopilotRunState = {
+      runId: "cli-block-song",
+      currentSongId: "cli-block-song",
+      stage: "suno_generation",
+      paused: false,
+      retryCount: 0,
+      cycleCount: 0,
+      updatedAt: new Date().toISOString()
+    };
+    const events: RuntimeEvent[] = [];
+    const unsubscribe = getRuntimeEventBus().subscribe((event) => events.push(event));
+
+    const state = await handleSunoGenerateFailure(root, base, base, song, reason);
+
+    unsubscribe();
+    expect(state.stage).toBe("failed_closed");
+    expect(state.hardStopReason).toBe(reason);
+    expect(state.retryCount).toBe(1);
+    expect(state.paused).toBeFalsy();
+    expect(state.blockedReason).not.toContain("suno_generate_retry");
+    expect(events.some((event) => event.type === "suno_hard_stop" && event.reason === reason)).toBe(true);
+    expect(events.some((event) => event.type === "suno_generate_retry")).toBe(false);
+  });
+
+  it("does not hard-stop on suno_cli_schema_drift so the captcha 422 fix is load-bearing", async () => {
+    // Before the suno-kit fix, a tokenless captcha-gated 422 came back as exit 40 ->
+    // suno_cli_schema_drift, which falls through to the retry ladder here (never a
+    // hard stop) and loops forever. This guards the classification boundary: only the
+    // blocked_captcha reason hard-stops; schema_drift must stay a retry, so the CLI
+    // MUST promote the captcha 422 to exit 31 for the hard stop to fire.
+    const root = mkdtempSync(join(tmpdir(), "artist-runtime-autopilot-schema-drift-"));
+    await ensureArtistWorkspace(root);
+    const song = await ensureSongState(root, "schema-drift-song", "Schema Drift Song");
+    const base: AutopilotRunState = {
+      runId: "schema-drift-song",
+      currentSongId: "schema-drift-song",
+      stage: "suno_generation",
+      paused: false,
+      retryCount: 0,
+      cycleCount: 0,
+      updatedAt: new Date().toISOString()
+    };
+    const events: RuntimeEvent[] = [];
+    const unsubscribe = getRuntimeEventBus().subscribe((event) => events.push(event));
+
+    const state = await handleSunoGenerateFailure(root, base, base, song, "suno_cli_schema_drift");
+
+    unsubscribe();
+    expect(state.stage).not.toBe("failed_closed");
+    expect(state.hardStopReason).toBeFalsy();
+    expect(events.some((event) => event.type === "suno_hard_stop")).toBe(false);
+    expect(events.some((event) => event.type === "suno_generate_retry")).toBe(true);
+  });
+
+  it("returns the song to generation (not a hard stop) when the human-assist create window times out", async () => {
+    // A captcha human-assist timeout means the producer never pressed Create in time.
+    // The autopilot must not hard-stop or pause: it re-attempts on a later cycle so the
+    // producer is re-prompted once per cycle, and retryCount resets so it never trips the
+    // 3-strike pause.
+    const root = mkdtempSync(join(tmpdir(), "artist-runtime-autopilot-human-assist-timeout-"));
+    await ensureArtistWorkspace(root);
+    const song = await ensureSongState(root, "human-assist-song", "Human Assist Song");
+    const base: AutopilotRunState = {
+      runId: "human-assist-song",
+      currentSongId: "human-assist-song",
+      stage: "suno_generation",
+      paused: false,
+      retryCount: 2,
+      cycleCount: 0,
+      updatedAt: new Date().toISOString()
+    };
+    const events: RuntimeEvent[] = [];
+    const unsubscribe = getRuntimeEventBus().subscribe((event) => events.push(event));
+
+    const state = await handleSunoGenerateFailure(root, base, base, song, "suno_human_assist_timeout");
+
+    unsubscribe();
+    expect(state.stage).toBe("suno_generation");
+    expect(state.paused).toBeFalsy();
+    expect(state.hardStopReason).toBeFalsy();
+    expect(state.retryCount).toBe(0);
+    expect(events.some((event) => event.type === "suno_hard_stop")).toBe(false);
+    expect(events.some((event) => event.type === "suno_generate_retry" && event.reason === "suno_human_assist_timeout")).toBe(true);
+  });
+
+  it("parks on the first occurrence when the feed cannot confirm the take -- never re-enters suno_generation, the exact credit-spend loop this reason exists to stop", async () => {
+    const root = mkdtempSync(join(tmpdir(), "artist-runtime-autopilot-feed-unavailable-"));
+    await ensureArtistWorkspace(root);
+    const song = await ensureSongState(root, "feed-unavailable-song", "Feed Unavailable Song");
+    const base: AutopilotRunState = {
+      runId: "feed-unavailable-song",
+      currentSongId: "feed-unavailable-song",
+      stage: "suno_generation",
+      paused: false,
+      retryCount: 0,
+      cycleCount: 0,
+      updatedAt: new Date().toISOString()
+    };
+    const events: RuntimeEvent[] = [];
+    const unsubscribe = getRuntimeEventBus().subscribe((event) => events.push(event));
+
+    const state = await handleSunoGenerateFailure(root, base, base, song, HUMAN_ASSIST_FEED_UNAVAILABLE_REASON);
+
+    unsubscribe();
+    expect(state.stage).toBe("planning");
+    expect(state.currentSongId).toBeUndefined();
+    expect(state.paused).toBeFalsy();
+    expect(state.hardStopReason).toBeFalsy();
+    expect(state.retryCount).toBe(0);
+    expect(await readSongState(root, "feed-unavailable-song")).toMatchObject({
+      status: "failed",
+      lastReason: expect.stringContaining("parked_needs_operator:")
+    });
+    expect(events.some((event) => event.type === "suno_hard_stop")).toBe(false);
+    expect(events.some((event) => event.type === "suno_generate_retry")).toBe(false);
+    const notices = events.filter((event) => event.type === "suno_generate_failed");
+    expect(notices).toHaveLength(1);
+    expect(notices[0]).toMatchObject({ reason: expect.stringContaining(HUMAN_ASSIST_FEED_UNAVAILABLE_REASON) });
+  });
+
+  it("recognizes a transient degraded lyrics-box reason regardless of stage prefix", () => {
+    // The driver surfaces suno_lyrics_box_degraded; the autopilot must treat it as a
+    // retryable self-heal (not a hard truncation / pause) wherever the marker appears.
+    expect(isDegradedLyricsBoxReason("suno_generate_retry:suno_lyrics_box_degraded: transient cap")).toBe(true);
+    expect(isDegradedLyricsBoxReason("suno_lyrics_box_degraded_unrecovered: capped")).toBe(true);
+    expect(isDegradedLyricsBoxReason("suno_generate_failed:lyrics_payload_truncated_before_submit")).toBe(false);
+    expect(isDegradedLyricsBoxReason(undefined)).toBe(false);
+    expect(isDegradedLyricsBoxReason(null)).toBe(false);
+  });
+});

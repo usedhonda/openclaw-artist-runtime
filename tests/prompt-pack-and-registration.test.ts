@@ -1,0 +1,355 @@
+import { mkdirSync, mkdtempSync, readFileSync, utimesSync, writeFileSync } from "node:fs";
+import type { IncomingMessage, ServerResponse } from "node:http";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { Readable } from "node:stream";
+import { describe, expect, it } from "vitest";
+import { createSunoPromptPack } from "../src/suno-production/generatePromptPack";
+import { createAndPersistSunoPromptPack } from "../src/services/sunoPromptPackFiles";
+import { validateSunoPromptPack } from "../src/validators/promptPackValidator";
+import { registerHooks } from "../src/hooks";
+import { buildArtistMindResponse, buildAuditLogResponse, buildConfigResponse, buildPromptLedgerResponse, buildRecoveryResponse, buildStatusResponse, producerConsoleHtml, registerRoutes, uiBuildIsFresh } from "../src/routes";
+import { registerServices } from "../src/services";
+import { registerTools } from "../src/tools";
+
+function createMockRequest(method: string, url: string, body?: string, headers?: Record<string, string>): IncomingMessage {
+  const req = Readable.from(body ? [body] : []) as IncomingMessage;
+  req.method = method;
+  req.url = url;
+  req.headers = headers ?? {};
+  return req;
+}
+
+function createMockResponse() {
+  let body = "";
+  const headers: Record<string, string> = {};
+  const res = {
+    statusCode: 200,
+    headersSent: false,
+    setHeader(name: string, value: string) {
+      headers[name.toLowerCase()] = value;
+      return this;
+    },
+    end(chunk?: string | Buffer) {
+      if (chunk) {
+        body += Buffer.isBuffer(chunk) ? chunk.toString("utf8") : chunk;
+      }
+      this.headersSent = true;
+      return this;
+    }
+  } as unknown as ServerResponse;
+
+  return {
+    res,
+    readBody: () => body,
+    readHeader: (name: string) => headers[name.toLowerCase()],
+    readStatus: () => (res as unknown as { statusCode: number }).statusCode
+  };
+}
+
+describe("prompt pack", () => {
+  it("builds a valid prompt pack", () => {
+    const pack = createSunoPromptPack({
+      songId: "song-001",
+      songTitle: "Ghost Station",
+      artistReason: "night transit residue",
+      lyricsText: "えきのひかりだけが\nまだわたしをおぼえている",
+      artistSnapshot: "# ARTIST\n",
+      currentStateSnapshot: "# CURRENT_STATE\nQuiet.",
+      knowledgePackVersion: "test-pack"
+    });
+
+    expect(pack.validation.valid).toBe(true);
+    expect(pack.payloadHash).toMatch(/[a-f0-9]{64}/);
+    expect(pack.yamlLyrics).toContain("Ghost Station");
+  });
+
+  it("detects missing prompt pack artifacts", () => {
+    const validation = validateSunoPromptPack({ songId: "song-001" });
+    expect(validation.valid).toBe(false);
+    expect(validation.errors).toContain("missing style");
+  });
+
+  it("persists prompt pack artifacts and ledger entries into the workspace", async () => {
+    const workspaceRoot = mkdtempSync(join(tmpdir(), "artist-runtime-pack-"));
+    const result = await createAndPersistSunoPromptPack({
+      workspaceRoot,
+      songId: "song-001",
+      songTitle: "Ghost Station",
+      artistReason: "night transit residue",
+      lyricsText: "3つのひかりだけが\nまだわたしをおぼえている",
+      knowledgePackVersion: "test-pack",
+      configSnapshot: { dryRun: true }
+    });
+
+    expect(result.packVersion).toBe(1);
+    expect(result.ledgerEntryIds).toHaveLength(6);
+    expect(readFileSync(result.artifactPaths.styleLatest, "utf8")).toContain("BPM");
+    expect(readFileSync(result.artifactPaths.lyricsVersioned, "utf8")).toContain("3つのひかりだけが");
+    expect(readFileSync(result.artifactPaths.lyricsSunoLatest, "utf8")).toContain("さんつのひかりだけが");
+    const creationNote = JSON.parse(readFileSync(result.artifactPaths.creationNoteLatest, "utf8")) as { version: number; musicIntent?: string };
+    expect(creationNote.version).toBe(1);
+    expect(creationNote.musicIntent).toContain("BPM");
+    expect(readFileSync(join(result.artifactPaths.snapshotDir, "creative-note.json"), "utf8")).toContain('"version": 1');
+    expect(readFileSync(result.artifactPaths.promptLedger, "utf8")).toContain("\"stage\":\"suno_payload_build\"");
+  });
+
+  it("reads the latest prompt pack metadata dynamically", async () => {
+    const workspaceRoot = mkdtempSync(join(tmpdir(), "artist-runtime-pack-latest-"));
+    await createAndPersistSunoPromptPack({
+      workspaceRoot,
+      songId: "song-001",
+      songTitle: "Ghost Station",
+      artistReason: "night transit residue",
+      lyricsText: "one",
+      knowledgePackVersion: "test-pack"
+    });
+    const second = await createAndPersistSunoPromptPack({
+      workspaceRoot,
+      songId: "song-001",
+      songTitle: "Ghost Station",
+      artistReason: "night transit residue again",
+      lyricsText: "two",
+      knowledgePackVersion: "test-pack"
+    });
+
+    expect(second.packVersion).toBe(2);
+    const detail = await buildStatusResponse({ artist: { workspaceRoot } });
+    expect(detail.musicSummary.latestPromptPackVersion).toBe(2);
+  });
+
+  it("allocates after the highest existing lyrics version without overwriting it", async () => {
+    const workspaceRoot = mkdtempSync(join(tmpdir(), "artist-runtime-pack-lyrics-version-"));
+    await createAndPersistSunoPromptPack({
+      workspaceRoot,
+      songId: "song-001",
+      songTitle: "Ghost Station",
+      artistReason: "first",
+      lyricsText: "one",
+      knowledgePackVersion: "test-pack"
+    });
+    const lyricsPath = join(workspaceRoot, "songs", "song-001", "lyrics", "lyrics.v2.md");
+    const original = "pre-existing lyrics v2\n";
+    writeFileSync(lyricsPath, original, "utf8");
+    const next = await createAndPersistSunoPromptPack({
+      workspaceRoot,
+      songId: "song-001",
+      songTitle: "Ghost Station",
+      artistReason: "third",
+      lyricsText: "three",
+      knowledgePackVersion: "test-pack",
+      preserveExistingLyricsVersions: true
+    });
+    expect(next.packVersion).toBe(3);
+    expect(readFileSync(lyricsPath, "utf8")).toBe(original);
+  });
+
+  it("detects stale producer console bundles", async () => {
+    const root = mkdtempSync(join(tmpdir(), "artist-runtime-ui-fresh-"));
+    mkdirSync(join(root, "ui", "src", "components"), { recursive: true });
+    mkdirSync(join(root, "ui", "dist"), { recursive: true });
+    writeFileSync(join(root, "ui", "index.html"), "<!doctype html>", "utf8");
+    writeFileSync(join(root, "ui", "package.json"), "{}", "utf8");
+    writeFileSync(join(root, "ui", "vite.config.ts"), "export default {}", "utf8");
+    writeFileSync(join(root, "ui", "src", "App.tsx"), "export const App = () => null;", "utf8");
+    writeFileSync(join(root, "ui", "src", "ProducerRoomApp.tsx"), "export const ProducerRoomApp = () => null;", "utf8");
+    writeFileSync(join(root, "ui", "src", "personaEditor.ts"), "export const buildPersonaDraft = () => null;", "utf8");
+    writeFileSync(join(root, "ui", "src", "components", "SetupView.tsx"), "export const SetupView = () => null;", "utf8");
+    writeFileSync(join(root, "ui", "src", "main.tsx"), "console.log('main');", "utf8");
+    writeFileSync(join(root, "ui", "src", "styles.css"), "body{}", "utf8");
+    writeFileSync(join(root, "ui", "dist", "index.html"), "<!doctype html><div>built</div>", "utf8");
+
+    const older = new Date("2024-01-01T00:00:00.000Z");
+    const newer = new Date("2024-01-02T00:00:00.000Z");
+    utimesSync(join(root, "ui", "index.html"), older, older);
+    utimesSync(join(root, "ui", "package.json"), older, older);
+    utimesSync(join(root, "ui", "vite.config.ts"), older, older);
+    utimesSync(join(root, "ui", "src", "App.tsx"), older, older);
+    utimesSync(join(root, "ui", "src", "ProducerRoomApp.tsx"), older, older);
+    utimesSync(join(root, "ui", "src", "personaEditor.ts"), older, older);
+    utimesSync(join(root, "ui", "src", "components", "SetupView.tsx"), older, older);
+    utimesSync(join(root, "ui", "src", "main.tsx"), older, older);
+    utimesSync(join(root, "ui", "src", "styles.css"), older, older);
+    utimesSync(join(root, "ui", "dist", "index.html"), older, older);
+    utimesSync(join(root, "ui", "src", "components", "SetupView.tsx"), newer, newer);
+
+    expect(await uiBuildIsFresh(root)).toBe(false);
+
+    const newest = new Date("2024-01-03T00:00:00.000Z");
+    utimesSync(join(root, "ui", "dist", "index.html"), newest, newest);
+    expect(await uiBuildIsFresh(root)).toBe(true);
+
+    // A packaged copy stamps files with copy time: the index may come out a
+    // fraction of a millisecond before its sources. That is still a fresh build.
+    const copiedAt = new Date("2024-01-04T00:00:00.000Z");
+    const copiedJustAfter = new Date(copiedAt.getTime() + 1);
+    utimesSync(join(root, "ui", "dist", "index.html"), copiedAt, copiedAt);
+    utimesSync(join(root, "ui", "src", "components", "SetupView.tsx"), copiedJustAfter, copiedJustAfter);
+    expect(await uiBuildIsFresh(root)).toBe(true);
+  });
+});
+
+describe("registration shells", () => {
+  it("registers tools, hooks, services, and routes against a fake api", async () => {
+    const registered = {
+      tools: [] as string[],
+      toolDefinitions: [] as Array<{ name: string; parameters?: unknown; execute?: unknown }>,
+      hooks: [] as string[],
+      onHooks: [] as string[],
+      services: [] as string[],
+      routes: [] as string[],
+      routeHandlers: new Map<string, (req: IncomingMessage, res: ServerResponse) => Promise<boolean | void> | boolean | void>()
+    };
+    const api = {
+      registerTool(definitionOrFactory: { name: string } | ((context: { workspaceDir: string }) => { name: string; parameters?: unknown; execute?: unknown })) {
+        const definition = typeof definitionOrFactory === "function"
+          ? definitionOrFactory({ workspaceDir: "/trusted/artist-workspace" })
+          : definitionOrFactory;
+        registered.tools.push(definition.name);
+        registered.toolDefinitions.push(definition);
+      },
+      registerHook(event: string, _handler?: unknown) {
+        registered.hooks.push(event);
+      },
+      on(event: string, _handler?: unknown) {
+        registered.onHooks.push(event);
+      },
+      registerService(definition: { id?: string; name?: string }) {
+        registered.services.push(definition.id ?? definition.name ?? "unknown");
+      },
+      registerHttpRoute(definition: { path: string; handler: (req: IncomingMessage, res: ServerResponse) => Promise<boolean | void> | boolean | void }) {
+        registered.routes.push(definition.path);
+        registered.routeHandlers.set(definition.path, definition.handler);
+      }
+    };
+
+    registerTools(api);
+    registerHooks(api);
+    registerServices(api);
+    registerRoutes(api);
+
+    const manifest = JSON.parse(readFileSync(join(process.cwd(), "openclaw.plugin.json"), "utf8")) as { contracts: { tools: string[] } };
+    expect([...registered.tools].sort()).toEqual([...manifest.contracts.tools].sort());
+    expect(registered.tools).toContain("artist_suno_create_prompt_pack");
+    expect(registered.tools).toContain("artist_song_ideate");
+    expect(registered.tools).toEqual(expect.arrayContaining([
+      "artist_song_material_lookup",
+      "artist_lyrics_revision_save",
+      "artist_lyrics_revision_restore",
+      "artist_lyrics_revision_adopt",
+      "artist_production_conversation",
+      "artist_song_production_revise"
+    ]));
+    expect(registered.toolDefinitions).toHaveLength(13);
+    expect(registered.toolDefinitions.every((tool) => typeof tool.execute === "function")).toBe(true);
+    expect(registered.toolDefinitions.every((tool) => typeof tool.parameters === "object" && tool.parameters !== null)).toBe(true);
+    const promptPackTool = registered.toolDefinitions.find((tool) => tool.name === "artist_suno_create_prompt_pack");
+    expect(promptPackTool?.parameters).toMatchObject({
+      additionalProperties: false,
+      required: ["songId", "songTitle", "artistReason", "lyricsText"]
+    });
+    const generateTool = registered.toolDefinitions.find((tool) => tool.name === "artist_suno_generate");
+    expect(generateTool?.parameters).toMatchObject({
+      additionalProperties: false,
+      required: ["songId", "expectedPayloadHash", "expectedPackVersion"]
+    });
+    // agent_turn_prepare is a typed PluginHookName hook; it registers through
+    // api.on, not api.registerHook (see tests/hooks-heartbeat.test.ts).
+    expect(registered.onHooks).toContain("agent_turn_prepare");
+    expect(registered.onHooks).toContain("before_prompt_build");
+    expect(registered.hooks).not.toContain("agent_turn_prepare");
+    expect(registered.services).toContain("artistAutopilotService");
+    expect(registered.routes).toContain("/plugins/artist-runtime/api/status");
+    expect(registered.routes).toContain("/plugins/artist-runtime/api/status/export");
+    expect(registered.routes).toContain("/plugins/artist-runtime/api/run-cycle");
+    expect(registered.routes).toContain("/plugins/artist-runtime/api/config");
+    expect(registered.routes).toContain("/plugins/artist-runtime/api/artist-mind");
+    expect(registered.routes).toContain("/plugins/artist-runtime/api/audit");
+    expect(registered.routes).toContain("/plugins/artist-runtime/api/recovery");
+    expect(registered.routes).toContain("/plugins/artist-runtime/api/prompt-ledger");
+    expect(registered.routes).toContain("/plugins/artist-runtime/api/alerts");
+    expect(registered.routes).toContain("/plugins/artist-runtime/api/songs");
+    expect(registered.routes).toContain("/plugins/artist-runtime/api/platforms");
+    expect(registered.routes).toContain("/plugins/artist-runtime/api/suno");
+
+    const workspaceRoot = mkdtempSync(join(tmpdir(), "artist-runtime-registration-"));
+    const shellConfig = { artist: { workspaceRoot } };
+    const status = await buildStatusResponse(shellConfig);
+    const artistMind = await buildArtistMindResponse(shellConfig);
+    const audit = await buildAuditLogResponse(shellConfig);
+    const promptLedger = await buildPromptLedgerResponse(undefined, shellConfig);
+    const recovery = await buildRecoveryResponse(shellConfig);
+    expect(status.dryRun).toBe(true);
+    expect(status.platforms.x.authority).toBe("auto_publish");
+    expect(typeof artistMind.artist).toBe("string");
+    expect(Array.isArray(audit)).toBe(true);
+    expect(Array.isArray(promptLedger)).toBe(true);
+    expect(recovery.diagnostics.dryRun).toBe(true);
+    const consoleHtml = await producerConsoleHtml();
+    expect(consoleHtml).toContain("Artist Operations");
+    expect(consoleHtml).toContain("Producer Room");
+    expect(consoleHtml).toContain("Current Room State");
+    expect(consoleHtml).toContain("You can");
+    expect(consoleHtml).toContain("Room");
+    expect(consoleHtml).toContain("Songs");
+    expect(consoleHtml).toContain("Settings");
+    expect(consoleHtml).toContain("Diagnostics");
+    expect(consoleHtml).not.toContain("Run Cycle");
+    expect(consoleHtml).not.toContain("Config Editor");
+    expect((await buildConfigResponse(shellConfig)).artist.artistId).toBe("artist");
+
+    const rootHandler = registered.routeHandlers.get("/plugins/artist-runtime");
+    expect(rootHandler).toBeTruthy();
+    const rootResponse = createMockResponse();
+    await rootHandler?.(createMockRequest("GET", "/plugins/artist-runtime"), rootResponse.res);
+    expect(rootResponse.readStatus()).toBe(200);
+    expect(rootResponse.readHeader("content-type")).toContain("text/html");
+    expect(rootResponse.readBody()).toContain("Artist Runtime");
+
+    const statusHandler = registered.routeHandlers.get("/plugins/artist-runtime/api/status");
+    expect(statusHandler).toBeTruthy();
+    const statusResponse = createMockResponse();
+    await statusHandler?.(
+      createMockRequest(
+        "GET",
+        "/plugins/artist-runtime/api/status",
+        JSON.stringify({ config: { artist: { workspaceRoot } } }),
+        { "content-type": "application/json" }
+      ),
+      statusResponse.res
+    );
+    expect(statusResponse.readHeader("content-type")).toContain("application/json");
+    expect(JSON.parse(statusResponse.readBody()).dryRun).toBe(true);
+
+    const songsHandler = registered.routeHandlers.get("/plugins/artist-runtime/api/songs");
+    expect(songsHandler).toBeTruthy();
+    const songsResponse = createMockResponse();
+    await songsHandler?.(
+      createMockRequest(
+        "GET",
+        "/plugins/artist-runtime/api/songs/song-001",
+        JSON.stringify({ config: { artist: { workspaceRoot } } }),
+        { "content-type": "application/json" }
+      ),
+      songsResponse.res
+    );
+    expect(songsResponse.readStatus()).toBe(200);
+    expect(songsResponse.readHeader("content-type")).toContain("application/json");
+
+    const platformHandler = registered.routeHandlers.get("/plugins/artist-runtime/api/platforms");
+    expect(platformHandler).toBeTruthy();
+    for (const platform of ["x", "instagram", "tiktok"] as const) {
+      const platformResponse = createMockResponse();
+      await platformHandler?.(
+        createMockRequest(
+          "POST",
+          `/plugins/artist-runtime/api/platforms/${platform}/test`,
+          JSON.stringify({ config: { artist: { workspaceRoot: mkdtempSync(join(tmpdir(), "artist-runtime-route-")) } } }),
+          { "content-type": "application/json" }
+        ),
+        platformResponse.res
+      );
+      expect(JSON.parse(platformResponse.readBody()).platform).toBe(platform);
+    }
+  }, 30_000);
+});

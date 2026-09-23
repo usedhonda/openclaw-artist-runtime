@@ -1,0 +1,22 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+script_dir="$(cd "$(dirname "$0")" && pwd)"
+# shellcheck source=/dev/null
+source "${script_dir}/openclaw-local-env.sh"
+
+mkdir -p \
+  "${OPENCLAW_LOCAL_ROOT}" \
+  "${OPENCLAW_HOME}" \
+  "${OPENCLAW_STATE_DIR}" \
+  "$(dirname "${OPENCLAW_CONFIG_PATH}")" \
+  "${OPENCLAW_LOCAL_WORKSPACE}" \
+  "${OPENCLAW_LOCAL_LOGS}"
+
+if [[ ! -x "${OPENCLAW_LOCAL_PREFIX}/bin/openclaw" ]]; then
+  echo "Local OpenClaw is not installed under ${OPENCLAW_LOCAL_PREFIX}." >&2
+  echo "Run scripts/openclaw-local-install.sh first." >&2
+  exit 1
+fi
+
+exec "${OPENCLAW_LOCAL_PREFIX}/bin/openclaw" "$@"

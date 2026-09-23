@@ -1,0 +1,79 @@
+import { describe, expect, it } from "vitest";
+import { createSunoPromptPack } from "../src/suno-production/generatePromptPack";
+import { CANONICAL_STYLE_TARGET_MAX_CHARS } from "../src/suno-production/buildStyle";
+
+const base = {
+  songId: "song-001",
+  songTitle: "Civic Echo",
+  artistReason: "motif",
+  lyricsText: "line one\nline two",
+  artistSnapshot: "# ARTIST\n",
+  currentStateSnapshot: "# CURRENT\n",
+  knowledgePackVersion: "test"
+};
+
+describe("Suno prompt mood hint", () => {
+  it("injects moodHint as one style token", () => {
+    const pack = createSunoPromptPack({ ...base, moodHint: "civic dread pulse" });
+    expect(pack.style).toContain("civic dread pulse");
+    expect(pack.style.length).toBeLessThanOrEqual(CANONICAL_STYLE_TARGET_MAX_CHARS);
+  });
+
+  it("keeps moodHint while style stays within the canonical V5.5 style total", () => {
+    const pack = createSunoPromptPack({
+      ...base,
+      artistReason: "a very long observation reason ".repeat(8),
+      moodHint: "civic dread pulse"
+    });
+    expect(pack.style.length).toBeLessThanOrEqual(CANONICAL_STYLE_TARGET_MAX_CHARS);
+    expect(pack.style).toContain("civic dread pulse");
+    expect(pack.style).not.toContain("song intent:");
+    expect(pack.style).not.toContain("brushed drums");
+  });
+
+  it("keeps canonical style bounded when moodHint is oversized", () => {
+    const pack = createSunoPromptPack({
+      ...base,
+      artistReason: "long reason ".repeat(24),
+      moodHint: "oversized mood hint ".repeat(12)
+    });
+    expect(pack.style.length).toBeLessThanOrEqual(CANONICAL_STYLE_TARGET_MAX_CHARS);
+    expect(pack.style).not.toContain("song intent:");
+    expect(pack.style).not.toContain("brushed drums");
+  });
+
+  it("does not turn artist identity into a fixed dopagaki style profile", () => {
+    const pack = createSunoPromptPack({
+      ...base,
+      artistReason: "city observation without explicit style request",
+      moodHint: "late-night urban pressure",
+      artistSnapshot: [
+        "# ARTIST.md",
+        "## Sound",
+        "- Genre DNA: hip-hop",
+        "- nu-jazz rap",
+        "- Autonomous variation policy: the artist keeps high-velocity progressive motion to break template repetition.",
+        "- High-velocity progressive architecture: compressed sections, metric displacement, and bounded fast-flow bursts inside the current style.",
+        "## Lyrics",
+        "- Language policy: Japanese 60% / English 40%; chorus may use English up to 40%."
+      ].join("\n")
+    });
+
+    expect(pack.style).not.toContain("Variation Move");
+    expect(String(pack.payload.styleAndFeel)).not.toContain("overt high-velocity progressive rap");
+    expect(pack.yamlLyrics).toContain("language: Japanese 60% / English 40%");
+  });
+
+  it("does not synthesize a fixed style from a per-song variation seed", () => {
+    const pack = createSunoPromptPack({
+      ...base,
+      lyricsText: "[Verse]\n街の灯りが遅れる",
+      moodHint: "aggressive urban critique",
+      styleVariationSeed: "dopagaki:overt:spawn_seed"
+    });
+
+    expect(pack.style).not.toContain("Variation Move");
+    expect(pack.lyricsBundle?.originalLyricsText).toContain("街の灯りが遅れる");
+    expect(pack.lyricsBundle?.lyricsText).toContain("まちのあかりがおくれる");
+  });
+});

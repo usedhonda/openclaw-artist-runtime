@@ -1,0 +1,18 @@
+#!/usr/bin/env bash
+# Layer 1 of the publication guard: what is about to be committed.
+#
+# Fast on purpose - it scans only the staged files, so it can run on every
+# commit without becoming something people disable. The heavier checks live in
+# the pre-push hook and in `npm test`.
+#
+# Install with scripts/install-git-hooks.sh; bypass in a genuine emergency with
+# `git commit --no-verify`, then fix what it would have caught.
+set -euo pipefail
+
+repo_root="$(git rev-parse --show-toplevel)"
+cd "${repo_root}"
+
+if ! node scripts/maintainer-leak-scan.mjs --staged; then
+  echo "pre-commit: operator-specific content is staged. Move the value into .local/ and reference it through an env seed." >&2
+  exit 1
+fi
