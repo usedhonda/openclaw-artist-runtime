@@ -51,7 +51,7 @@ if git diff --cached --quiet; then
   echo "publish-public: public tree already matches ${source_sha}; nothing to publish"
   exit 0
 fi
-git commit -q -m "Release from ${source_sha}"
+OPENCLAW_LEAK_PATTERNS_FILE="${private_patterns}" git commit -q -m "Release from ${source_sha}"
 echo "publish-public: staged release commit $(git rev-parse --short HEAD) from ${source_sha}"
 git --no-pager diff --stat HEAD~1 HEAD | tail -1
 

@@ -130,8 +130,10 @@ and pushed to a repository that turned out to be public. Therefore:
 - Never bypass the hooks (`--no-verify`). If a hook is wrong, fix the hook.
 - Pushing to a public repository is a publication. It needs the producer's
   explicit go for that push, given as `OPENCLAW_PUBLIC_PUSH=1`.
-- The public repository is published only from `node scripts/export-public-tree.mjs <dir>`,
-  which drops the private-only operator records and refuses a tree with any finding.
+- The public repository is updated only by `scripts/publish-public.sh <public-clone> [--push]`:
+  it exports through `scripts/export-public-tree.mjs` (drops the private-only records,
+  refuses any finding) and adds one ordinary release commit. Never rebuild or
+  force-push the public history.
 - Identity rules live only in the gitignored `.local/leak-patterns.json`. When you
   learn a new identifier (handle, id, name, host), add it there, not to a tracked
   file.
