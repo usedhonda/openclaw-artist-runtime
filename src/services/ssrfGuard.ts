@@ -64,12 +64,23 @@ function ipv4Blocked(ip: string): boolean {
 }
 
 function ipv6Blocked(ip: string): boolean {
-  const lower = ip.toLowerCase().split("%")[0]; // drop zone id
-  if (lower === "::1" || lower === "::") return true; // loopback / unspecified
-  const mapped = lower.match(/^::ffff:(\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})$/);
-  if (mapped) return ipv4Blocked(mapped[1]); // IPv4-mapped -> check embedded v4
-  if (/^f[cd][0-9a-f]*:/.test(lower) || lower === "fc00::" || lower === "fd00::") return true; // fc00::/7 ULA
-  if (/^fe[89ab][0-9a-f]*:/.test(lower)) return true; // fe80::/10 link-local
+  // Use the same canonical form as URL parsing. Dotted IPv4-mapped literals
+  // become hexadecimal there; comparing only their original spelling misses them.
+  let canonical: string;
+  try {
+    canonical = new URL(`http://[${ip}]/`).hostname.slice(1, -1);
+  } catch {
+    return true; // Includes scoped addresses, which are not public URL hosts.
+  }
+  if (canonical === "::1" || canonical === "::") return true;
+  const mapped = canonical.match(/^::ffff:([0-9a-f]{1,4}):([0-9a-f]{1,4})$/);
+  if (mapped) {
+    const high = Number.parseInt(mapped[1], 16);
+    const low = Number.parseInt(mapped[2], 16);
+    return ipv4Blocked(`${high >>> 8}.${high & 255}.${low >>> 8}.${low & 255}`);
+  }
+  if (/^f[cd][0-9a-f]*:/.test(canonical)) return true; // fc00::/7 ULA
+  if (/^fe[89ab][0-9a-f]*:/.test(canonical)) return true; // fe80::/10 link-local
   return false;
 }
 
